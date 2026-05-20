@@ -20,12 +20,18 @@ pub fn ModalFrame(
     /// Extra class for the modal surface (`div.modal`).
     #[prop(optional)]
     modal_class: Option<String>,
+    /// Reactive extra class for the modal surface (`div.modal`).
+    #[prop(optional)]
+    modal_class_signal: Option<Signal<String>>,
     /// Extra style for the modal surface (`div.modal`).
     #[prop(optional)]
     modal_style: Option<String>,
     /// Extra style for overlay (`div.modal-overlay`).
     #[prop(optional)]
     overlay_style: Option<String>,
+    /// Reactive extra class for overlay (`div.modal-overlay`).
+    #[prop(optional)]
+    overlay_class_signal: Option<Signal<String>>,
     children: Children,
 ) -> impl IntoView {
     let close_on_overlay = close_on_overlay.unwrap_or(true);
@@ -90,14 +96,22 @@ pub fn ModalFrame(
 
     view! {
         <div
-            class="modal-overlay"
+            class=move || {
+                if let Some(cls) = overlay_class_signal {
+                    format!("modal-overlay {}", cls.get())
+                } else {
+                    "modal-overlay".to_string()
+                }
+            }
             style=overlay_style_full
             on:mousedown=handle_overlay_mouse_down
             on:click=handle_overlay_click
         >
             <div
                 class=move || {
-                    if let Some(cls) = modal_class.clone() {
+                    if let Some(cls) = modal_class_signal {
+                        format!("modal {}", cls.get())
+                    } else if let Some(cls) = modal_class.clone() {
                         format!("modal {cls}")
                     } else {
                         "modal".to_string()

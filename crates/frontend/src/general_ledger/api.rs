@@ -1,9 +1,10 @@
 use crate::shared::api_utils::api_base;
 use contracts::general_ledger::{
     GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
-    GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse, GlDrilldownSessionCreate,
-    GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord, GlReportQuery, GlReportResponse,
-    WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
+    GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
+    GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
+    GlReportQuery, GlReportResponse, GlResourceDetailResponse, WbWeeklyReconciliationQuery,
+    WbWeeklyReconciliationResponse,
 };
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -89,6 +90,25 @@ pub async fn fetch_general_ledger(
         .map_err(|e| format!("Failed to parse journal response: {e}"))
 }
 
+pub async fn fetch_document_general_ledger_entries(
+    registrator_type: &str,
+    registrator_ref: &str,
+) -> Result<Vec<GeneralLedgerEntryDto>, String> {
+    let query = GeneralLedgerListQuery {
+        registrator_type: Some(registrator_type.to_string()),
+        registrator_ref: Some(registrator_ref.to_string()),
+        sort_by: Some("created_at".to_string()),
+        sort_desc: false,
+        limit: 500,
+        offset: 0,
+        ..Default::default()
+    };
+
+    fetch_general_ledger(&query)
+        .await
+        .map(|response| response.entries)
+}
+
 pub async fn fetch_general_ledger_entry_by_id(id: &str) -> Result<GeneralLedgerEntryDto, String> {
     let url = format!(
         "{}/api/general-ledger/{}",
@@ -108,6 +128,48 @@ pub async fn fetch_general_ledger_entry_by_id(id: &str) -> Result<GeneralLedgerE
         .json::<GeneralLedgerEntryDto>()
         .await
         .map_err(|e| format!("Failed to parse journal entry: {e}"))
+}
+
+pub async fn fetch_gl_resource_details(id: &str) -> Result<GlResourceDetailResponse, String> {
+    let url = format!(
+        "{}/api/general-ledger/{}/resource-details",
+        api_base(),
+        urlencoding::encode(id)
+    );
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch GL resource details: {e}"))?;
+
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    response
+        .json::<GlResourceDetailResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse GL resource details: {e}"))
+}
+
+pub async fn fetch_gl_turnover_by_code(code: &str) -> Result<GeneralLedgerTurnoverDto, String> {
+    let url = format!(
+        "{}/api/general-ledger/turnovers/{}",
+        api_base(),
+        urlencoding::encode(code)
+    );
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch GL turnover: {e}"))?;
+
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    response
+        .json::<GeneralLedgerTurnoverDto>()
+        .await
+        .map_err(|e| format!("Failed to parse GL turnover: {e}"))
 }
 
 pub async fn fetch_general_ledger_turnovers() -> Result<GeneralLedgerTurnoverListResponse, String> {
@@ -165,6 +227,23 @@ pub async fn fetch_gl_dimensions(turnover_code: &str) -> Result<GlDimensionsResp
         .json::<GlDimensionsResponse>()
         .await
         .map_err(|e| format!("Failed to parse GL dimensions response: {e}"))
+}
+
+pub async fn fetch_gl_dimensions_catalog() -> Result<GlDimensionsCatalogResponse, String> {
+    let url = format!("{}/api/general-ledger/dimensions", api_base());
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch GL dimensions catalog: {e}"))?;
+
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    response
+        .json::<GlDimensionsCatalogResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse GL dimensions catalog response: {e}"))
 }
 
 pub async fn fetch_gl_drilldown(query: &GlDrilldownQuery) -> Result<GlDrilldownResponse, String> {

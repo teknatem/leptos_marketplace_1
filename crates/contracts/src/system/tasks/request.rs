@@ -40,4 +40,15 @@ pub struct SetWatermarkDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchedulerStatusDto {
     pub enabled: bool,
+    /// Значение `[scheduled_tasks].enabled` из config.toml.
+    /// Если в конфиге выключено — фоновый воркер вообще не запускается,
+    /// и runtime-переключатель не имеет эффекта. Используется фронтендом
+    /// для предупреждающей полосы. По умолчанию `true` (для обратной
+    /// совместимости при разборе POST-запроса от клиента).
+    #[serde(default = "default_config_enabled")]
+    pub config_enabled: bool,
+}
+
+fn default_config_enabled() -> bool {
+    true
 }

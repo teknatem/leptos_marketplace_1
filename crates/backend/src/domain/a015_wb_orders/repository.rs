@@ -542,14 +542,16 @@ pub async fn list_by_date_range(
     let db = get_connection();
     let mut query = Entity::find().filter(Column::IsDeleted.eq(false));
 
-    // Фильтрация по датам на уровне SQL через document_date
+    // document_date хранится как полная datetime в MSK (2026-04-30T17:58:35).
+    // Верхнюю границу расширяем до конца дня, иначе сравнение со строкой
+    // '2026-04-30' отсекает заказы этого дня со временем > 00:00.
     if let Some(from) = date_from {
         let from_str = from.format("%Y-%m-%d").to_string();
         query = query.filter(Column::DocumentDate.gte(from_str));
     }
 
     if let Some(to) = date_to {
-        let to_str = to.format("%Y-%m-%d").to_string();
+        let to_str = format!("{}T23:59:59.999", to.format("%Y-%m-%d"));
         query = query.filter(Column::DocumentDate.lte(to_str));
     }
 
@@ -735,11 +737,16 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
     // Build WHERE clause
     let mut conditions = vec!["w.is_deleted = 0".to_string()];
 
+    // document_date хранится как полная datetime в MSK (2026-04-30T17:58:35),
+    // поэтому сравниваем только дату (первые 10 символов), иначе верхняя
+    // граница '2026-04-30' отсекает все заказы этого дня со временем > 00:00.
     if let Some(ref date_from) = query.date_from {
-        conditions.push(format!("w.document_date >= '{}'", date_from));
+        let date_only = &date_from[..date_from.len().min(10)];
+        conditions.push(format!("substr(w.document_date, 1, 10) >= '{}'", date_only));
     }
     if let Some(ref date_to) = query.date_to {
-        conditions.push(format!("w.document_date <= '{}'", date_to));
+        let date_only = &date_to[..date_to.len().min(10)];
+        conditions.push(format!("substr(w.document_date, 1, 10) <= '{}'", date_only));
     }
     if let Some(ref org_id) = query.organization_id {
         if !org_id.is_empty() {

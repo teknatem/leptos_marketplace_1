@@ -97,7 +97,7 @@ pub static ACCOUNT_7609_VIEW: GlAccountViewDef = GlAccountViewDef {
         // ── Эквайринг (oper) ───────────────────────────────────────────────
         // ── Реклама (oper) ─────────────────────────────────────────────────
         GlAccountViewEntry {
-            turnover_code: "advertising_allocated",
+            turnover_code: "advert_clicks_no_order",
             layer: "oper",
         },
         // ── Добровольная компенсация (fact) ───────────────────────────────

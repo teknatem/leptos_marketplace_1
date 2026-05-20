@@ -1,3 +1,11 @@
+/* Бейдж: добавляем breathing room вокруг текста.
+   Оригинал имеет height: 20px без вертикального padding — рамка облегает слишком плотно. */
+.thaw-badge {
+  height: auto;
+  min-height: 20px;
+  padding: 1px calc(var(--spacingHorizontalXS) + var(--spacingHorizontalXXS) + 2px);
+}
+
 /* Отступ между иконкой (SVG) и текстом внутри ЛЮБОЙ кнопки.
    Работает для Thaw Button и наших .button без изменений разметки:
    SVG и текстовые узлы — прямые flex-children, gap применяется автоматически. */
@@ -182,9 +190,12 @@
 }
 
 /* Выравнивание содержимого по правому краю для числовых ячеек */
-.text-right,
+.text-right {
+  text-align: right !important;
+}
 .text-right .thaw-table-cell-layout__content {
   text-align: right !important;
+  justify-content: flex-end !important;
 }
 
 /* Resizable headers need position relative for absolute positioned resize handle */

@@ -141,6 +141,18 @@ pub async fn list_all() -> Result<Vec<WbReturnsClaims>> {
     Ok(items)
 }
 
+pub async fn search_by_srid(srid: &str) -> Result<Vec<WbReturnsClaims>> {
+    let items: Vec<WbReturnsClaims> = Entity::find()
+        .filter(Column::Srid.eq(srid))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    Ok(items)
+}
+
 pub async fn list_by_connection(connection_id: &str) -> Result<Vec<WbReturnsClaims>> {
     let mut items: Vec<WbReturnsClaims> = Entity::find()
         .filter(Column::ConnectionId.eq(connection_id))

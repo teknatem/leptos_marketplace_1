@@ -1,6 +1,8 @@
 pub mod access;
 pub mod audit;
 pub mod auth;
+pub mod favorites;
+pub mod history;
 pub mod pages;
 pub mod roles;
 pub mod tasks;

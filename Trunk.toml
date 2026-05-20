@@ -7,6 +7,11 @@ public_url = "/"
 watch = ["./crates/frontend"]
 # Explicitly point to the workspace's target directory to fix artifact discovery.
 target_path = "target"
+# wasm-opt обрабатывает WASM после сборки. Уровень 0 убирает debug-секции
+# без изменения поведения — это существенно уменьшает бинарь и heap.
+# Требует установленного wasm-opt: https://github.com/WebAssembly/binaryen
+# Если wasm-opt не установлен — закомментируйте строку ниже.
+# wasm_opt = ["-O0", "--strip-debug"]
 
 # Proxy API requests to the backend server during development.
 [[proxy]]

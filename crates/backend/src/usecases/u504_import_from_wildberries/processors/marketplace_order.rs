@@ -1,6 +1,8 @@
 use super::super::wildberries_api_client::WbMarketplaceOrderRow;
 use crate::domain::a015_wb_orders;
-use crate::shared::marketplaces::wildberries::datetime::parse_wb_datetime;
+use crate::shared::marketplaces::wildberries::datetime::{
+    format_wb_local_datetime_seconds, parse_wb_datetime,
+};
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a015_wb_orders::aggregate::{
@@ -35,7 +37,7 @@ pub async fn process_marketplace_order(
     // Check if the order already exists
     let existing = a015_wb_orders::service::get_by_document_no(&document_no).await?;
 
-    if let Some(_existing) = existing {
+    if let Some(existing) = existing {
         // Order exists — update income_id and store numeric WB order ID for sticker API
         if order.id > 0 {
             let _ = a015_wb_orders::service::update_line_id_by_document_no(&document_no, order.id)
@@ -52,9 +54,18 @@ pub async fn process_marketplace_order(
                     .await?;
             }
         }
-        let raw_json = serde_json::to_string(order)?;
-        let _ =
-            a015_wb_orders::service::store_marketplace_raw_payload(&document_no, &raw_json).await?;
+        // Only overwrite the marketplace raw payload when the new data is at least as rich as
+        // the existing one.  /api/v3/orders/new returns salePrice and finalPrice; the historical
+        // /api/v3/orders endpoint returns them as null.  If we already have richer data stored
+        // (non-null salePrice or finalPrice) and the new payload lacks those fields, keep the
+        // existing payload to prevent losing price information.
+        let new_has_rich_prices = order.final_price.is_some() || order.sale_price.is_some();
+        let existing_has_rich_prices = existing.source_meta.marketplace_raw_payload_ref.is_some();
+        if new_has_rich_prices || !existing_has_rich_prices {
+            let raw_json = serde_json::to_string(order)?;
+            let _ = a015_wb_orders::service::store_marketplace_raw_payload(&document_no, &raw_json)
+                .await?;
+        }
         return Ok(false);
     }
 
@@ -156,6 +167,10 @@ pub async fn process_marketplace_order(
         order_dt.format("%Y-%m-%d %H:%M:%S")
     );
 
+    // Marketplace API отдаёт createdAt в UTC (RFC3339 c Z); приводим document_date
+    // к MSK из order_dt, чтобы формат совпадал с заказами из Statistics API.
+    let document_date = Some(format_wb_local_datetime_seconds(&order_dt));
+
     let document = WbOrders::new_for_insert(
         document_no.clone(),
         description,
@@ -166,7 +181,7 @@ pub async fn process_marketplace_order(
         geography,
         source_meta,
         true,
-        order.created_at.clone(),
+        document_date,
     );
 
     // Store without raw JSON (marketplace API doesn't provide full analytics payload)

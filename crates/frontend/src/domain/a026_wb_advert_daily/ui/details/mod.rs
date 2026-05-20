@@ -1,3 +1,7 @@
+use crate::general_ledger::api::fetch_document_general_ledger_entries;
+use crate::general_ledger::ui::{
+    document_general_ledger_entries_nav_id, DocumentGeneralLedgerEntries,
+};
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::card_animated::CardAnimated;
@@ -159,11 +163,17 @@ impl ExcelExportable for LineDto {
 struct FoundOrderDto {
     order_key: String,
     #[serde(default)]
+    order_id: Option<String>,
+    #[serde(default)]
+    order_date: Option<String>,
+    #[serde(default)]
     nomenclature_ref: Option<String>,
     #[serde(default)]
     finished_price: Option<f64>,
     #[serde(default)]
     is_cancel: bool,
+    #[serde(default)]
+    allocation_basis: f64,
     #[serde(default)]
     is_allocated: bool,
     #[serde(default)]
@@ -176,6 +186,10 @@ struct FoundOrderDto {
 struct LinkedOrdersByNmDto {
     nm_id: i64,
     nm_name: String,
+    #[serde(default)]
+    nomenclature_ref: Option<String>,
+    #[serde(default)]
+    nomenclature_article: Option<String>,
     #[serde(default)]
     wb_reported_orders: i64,
     #[serde(default)]
@@ -211,6 +225,20 @@ struct DetailsDto {
     linked_orders_count: i64,
     #[serde(default)]
     linked_orders: Vec<LinkedOrdersByNmDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct P913Row {
+    id: String,
+    entry_date: String,
+    turnover_code: String,
+    amount: f64,
+    #[serde(default)]
+    nomenclature_ref: Option<String>,
+    wb_advert_campaign_code: String,
+    order_key: String,
+    #[serde(default)]
+    is_problem: bool,
 }
 
 #[component]
@@ -268,6 +296,10 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
     let (posting, set_posting) = signal(false);
     let (journal, set_journal) = signal(Vec::<GeneralLedgerEntryDto>::new());
     let (journal_loaded, set_journal_loaded) = signal(false);
+    let (journal_loading, set_journal_loading) = signal(false);
+    let (journal_error, set_journal_error) = signal::<Option<String>>(None);
+    let (projections, set_projections) = signal(Vec::<P913Row>::new());
+    let (projections_loaded, set_projections_loaded) = signal(false);
     let (lines_sort_field, set_lines_sort_field) = signal("wb_name".to_string());
     let (lines_sort_ascending, set_lines_sort_ascending) = signal(true);
     let lines_resize_initialized = StoredValue::new(false);
@@ -321,8 +353,31 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         Callback::new(move |()| {
             let current_id = stored_id.get_value();
             spawn_local(async move {
+                set_journal_loading.set(true);
+                set_journal_error.set(None);
+                match fetch_document_general_ledger_entries("a026_wb_advert_daily", &current_id)
+                    .await
+                {
+                    Ok(rows) => {
+                        set_journal.set(rows);
+                        set_journal_loaded.set(true);
+                    }
+                    Err(err) => {
+                        set_journal_error.set(Some(err));
+                    }
+                }
+                set_journal_loading.set(false);
+            });
+        })
+    };
+
+    let load_projections = {
+        let stored_id = stored_id;
+        Callback::new(move |()| {
+            let current_id = stored_id.get_value();
+            spawn_local(async move {
                 match Request::get(&format!(
-                    "{}/api/a026/wb-advert-daily/{}/journal",
+                    "{}/api/a026/wb-advert-daily/{}/projections",
                     api_base(),
                     current_id
                 ))
@@ -331,27 +386,21 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                 {
                     Ok(resp) if resp.ok() => {
                         if let Ok(value) = resp.json::<serde_json::Value>().await {
-                            let rows = value["general_ledger_entries"]
+                            let rows = value["p913_wb_advert_order_attr"]
                                 .as_array()
-                                .map(|rows| {
-                                    rows.iter()
+                                .map(|arr| {
+                                    arr.iter()
                                         .filter_map(|row| {
-                                            serde_json::from_value::<GeneralLedgerEntryDto>(
-                                                row.clone(),
-                                            )
-                                            .ok()
+                                            serde_json::from_value::<P913Row>(row.clone()).ok()
                                         })
                                         .collect()
                                 })
                                 .unwrap_or_default();
-                            set_journal.set(rows);
-                            set_journal_loaded.set(true);
+                            set_projections.set(rows);
+                            set_projections_loaded.set(true);
                         }
                     }
-                    Ok(resp) => {
-                        set_error.set(Some(format!("Ошибка сервера: HTTP {}", resp.status())))
-                    }
-                    Err(err) => set_error.set(Some(format!("Ошибка сети: {}", err))),
+                    _ => {}
                 }
             });
         })
@@ -370,6 +419,15 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
             }
             if tab.get() == "journal" && !journal_loaded.get() {
                 load_journal.run(());
+            }
+        }
+    });
+
+    Effect::new({
+        let load_projections = load_projections.clone();
+        move |_| {
+            if tab.get() == "projections" && !projections_loaded.get() {
+                load_projections.run(());
             }
         }
     });
@@ -418,7 +476,11 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                 {
                     Ok(resp) if resp.ok() => {
                         set_journal_loaded.set(false);
+                        set_journal_loading.set(false);
+                        set_journal_error.set(None);
                         set_journal.set(Vec::new());
+                        set_projections_loaded.set(false);
+                        set_projections.set(Vec::new());
                         load_doc.run(());
                     }
                     Ok(resp) => {
@@ -446,6 +508,23 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
             tabs.open_tab(
                 &format!("general_ledger_details_{}", journal_id),
                 &format!("Главная книга {}", &journal_id[..journal_id.len().min(8)]),
+            );
+        }
+    });
+
+    let open_order = Callback::new({
+        let tabs = tabs.clone();
+        move |order_id: String| {
+            tabs.open_tab(&format!("a015_wb_orders_details_{}", order_id), "WB Order");
+        }
+    });
+
+    let open_nomenclature = Callback::new({
+        let tabs = tabs.clone();
+        move |nom_ref: String| {
+            tabs.open_tab(
+                &format!("a004_nomenclature_details_{}", nom_ref),
+                "Номенклатура",
             );
         }
     });
@@ -514,10 +593,13 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                     "Позиции"
                 </button>
                 <button class="page__tab" class:page__tab--active=move || tab.get() == "linked_orders" on:click=move |_| set_tab.set("linked_orders".to_string())>
-                    "Связанные заказы"
+                    "Атрибуция"
                 </button>
                 <button class="page__tab" class:page__tab--active=move || tab.get() == "journal" on:click=move |_| set_tab.set("journal".to_string())>
                     "Журнал"
+                </button>
+                <button class="page__tab" class:page__tab--active=move || tab.get() == "projections" on:click=move |_| set_tab.set("projections".to_string())>
+                    "Проекции"
                 </button>
             </div>
 
@@ -703,6 +785,8 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                             let wb_orders_total: i64 = d.linked_orders.iter().map(|g| g.wb_reported_orders).sum();
                             let groups = d.linked_orders.clone();
                             let posted = d.is_posted;
+                            let open_order_for_table = open_order.clone();
+                            let open_nom_for_table = open_nomenclature.clone();
 
                             view! {
                                 <div style="display:flex;flex-direction:column;gap:var(--spacing-md);width:100%;">
@@ -749,18 +833,18 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                             } else {
                                                 let groups_for_each = groups.clone();
                                                 view! {
-                                                    <div class="table-wrapper">
-                                                        <Table attr:id=LINKED_ORDERS_TABLE_ID attr:style="width:100%;min-width:1130px;table-layout:fixed;">
+                                                    <div class="table-wrapper" style="overflow-x: auto;">
+                                                        <Table attr:id=LINKED_ORDERS_TABLE_ID attr:style="width:100%;min-width:870px;table-layout:fixed;">
                                                             <TableHeader>
                                                                 <TableRow>
-                                                                    <TableHeaderCell resizable=false min_width=220.0 class="resizable">"nmID / Заказ"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=false min_width=280.0 class="resizable">"Наименование"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=false min_width=90.0 class="resizable text-right">"Заказы WB"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=false min_width=120.0 class="resizable text-right">"Найдено"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=false min_width=100.0 class="resizable">"Статус"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=false min_width=110.0 class="resizable text-right">"Цена"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=false min_width=120.0 class="resizable text-right">"Расход"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=false min_width=90.0 class="resizable text-right">"Доля, %"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=60.0 class="resizable" attr:style="width:250px;">"Наименование"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=60.0 class="resizable" attr:style="width:160px;">"Артикул / Заказ"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=50.0 class="resizable text-right" attr:style="width:65px;">"WB"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=50.0 class="resizable text-right" attr:style="width:75px;">"Найдено"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=50.0 class="resizable" attr:style="width:85px;">"Статус"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=50.0 class="resizable text-right" attr:style="width:80px;">"Цена"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=50.0 class="resizable text-right" attr:style="width:90px;">"Расход"</TableHeaderCell>
+                                                                    <TableHeaderCell resizable=false min_width=50.0 class="resizable text-right" attr:style="width:65px;">"Доля, %"</TableHeaderCell>
                                                                 </TableRow>
                                                             </TableHeader>
                                                             <TableBody>
@@ -768,7 +852,6 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                     each=move || groups_for_each.clone()
                                                                     key=|group| group.nm_id
                                                                     children=move |group| {
-                                                                        let header_nm_id = group.nm_id;
                                                                         let header_name = group.nm_name.clone();
                                                                         let wb_reported = group.wb_reported_orders;
                                                                         let wb_advert_sum = group.wb_advert_sum;
@@ -776,30 +859,63 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                         let allocated_count = group.found_orders.iter().filter(|o| o.is_allocated).count() as i64;
                                                                         let extra_count = found_count - allocated_count;
                                                                         let header_summary = if extra_count > 0 {
-                                                                            format!("{} (+{} доп.)", allocated_count, extra_count)
+                                                                            format!("{} (+{})", allocated_count, extra_count)
                                                                         } else {
                                                                             allocated_count.to_string()
                                                                         };
                                                                         let orders_for_each = group.found_orders.clone();
+                                                                        let open_order_inner = open_order_for_table.clone();
+                                                                        let open_nom_inner = open_nom_for_table.clone();
+                                                                        let nom_ref_val = group.nomenclature_ref.clone().unwrap_or_default();
+                                                                        let article_text = group.nomenclature_article.clone().unwrap_or_else(|| "—".to_string());
 
                                                                         view! {
+                                                                            // ── nm-group header row ──────────────────────────────────────────
                                                                             <TableRow>
-                                                                                <TableCell><TableCellLayout truncate=true><strong>{header_nm_id}</strong></TableCellLayout></TableCell>
                                                                                 <TableCell><TableCellLayout truncate=true><strong>{header_name}</strong></TableCellLayout></TableCell>
-                                                                                <TableCell class="text-right"><TableCellLayout truncate=true>{wb_reported}</TableCellLayout></TableCell>
-                                                                                <TableCell class="text-right"><TableCellLayout truncate=true>{header_summary}</TableCellLayout></TableCell>
+                                                                                <TableCell><TableCellLayout truncate=true>
+                                                                                    <strong>
+                                                                                    {if nom_ref_val.is_empty() {
+                                                                                        view! { <span>{article_text}</span> }.into_any()
+                                                                                    } else {
+                                                                                        let nom_ref_click = nom_ref_val.clone();
+                                                                                        view! {
+                                                                                            <a href="#" class="table__link" on:click=move |e| {
+                                                                                                e.prevent_default();
+                                                                                                open_nom_inner.run(nom_ref_click.clone());
+                                                                                            }>{article_text}</a>
+                                                                                        }.into_any()
+                                                                                    }}
+                                                                                    </strong>
+                                                                                </TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout>{wb_reported}</TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout>{header_summary}</TableCellLayout></TableCell>
                                                                                 <TableCell><TableCellLayout truncate=true>""</TableCellLayout></TableCell>
-                                                                                <TableCell class="text-right"><TableCellLayout truncate=true>"—"</TableCellLayout></TableCell>
-                                                                                <TableCell class="text-right"><TableCellLayout truncate=true><strong>{fmt_money(wb_advert_sum)}</strong></TableCellLayout></TableCell>
-                                                                                <TableCell class="text-right"><TableCellLayout truncate=true>"100,00"</TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout>"—"</TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout><strong>{fmt_money(wb_advert_sum)}</strong></TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout>"100,00"</TableCellLayout></TableCell>
                                                                             </TableRow>
+                                                                            // ── per-order rows ───────────────────────────────────────────────
                                                                             <For
                                                                                 each=move || orders_for_each.clone()
                                                                                 key=|order| order.order_key.clone()
                                                                                 children=move |order| {
                                                                                     let price = order.finished_price.map(fmt_money).unwrap_or_else(|| "—".to_string());
-                                                                                    let ratio_pct = order.allocation_ratio * 100.0;
-                                                                                    let allocated = fmt_money(order.allocated_cost);
+                                                                                    let price_basis = if order.allocation_basis.abs() > f64::EPSILON {
+                                                                                        fmt_money(order.allocation_basis)
+                                                                                    } else {
+                                                                                        price
+                                                                                    };
+                                                                                    let allocated = if order.is_allocated {
+                                                                                        fmt_money(order.allocated_cost)
+                                                                                    } else {
+                                                                                        "—".to_string()
+                                                                                    };
+                                                                                    let ratio_str = if order.is_allocated {
+                                                                                        fmt_ratio(order.allocation_ratio * 100.0)
+                                                                                    } else {
+                                                                                        "—".to_string()
+                                                                                    };
                                                                                     let (status_color, status_label) = if order.is_cancel {
                                                                                         (BadgeColor::Danger, "Отменён")
                                                                                     } else if !order.is_allocated {
@@ -807,20 +923,40 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                                     } else {
                                                                                         (BadgeColor::Success, "Активен")
                                                                                     };
+                                                                                    let order_date_display = order.order_date.as_deref().map(fmt_date).unwrap_or_else(|| order.order_key.clone());
+                                                                                    let order_id_val = order.order_id.clone().unwrap_or_default();
+                                                                                    let order_key_display = order.order_key.clone();
+                                                                                    let open_order_click = open_order_inner.clone();
                                                                                     view! {
                                                                                         <TableRow>
-                                                                                            <TableCell><TableCellLayout truncate=true><span class="text-muted">"↳"</span> {order.order_key}</TableCellLayout></TableCell>
-                                                                                            <TableCell><TableCellLayout truncate=true>{order.nomenclature_ref.unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
-                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>""</TableCellLayout></TableCell>
-                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>""</TableCellLayout></TableCell>
+                                                                                            // Наименование → "Заказ dd.mm.yyyy"
+                                                                                            <TableCell><TableCellLayout truncate=true>
+                                                                                                <span class="text-muted">"↳ "</span>
+                                                                                                {format!("Заказ {}", order_date_display)}
+                                                                                            </TableCellLayout></TableCell>
+                                                                                            // Артикул/Заказ → srid as link to a015
+                                                                                            <TableCell><TableCellLayout truncate=true>
+                                                                                                {if order_id_val.is_empty() {
+                                                                                                    view! { <span>{order_key_display}</span> }.into_any()
+                                                                                                } else {
+                                                                                                    view! {
+                                                                                                        <a href="#" class="table__link" on:click=move |e| {
+                                                                                                            e.prevent_default();
+                                                                                                            open_order_click.run(order_id_val.clone());
+                                                                                                        }>{order_key_display}</a>
+                                                                                                    }.into_any()
+                                                                                                }}
+                                                                                            </TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout>""</TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout>""</TableCellLayout></TableCell>
                                                                                             <TableCell>
                                                                                                 <TableCellLayout truncate=true>
                                                                                                     <Badge appearance=BadgeAppearance::Tint color=status_color>{status_label}</Badge>
                                                                                                 </TableCellLayout>
                                                                                             </TableCell>
-                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>{price}</TableCellLayout></TableCell>
-                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>{allocated}</TableCellLayout></TableCell>
-                                                                                            <TableCell class="text-right"><TableCellLayout truncate=true>{fmt_ratio(ratio_pct)}</TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout>{price_basis}</TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout>{allocated}</TableCellLayout></TableCell>
+                                                                                            <TableCell class="text-right"><TableCellLayout>{ratio_str}</TableCellLayout></TableCell>
                                                                                         </TableRow>
                                                                                     }
                                                                                 }
@@ -839,40 +975,106 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                             }.into_any()
                         },
                         "journal" => {
-                            let open_journal_for_table = open_journal.clone();
                             view! {
-                                <div class="table-wrapper">
-                                <Table attr:style="width:100%;min-width:950px;">
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHeaderCell>"ID"</TableHeaderCell>
-                                            <TableHeaderCell>"Дата"</TableHeaderCell>
-                                            <TableHeaderCell>"Оборот"</TableHeaderCell>
-                                            <TableHeaderCell>"Дт"</TableHeaderCell>
-                                            <TableHeaderCell>"Кт"</TableHeaderCell>
-                                            <TableHeaderCell>"Сумма"</TableHeaderCell>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        <For each=move || journal.get() key=|r| r.id.clone() children=move |r| {
-                                            let jid = r.id.clone();
+                                <DocumentGeneralLedgerEntries
+                                    entries=Signal::derive(move || journal.get())
+                                    loading=Signal::derive(move || journal_loading.get())
+                                    error=Signal::derive(move || journal_error.get())
+                                    nav_id=document_general_ledger_entries_nav_id("a026_wb_advert_daily")
+                                    title="Журнал операций"
+                                    empty_message="Записи General Ledger не найдены. Проведите документ для формирования проводок."
+                                />
+                            }.into_any()
+                        },
+                        "projections" => {
+                            let rows = projections.get();
+                            let reserve_total: f64 = rows.iter()
+                                .filter(|r| r.turnover_code == "advert_clicks_order_accrual")
+                                .map(|r| r.amount)
+                                .sum();
+                            let expense_total: f64 = rows.iter()
+                                .filter(|r| r.turnover_code == "advert_clicks_order_expense")
+                                .map(|r| r.amount)
+                                .sum();
+                            let problem_count = rows.iter().filter(|r| r.is_problem).count();
+                            let row_count = rows.len();
+                            let is_empty = rows.is_empty();
+                            view! {
+                                <div style="display:flex;flex-direction:column;gap:var(--spacing-md);width:100%;">
+                                    <CardAnimated delay_ms=0 nav_id="a026_wb_advert_daily_details_projections_summary">
+                                        <h4 class="details-section__title">"p913 — Атрибуция рекламных расходов"</h4>
+                                        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>
+                                                {format!("Строк: {}", row_count)}
+                                            </Badge>
+                                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
+                                                {format!("Резерв: {}", fmt_money(reserve_total))}
+                                            </Badge>
+                                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Success>
+                                                {format!("Расход: {}", fmt_money(expense_total))}
+                                            </Badge>
+                                            {if problem_count > 0 {
+                                                view! {
+                                                    <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Danger>
+                                                        {format!("Проблем: {}", problem_count)}
+                                                    </Badge>
+                                                }.into_any()
+                                            } else {
+                                                view! { <span></span> }.into_any()
+                                            }}
+                                        </div>
+                                    </CardAnimated>
+                                    <CardAnimated delay_ms=40 nav_id="a026_wb_advert_daily_details_projections_table">
+                                        {if is_empty {
                                             view! {
-                                                <TableRow>
-                                                    <TableCell>
-                                                        <TableCellLayout>
-                                                            <a href="#" class="table__link" on:click=move |e| { e.prevent_default(); open_journal_for_table.run(jid.clone()); }>{r.id}</a>
-                                                        </TableCellLayout>
-                                                    </TableCell>
-                                                    <TableCell><TableCellLayout>{r.entry_date}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{r.turnover_code}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{r.debit_account}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{r.credit_account}</TableCellLayout></TableCell>
-                                                    <TableCell class="table__cell--right"><TableCellLayout>{fmt_money(r.amount)}</TableCellLayout></TableCell>
-                                                </TableRow>
-                                            }
-                                        } />
-                                    </TableBody>
-                                </Table>
+                                                <div class="text-muted">"Нет записей p913. Проведите документ для создания записей атрибуции."</div>
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <div class="table-wrapper">
+                                                <Table attr:style="width:100%;min-width:800px;">
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHeaderCell>"Дата"</TableHeaderCell>
+                                                            <TableHeaderCell>"Тип"</TableHeaderCell>
+                                                            <TableHeaderCell>"Заказ"</TableHeaderCell>
+                                                            <TableHeaderCell>"Кампания"</TableHeaderCell>
+                                                            <TableHeaderCell class="text-right">"Сумма"</TableHeaderCell>
+                                                            <TableHeaderCell>"Статус"</TableHeaderCell>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        <For each=move || projections.get() key=|r| r.id.clone() children=move |r| {
+                                                            let (badge_color, badge_label) = if r.is_problem {
+                                                                (BadgeColor::Danger, "Проблема")
+                                                            } else {
+                                                                (BadgeColor::Success, "OK")
+                                                            };
+                                                            let type_label = if r.turnover_code == "advert_clicks_order_accrual" {
+                                                                "Резерв"
+                                                            } else {
+                                                                "Расход"
+                                                            };
+                                                            let order_key = if r.order_key.is_empty() { "—".to_string() } else { r.order_key.clone() };
+                                                            view! {
+                                                                <TableRow>
+                                                                    <TableCell><TableCellLayout>{fmt_date(&r.entry_date)}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout>{type_label}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout truncate=true>{order_key}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout truncate=true>{r.wb_advert_campaign_code.clone()}</TableCellLayout></TableCell>
+                                                                    <TableCell class="text-right"><TableCellLayout>{fmt_money(r.amount)}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout>
+                                                                        <Badge appearance=BadgeAppearance::Tint color=badge_color>{badge_label}</Badge>
+                                                                    </TableCellLayout></TableCell>
+                                                                </TableRow>
+                                                            }
+                                                        } />
+                                                    </TableBody>
+                                                </Table>
+                                                </div>
+                                            }.into_any()
+                                        }}
+                                    </CardAnimated>
                                 </div>
                             }.into_any()
                         },

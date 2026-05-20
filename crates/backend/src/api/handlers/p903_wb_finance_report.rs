@@ -5,7 +5,6 @@ use contracts::projections::p903_wb_finance_report::dto::{
     WbFinanceReportDetailResponse, WbFinanceReportDto, WbFinanceReportListRequest,
     WbFinanceReportListResponse,
 };
-use contracts::shared::analytics::TurnoverLayer;
 use serde::Deserialize;
 
 use crate::projections::p903_wb_finance_report::repository;
@@ -290,28 +289,5 @@ fn model_to_dto(
 }
 
 fn to_general_ledger_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
-    let comment =
-        crate::shared::analytics::turnover_registry::get_turnover_class(&row.turnover_code)
-            .map(|c| c.journal_comment.to_string())
-            .unwrap_or_default();
-
-    GeneralLedgerEntryDto {
-        id: row.id,
-        entry_date: row.entry_date,
-        layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
-        connection_mp_ref: row.connection_mp_ref,
-        registrator_type: row.registrator_type,
-        registrator_ref: row.registrator_ref,
-        order_id: row.order_id,
-        debit_account: row.debit_account,
-        credit_account: row.credit_account,
-        amount: row.amount,
-        qty: row.qty,
-        turnover_code: row.turnover_code,
-        resource_table: row.resource_table,
-        resource_field: row.resource_field,
-        resource_sign: row.resource_sign,
-        created_at: row.created_at,
-        comment,
-    }
+    crate::general_ledger::dto::entry_to_dto(row)
 }

@@ -1,8 +1,6 @@
 use crate::shared::api_utils::api_base;
 use crate::system::auth::storage;
-use contracts::system::tasks::history::{
-    TaskHistoryMetric, TaskHistoryResponse, TaskHistoryScale,
-};
+use contracts::system::tasks::history::{TaskHistoryMetric, TaskHistoryResponse, TaskHistoryScale};
 use contracts::system::tasks::metadata::TaskMetadataDto;
 use contracts::system::tasks::progress::TaskProgressResponse;
 use contracts::system::tasks::request::{
@@ -503,7 +501,10 @@ pub async fn fetch_scheduler_status() -> Result<SchedulerStatusDto, String> {
 pub async fn set_scheduler_status(enabled: bool) -> Result<SchedulerStatusDto, String> {
     let auth_header = get_auth_header().ok_or("Not authenticated")?;
 
-    let dto = SchedulerStatusDto { enabled };
+    let dto = SchedulerStatusDto {
+        enabled,
+        config_enabled: true,
+    };
     let response = Request::post(&format!("{}/api/sys/scheduler/status", api_base()))
         .header("Authorization", &auth_header)
         .json(&dto)

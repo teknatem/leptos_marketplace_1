@@ -1,5 +1,5 @@
 use crate::projections::general_ledger::GeneralLedgerEntryDto;
-use crate::shared::analytics::{AggKind, ReportGroup, SelectionRule, TurnoverLayer, ValueKind};
+use crate::shared::analytics::{ReportGroup, SelectionRule};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7,12 +7,10 @@ pub struct WbAdvertByItemDto {
     pub id: String,
     pub connection_mp_ref: String,
     pub entry_date: String,
-    pub layer: TurnoverLayer,
     pub turnover_code: String,
-    pub value_kind: ValueKind,
-    pub agg_kind: AggKind,
     pub amount: f64,
     pub nomenclature_ref: Option<String>,
+    pub wb_advert_campaign_code: String,
     pub registrator_type: String,
     pub registrator_ref: String,
     pub general_ledger_ref: Option<String>,

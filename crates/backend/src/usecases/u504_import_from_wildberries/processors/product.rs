@@ -45,6 +45,16 @@ pub async fn process_product(connection: &ConnectionMP, card: &WildberriesCard) 
         existing_product.category_id = Some(card.subject_id.to_string());
         existing_product.category_name = None; // WB API не возвращает название категории
         existing_product.last_update = Some(chrono::Utc::now());
+
+        // Если nomenclature_ref всё ещё пуст (предыдущие импорты не нашли совпадения,
+        // либо a004_nomenclature пополнилась позже) — пробуем привязать снова.
+        if existing_product.nomenclature_ref.is_none() {
+            let _ = a007_marketplace_product::service::search_and_set_nomenclature(
+                &mut existing_product,
+            )
+            .await;
+        }
+
         existing_product.before_write();
 
         a007_marketplace_product::repository::update(&existing_product).await?;

@@ -14,13 +14,11 @@ pub struct Model {
     pub id: String,
     pub connection_mp_ref: String,
     pub entry_date: String,
-    pub layer: String,
     pub turnover_code: String,
-    pub value_kind: String,
-    pub agg_kind: String,
     pub amount: f64,
     #[sea_orm(nullable)]
     pub nomenclature_ref: Option<String>,
+    pub wb_advert_campaign_code: String,
     pub registrator_type: String,
     pub registrator_ref: String,
     #[sea_orm(nullable)]
@@ -52,12 +50,10 @@ pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> 
         id: Set(entry.id.clone()),
         connection_mp_ref: Set(entry.connection_mp_ref.clone()),
         entry_date: Set(entry.entry_date.clone()),
-        layer: Set(entry.layer.clone()),
         turnover_code: Set(entry.turnover_code.clone()),
-        value_kind: Set(entry.value_kind.clone()),
-        agg_kind: Set(entry.agg_kind.clone()),
         amount: Set(entry.amount),
         nomenclature_ref: Set(entry.nomenclature_ref.clone()),
+        wb_advert_campaign_code: Set(entry.wb_advert_campaign_code.clone()),
         registrator_type: Set(entry.registrator_type.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
         general_ledger_ref: Set(entry.general_ledger_ref.clone()),
@@ -122,8 +118,8 @@ pub async fn list_with_filters(
     date_to: Option<String>,
     connection_mp_ref: Option<String>,
     nomenclature_ref: Option<String>,
-    layer: Option<String>,
     turnover_code: Option<String>,
+    wb_advert_campaign_code: Option<String>,
     registrator_ref: Option<String>,
     general_ledger_ref: Option<String>,
     sort_by: Option<String>,
@@ -137,8 +133,8 @@ pub async fn list_with_filters(
         &date_to,
         &connection_mp_ref,
         &nomenclature_ref,
-        &layer,
         &turnover_code,
+        &wb_advert_campaign_code,
         &registrator_ref,
         &general_ledger_ref,
     );
@@ -158,8 +154,8 @@ pub async fn count_with_filters(
     date_to: Option<String>,
     connection_mp_ref: Option<String>,
     nomenclature_ref: Option<String>,
-    layer: Option<String>,
     turnover_code: Option<String>,
+    wb_advert_campaign_code: Option<String>,
     registrator_ref: Option<String>,
     general_ledger_ref: Option<String>,
 ) -> Result<u64> {
@@ -169,8 +165,8 @@ pub async fn count_with_filters(
         &date_to,
         &connection_mp_ref,
         &nomenclature_ref,
-        &layer,
         &turnover_code,
+        &wb_advert_campaign_code,
         &registrator_ref,
         &general_ledger_ref,
     );
@@ -184,8 +180,8 @@ fn apply_filters(
     date_to: &Option<String>,
     connection_mp_ref: &Option<String>,
     nomenclature_ref: &Option<String>,
-    layer: &Option<String>,
     turnover_code: &Option<String>,
+    wb_advert_campaign_code: &Option<String>,
     registrator_ref: &Option<String>,
     general_ledger_ref: &Option<String>,
 ) -> Select<Entity> {
@@ -201,11 +197,11 @@ fn apply_filters(
     if let Some(value) = nomenclature_ref {
         query = query.filter(Column::NomenclatureRef.eq(value.clone()));
     }
-    if let Some(value) = layer {
-        query = query.filter(Column::Layer.eq(value.clone()));
-    }
     if let Some(value) = turnover_code {
         query = query.filter(Column::TurnoverCode.eq(value.clone()));
+    }
+    if let Some(value) = wb_advert_campaign_code {
+        query = query.filter(Column::WbAdvertCampaignCode.eq(value.clone()));
     }
     if let Some(value) = registrator_ref {
         query = query.filter(Column::RegistratorRef.eq(value.clone()));
@@ -219,11 +215,11 @@ fn apply_filters(
 fn apply_sort(mut query: Select<Entity>, sort_by: Option<&str>, sort_desc: bool) -> Select<Entity> {
     let column = match sort_by.unwrap_or("entry_date") {
         "entry_date" => Column::EntryDate,
-        "layer" => Column::Layer,
         "turnover_code" => Column::TurnoverCode,
         "amount" => Column::Amount,
         "registrator_ref" => Column::RegistratorRef,
         "general_ledger_ref" => Column::GeneralLedgerRef,
+        "wb_advert_campaign_code" => Column::WbAdvertCampaignCode,
         _ => Column::EntryDate,
     };
 

@@ -119,6 +119,7 @@ pub async fn list_paginated(
     sort_desc: bool,
     q: &str,
     only_mp: bool,
+    no_analytics: bool,
 ) -> anyhow::Result<(Vec<Nomenclature>, u64)> {
     let mut condition = Condition::all()
         .add(Column::IsDeleted.eq(false))
@@ -126,6 +127,17 @@ pub async fn list_paginated(
 
     if only_mp {
         condition = condition.add(Column::MpRefCount.gt(0));
+    }
+
+    if no_analytics {
+        let missing_dimension = Condition::any()
+            .add(Column::Dim1Category.eq(""))
+            .add(Column::Dim2Line.eq(""))
+            .add(Column::Dim3Model.eq(""))
+            .add(Column::Dim4Format.eq(""))
+            .add(Column::Dim5Sink.eq(""))
+            .add(Column::Dim6Size.eq(""));
+        condition = condition.add(missing_dimension);
     }
 
     let q_trimmed = q.trim();

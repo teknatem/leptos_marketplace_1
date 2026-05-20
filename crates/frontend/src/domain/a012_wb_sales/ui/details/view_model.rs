@@ -36,6 +36,11 @@ pub struct WbSalesDetailsVm {
     pub general_ledger_entries_loading: RwSignal<bool>,
     pub general_ledger_entries_error: RwSignal<Option<String>>,
 
+    pub advert_attribution: RwSignal<Option<AdvertAttributionResponse>>,
+    pub advert_attribution_loaded: RwSignal<bool>,
+    pub advert_attribution_loading: RwSignal<bool>,
+    pub advert_attribution_error: RwSignal<Option<String>>,
+
     pub marketplace_product_info: RwSignal<Option<MarketplaceProductInfo>>,
     pub nomenclature_info: RwSignal<Option<NomenclatureInfo>>,
     pub connection_info: RwSignal<Option<ConnectionInfo>>,
@@ -74,6 +79,11 @@ impl WbSalesDetailsVm {
             general_ledger_entries_loaded: RwSignal::new(false),
             general_ledger_entries_loading: RwSignal::new(false),
             general_ledger_entries_error: RwSignal::new(None),
+
+            advert_attribution: RwSignal::new(None),
+            advert_attribution_loaded: RwSignal::new(false),
+            advert_attribution_loading: RwSignal::new(false),
+            advert_attribution_error: RwSignal::new(None),
 
             marketplace_product_info: RwSignal::new(None),
             nomenclature_info: RwSignal::new(None),
@@ -155,6 +165,12 @@ impl WbSalesDetailsVm {
         Signal::derive(move || entries.get().len())
     }
 
+    /// Get advert attribution row count for badge
+    pub fn advert_attribution_count(&self) -> Signal<usize> {
+        let attribution = self.advert_attribution;
+        Signal::derive(move || attribution.get().map(|a| a.totals.rows_count).unwrap_or(0))
+    }
+
     /// Set active tab
     pub fn set_tab(&self, tab: &'static str) {
         self.active_tab.set(tab);
@@ -176,10 +192,11 @@ impl WbSalesDetailsVm {
                     // Load related data (marketplace product, nomenclature)
                     vm.load_related_data(&data);
 
-                    // Load data for badges immediately (projections, finance reports, journal)
+                    // Load data for badges immediately (projections, finance reports, journal, attribution)
                     vm.load_projections();
                     vm.load_finance_reports();
                     vm.load_general_ledger_entries();
+                    vm.load_advert_attribution();
 
                     vm.loading.set(false);
                 }
@@ -367,6 +384,36 @@ impl WbSalesDetailsVm {
         });
     }
 
+    /// Load advert attribution (lazy, for "advert_attribution" tab and badge)
+    pub fn load_advert_attribution(&self) {
+        if self.advert_attribution_loaded.get_untracked()
+            || self.advert_attribution_loading.get_untracked()
+        {
+            return;
+        }
+
+        let Some(id) = self.id.get_untracked() else {
+            return;
+        };
+
+        let vm = self.clone();
+        vm.advert_attribution_loading.set(true);
+        vm.advert_attribution_error.set(None);
+
+        spawn_local(async move {
+            match fetch_advert_attribution(&id).await {
+                Ok(data) => {
+                    vm.advert_attribution.set(Some(data));
+                    vm.advert_attribution_loaded.set(true);
+                }
+                Err(e) => {
+                    vm.advert_attribution_error.set(Some(e));
+                }
+            }
+            vm.advert_attribution_loading.set(false);
+        });
+    }
+
     /// Post document (проведение)
     pub fn post(&self) {
         let Some(id) = self.id.get() else {
@@ -439,6 +486,16 @@ impl WbSalesDetailsVm {
         if let Ok(entries) = fetch_general_ledger_entries(&id).await {
             self.general_ledger_entries.set(entries);
             self.general_ledger_entries_loaded.set(true);
+        }
+
+        // Reset advert attribution: gl_advert_clicks_order_expense changes after posting.
+        self.advert_attribution_loaded.set(false);
+        self.advert_attribution_loading.set(false);
+        self.advert_attribution.set(None);
+        self.advert_attribution_error.set(None);
+        if let Ok(data) = fetch_advert_attribution(&id).await {
+            self.advert_attribution.set(Some(data));
+            self.advert_attribution_loaded.set(true);
         }
     }
 

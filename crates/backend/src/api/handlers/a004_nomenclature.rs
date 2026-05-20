@@ -20,6 +20,7 @@ pub struct NomenclatureListParams {
     pub sort_desc: Option<bool>,
     pub q: Option<String>,
     pub only_mp: Option<bool>,
+    pub no_analytics: Option<bool>,
 }
 
 #[derive(serde::Serialize)]
@@ -52,9 +53,18 @@ pub async fn list_paginated(
     let sort_desc = params.sort_desc.unwrap_or(false);
     let q = params.q.unwrap_or_default();
     let only_mp = params.only_mp.unwrap_or(false);
+    let no_analytics = params.no_analytics.unwrap_or(false);
 
-    match a004_nomenclature::service::list_paginated(limit, offset, sort_by, sort_desc, &q, only_mp)
-        .await
+    match a004_nomenclature::service::list_paginated(
+        limit,
+        offset,
+        sort_by,
+        sort_desc,
+        &q,
+        only_mp,
+        no_analytics,
+    )
+    .await
     {
         Ok((items, total)) => {
             let page_size = limit as usize;

@@ -1,40 +1,10 @@
 use crate::domain::a032_wb_returns_claims::ui::details::view_model::WbReturnsClaimsDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
-use crate::shared::api_utils::api_base;
-use gloo_net::http::Request;
+use crate::shared::components::card_animated::CardAnimated;
+use crate::shared::components::ui::{FieldDisplay, FieldDisplayMultiline};
+use crate::shared::date_utils::format_datetime_utc_local;
 use leptos::prelude::*;
-use serde::Deserialize;
-use wasm_bindgen_futures::spawn_local;
-
-#[derive(Deserialize)]
-struct OrderIdDto {
-    pub id: String,
-}
-
-async fn resolve_order_uuid(srid: &str) -> Option<String> {
-    let url = format!(
-        "{}/api/a015/wb-orders/search-by-srid?srid={}",
-        api_base(),
-        srid
-    );
-    let response = Request::get(&url).send().await.ok()?;
-    if !response.ok() {
-        return None;
-    }
-    let orders: Vec<OrderIdDto> = response.json().await.ok()?;
-    orders.into_iter().next().map(|o| o.id)
-}
-
-fn format_date(iso_date: &str) -> String {
-    if let Some(date_part) = iso_date.split('T').next() {
-        if let Some((year, rest)) = date_part.split_once('-') {
-            if let Some((month, day)) = rest.split_once('-') {
-                return format!("{}.{}.{}", day, month, year);
-            }
-        }
-    }
-    iso_date.to_string()
-}
+use thaw::*;
 
 fn status_label(status: Option<i32>) -> &'static str {
     match status {
@@ -47,171 +17,286 @@ fn status_label(status: Option<i32>) -> &'static str {
     }
 }
 
+fn fmt_dt(iso: &str) -> String {
+    format_datetime_utc_local(iso, "%d.%m.%Y %H:%M:%S")
+}
+
+fn fmt_opt_dt(iso: Option<&str>) -> String {
+    iso.map(fmt_dt).unwrap_or_else(|| "—".to_string())
+}
+
+fn fmt_opt_string(s: Option<&str>) -> String {
+    s.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string())
+}
+
 #[component]
 pub fn GeneralTab(vm: WbReturnsClaimsDetailsVm) -> impl IntoView {
     let tabs_store =
         leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
 
-    move || {
-        let Some(d) = vm.item.get() else {
-            return view! { <div>"Нет данных"</div> }.into_any();
-        };
+    let item_sig = vm.item;
+    let conn_info_sig = vm.connection_info;
+    let org_info_sig = vm.organization_info;
+    let mp_info_sig = vm.marketplace_info;
+    let vm_stored = StoredValue::new(vm);
 
-        view! {
-            <div class="detail-grid">
-                <div class="detail-grid__col">
-                    <div class="card card--animated" data-nav-id="a032_wb_returns_claims_details_claim_info">
-                        <div class="card__body">
-                            <h3 class="details-section__title">"Заявка"</h3>
+    view! {
+        {move || {
+            let Some(d) = item_sig.get() else {
+                return view! { <div>"Нет данных"</div> }.into_any();
+            };
+
+            let claim_id = d.claim_id.clone();
+            let claim_type = d
+                .claim_type
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "—".to_string());
+            let status_text = format!(
+                "{} ({})",
+                status_label(d.status),
+                d.status.map(|v| v.to_string()).unwrap_or_default()
+            );
+            let status_ex = d
+                .status_ex
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "—".to_string());
+            let is_archive_str = if d.is_archive { "Да" } else { "Нет" }.to_string();
+            let dt_str = fmt_dt(&d.dt);
+            let dt_update_str = fmt_opt_dt(d.dt_update.as_deref());
+            let delivery_dt_str = fmt_opt_dt(d.delivery_dt.as_deref());
+
+            let nm_id_str = d.nm_id.to_string();
+            let imt_name = fmt_opt_string(d.imt_name.as_deref());
+            let price_str = d
+                .price
+                .map(|p| {
+                    format!(
+                        "{:.2} {}",
+                        p,
+                        d.currency_code.clone().unwrap_or_default()
+                    )
+                })
+                .unwrap_or_else(|| "—".to_string());
+            let order_dt_str = fmt_opt_dt(d.order_dt.as_deref());
+            let origin_id_info = fmt_opt_string(d.origin_id_info.as_deref());
+            let srid = d.srid.clone();
+
+            let user_comment = fmt_opt_string(d.user_comment.as_deref());
+            let wb_comment = fmt_opt_string(d.wb_comment.as_deref());
+            let actions = fmt_opt_string(d.actions.as_deref());
+
+            let conn_id = d.connection_id.clone();
+            let org_id = d.organization_id.clone();
+            let mp_id = d.marketplace_id.clone();
+            let created_at = fmt_dt(&d.metadata.created_at);
+            let updated_at = fmt_dt(&d.metadata.updated_at);
+            let version = d.metadata.version.to_string();
+
+            view! {
+                <div class="detail-grid">
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=0 nav_id="a032_wb_returns_claims_details_claim">
+                            <h4 class="details-section__title">"Заявка"</h4>
                             <div class="form__group">
-                                <span class="form__label">"ID заявки WB"</span>
-                                <span class="form__value form__value--mono">{d.claim_id.clone()}</span>
+                                <label class="form__label">"ID заявки WB"</label>
+                                <FieldDisplay value=claim_id />
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Статус"</label>
+                                    <FieldDisplay value=status_text />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Статус (расш.)"</label>
+                                    <FieldDisplay value=status_ex />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Тип заявки"</label>
+                                    <FieldDisplay value=claim_type />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Архив"</label>
+                                    <FieldDisplay value=is_archive_str />
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Дата создания"</label>
+                                    <FieldDisplay value=dt_str />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Дата обновления"</label>
+                                    <FieldDisplay value=dt_update_str />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Дата доставки"</label>
+                                    <FieldDisplay value=delivery_dt_str />
+                                </div>
+                            </div>
+                        </CardAnimated>
+
+                        <CardAnimated delay_ms=80 nav_id="a032_wb_returns_claims_details_comments">
+                            <h4 class="details-section__title">"Комментарии"</h4>
+                            <div class="form__group">
+                                <label class="form__label">"Комментарий покупателя"</label>
+                                <FieldDisplayMultiline value=user_comment />
                             </div>
                             <div class="form__group">
-                                <span class="form__label">"Статус"</span>
-                                <span class="form__value">
-                                    {format!("{} ({})", status_label(d.status), d.status.map(|v| v.to_string()).unwrap_or_default())}
-                                </span>
-                            </div>
-                            {d.status_ex.map(|v| view! {
-                                <div class="form__group">
-                                    <span class="form__label">"Статус (расширенный)"</span>
-                                    <span class="form__value">{v}</span>
-                                </div>
-                            })}
-                            {d.claim_type.map(|v| view! {
-                                <div class="form__group">
-                                    <span class="form__label">"Тип заявки"</span>
-                                    <span class="form__value">{v}</span>
-                                </div>
-                            })}
-                            <div class="form__group">
-                                <span class="form__label">"Архив"</span>
-                                <span class="form__value">{if d.is_archive { "Да" } else { "Нет" }}</span>
+                                <label class="form__label">"Комментарий WB"</label>
+                                <FieldDisplayMultiline value=wb_comment />
                             </div>
                             <div class="form__group">
-                                <span class="form__label">"Дата создания заявки"</span>
-                                <span class="form__value">{format_date(&d.dt)}</span>
+                                <label class="form__label">"Доступные действия"</label>
+                                <FieldDisplay value=actions />
                             </div>
-                            {d.dt_update.as_deref().map(|v| view! {
-                                <div class="form__group">
-                                    <span class="form__label">"Дата обновления"</span>
-                                    <span class="form__value">{format_date(v)}</span>
-                                </div>
-                            })}
-                            {d.delivery_dt.as_deref().map(|v| view! {
-                                <div class="form__group">
-                                    <span class="form__label">"Дата доставки возврата"</span>
-                                    <span class="form__value">{format_date(v)}</span>
-                                </div>
-                            })}
-                        </div>
+                        </CardAnimated>
                     </div>
 
-                    <div class="card card--animated" data-nav-id="a032_wb_returns_claims_details_comments">
-                        <div class="card__body">
-                            <h3 class="details-section__title">"Комментарии"</h3>
-                            <div class="form__group">
-                                <span class="form__label">"Комментарий покупателя"</span>
-                                <span class="form__value">{d.user_comment.clone().unwrap_or_else(|| "—".to_string())}</span>
-                            </div>
-                            <div class="form__group">
-                                <span class="form__label">"Комментарий WB"</span>
-                                <span class="form__value">{d.wb_comment.clone().unwrap_or_else(|| "—".to_string())}</span>
-                            </div>
-                            {d.actions.as_deref().map(|v| view! {
+                    <div class="detail-grid__col">
+                        <CardAnimated delay_ms=40 nav_id="a032_wb_returns_claims_details_product">
+                            <h4 class="details-section__title">"Товар"</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
-                                    <span class="form__label">"Доступные действия"</span>
-                                    <span class="form__value form__value--mono">{v.to_string()}</span>
+                                    <label class="form__label">"nmId (WB)"</label>
+                                    <FieldDisplay value=nm_id_str />
                                 </div>
-                            })}
-                        </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Цена"</label>
+                                    <FieldDisplay value=price_str />
+                                </div>
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"Наименование товара"</label>
+                                <FieldDisplay value=imt_name />
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"srid заказа"</label>
+                                {match srid {
+                                    Some(s) if !s.is_empty() => {
+                                        let s_for_click = s.clone();
+                                        view! {
+                                            <a
+                                                href="#"
+                                                class="table__link form__value--mono"
+                                                title="Открыть заказ WB"
+                                                on:click=move |e: web_sys::MouseEvent| {
+                                                    e.prevent_default();
+                                                    let srid = s_for_click.clone();
+                                                    vm_stored.with_value(|v| {
+                                                        v.open_order_by_srid(srid, tabs_store)
+                                                    });
+                                                }
+                                                style="display: inline-block; padding: var(--spacing-xs) 0;"
+                                            >
+                                                {s}
+                                            </a>
+                                        }
+                                        .into_any()
+                                    }
+                                    _ => view! { <FieldDisplay value="—".to_string() /> }.into_any(),
+                                }}
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Дата заказа"</label>
+                                    <FieldDisplay value=order_dt_str />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"IMEI / ID"</label>
+                                    <FieldDisplay value=origin_id_info />
+                                </div>
+                            </div>
+                        </CardAnimated>
+
+                        <CardAnimated delay_ms=120 nav_id="a032_wb_returns_claims_details_tech_links">
+                            <h4 class="details-section__title">"Технические связи"</h4>
+                            <div class="form__group">
+                                <label class="form__label">"Подключение"</label>
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    size=ButtonSize::Small
+                                    on_click={
+                                        let conn_id = conn_id.clone();
+                                        move |_| tabs_store.open_tab(
+                                            &format!("a006_connection_mp_details_{}", conn_id),
+                                            "Подключение МП",
+                                        )
+                                    }
+                                    attr:style="width: 100%; justify-content: flex-start;"
+                                >
+                                    {move || {
+                                        conn_info_sig
+                                            .get()
+                                            .map(|i| i.description)
+                                            .unwrap_or_else(|| "Загрузка...".to_string())
+                                    }}
+                                </Button>
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"Организация"</label>
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    size=ButtonSize::Small
+                                    on_click={
+                                        let org_id = org_id.clone();
+                                        move |_| tabs_store.open_tab(
+                                            &format!("a002_organization_details_{}", org_id),
+                                            "Организация",
+                                        )
+                                    }
+                                    attr:style="width: 100%; justify-content: flex-start;"
+                                >
+                                    {move || {
+                                        org_info_sig
+                                            .get()
+                                            .map(|i| i.description)
+                                            .unwrap_or_else(|| "Загрузка...".to_string())
+                                    }}
+                                </Button>
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"Маркетплейс"</label>
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    size=ButtonSize::Small
+                                    on_click={
+                                        let mp_id = mp_id.clone();
+                                        move |_| tabs_store.open_tab(
+                                            &format!("a005_marketplace_details_{}", mp_id),
+                                            "Маркетплейс",
+                                        )
+                                    }
+                                    attr:style="width: 100%; justify-content: flex-start;"
+                                >
+                                    {move || {
+                                        mp_info_sig
+                                            .get()
+                                            .map(|i| i.name)
+                                            .unwrap_or_else(|| "Загрузка...".to_string())
+                                    }}
+                                </Button>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Created"</label>
+                                    <FieldDisplay value=created_at />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Updated"</label>
+                                    <FieldDisplay value=updated_at />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Version"</label>
+                                    <FieldDisplay value=version />
+                                </div>
+                            </div>
+                        </CardAnimated>
                     </div>
                 </div>
-
-                <div class="detail-grid__col">
-                    <div class="card card--animated" data-nav-id="a032_wb_returns_claims_details_product">
-                        <div class="card__body">
-                            <h3 class="details-section__title">"Товар"</h3>
-                            <div class="form__group">
-                                <span class="form__label">"nmId (WB)"</span>
-                                <span class="form__value">{d.nm_id}</span>
-                            </div>
-                            <div class="form__group">
-                                <span class="form__label">"Наименование товара"</span>
-                                <span class="form__value">{d.imt_name.clone().unwrap_or_else(|| "—".to_string())}</span>
-                            </div>
-                            {d.price.map(|p| view! {
-                                <div class="form__group">
-                                    <span class="form__label">"Цена"</span>
-                                    <span class="form__value">{format!("{:.2} {}", p, d.currency_code.clone().unwrap_or_default())}</span>
-                                </div>
-                            })}
-                            {d.srid.as_deref().map(|v| {
-                                let srid = v.to_string();
-                                let srid_for_nav = srid.clone();
-                                let srid_label = srid.clone();
-                                let ts = tabs_store;
-                                view! {
-                                    <div class="form__group">
-                                        <span class="form__label">"srid заказа"</span>
-                                        <a
-                                            href="#"
-                                            class="table__link form__value--mono"
-                                            title="Открыть заказ WB"
-                                            on:click=move |e| {
-                                                e.prevent_default();
-                                                let srid_clone = srid_for_nav.clone();
-                                                let ts_clone = ts;
-                                                spawn_local(async move {
-                                                    if let Some(uuid) = resolve_order_uuid(&srid_clone).await {
-                                                        ts_clone.open_tab(
-                                                            &format!("a015_wb_orders_details_{}", uuid),
-                                                            &format!("WB Order {}", &srid_clone[..srid_clone.len().min(16)]),
-                                                        );
-                                                    }
-                                                });
-                                            }
-                                        >
-                                            {srid_label.clone()}
-                                        </a>
-                                    </div>
-                                }
-                            })}
-                            {d.order_dt.as_deref().map(|v| view! {
-                                <div class="form__group">
-                                    <span class="form__label">"Дата заказа"</span>
-                                    <span class="form__value">{format_date(v)}</span>
-                                </div>
-                            })}
-                            {d.origin_id_info.as_deref().map(|v| view! {
-                                <div class="form__group">
-                                    <span class="form__label">"IMEI / ID"</span>
-                                    <span class="form__value form__value--mono">{v.to_string()}</span>
-                                </div>
-                            })}
-                        </div>
-                    </div>
-
-                    <div class="card card--animated" data-nav-id="a032_wb_returns_claims_details_meta">
-                        <div class="card__body">
-                            <h3 class="details-section__title">"Метаданные"</h3>
-                            <div class="form__group">
-                                <span class="form__label">"Создан"</span>
-                                <span class="form__value">{format_date(&d.metadata.created_at)}</span>
-                            </div>
-                            <div class="form__group">
-                                <span class="form__label">"Обновлён"</span>
-                                <span class="form__value">{format_date(&d.metadata.updated_at)}</span>
-                            </div>
-                            <div class="form__group">
-                                <span class="form__label">"Версия"</span>
-                                <span class="form__value">{d.metadata.version}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }.into_any()
+            }
+            .into_any()
+        }}
     }
 }

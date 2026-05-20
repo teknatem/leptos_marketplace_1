@@ -354,6 +354,17 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         all_label: "Управление заявками на возврат WB",
     },
     ScopeDescriptor {
+        scope_id: "a033_wb_day_close",
+        scope_type: ScopeType::Aggregate,
+        label: "Закрытие дня WB",
+        description:
+            "Документ-снапшот итогов дня WB-кабинета: 10 колонок по заказам, проверка рекламной атрибуции",
+        icon: "calendar-check",
+        category: "wildberries",
+        read_label: "Просмотр закрытий дня WB",
+        all_label: "Управление закрытиями дня WB",
+    },
+    ScopeDescriptor {
         scope_id: "knowledge_base",
         scope_type: ScopeType::System,
         label: "База знаний",

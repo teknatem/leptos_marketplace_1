@@ -7,7 +7,6 @@ use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p911_wb_advert_by_items::dto::{
     WbAdvertByItemDetailDto, WbAdvertByItemDto, WbAdvertByItemListResponse,
 };
-use contracts::shared::analytics::{AggKind, TurnoverLayer, ValueKind};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -20,8 +19,8 @@ pub struct ListParams {
     pub date_to: Option<String>,
     pub connection_mp_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
-    pub layer: Option<String>,
     pub turnover_code: Option<String>,
+    pub wb_advert_campaign_code: Option<String>,
     pub registrator_ref: Option<String>,
     pub general_ledger_ref: Option<String>,
 }
@@ -38,8 +37,8 @@ pub async fn list(
         params.date_to.clone(),
         params.connection_mp_ref.clone(),
         params.nomenclature_ref.clone(),
-        params.layer.clone(),
         params.turnover_code.clone(),
+        params.wb_advert_campaign_code.clone(),
         params.registrator_ref.clone(),
         params.general_ledger_ref.clone(),
     )
@@ -54,8 +53,8 @@ pub async fn list(
         params.date_to,
         params.connection_mp_ref,
         params.nomenclature_ref,
-        params.layer,
         params.turnover_code,
+        params.wb_advert_campaign_code,
         params.registrator_ref,
         params.general_ledger_ref,
         params.sort_by,
@@ -132,12 +131,10 @@ pub(crate) fn model_to_dto(
         id: model.id,
         connection_mp_ref: model.connection_mp_ref,
         entry_date: model.entry_date,
-        layer: TurnoverLayer::from_str(&model.layer).unwrap_or(TurnoverLayer::Oper),
         turnover_code: model.turnover_code,
-        value_kind: ValueKind::from_str(&model.value_kind).unwrap_or(ValueKind::Money),
-        agg_kind: AggKind::from_str(&model.agg_kind).unwrap_or(AggKind::Sum),
         amount: model.amount,
         nomenclature_ref: model.nomenclature_ref,
+        wb_advert_campaign_code: model.wb_advert_campaign_code,
         registrator_type: model.registrator_type,
         registrator_ref: model.registrator_ref,
         general_ledger_ref: model.general_ledger_ref,
@@ -153,28 +150,5 @@ pub(crate) fn model_to_dto(
 }
 
 fn to_general_ledger_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
-    let comment =
-        crate::shared::analytics::turnover_registry::get_turnover_class(&row.turnover_code)
-            .map(|c| c.journal_comment.to_string())
-            .unwrap_or_default();
-
-    GeneralLedgerEntryDto {
-        id: row.id,
-        entry_date: row.entry_date,
-        layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
-        connection_mp_ref: row.connection_mp_ref,
-        registrator_type: row.registrator_type,
-        registrator_ref: row.registrator_ref,
-        order_id: row.order_id,
-        debit_account: row.debit_account,
-        credit_account: row.credit_account,
-        amount: row.amount,
-        qty: row.qty,
-        turnover_code: row.turnover_code,
-        resource_table: row.resource_table,
-        resource_field: row.resource_field,
-        resource_sign: row.resource_sign,
-        created_at: row.created_at,
-        comment,
-    }
+    crate::general_ledger::dto::entry_to_dto(row)
 }

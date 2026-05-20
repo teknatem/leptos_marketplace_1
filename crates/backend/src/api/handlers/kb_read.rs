@@ -9,14 +9,8 @@ use crate::shared::llm::knowledge_base::{knowledge_base_dir, KnowledgeDoc, KNOWL
 // Compile-time metadata for known DataView modules — used to enrich tree segment names.
 static DV_LABELS: Lazy<HashMap<String, String>> = Lazy::new(|| {
     let entries: &[(&str, &str)] = &[
-        (
-            "dv001",
-            include_str!("../../data_view/dv001/metadata.json"),
-        ),
-        (
-            "dv004",
-            include_str!("../../data_view/dv004/metadata.json"),
-        ),
+        ("dv001", include_str!("../../data_view/dv001/metadata.json")),
+        ("dv004", include_str!("../../data_view/dv004/metadata.json")),
     ];
     entries
         .iter()

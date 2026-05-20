@@ -20,7 +20,8 @@ GL-first mechanism:
 | `IND-MP-REV` | `dv004_general_ledger_turnovers` | `customer_revenue + customer_return`, `fact` |
 | `IND-MP-RETURNS` | `dv004_general_ledger_turnovers` | `customer_return`, `fact` |
 | `COST` | `dv004_general_ledger_turnovers` | `item_cost + item_cost_storno`, `oper` |
-| `IND-WB-ADS-SPEND` | `dv004_general_ledger_turnovers` | `advertising_allocated`, `oper` |
+| `IND-WB-ADS-SPEND` | `dv004_general_ledger_turnovers` | `advert_clicks_no_order`, `oper` |
+| `IND-WB-ADS-CLICKS-ACCRUAL` | `dv004_general_ledger_turnovers` | `advert_clicks_order_accrual + advert_clicks_no_order`, `oper` |
 
 ## Migrated In 2026-04-05 Pass
 

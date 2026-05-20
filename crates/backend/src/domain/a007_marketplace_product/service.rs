@@ -5,6 +5,36 @@ use contracts::domain::a007_marketplace_product::aggregate::{
 use contracts::domain::common::AggregateId;
 use uuid::Uuid;
 
+/// Единый канонический резолвер: «какая `a004.nomenclature_ref` сейчас стоит у
+/// маркетплейс-товара с этими (connection_mp_ref, nm_id, article)».
+///
+/// Приоритет поиска a007: сначала по `(connection_mp_ref, marketplace_sku=nm_id)`,
+/// затем фолбэк по уникальному `(connection_mp_ref, article)`. Возвращает то, что
+/// записано в найденном a007 — включая `None`, если a007 ещё не привязан к номенклатуре.
+///
+/// Это единственное место, куда должны ходить регистраторы (a012/a015/p903) при
+/// перепроведении: документ обязан зеркалить актуальное состояние a007.
+pub async fn resolve_wb_nomenclature_ref(
+    connection_mp_ref: &str,
+    nm_id: i64,
+    article: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    let sku = nm_id.to_string();
+    let mut resolved = repository::get_by_connection_and_sku(connection_mp_ref, &sku)
+        .await?
+        .and_then(|item| item.nomenclature_ref);
+
+    if resolved.is_none() {
+        if let Some(article) = article.map(str::trim).filter(|v| !v.is_empty()) {
+            resolved = repository::get_unique_by_connection_and_article(connection_mp_ref, article)
+                .await?
+                .and_then(|item| item.nomenclature_ref);
+        }
+    }
+
+    Ok(resolved.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()))
+}
+
 /// Поиск и установка nomenclature_ref по артикулу
 /// Возвращает true если nomenclature_ref был установлен, false если нет
 pub async fn search_and_set_nomenclature(
@@ -154,6 +184,125 @@ pub async fn list_paginated(
     query: repository::MarketplaceProductListQuery,
 ) -> anyhow::Result<repository::MarketplaceProductListResult> {
     repository::list_paginated(query).await
+}
+
+pub async fn list_wb_mapping_problems(
+    query: repository::WbMappingProblemsQuery,
+) -> anyhow::Result<repository::WbMappingProblemsResult> {
+    repository::list_wb_mapping_problems(query).await
+}
+
+/// Сводка по «устаревшим» проводкам для одной строки WB-проблем.
+pub async fn get_stale_postings_summary(
+    connection_mp_ref: &str,
+    nm_id: i64,
+    supplier_article: Option<&str>,
+    date_from: &str,
+    date_to: &str,
+) -> anyhow::Result<contracts::domain::a007_marketplace_product::aggregate::WbStalePostingsSummary> {
+    let expected_ref =
+        resolve_wb_nomenclature_ref(connection_mp_ref, nm_id, supplier_article).await?;
+    let refs = repository::list_stale_postings_for_problem(
+        connection_mp_ref,
+        nm_id,
+        date_from,
+        date_to,
+        expected_ref.as_deref(),
+    )
+    .await?;
+
+    let period_from = refs.iter().map(|r| r.doc_date.as_str()).min().map(str::to_owned);
+    let period_to = refs.iter().map(|r| r.doc_date.as_str()).max().map(str::to_owned);
+
+    Ok(
+        contracts::domain::a007_marketplace_product::aggregate::WbStalePostingsSummary {
+            doc_count: refs.len() as i64,
+            period_from,
+            period_to,
+        },
+    )
+}
+
+/// Перепровести все «устаревшие» проводки строки WB-проблем в хронологическом порядке.
+///
+/// Возвращает `(total, succeeded, failed, failures)`. `failures` содержит до 20 кратких
+/// диагностик; этого достаточно для UI и не раздувает ответ.
+pub async fn repost_stale_postings(
+    connection_mp_ref: &str,
+    nm_id: i64,
+    supplier_article: Option<&str>,
+    date_from: &str,
+    date_to: &str,
+) -> anyhow::Result<contracts::domain::a007_marketplace_product::aggregate::WbStalePostingsRepostResponse> {
+    let expected_ref =
+        resolve_wb_nomenclature_ref(connection_mp_ref, nm_id, supplier_article).await?;
+    let refs = repository::list_stale_postings_for_problem(
+        connection_mp_ref,
+        nm_id,
+        date_from,
+        date_to,
+        expected_ref.as_deref(),
+    )
+    .await?;
+
+    let total = refs.len();
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+
+    for r in refs {
+        let res = repost_one(&r.registrator_type, &r.registrator_id).await;
+        match res {
+            Ok(()) => succeeded += 1,
+            Err(e) => {
+                failed += 1;
+                if failures.len() < 20 {
+                    failures.push(format!(
+                        "{} {} ({}): {}",
+                        r.registrator_type, r.registrator_id, r.doc_date, e
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(
+        contracts::domain::a007_marketplace_product::aggregate::WbStalePostingsRepostResponse {
+            total,
+            succeeded,
+            failed,
+            failures,
+        },
+    )
+}
+
+async fn repost_one(registrator_type: &str, registrator_id: &str) -> anyhow::Result<()> {
+    match registrator_type {
+        "a012_wb_sales" => {
+            let uuid = Uuid::parse_str(registrator_id)
+                .map_err(|e| anyhow::anyhow!("Invalid UUID for a012_wb_sales: {}", e))?;
+            crate::domain::a012_wb_sales::posting::post_document(uuid).await
+        }
+        "a015_wb_orders" => {
+            let uuid = Uuid::parse_str(registrator_id)
+                .map_err(|e| anyhow::anyhow!("Invalid UUID for a015_wb_orders: {}", e))?;
+            crate::domain::a015_wb_orders::posting::post_document(uuid).await
+        }
+        "p903_wb_finance_report" => {
+            // registrator_id формата "{connection_mp_ref}|YYYY-MM-DD"
+            let (conn_ref, day_str) = registrator_id
+                .split_once('|')
+                .ok_or_else(|| anyhow::anyhow!("Bad p903 registrator_id: {}", registrator_id))?;
+            let day = chrono::NaiveDate::parse_from_str(day_str, "%Y-%m-%d")
+                .map_err(|e| anyhow::anyhow!("Invalid p903 day '{}': {}", day_str, e))?;
+            crate::projections::p903_wb_finance_report::service::rebuild_day_from_existing(
+                conn_ref, day,
+            )
+            .await
+            .map(|_| ())
+        }
+        other => Err(anyhow::anyhow!("Unknown registrator_type: {}", other)),
+    }
 }
 
 /// Получение товара по connection_mp_ref и SKU

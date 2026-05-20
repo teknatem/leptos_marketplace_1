@@ -64,15 +64,6 @@ pub const FIELDS: &[FieldMetadata] = &[
         None,
     ),
     field(
-        "layer",
-        "String",
-        "Layer",
-        true,
-        true,
-        Some("Слой оборота, для a026 используется oper."),
-        None,
-    ),
-    field(
         "turnover_code",
         "String",
         "Turnover Code",
@@ -98,6 +89,15 @@ pub const FIELDS: &[FieldMetadata] = &[
         false,
         Some("Ссылка на a004_nomenclature."),
         Some("a004_nomenclature"),
+    ),
+    field(
+        "wb_advert_campaign_code",
+        "String",
+        "Campaign",
+        true,
+        true,
+        Some("Код кампании WB (advert_id из a030_wb_advert_campaign)."),
+        None,
     ),
     field(
         "registrator_type",

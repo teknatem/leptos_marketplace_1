@@ -733,7 +733,7 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                                             </TableCell>
 
                                             <TableCell>
-                                                <TableCellLayout attr:style="text-align: right;">
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                                     {advert_id_text}
                                                 </TableCellLayout>
                                             </TableCell>
@@ -751,37 +751,37 @@ pub fn WbAdvertDailyList() -> impl IntoView {
                                             </TableCell>
 
                                             <TableCell>
-                                                <TableCellLayout attr:style="text-align: right;">
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                                     {item.lines_count}
                                                 </TableCellLayout>
                                             </TableCell>
 
                                             <TableCell>
-                                                <TableCellLayout attr:style="text-align: right;">
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                                     {item.total_views}
                                                 </TableCellLayout>
                                             </TableCell>
 
                                             <TableCell>
-                                                <TableCellLayout attr:style="text-align: right;">
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                                     {item.total_clicks}
                                                 </TableCellLayout>
                                             </TableCell>
 
                                             <TableCell>
-                                                <TableCellLayout attr:style="text-align: right;">
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                                     {item.total_orders}
                                                 </TableCellLayout>
                                             </TableCell>
 
                                             <TableCell>
-                                                <TableCellLayout attr:style="text-align: right;">
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                                     {spend}
                                                 </TableCellLayout>
                                             </TableCell>
 
                                             <TableCell>
-                                                <TableCellLayout attr:style="text-align: right;">
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                                     {revenue}
                                                 </TableCellLayout>
                                             </TableCell>

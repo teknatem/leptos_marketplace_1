@@ -25,8 +25,7 @@ pub fn link_matches(link: &NavLink, needle: &str) -> bool {
         return true;
     }
     let lower = needle.to_lowercase();
-    link.label.to_lowercase().contains(&lower)
-        || link.annotation.to_lowercase().contains(&lower)
+    link.label.to_lowercase().contains(&lower) || link.annotation.to_lowercase().contains(&lower)
 }
 
 /// Returns true when the current user is allowed to follow the link.
@@ -61,7 +60,9 @@ pub fn MarketplaceNavigator() -> impl IntoView {
             <div class="navigator__header">
                 <div class="navigator__title">"Маркетплейсы"</div>
                 <NavigatorSearch search=search />
-                <ViewSwitch view_mode=view_mode />
+                <div class="navigator__view-switch-slot">
+                    <ViewSwitch view_mode=view_mode />
+                </div>
             </div>
 
             {move || match view_mode.get() {

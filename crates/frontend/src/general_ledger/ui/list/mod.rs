@@ -113,8 +113,8 @@ static TURNOVER_OPTIONS: &[(&str, &str)] = &[
         "wb_coinvestment_storno — Соинвестирование WB (сторно возврат)",
     ),
     (
-        "advertising_allocated",
-        "advertising_allocated — Реклама (распределённая)",
+        "advert_clicks_no_order",
+        "advert_clicks_no_order — Реклама (распределённая)",
     ),
     ("advertising", "advertising — Реклама"),
     ("acceptance", "acceptance — Приёмка"),

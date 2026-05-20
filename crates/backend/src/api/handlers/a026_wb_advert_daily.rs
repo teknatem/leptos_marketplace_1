@@ -10,7 +10,6 @@ use contracts::domain::a026_wb_advert_daily::aggregate::{
 };
 use contracts::domain::common::AggregateId;
 use contracts::general_ledger::GeneralLedgerEntryDto;
-use contracts::shared::analytics::TurnoverLayer;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -109,9 +108,12 @@ pub struct WbAdvertDailyLineDetailsDto {
 #[derive(Debug, Clone, Serialize)]
 pub struct WbAdvertFoundOrderDto {
     pub order_key: String,
+    pub order_id: Option<String>,
+    pub order_date: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub finished_price: Option<f64>,
     pub is_cancel: bool,
+    pub allocation_basis: f64,
     pub is_allocated: bool,
     pub allocation_ratio: f64,
     pub allocated_cost: f64,
@@ -121,6 +123,8 @@ pub struct WbAdvertFoundOrderDto {
 pub struct WbAdvertLinkedOrdersByNmDto {
     pub nm_id: i64,
     pub nm_name: String,
+    pub nomenclature_ref: Option<String>,
+    pub nomenclature_article: Option<String>,
     pub wb_reported_orders: i64,
     pub wb_advert_sum: f64,
     pub found_orders: Vec<WbAdvertFoundOrderDto>,
@@ -266,17 +270,13 @@ pub async fn report_csv(Query(q): Query<ReportCsvQuery>) -> Response {
         "advert_id",
         "Кабинет",
         "Организация",
-        "Маркетплейс",
-        "Источник",
-        "Получено",
-        "Проведён",
         "nm_id",
         "Наименование WB",
         "Артикул",
         "Наименование",
-        "Кампании",
         "Типы app",
-        "Места размещения",
+        "recommendations",
+        "search",
         "Показы",
         "Клики",
         "CTR",
@@ -323,6 +323,17 @@ pub async fn report_csv(Query(q): Query<ReportCsvQuery>) -> Response {
         }
     };
 
+    let placements_cache = match campaign_placements_cache(&docs).await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!("a026 report placements cache: {}", e);
+            return csv_plain_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Не удалось загрузить данные кампаний для отчёта",
+            );
+        }
+    };
+
     let max_lines = a026_repo::A026_REPORT_MAX_LINE_ROWS as usize;
     let export_line_count = count_export_lines(&docs, &nom_cache, position_q);
     if export_line_count > max_lines {
@@ -347,7 +358,7 @@ pub async fn report_csv(Query(q): Query<ReportCsvQuery>) -> Response {
     }
 
     for doc in &docs {
-        let ctx = match build_doc_csv_row_prefix(doc).await {
+        let ctx = match build_doc_csv_row_prefix(doc, &placements_cache).await {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!("a026 report doc context: {}", e);
@@ -370,17 +381,13 @@ pub async fn report_csv(Query(q): Query<ReportCsvQuery>) -> Response {
                 ctx.advert_id.clone(),
                 ctx.connection_name.clone(),
                 ctx.organization_name.clone(),
-                ctx.marketplace_name.clone(),
-                ctx.source.clone(),
-                ctx.fetched_at.clone(),
-                ctx.is_posted.clone(),
                 dto.nm_id.to_string(),
                 dto.wb_name.clone(),
                 dto.nomenclature_article.clone().unwrap_or_default(),
                 dto.nomenclature_name.clone().unwrap_or_default(),
-                join_i64_slice(&dto.advert_ids),
                 join_i32_slice(&dto.app_types),
-                dto.placements.join("|"),
+                ctx.recommendations.clone(),
+                ctx.search.clone(),
                 m.views.to_string(),
                 m.clicks.to_string(),
                 format_metric(m.ctr),
@@ -431,13 +438,6 @@ pub async fn report_csv(Query(q): Query<ReportCsvQuery>) -> Response {
         )
         .body(Body::from(buffer))
         .unwrap_or_else(|_| Response::new(Body::empty()))
-}
-
-fn join_i64_slice(v: &[i64]) -> String {
-    v.iter()
-        .map(|n| n.to_string())
-        .collect::<Vec<_>>()
-        .join("|")
 }
 
 fn join_i32_slice(v: &[i32]) -> String {
@@ -545,28 +545,65 @@ fn count_export_lines(
     n
 }
 
+/// Builds a cache of (connection_id, advert_id) → (recommendations, search)
+/// by loading a030 campaigns for all unique connections referenced in the docs.
+async fn campaign_placements_cache(
+    docs: &[WbAdvertDaily],
+) -> anyhow::Result<HashMap<(String, i64), (bool, bool)>> {
+    let mut connection_ids = std::collections::HashSet::new();
+    for doc in docs {
+        connection_ids.insert(doc.header.connection_id.clone());
+    }
+    let mut cache: HashMap<(String, i64), (bool, bool)> = HashMap::new();
+    for conn_id in connection_ids {
+        let campaigns =
+            crate::domain::a030_wb_advert_campaign::service::list_by_connection(&conn_id).await?;
+        for c in campaigns {
+            let placements = extract_campaign_placements(&c.source_meta.info_json);
+            cache.insert((conn_id.clone(), c.header.advert_id), placements);
+        }
+    }
+    Ok(cache)
+}
+
+fn extract_campaign_placements(info_json: &serde_json::Value) -> (bool, bool) {
+    let p = info_json.get("settings").and_then(|s| s.get("placements"));
+    let recommendations = p
+        .and_then(|v| v.get("recommendations"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let search = p
+        .and_then(|v| v.get("search"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    (recommendations, search)
+}
+
 struct DocCsvRowPrefix {
     document_no: String,
     document_date: String,
     advert_id: String,
     connection_name: String,
     organization_name: String,
-    marketplace_name: String,
-    source: String,
-    fetched_at: String,
-    is_posted: String,
+    recommendations: String,
+    search: String,
 }
 
-async fn build_doc_csv_row_prefix(doc: &WbAdvertDaily) -> anyhow::Result<DocCsvRowPrefix> {
+async fn build_doc_csv_row_prefix(
+    doc: &WbAdvertDaily,
+    placements_cache: &HashMap<(String, i64), (bool, bool)>,
+) -> anyhow::Result<DocCsvRowPrefix> {
     let connection_name = resolve_connection_name(&doc.header.connection_id)
         .await?
         .unwrap_or_default();
     let organization_name = resolve_organization_name(&doc.header.organization_id)
         .await?
         .unwrap_or_default();
-    let marketplace_name = resolve_marketplace_name(&doc.header.marketplace_id)
-        .await?
-        .unwrap_or_default();
+
+    let (recommendations, search) = placements_cache
+        .get(&(doc.header.connection_id.clone(), doc.header.advert_id))
+        .copied()
+        .unwrap_or((false, false));
 
     Ok(DocCsvRowPrefix {
         document_no: doc.header.document_no.clone(),
@@ -574,10 +611,8 @@ async fn build_doc_csv_row_prefix(doc: &WbAdvertDaily) -> anyhow::Result<DocCsvR
         advert_id: doc.header.advert_id.to_string(),
         connection_name,
         organization_name,
-        marketplace_name,
-        source: doc.source_meta.source.clone(),
-        fetched_at: doc.source_meta.fetched_at.clone(),
-        is_posted: (doc.is_posted || doc.base.metadata.is_posted).to_string(),
+        recommendations: recommendations.to_string(),
+        search: search.to_string(),
     })
 }
 
@@ -653,27 +688,52 @@ async fn build_details_dto(doc: WbAdvertDaily) -> anyhow::Result<WbAdvertDailyDe
         })
         .collect();
 
+    // Build nm_id → (nomenclature_ref, article) from lines using the already-loaded cache.
+    let nm_nomenclature: HashMap<i64, (Option<String>, Option<String>)> = doc
+        .lines
+        .iter()
+        .map(|line| {
+            let (article, _) = line
+                .nomenclature_ref
+                .as_ref()
+                .and_then(|r| nomenclature_cache.get(r).cloned())
+                .unwrap_or((None, None));
+            (line.nm_id, (line.nomenclature_ref.clone(), article))
+        })
+        .collect();
+
     let linked_orders = doc
         .linked_orders
         .iter()
-        .map(|group| WbAdvertLinkedOrdersByNmDto {
-            nm_id: group.nm_id,
-            nm_name: group.nm_name.clone(),
-            wb_reported_orders: group.wb_reported_orders,
-            wb_advert_sum: group.wb_advert_sum,
-            found_orders: group
-                .found_orders
-                .iter()
-                .map(|order| WbAdvertFoundOrderDto {
-                    order_key: order.order_key.clone(),
-                    nomenclature_ref: order.nomenclature_ref.clone(),
-                    finished_price: order.finished_price,
-                    is_cancel: order.is_cancel,
-                    is_allocated: order.is_allocated,
-                    allocation_ratio: order.allocation_ratio,
-                    allocated_cost: order.allocated_cost,
-                })
-                .collect(),
+        .map(|group| {
+            let (nomenclature_ref, nomenclature_article) = nm_nomenclature
+                .get(&group.nm_id)
+                .cloned()
+                .unwrap_or((None, None));
+            WbAdvertLinkedOrdersByNmDto {
+                nm_id: group.nm_id,
+                nm_name: group.nm_name.clone(),
+                nomenclature_ref,
+                nomenclature_article,
+                wb_reported_orders: group.wb_reported_orders,
+                wb_advert_sum: group.wb_advert_sum,
+                found_orders: group
+                    .found_orders
+                    .iter()
+                    .map(|order| WbAdvertFoundOrderDto {
+                        order_key: order.order_key.clone(),
+                        order_id: order.order_id.clone(),
+                        order_date: order.order_date.clone(),
+                        nomenclature_ref: order.nomenclature_ref.clone(),
+                        finished_price: order.finished_price,
+                        is_cancel: order.is_cancel,
+                        allocation_basis: order.allocation_basis,
+                        is_allocated: order.is_allocated,
+                        allocation_ratio: order.allocation_ratio,
+                        allocated_cost: order.allocated_cost,
+                    })
+                    .collect(),
+            }
         })
         .collect();
 
@@ -763,17 +823,19 @@ pub async fn unpost_document(
 pub async fn get_projections(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let p911_items = crate::projections::p911_wb_advert_by_items::service::list_by_registrator_ref(
-        &format!("a026:{}", id),
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to get p911 projections for {}: {}", id, e);
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let p913_items =
+        crate::projections::p913_wb_advert_order_attr::repository::list_by_registrator(
+            "a026_wb_advert_daily",
+            &id,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p913 projections for {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(serde_json::json!({
-        "p911_wb_advert_by_items": p911_items
+        "p913_wb_advert_order_attr": p913_items
     })))
 }
 
@@ -799,27 +861,5 @@ pub async fn get_general_ledger_entries(
 }
 
 fn to_journal_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
-    let comment = crate::general_ledger::turnover_registry::get_turnover_class(&row.turnover_code)
-        .map(|c| c.journal_comment.to_string())
-        .unwrap_or_default();
-
-    GeneralLedgerEntryDto {
-        id: row.id,
-        entry_date: row.entry_date,
-        layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
-        connection_mp_ref: row.connection_mp_ref,
-        registrator_type: row.registrator_type,
-        registrator_ref: row.registrator_ref,
-        order_id: row.order_id,
-        debit_account: row.debit_account,
-        credit_account: row.credit_account,
-        amount: row.amount,
-        qty: row.qty,
-        turnover_code: row.turnover_code,
-        resource_table: row.resource_table,
-        resource_field: row.resource_field,
-        resource_sign: row.resource_sign,
-        created_at: row.created_at,
-        comment,
-    }
+    crate::general_ledger::dto::entry_to_dto(row)
 }

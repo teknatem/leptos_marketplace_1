@@ -13,7 +13,11 @@ thread_local! {
     static ACTIVE_INFO_POPOVER: RefCell<Option<InfoPopoverDom>> = const { RefCell::new(None) };
     /// Single <div> reused for nav-tooltip portal (created lazily, stays in DOM).
     static NAV_TOOLTIP_EL: RefCell<Option<web_sys::Element>> = const { RefCell::new(None) };
+    /// Pending show-timer handle; cleared on hide or superseded show.
+    static NAV_TOOLTIP_TIMER: RefCell<Option<i32>> = const { RefCell::new(None) };
 }
+
+const NAV_TOOLTIP_DELAY_MS: i32 = 500;
 
 // ── Nav tooltip portal ────────────────────────────────────────────────────────
 
@@ -38,26 +42,74 @@ fn ensure_nav_tooltip_el(document: &web_sys::Document) -> Option<web_sys::Elemen
     })
 }
 
-/// Show a lightweight body-level tooltip near the cursor (used for brief links).
-pub fn show_nav_tooltip(text: &str, client_x: i32, client_y: i32) {
-    let Some(window) = web_sys::window() else { return };
-    let Some(document) = window.document() else { return };
-    let Some(el) = ensure_nav_tooltip_el(&document) else { return };
+/// Cancel any pending show-timer without hiding the tooltip.
+fn cancel_nav_tooltip_timer() {
+    NAV_TOOLTIP_TIMER.with(|cell| {
+        if let Some(id) = cell.borrow_mut().take() {
+            if let Some(window) = web_sys::window() {
+                window.clear_timeout_with_handle(id);
+            }
+        }
+    });
+}
 
-    let vw = window.inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1024.0);
-    let vh = window.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(768.0);
+/// Show the tooltip immediately at the given viewport position.
+fn show_nav_tooltip_now(text: String, client_x: i32, client_y: i32) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let Some(el) = ensure_nav_tooltip_el(&document) else {
+        return;
+    };
+
+    let vw = window
+        .inner_width()
+        .ok()
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1024.0);
+    let vh = window
+        .inner_height()
+        .ok()
+        .and_then(|v| v.as_f64())
+        .unwrap_or(768.0);
     let left = ((client_x as f64) + 12.0).min(vw - 320.0).max(8.0);
-    let top  = ((client_y as f64) + 18.0).min(vh - 100.0).max(8.0);
+    let top = ((client_y as f64) + 18.0).min(vh - 100.0).max(8.0);
 
-    el.set_text_content(Some(text));
+    el.set_text_content(Some(&text));
     let _ = el.set_attribute(
         "style",
         &format!("display:block; left:{left:.0}px; top:{top:.0}px;"),
     );
 }
 
-/// Hide the nav tooltip.
+/// Schedule a tooltip to appear after `NAV_TOOLTIP_DELAY_MS`.
+/// Any previously pending tooltip is cancelled first.
+pub fn show_nav_tooltip(text: &str, client_x: i32, client_y: i32) {
+    cancel_nav_tooltip_timer();
+
+    let text = text.to_string();
+    let cb = Closure::once(move || show_nav_tooltip_now(text, client_x, client_y));
+
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let timer_id = window
+        .set_timeout_with_callback_and_timeout_and_arguments_0(
+            cb.as_ref().unchecked_ref(),
+            NAV_TOOLTIP_DELAY_MS,
+        )
+        .unwrap_or(-1);
+    cb.forget();
+
+    NAV_TOOLTIP_TIMER.with(|cell| *cell.borrow_mut() = Some(timer_id));
+}
+
+/// Cancel any pending show-timer and hide the tooltip immediately.
 pub fn hide_nav_tooltip() {
+    cancel_nav_tooltip_timer();
     NAV_TOOLTIP_EL.with(|cell| {
         if let Some(ref el) = *cell.borrow() {
             let _ = el.set_attribute("style", "display:none;");
@@ -66,7 +118,6 @@ pub fn hide_nav_tooltip() {
 }
 
 // ── Info popover (existing) ───────────────────────────────────────────────────
-
 
 struct InfoPopoverDom {
     id: String,

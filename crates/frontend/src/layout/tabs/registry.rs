@@ -4,7 +4,9 @@
 //! возвращает соответствующий View. Все tab keys собраны здесь в одном месте.
 
 use crate::dashboards::MetadataDashboard;
-use crate::dashboards::{D401WbFinanceDashboard, MonthlySummaryDashboard};
+use crate::dashboards::{
+    D401WbFinanceDashboard, MonthlySummaryDashboard, WbAdvertReportDashboard, WbOrderFlowDashboard,
+};
 use crate::data_view::ui::{DataViewDetail, DataViewList, FilterRegistryPage};
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;
 use crate::domain::a002_organization::ui::details::OrganizationDetails;
@@ -62,9 +64,12 @@ use crate::domain::a031_kb_edit::ui::details::KbEditDetails;
 use crate::domain::a031_kb_edit::ui::list::KbEditList;
 use crate::domain::a032_wb_returns_claims::ui::details::WbReturnsClaimsDetails;
 use crate::domain::a032_wb_returns_claims::ui::list::WbReturnsClaimsList;
+use crate::domain::a033_wb_day_close::ui::details::{WbDayCloseDetails, WbDayCloseNewPage};
+use crate::domain::a033_wb_day_close::ui::list::WbDayCloseList;
 use crate::general_ledger::ui::{
-    GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerReportPage,
-    GeneralLedgerTurnoversPage, GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage,
+    GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerPage,
+    GeneralLedgerReportPage, GeneralLedgerTurnoverDetails, GeneralLedgerTurnoversPage,
+    GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage,
 };
 use crate::layout::global_context::AppGlobalContext;
 use crate::navigator::marketplace::MarketplaceNavigator;
@@ -80,6 +85,7 @@ use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesLi
 use crate::projections::p907_ym_payment_report::ui::details::YmPaymentReportDetail;
 use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
 use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
+use crate::projections::p913_wb_advert_order_attr::ui::list::WbAdvertOrderAttrList;
 use crate::shared::bi_timeline::ui::{BiTimelineInitial, BiTimelinePage};
 use crate::shared::drilldown_report::DrilldownReportPage;
 use crate::shared::knowledge_base::ui::{KnowledgeArticlePage, KnowledgeBaseWorkspace};
@@ -577,6 +583,36 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             }
             .into_any()
         }
+        "a033_wb_day_close" => view! { <WbDayCloseList /> }.into_any(),
+        "a033_wb_day_close_new" => view! {
+            <WbDayCloseNewPage
+                on_close=Callback::new({
+                    let key_for_close = key_for_close.clone();
+                    move |_| {
+                        tabs_store.close_tab(&key_for_close);
+                    }
+                })
+            />
+        }
+        .into_any(),
+        k if k.starts_with("a033_wb_day_close_details_") => {
+            let id = k
+                .strip_prefix("a033_wb_day_close_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <WbDayCloseDetails
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
         "knowledge_base" => view! { <KnowledgeBaseWorkspace /> }.into_any(),
         k if k.starts_with("kb_article_") => {
             let id = k.strip_prefix("kb_article_").unwrap().to_string();
@@ -862,6 +898,40 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // Журнал операций (general_ledger)
         "general_ledger" => view! { <GeneralLedgerPage /> }.into_any(),
         "general_ledger_turnovers" => view! { <GeneralLedgerTurnoversPage /> }.into_any(),
+        "general_ledger_dimensions" => {
+            view! { <GeneralLedgerDimensionsPage initial_turnover_code=None /> }.into_any()
+        }
+        k if k.starts_with("general_ledger_dimensions__") => {
+            let turnover_code = k
+                .strip_prefix("general_ledger_dimensions__")
+                .unwrap_or_default()
+                .to_string();
+            let initial_turnover_code = if turnover_code.trim().is_empty() {
+                None
+            } else {
+                Some(turnover_code)
+            };
+            view! { <GeneralLedgerDimensionsPage initial_turnover_code=initial_turnover_code /> }
+                .into_any()
+        }
+        k if k.starts_with("general_ledger_turnover_details_") => {
+            let code = k
+                .strip_prefix("general_ledger_turnover_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <GeneralLedgerTurnoverDetails
+                    code=code
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
         "general_ledger_report" => view! { <GeneralLedgerReportPage /> }.into_any(),
         "gl_account_view__7609" => view! { <GlAccountViewPage /> }.into_any(),
         "wb_weekly_reconciliation" => view! { <WbWeeklyReconciliationPage /> }.into_any(),
@@ -1003,6 +1073,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating WbGoodsPricesList");
             view! { <WbGoodsPricesList /> }.into_any()
         }
+        "p913_wb_advert_order_attr" => {
+            log!("✅ Creating WbAdvertOrderAttrList");
+            view! { <WbAdvertOrderAttrList /> }.into_any()
+        }
         k if k.starts_with("p907_ym_payment_report_details_") => {
             let encoded = k
                 .strip_prefix("p907_ym_payment_report_details_")
@@ -1089,6 +1163,25 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "d401_wb_finance" => {
             log!("✅ Creating D401WbFinanceDashboard (legacy)");
             view! { <D401WbFinanceDashboard /> }.into_any()
+        }
+        "d402_wb_order_flow" => {
+            log!("✅ Creating WbOrderFlowDashboard");
+            view! { <WbOrderFlowDashboard /> }.into_any()
+        }
+        "d404_wb_advert_report" => {
+            log!("✅ Creating WbAdvertReportDashboard");
+            view! { <WbAdvertReportDashboard /> }.into_any()
+        }
+        k if k.starts_with("d402_wb_order_flow_srid_") => {
+            let srid = k
+                .strip_prefix("d402_wb_order_flow_srid_")
+                .unwrap()
+                .to_string();
+            let srid = urlencoding::decode(&srid)
+                .map(|s| s.into_owned())
+                .unwrap_or(srid);
+            log!("✅ Creating WbOrderFlowDashboard for srid={}", srid);
+            view! { <WbOrderFlowDashboard initial_srid=srid /> }.into_any()
         }
 
         // ═══════════════════════════════════════════════════════════════════

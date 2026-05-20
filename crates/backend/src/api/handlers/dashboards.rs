@@ -1,0 +1,851 @@
+use axum::{extract::Query, Json};
+use contracts::dashboards::d402_wb_order_flow::{
+    AdvertFlowItem, ClaimFlowItem, OrderFlowItem, P903FlowItem, SaleFlowItem, SupplyFlowItem,
+    WbOrderFlowResponse,
+};
+use contracts::dashboards::d404_wb_advert_report::{
+    WbAdvertReportLink, WbAdvertReportNode, WbAdvertReportRequest, WbAdvertReportResponse,
+    WbAdvertReportTotals,
+};
+use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+#[derive(Deserialize)]
+pub struct WbOrderFlowQuery {
+    pub srid: String,
+}
+
+#[derive(Default)]
+struct AdvertReportAccum {
+    accrued: f64,
+    expensed: f64,
+    expense_no_order: f64,
+    links: BTreeMap<String, WbAdvertReportLink>,
+    children: BTreeMap<String, AdvertReportAccum>,
+}
+
+impl AdvertReportAccum {
+    fn add_order(&mut self, accrued: f64, expensed: f64, links: &[WbAdvertReportLink]) {
+        self.accrued += accrued;
+        self.expensed += expensed;
+        self.add_links(links);
+    }
+
+    fn add_no_order(&mut self, amount: f64, links: &[WbAdvertReportLink]) {
+        self.expense_no_order += amount;
+        self.add_links(links);
+    }
+
+    fn add_links(&mut self, links: &[WbAdvertReportLink]) {
+        for link in links {
+            self.links
+                .entry(link.tab_key.clone())
+                .or_insert_with(|| link.clone());
+        }
+    }
+}
+
+struct P913AdvertReportRow {
+    campaign_code: String,
+    nomenclature_ref: Option<String>,
+    order_key: String,
+    accrued: f64,
+    expensed: f64,
+    registrators: String,
+}
+
+struct P911AdvertReportRow {
+    campaign_code: String,
+    nomenclature_ref: Option<String>,
+    expense_no_order: f64,
+}
+
+struct OrderInfo {
+    id: String,
+    date: String,
+}
+
+fn sql_lit(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn push_common_filters(
+    conditions: &mut Vec<String>,
+    filters: &WbAdvertReportRequest,
+    campaign_column: &str,
+) {
+    if let Some(value) = filters
+        .date_from
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        conditions.push(format!("entry_date >= {}", sql_lit(value)));
+    }
+    if let Some(value) = filters
+        .date_to
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        conditions.push(format!("entry_date <= {}", sql_lit(value)));
+    }
+    if let Some(value) = filters
+        .connection_mp_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        conditions.push(format!("connection_mp_ref = {}", sql_lit(value)));
+    }
+    if let Some(value) = filters
+        .wb_advert_campaign_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        conditions.push(format!("{campaign_column} = {}", sql_lit(value)));
+    }
+}
+
+async fn fetch_p913_advert_report_rows(
+    filters: &WbAdvertReportRequest,
+) -> anyhow::Result<Vec<P913AdvertReportRow>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let mut conditions = Vec::new();
+    push_common_filters(&mut conditions, filters, "wb_advert_campaign_code");
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
+    let sql = format!(
+        "SELECT \
+            COALESCE(wb_advert_campaign_code, '') AS campaign_code, \
+            nomenclature_ref, \
+            COALESCE(order_key, '') AS order_key, \
+            COALESCE(SUM(CASE WHEN turnover_code = 'advert_clicks_order_accrual' THEN amount ELSE 0 END), 0) AS accrued, \
+            COALESCE(SUM(CASE WHEN turnover_code = 'advert_clicks_order_expense' THEN amount ELSE 0 END), 0) AS expensed, \
+            COALESCE(GROUP_CONCAT(DISTINCT registrator_type || '|' || registrator_ref), '') AS registrators \
+         FROM p913_wb_advert_order_attr{where_clause} \
+         GROUP BY COALESCE(wb_advert_campaign_code, ''), nomenclature_ref, COALESCE(order_key, '')"
+    );
+
+    let db = crate::shared::data::db::get_connection();
+    let rows = db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| P913AdvertReportRow {
+            campaign_code: row.try_get("", "campaign_code").unwrap_or_default(),
+            nomenclature_ref: row.try_get("", "nomenclature_ref").ok(),
+            order_key: row.try_get("", "order_key").unwrap_or_default(),
+            accrued: row.try_get("", "accrued").unwrap_or(0.0),
+            expensed: row.try_get("", "expensed").unwrap_or(0.0),
+            registrators: row.try_get("", "registrators").unwrap_or_default(),
+        })
+        .collect())
+}
+
+async fn fetch_p911_advert_report_rows(
+    filters: &WbAdvertReportRequest,
+) -> anyhow::Result<Vec<P911AdvertReportRow>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let mut conditions = vec!["turnover_code = 'advert_clicks_no_order'".to_string()];
+    push_common_filters(&mut conditions, filters, "wb_advert_campaign_code");
+    let sql = format!(
+        "SELECT \
+            COALESCE(wb_advert_campaign_code, '') AS campaign_code, \
+            nomenclature_ref, \
+            COALESCE(SUM(amount), 0) AS expense_no_order \
+         FROM p911_wb_advert_by_items \
+         WHERE {} \
+         GROUP BY COALESCE(wb_advert_campaign_code, ''), nomenclature_ref",
+        conditions.join(" AND ")
+    );
+
+    let db = crate::shared::data::db::get_connection();
+    let rows = db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| P911AdvertReportRow {
+            campaign_code: row.try_get("", "campaign_code").unwrap_or_default(),
+            nomenclature_ref: row.try_get("", "nomenclature_ref").ok(),
+            expense_no_order: row.try_get("", "expense_no_order").unwrap_or(0.0),
+        })
+        .collect())
+}
+
+fn link_for_registrator(
+    registrator_type: &str,
+    registrator_ref: &str,
+) -> Option<WbAdvertReportLink> {
+    let clean_ref = registrator_ref
+        .strip_prefix("a026:")
+        .unwrap_or(registrator_ref);
+    match registrator_type {
+        "a026_wb_advert_daily" => Some(WbAdvertReportLink {
+            label: "Реклама".to_string(),
+            tab_key: format!("a026_wb_advert_daily_details_{clean_ref}"),
+        }),
+        "a012_wb_sales" => Some(WbAdvertReportLink {
+            label: "Продажа".to_string(),
+            tab_key: format!("a012_wb_sales_details_{clean_ref}"),
+        }),
+        "a015_wb_orders" => Some(WbAdvertReportLink {
+            label: "Заказ".to_string(),
+            tab_key: format!("a015_wb_orders_details_{clean_ref}"),
+        }),
+        _ => None,
+    }
+}
+
+fn parse_registrator_links(value: &str) -> Vec<WbAdvertReportLink> {
+    let mut links = BTreeMap::new();
+    for item in value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
+        let Some((registrator_type, registrator_ref)) = item.split_once('|') else {
+            continue;
+        };
+        if registrator_ref.trim().is_empty() {
+            continue;
+        }
+        if let Some(link) = link_for_registrator(registrator_type, registrator_ref) {
+            links.entry(link.tab_key.clone()).or_insert(link);
+        }
+    }
+    links.into_values().collect()
+}
+
+async fn fetch_order_info(order_keys: &[String]) -> anyhow::Result<HashMap<String, OrderInfo>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    if order_keys.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let keys = order_keys
+        .iter()
+        .map(|key| sql_lit(key))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT id, document_no, document_date, line_json \
+         FROM a015_wb_orders \
+         WHERE is_deleted = 0 AND document_no IN ({keys})"
+    );
+    let db = crate::shared::data::db::get_connection();
+    let rows = db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await?;
+    let mut result = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let document_no: String = row.try_get("", "document_no").unwrap_or_default();
+        result.insert(
+            document_no,
+            OrderInfo {
+                id: row.try_get("", "id").unwrap_or_default(),
+                date: row
+                    .try_get::<Option<String>>("", "document_date")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default(),
+            },
+        );
+    }
+    Ok(result)
+}
+
+fn empty_key(value: &str) -> String {
+    if value.trim().is_empty() {
+        "__empty__".to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn opt_key(value: &Option<String>) -> String {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "__none__".to_string())
+}
+
+fn campaign_label(code: &str, names: &HashMap<String, String>) -> String {
+    if code.is_empty() || code == "__empty__" {
+        return "Кампания не определена".to_string();
+    }
+    match names.get(code) {
+        Some(name) if !name.trim().is_empty() => format!("{name} ({code})"),
+        _ => format!("Кампания {code}"),
+    }
+}
+
+fn nomenclature_label(key: &str, names: &HashMap<String, String>) -> String {
+    if key == "__none__" {
+        return "Номенклатура не определена".to_string();
+    }
+    names
+        .get(key)
+        .filter(|name| !name.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| key.to_string())
+}
+
+fn order_label(key: &str) -> String {
+    if key == "__no_order__" {
+        "Нет аналитики по заказу".to_string()
+    } else if key.is_empty() || key == "__empty__" {
+        "Заказ не определен".to_string()
+    } else {
+        key.to_string()
+    }
+}
+
+fn format_date_dmy(value: &str) -> String {
+    let trimmed = value.trim();
+    let date_part = trimmed.get(..10).unwrap_or(trimmed);
+    chrono::NaiveDate::parse_from_str(date_part, "%Y-%m-%d")
+        .map(|date| date.format("%d.%m.%Y").to_string())
+        .unwrap_or_else(|_| trimmed.to_string())
+}
+
+fn to_report_node(
+    level: &str,
+    key: &str,
+    accum: &AdvertReportAccum,
+    campaign_code: Option<&str>,
+    nomenclature_ref: Option<&str>,
+    campaign_names: &HashMap<String, String>,
+    nomenclature_names: &HashMap<String, String>,
+    order_infos: &HashMap<String, OrderInfo>,
+) -> WbAdvertReportNode {
+    let mut label = match level {
+        "campaign" => campaign_label(key, campaign_names),
+        "nomenclature" => nomenclature_label(key, nomenclature_names),
+        "order" => order_label(key),
+        _ => key.to_string(),
+    };
+    let is_real_order = level == "order" && key != "__no_order__" && key != "__empty__";
+    let mut links = if is_real_order {
+        accum.links.values().cloned().collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    if is_real_order {
+        if let Some(info) = order_infos.get(key) {
+            label = if info.date.trim().is_empty() {
+                format!("Заказ № {key}")
+            } else {
+                format!("Заказ от {} № {key}", format_date_dmy(&info.date))
+            };
+            if !info.id.trim().is_empty() {
+                let link = WbAdvertReportLink {
+                    label: "Заказ".to_string(),
+                    tab_key: format!("a015_wb_orders_details_{}", info.id),
+                };
+                if !links
+                    .iter()
+                    .any(|existing| existing.tab_key == link.tab_key)
+                {
+                    links.insert(0, link);
+                }
+            }
+        }
+    }
+    let children = accum
+        .children
+        .iter()
+        .map(|(child_key, child)| match level {
+            "campaign" => to_report_node(
+                "nomenclature",
+                child_key,
+                child,
+                Some(key),
+                if child_key == "__none__" {
+                    None
+                } else {
+                    Some(child_key)
+                },
+                campaign_names,
+                nomenclature_names,
+                order_infos,
+            ),
+            "nomenclature" => to_report_node(
+                "order",
+                child_key,
+                child,
+                campaign_code,
+                nomenclature_ref,
+                campaign_names,
+                nomenclature_names,
+                order_infos,
+            ),
+            _ => unreachable!("advert report tree has only three levels"),
+        })
+        .collect::<Vec<_>>();
+    let wb_advert_campaign_code = campaign_code
+        .or_else(|| (level == "campaign").then_some(key))
+        .filter(|value| !value.is_empty() && *value != "__empty__")
+        .map(ToString::to_string);
+    let nomenclature_ref = nomenclature_ref
+        .or_else(|| (level == "nomenclature" && key != "__none__").then_some(key))
+        .map(ToString::to_string);
+    let order_key = (level == "order" && key != "__no_order__")
+        .then(|| key.to_string())
+        .filter(|value| !value.is_empty() && value != "__empty__");
+
+    WbAdvertReportNode {
+        level: level.to_string(),
+        id: match level {
+            "campaign" => format!("campaign:{key}"),
+            "nomenclature" => format!(
+                "campaign:{}:nomenclature:{key}",
+                campaign_code.unwrap_or("")
+            ),
+            "order" => format!(
+                "campaign:{}:nomenclature:{}:order:{key}",
+                campaign_code.unwrap_or(""),
+                nomenclature_ref.as_deref().unwrap_or("")
+            ),
+            _ => key.to_string(),
+        },
+        label,
+        wb_advert_campaign_code,
+        nomenclature_ref,
+        order_key,
+        accrued: accum.accrued,
+        expensed: accum.expensed,
+        balance: accum.accrued - accum.expensed,
+        expense_no_order: accum.expense_no_order,
+        links,
+        children,
+    }
+}
+
+/// GET /api/dashboards/wb-advert-report
+pub async fn wb_advert_report(
+    Query(filters): Query<WbAdvertReportRequest>,
+) -> Result<Json<WbAdvertReportResponse>, axum::http::StatusCode> {
+    let p913_rows = fetch_p913_advert_report_rows(&filters)
+        .await
+        .map_err(|error| {
+            tracing::error!("wb_advert_report p913 aggregation failed: {}", error);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let p911_rows = fetch_p911_advert_report_rows(&filters)
+        .await
+        .map_err(|error| {
+            tracing::error!("wb_advert_report p911 aggregation failed: {}", error);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let mut root = BTreeMap::<String, AdvertReportAccum>::new();
+    let mut nomenclature_refs = BTreeSet::<String>::new();
+    let mut order_keys = BTreeSet::<String>::new();
+
+    for row in p913_rows {
+        let links = parse_registrator_links(&row.registrators);
+        let campaign_key = empty_key(&row.campaign_code);
+        let nomenclature_key = opt_key(&row.nomenclature_ref);
+        if nomenclature_key != "__none__" {
+            nomenclature_refs.insert(nomenclature_key.clone());
+        }
+        let order_key = empty_key(&row.order_key);
+        if order_key != "__empty__" {
+            order_keys.insert(order_key.clone());
+        }
+        let campaign = root.entry(campaign_key).or_default();
+        campaign.add_order(row.accrued, row.expensed, &[]);
+        let nomenclature = campaign.children.entry(nomenclature_key).or_default();
+        nomenclature.add_order(row.accrued, row.expensed, &[]);
+        let order = nomenclature.children.entry(order_key).or_default();
+        order.add_order(row.accrued, row.expensed, &links);
+    }
+
+    for row in p911_rows {
+        let campaign_key = empty_key(&row.campaign_code);
+        let nomenclature_key = opt_key(&row.nomenclature_ref);
+        if nomenclature_key != "__none__" {
+            nomenclature_refs.insert(nomenclature_key.clone());
+        }
+        let campaign = root.entry(campaign_key).or_default();
+        campaign.add_no_order(row.expense_no_order, &[]);
+        let nomenclature = campaign.children.entry(nomenclature_key).or_default();
+        nomenclature.add_no_order(row.expense_no_order, &[]);
+        let no_order = nomenclature
+            .children
+            .entry("__no_order__".to_string())
+            .or_default();
+        no_order.add_no_order(row.expense_no_order, &[]);
+    }
+
+    let campaign_names = crate::domain::a030_wb_advert_campaign::service::list_all()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|campaign| {
+            (
+                campaign.header.advert_id.to_string(),
+                campaign.base.description.clone(),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let nomenclature_names = crate::domain::a004_nomenclature::repository::list_by_ids(
+        &nomenclature_refs.into_iter().collect::<Vec<_>>(),
+    )
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|item| {
+        let id = item.base.id.0.to_string();
+        let label = if item.article.trim().is_empty() {
+            item.base.description
+        } else {
+            format!("{} — {}", item.article, item.base.description)
+        };
+        (id, label)
+    })
+    .collect::<HashMap<_, _>>();
+    let order_infos = fetch_order_info(&order_keys.into_iter().collect::<Vec<_>>())
+        .await
+        .unwrap_or_default();
+
+    let mut totals = WbAdvertReportTotals::default();
+    let campaigns = root
+        .iter()
+        .map(|(key, accum)| {
+            totals.accrued += accum.accrued;
+            totals.expensed += accum.expensed;
+            totals.expense_no_order += accum.expense_no_order;
+            to_report_node(
+                "campaign",
+                key,
+                accum,
+                None,
+                None,
+                &campaign_names,
+                &nomenclature_names,
+                &order_infos,
+            )
+        })
+        .collect::<Vec<_>>();
+    totals.balance = totals.accrued - totals.expensed;
+
+    Ok(Json(WbAdvertReportResponse {
+        filters,
+        totals,
+        campaigns,
+    }))
+}
+
+/// GET /api/dashboards/wb-order-flow?srid={srid}
+pub async fn wb_order_flow(
+    Query(query): Query<WbOrderFlowQuery>,
+) -> Result<Json<WbOrderFlowResponse>, axum::http::StatusCode> {
+    let srid = query.srid.trim().to_string();
+
+    // 1. a015: заказ
+    let order_opt = crate::domain::a015_wb_orders::service::get_by_document_no(&srid)
+        .await
+        .map_err(|e| {
+            tracing::error!("wb_order_flow a015 {}: {}", srid, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let order_item = order_opt.as_ref().map(|o| OrderFlowItem {
+        id: o.base.id.value().to_string(),
+        document_no: o.header.document_no.clone(),
+        document_date: Some(o.state.order_dt.format("%d.%m.%Y").to_string()),
+        supplier_article: Some(o.line.supplier_article.clone()),
+        brand: o.line.brand.clone(),
+        subject: o.line.subject.clone(),
+        nm_id: Some(o.line.nm_id),
+        qty: Some(o.line.qty),
+        finished_price: o.line.finished_price,
+        total_price: o.line.total_price,
+        price_with_disc: o.line.price_with_disc,
+        spp: o.line.spp,
+        dealer_price_ut: o.line.dealer_price_ut,
+        income_id: o.source_meta.income_id,
+        is_cancel: o.state.is_cancel,
+        is_supply: o.state.is_supply.unwrap_or(false),
+        is_realization: o.state.is_realization.unwrap_or(false),
+        is_posted: o.is_posted,
+        warehouse_name: o.warehouse.warehouse_name.clone(),
+        g_number: o.source_meta.g_number.clone(),
+    });
+
+    // Описания номенклатуры и базовой номенклатуры (для заголовка дашборда)
+    let (nomenclature_description, base_nomenclature_description) =
+        resolve_nomenclature_descriptions(order_opt.as_ref()).await;
+
+    // 2. a029: поставка
+    let supply_item = if let Some(ref order) = order_opt {
+        crate::domain::a029_wb_supply::service::get_for_order(order)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| SupplyFlowItem {
+                id: s.base.id.value().to_string(),
+                supply_id: s.header.supply_id.clone(),
+                supply_name: s.info.name.clone(),
+                created_at_wb: s
+                    .info
+                    .created_at_wb
+                    .map(|dt| dt.format("%d.%m.%Y").to_string()),
+                closed_at_wb: s
+                    .info
+                    .closed_at_wb
+                    .map(|dt| dt.format("%d.%m.%Y").to_string()),
+                is_done: s.info.is_done,
+            })
+    } else {
+        None
+    };
+
+    // 3. a012: продажи
+    let sales_raw = crate::domain::a012_wb_sales::repository::search_by_document_no(&srid)
+        .await
+        .unwrap_or_default();
+
+    let sales: Vec<SaleFlowItem> = sales_raw
+        .into_iter()
+        .map(|s| SaleFlowItem {
+            id: s.base.id.value().to_string(),
+            document_no: s.header.document_no.clone(),
+            event_type: s.state.event_type.clone(),
+            status_norm: s.state.status_norm.clone(),
+            sale_dt: s.state.sale_dt.format("%d.%m.%Y").to_string(),
+            is_posted: s.is_posted,
+            is_customer_return: s.is_customer_return,
+            warehouse_name: s.warehouse.warehouse_name.clone(),
+            name: s.line.name.clone(),
+            supplier_article: s.line.supplier_article.clone(),
+            finished_price: s.line.finished_price,
+            amount_line: s.line.amount_line,
+            sell_out_plan: s.line.sell_out_plan,
+            commission_plan: s.line.commission_plan,
+            acquiring_fee_plan: s.line.acquiring_fee_plan,
+            other_fee_plan: s.line.other_fee_plan,
+            supplier_payout_plan: s.line.supplier_payout_plan,
+            cost_of_production: s.line.cost_of_production,
+            dealer_price_ut: s.line.dealer_price_ut,
+            profit_plan: s.line.profit_plan,
+            sell_out_fact: s.line.sell_out_fact,
+            supplier_payout_fact: s.line.supplier_payout_fact,
+            profit_fact: s.line.profit_fact,
+            is_fact: s.line.is_fact.unwrap_or(false),
+        })
+        .collect();
+
+    // 4. p913 → a026: рекламная атрибуция
+    let p913_rows =
+        crate::projections::p913_wb_advert_order_attr::repository::list_by_order_key_and_turnover(
+            &srid,
+            "advert_clicks_order_accrual",
+        )
+        .await
+        .unwrap_or_default();
+
+    let mut advert_map: HashMap<String, (f64, String)> = HashMap::new();
+    for row in &p913_rows {
+        if row.registrator_type == "a026_wb_advert_daily" {
+            let e = advert_map
+                .entry(row.registrator_ref.clone())
+                .or_insert((0.0, row.entry_date.clone()));
+            e.0 += row.amount;
+        }
+    }
+
+    let mut advert_campaigns: Vec<AdvertFlowItem> = Vec::new();
+    for (ref_id, (allocated_cost, entry_date)) in &advert_map {
+        let item = if let Ok(uuid) = uuid::Uuid::parse_str(ref_id) {
+            match crate::domain::a026_wb_advert_daily::service::get_by_id(uuid).await {
+                Ok(Some(doc)) => {
+                    let advert_id = doc.header.advert_id;
+                    let campaign =
+                        crate::domain::a030_wb_advert_campaign::repository::get_by_advert_id(
+                            advert_id,
+                        )
+                        .await
+                        .ok()
+                        .flatten();
+                    AdvertFlowItem {
+                        advert_id,
+                        registrator_ref: ref_id.clone(),
+                        document_date: doc.header.document_date.clone(),
+                        allocated_cost: *allocated_cost,
+                        campaign_name: campaign.as_ref().map(|c| c.base.description.clone()),
+                        campaign_status: campaign.and_then(|c| c.header.status),
+                        views: doc.totals.views,
+                        clicks: doc.totals.clicks,
+                        orders_reported: doc.totals.orders as i64,
+                        total_spend: doc.totals.sum,
+                        ctr: doc.totals.ctr,
+                        cpc: doc.totals.cpc,
+                    }
+                }
+                _ => AdvertFlowItem {
+                    advert_id: 0,
+                    registrator_ref: ref_id.clone(),
+                    document_date: entry_date.clone(),
+                    allocated_cost: *allocated_cost,
+                    campaign_name: None,
+                    campaign_status: None,
+                    views: 0,
+                    clicks: 0,
+                    orders_reported: 0,
+                    total_spend: 0.0,
+                    ctr: 0.0,
+                    cpc: 0.0,
+                },
+            }
+        } else {
+            AdvertFlowItem {
+                advert_id: 0,
+                registrator_ref: ref_id.clone(),
+                document_date: entry_date.clone(),
+                allocated_cost: *allocated_cost,
+                campaign_name: None,
+                campaign_status: None,
+                views: 0,
+                clicks: 0,
+                orders_reported: 0,
+                total_spend: 0.0,
+                ctr: 0.0,
+                cpc: 0.0,
+            }
+        };
+        advert_campaigns.push(item);
+    }
+    advert_campaigns.sort_by(|a, b| a.document_date.cmp(&b.document_date));
+
+    let total_advert_cost = advert_campaigns.iter().map(|a| a.allocated_cost).sum();
+
+    // 5. p903: строки финансового отчёта WB
+    let p903_raw = crate::projections::p903_wb_finance_report::repository::search_by_srid(&srid)
+        .await
+        .unwrap_or_default();
+
+    let mut p903_rows: Vec<P903FlowItem> = p903_raw
+        .into_iter()
+        .map(|r| P903FlowItem {
+            id: r.id,
+            rr_dt: r.rr_dt,
+            supplier_oper_name: r.supplier_oper_name,
+            retail_price_withdisc_rub: r.retail_price_withdisc_rub,
+            ppvz_for_pay: r.ppvz_for_pay,
+            ppvz_sales_commission: r.ppvz_sales_commission,
+            acquiring_fee: r.acquiring_fee,
+            commission_percent: r.commission_percent,
+            delivery_rub: r.delivery_rub,
+            penalty: r.penalty,
+            storage_fee: r.storage_fee,
+            rebill_logistic_cost: r.rebill_logistic_cost,
+            additional_payment: r.additional_payment,
+            return_amount: r.return_amount,
+            quantity: r.quantity,
+        })
+        .collect();
+    p903_rows.sort_by(|a, b| a.rr_dt.cmp(&b.rr_dt));
+
+    // 6. a032: заявки покупателя на возврат
+    let claims_raw = crate::domain::a032_wb_returns_claims::repository::search_by_srid(&srid)
+        .await
+        .unwrap_or_default();
+
+    let mut claims: Vec<ClaimFlowItem> = claims_raw
+        .into_iter()
+        .map(|c| ClaimFlowItem {
+            id: c.base.id.value().to_string(),
+            claim_id: c.claim_id.clone(),
+            status: c.status,
+            dt: c.dt.format("%d.%m.%Y").to_string(),
+            dt_update: c.dt_update.map(|d| d.format("%d.%m.%Y").to_string()),
+            price: c.price,
+            user_comment: c.user_comment.clone(),
+            is_archive: c.is_archive,
+        })
+        .collect();
+    claims.sort_by(|a, b| a.dt.cmp(&b.dt));
+
+    Ok(Json(WbOrderFlowResponse {
+        srid,
+        order: order_item,
+        supply: supply_item,
+        sales,
+        advert_campaigns,
+        total_advert_cost,
+        p903_rows,
+        claims,
+        base_nomenclature_description,
+        nomenclature_description,
+    }))
+}
+
+async fn resolve_nomenclature_descriptions(
+    order: Option<&contracts::domain::a015_wb_orders::aggregate::WbOrders>,
+) -> (Option<String>, Option<String>) {
+    const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
+    let Some(order) = order else {
+        return (None, None);
+    };
+
+    let nom_desc = if let Some(nom_ref) = order.nomenclature_ref.as_deref() {
+        if !nom_ref.is_empty() && nom_ref != ZERO_UUID {
+            if let Ok(uuid) = uuid::Uuid::parse_str(nom_ref) {
+                crate::domain::a004_nomenclature::service::get_by_id(uuid)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|n| n.base.description.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let base_desc = if let Some(base_ref) = order.base_nomenclature_ref.as_deref() {
+        if !base_ref.is_empty() && base_ref != ZERO_UUID {
+            if let Ok(uuid) = uuid::Uuid::parse_str(base_ref) {
+                crate::domain::a004_nomenclature::service::get_by_id(uuid)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|n| n.base.description.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    (nom_desc, base_desc)
+}

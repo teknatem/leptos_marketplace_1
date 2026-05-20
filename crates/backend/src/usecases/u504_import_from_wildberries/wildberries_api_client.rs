@@ -249,6 +249,7 @@ impl WildberriesApiClient {
                     cursor: WildberriesCursor::default(),
                     filter: WildberriesFilter {
                         find_by_nm_id: None,
+                        with_photo: None,
                     },
                 },
             )
@@ -1586,12 +1587,16 @@ impl WildberriesApiClient {
 
         self.log_to_file(&format!("Using API URL: {}", url));
 
-        // Wildberries API РёСЃРїРѕР»СЊР·СѓРµС‚ РєСѓСЂСЃРѕСЂРЅСѓСЋ РїР°РіРёРЅР°С†РёСЋ
+        // Wildberries Content API v2 ожидает limit ВНУТРИ settings.cursor.limit,
+        // а в фильтре обязательно withPhoto (-1 = все карточки, иначе WB режет выдачу).
+        let mut request_cursor = cursor.unwrap_or_default();
+        request_cursor.limit = Some(limit);
         let request_body = WildberriesProductListRequest {
             settings: WildberriesSettings {
-                cursor: cursor.unwrap_or_default(),
+                cursor: request_cursor,
                 filter: WildberriesFilter {
                     find_by_nm_id: None,
+                    with_photo: Some(-1),
                 },
             },
             limit,
@@ -3549,7 +3554,9 @@ pub struct WildberriesCursor {
     pub updated_at: Option<String>,
     #[serde(rename = "nmID", skip_serializing_if = "Option::is_none")]
     pub nm_id: Option<i64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<i32>,
+    #[serde(default, skip_serializing)]
     pub total: i64,
 }
 
@@ -3558,6 +3565,7 @@ impl Default for WildberriesCursor {
         Self {
             updated_at: None,
             nm_id: None,
+            limit: None,
             total: 0,
         }
     }
@@ -3567,6 +3575,8 @@ impl Default for WildberriesCursor {
 pub struct WildberriesFilter {
     #[serde(rename = "findByNmID", skip_serializing_if = "Option::is_none")]
     pub find_by_nm_id: Option<Vec<i64>>,
+    #[serde(rename = "withPhoto", skip_serializing_if = "Option::is_none")]
+    pub with_photo: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5074,10 +5084,7 @@ impl WildberriesApiClient {
     /// Загружает заявки покупателей на возврат товара.
     /// Requires: WB token with "Buyers Returns" category.
     /// Returns last 14 days only. Fetches both is_archive=false and is_archive=true.
-    pub async fn fetch_claims(
-        &self,
-        connection: &ConnectionMP,
-    ) -> Result<Vec<WbClaimRow>> {
+    pub async fn fetch_claims(&self, connection: &ConnectionMP) -> Result<Vec<WbClaimRow>> {
         const BASE_URL: &str = "https://returns-api.wildberries.ru/api/v1/claims";
         const PAGE_LIMIT: u32 = 200;
 
@@ -5150,7 +5157,11 @@ impl WildberriesApiClient {
                 let parsed: WbClaimsResponse = match serde_json::from_str(&body) {
                     Ok(v) => v,
                     Err(e) => {
-                        anyhow::bail!("Failed to parse WB Claims response: {}: {}", e, &body[..body.len().min(500)]);
+                        anyhow::bail!(
+                            "Failed to parse WB Claims response: {}: {}",
+                            e,
+                            &body[..body.len().min(500)]
+                        );
                     }
                 };
 

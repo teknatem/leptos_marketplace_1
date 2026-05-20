@@ -1,6 +1,8 @@
 use super::super::wildberries_api_client::WbOrderRow;
 use crate::domain::a015_wb_orders;
-use crate::shared::marketplaces::wildberries::datetime::parse_wb_datetime;
+use crate::shared::marketplaces::wildberries::datetime::{
+    format_wb_local_datetime_seconds, parse_wb_datetime,
+};
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a015_wb_orders::aggregate::{
@@ -111,6 +113,10 @@ pub async fn process_order_row(
         order_dt.format("%Y-%m-%d %H:%M:%S")
     );
 
+    // document_date нормализуем в MSK из распарсенного order_dt,
+    // чтобы хранение/фильтрация были единообразны независимо от источника API.
+    let document_date = Some(format_wb_local_datetime_seconds(&order_dt));
+
     let document = WbOrders::new_for_insert(
         document_no.clone(),
         description,
@@ -121,7 +127,7 @@ pub async fn process_order_row(
         geography,
         source_meta,
         true,
-        order_row.date.clone(),
+        document_date,
     );
 
     let raw_json = serde_json::to_string(order_row)?;

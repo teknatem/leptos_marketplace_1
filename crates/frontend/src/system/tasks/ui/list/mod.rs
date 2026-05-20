@@ -482,6 +482,9 @@ pub fn ScheduledTaskList() -> impl IntoView {
 
     // Scheduler global on/off state
     let scheduler_enabled = RwSignal::new(true);
+    // Включён ли планировщик в config.toml ([scheduled_tasks].enabled).
+    // Если false — фоновый воркер не запущен, переключатель не имеет эффекта.
+    let scheduler_config_enabled = RwSignal::new(true);
 
     // Дата последнего действия со планировщиком (сохраняется в localStorage)
     const LS_KEY: &str = "sys_tasks_scheduler_last_action";
@@ -676,6 +679,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
     spawn_local(async move {
         if let Ok(status) = api::fetch_scheduler_status().await {
             scheduler_enabled.set(status.enabled);
+            scheduler_config_enabled.set(status.config_enabled);
             // Если в localStorage ещё нет сохранённой даты — записываем текущее время.
             if scheduler_last_action.get_untracked().is_none() {
                 let ts = current_msk_str();
@@ -876,6 +880,18 @@ pub fn ScheduledTaskList() -> impl IntoView {
                 </div>
             </Flex>
 
+            // Полоса-предупреждение: планировщик выключен в config.toml.
+            // Показывается только если [scheduled_tasks].enabled = false —
+            // в этом случае фоновый воркер не запущен и переключатель
+            // «Планировщик работает» не имеет эффекта.
+            {move || (!scheduler_config_enabled.get()).then(|| view! {
+                <div style="margin-bottom:16px;">
+                    <MessageBar intent=MessageBarIntent::Warning>
+                        "Планировщик отключён в настройках приложения config.toml. Фоновое выполнение регламентных заданий отключено, переключатель ниже не имеет эффекта."
+                    </MessageBar>
+                </div>
+            })}
+
             <div style="margin-bottom: 16px;">
                 <TabList selected_value=active_tab>
                     <Tab value="tasks".to_string()>"Все"</Tab>
@@ -912,20 +928,20 @@ pub fn ScheduledTaskList() -> impl IntoView {
                     <div>
                         // Фильтры
                         <Flex gap=FlexGap::Small align=FlexAlign::Center style="flex-wrap:wrap;margin-bottom:10px;">
-                            <div style="position:relative;flex:1;min-width:180px;max-width:360px;">
-                                <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--color-text-secondary);pointer-events:none;font-size:14px;">
+                            <div class="task-filter__search">
+                                <span class="task-filter__search-icon">
                                     "🔍"
                                 </span>
                                 <input
                                     type="text"
                                     placeholder="Поиск по описанию, коду, комментарию…"
-                                    style="width:100%;box-sizing:border-box;padding:6px 8px 6px 28px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground1);color:var(--color-text-primary);font-size:13px;"
+                                    class="task-filter__search-input"
                                     prop:value=move || filter_text.get()
                                     on:input=move |ev| set_filter_text.set(event_target_value(&ev))
                                 />
                             </div>
                             <select
-                                style="padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground1);color:var(--color-text-primary);font-size:13px;cursor:pointer;"
+                                class="task-filter__select"
                                 prop:value=move || filter_type.get()
                                 on:change=move |ev| set_filter_type.set(event_target_value(&ev))
                             >
@@ -936,7 +952,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                 }).collect_view()}
                             </select>
                             <select
-                                style="padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground1);color:var(--color-text-primary);font-size:13px;cursor:pointer;"
+                                class="task-filter__select"
                                 prop:value=move || filter_status.get()
                                 on:change=move |ev| set_filter_status.set(event_target_value(&ev))
                             >
@@ -994,7 +1010,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                     };
                                     format!("font-size:14px;font-weight:600;user-select:none;color:{color};")
                                 }>
-                                    {move || if scheduler_enabled.get() { "Планировщик работает" } else { "Планировщик выключен" }}
+                                    {move || if scheduler_enabled.get() { "Планировщик включен" } else { "Планировщик выключен" }}
                                 </span>
                                 {move || scheduler_last_action.get().map(|ts| view! {
                                     <span style="font-size:11px;opacity:0.65;user-select:none;">
@@ -1311,20 +1327,20 @@ pub fn ScheduledTaskList() -> impl IntoView {
                     <div>
                         // Фильтры
                         <Flex gap=FlexGap::Small align=FlexAlign::Center style="flex-wrap:wrap;margin-bottom:10px;">
-                            <div style="position:relative;flex:1;min-width:180px;max-width:360px;">
-                                <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--color-text-secondary);pointer-events:none;font-size:14px;">
+                            <div class="task-filter__search">
+                                <span class="task-filter__search-icon">
                                     "🔍"
                                 </span>
                                 <input
                                     type="text"
                                     placeholder="Поиск по коду или описанию задачи…"
-                                    style="width:100%;box-sizing:border-box;padding:6px 8px 6px 28px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground1);color:var(--color-text-primary);font-size:13px;"
+                                    class="task-filter__search-input"
                                     prop:value=move || mon_filter_text.get()
                                     on:input=move |ev| set_mon_filter_text.set(event_target_value(&ev))
                                 />
                             </div>
                             <select
-                                style="padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--colorNeutralBackground1);color:var(--color-text-primary);font-size:13px;cursor:pointer;"
+                                class="task-filter__select"
                                 prop:value=move || mon_filter_status.get()
                                 on:change=move |ev| set_mon_filter_status.set(event_target_value(&ev))
                             >

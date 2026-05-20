@@ -44,3 +44,17 @@ pub async fn update_manual_fields(
     repository::upsert_by_service_name(&document).await?;
     repository::get_by_id(id).await
 }
+
+pub async fn store_max_deviation(
+    id: Uuid,
+    max_deviation: Option<f64>,
+) -> Result<Option<WbDocument>> {
+    let Some(mut document) = repository::get_by_id(id).await? else {
+        return Ok(None);
+    };
+
+    document.max_deviation = max_deviation;
+
+    repository::upsert_by_service_name(&document).await?;
+    repository::get_by_id(id).await
+}

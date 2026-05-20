@@ -1,5 +1,6 @@
 //! Tab components for WB Sales details
 
+mod advert_attribution;
 mod general;
 mod journal;
 mod json;
@@ -8,6 +9,7 @@ mod links;
 mod planfact;
 mod projections;
 
+pub use advert_attribution::AdvertAttributionTab;
 pub use general::GeneralTab;
 pub use journal::JournalTab;
 pub use json::JsonTab;

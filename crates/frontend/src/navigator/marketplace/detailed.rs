@@ -3,7 +3,8 @@
 
 use crate::layout::global_context::AppGlobalContext;
 use crate::layout::tabs::tab_label_for_key;
-use crate::navigator::marketplace::data::{BLOCKS, COLUMNS};use crate::navigator::marketplace::{link_matches, link_visible};
+use crate::navigator::marketplace::data::{BLOCKS, COLUMNS};
+use crate::navigator::marketplace::{link_matches, link_visible};
 use crate::navigator::shared::types::{MarketplaceColumn, NavBlock, NavLink};
 use crate::shared::icons::icon;
 use crate::system::auth::context::AuthState;
@@ -39,13 +40,11 @@ pub fn MarketplaceDetailed(
 
                 visible_blocks
                     .into_iter()
-                    .enumerate()
-                    .map(|(idx, block)| {
+                    .map(|block| {
                         let needle = needle.clone();
                         view! {
                             <DetailedBlockRow
                                 block=block
-                                index=idx
                                 needle=needle
                                 ctx=ctx
                                 auth_state=auth_state
@@ -65,21 +64,16 @@ fn ColumnHeads() -> impl IntoView {
         <div class="navigator-mp__columns-head">
             {COLUMNS
                 .iter()
-                .enumerate()
-                .map(|(idx, col)| {
+                .map(|col| {
                     let logo: String = col.logo_svg.to_string();
                     view! {
                         <div
                             class="navigator-mp__column-head"
-                            style=format!(
-                                "--mp-color: {}; --nav-i: {};",
-                                col.brand_color, idx
-                            )
+                            style=format!("--mp-color: {};", col.brand_color)
                         >
                             <div
                                 class="navigator-mp__logo"
                                 data-mp=col.mp_key
-                                style=format!("height: {}px;", col.logo_height_px)
                                 inner_html=logo
                             ></div>
                             <div class="navigator-mp__column-label">{col.label}</div>
@@ -94,7 +88,6 @@ fn ColumnHeads() -> impl IntoView {
 #[component]
 fn DetailedBlockRow(
     block: &'static NavBlock,
-    index: usize,
     needle: String,
     ctx: AppGlobalContext,
     auth_state: ReadSignal<AuthState>,
@@ -104,7 +97,6 @@ fn DetailedBlockRow(
         <div
             class="navigator-mp__block"
             data-block=block_id
-            style=format!("--nav-i: {};", index)
         >
             <div class="navigator-mp__block-title form__label">
                 <span class="navigator-mp__block-title-icon">{icon(block.icon)}</span>
@@ -156,10 +148,9 @@ fn DetailedCell(
         >
             {links
                 .into_iter()
-                .enumerate()
-                .map(|(idx, link)| {
+                .map(|link| {
                     view! {
-                        <DetailedCard link=link index=idx ctx=ctx />
+                        <DetailedCard link=link ctx=ctx />
                     }
                 })
                 .collect_view()}
@@ -168,7 +159,7 @@ fn DetailedCell(
 }
 
 #[component]
-fn DetailedCard(link: &'static NavLink, index: usize, ctx: AppGlobalContext) -> impl IntoView {
+fn DetailedCard(link: &'static NavLink, ctx: AppGlobalContext) -> impl IntoView {
     let tab_key = link.tab_key;
     let on_click = move |_| {
         let label = resolve_label(link);
@@ -180,7 +171,6 @@ fn DetailedCard(link: &'static NavLink, index: usize, ctx: AppGlobalContext) -> 
             class="navigator-mp__card"
             href="#"
             title=link.annotation
-            style=format!("--nav-i: {};", index)
             on:click=move |ev| {
                 ev.prevent_default();
                 on_click(());

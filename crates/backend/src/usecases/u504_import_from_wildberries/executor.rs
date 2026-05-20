@@ -467,25 +467,23 @@ impl ImportExecutor {
         tracing::info!("Importing marketplace products for session: {}", session_id);
 
         let aggregate_index = "a007_marketplace_product";
-        let page_size = 100;
+        let page_size: i32 = 100;
         let mut total_processed = 0;
         let mut total_inserted = 0;
         let mut total_updated = 0;
         let mut cursor: Option<super::wildberries_api_client::WildberriesCursor> = None;
-        let mut expected_total: Option<i32> = None;
 
-        // Получаем товары страницами через Wildberries API
+        // Получаем товары страницами через Wildberries API.
+        // WB v2 не сообщает «общее число карточек в кабинете»: cursor.total в ответе —
+        // это количество карточек в текущей странице. Поэтому останавливаемся только
+        // по сигналам «карточек нет» / «страница неполная».
         loop {
             let list_response = self
                 .api_client
                 .fetch_product_list(connection, page_size, cursor.clone())
                 .await?;
 
-            // Если API вернул total, сохраняем его (только при первом запросе)
-            if expected_total.is_none() && list_response.cursor.total > 0 {
-                expected_total = Some(list_response.cursor.total as i32);
-            }
-
+            let response_cursor = list_response.cursor.clone();
             let cards = list_response.cards;
             let batch_size = cards.len();
 
@@ -527,12 +525,12 @@ impl ImportExecutor {
                     }
                 }
 
-                // Обновить прогресс
+                // Обновить прогресс (общий total в кабинете неизвестен → None)
                 self.progress_tracker.update_aggregate(
                     session_id,
                     aggregate_index,
                     total_processed,
-                    expected_total,
+                    None,
                     total_inserted,
                     total_updated,
                 );
@@ -542,21 +540,13 @@ impl ImportExecutor {
             self.progress_tracker
                 .set_current_item(session_id, aggregate_index, None);
 
-            // Определяем, есть ли еще страницы
-            let next_cursor = if total_processed >= expected_total.unwrap_or(i32::MAX) {
-                None
-            } else if batch_size < page_size as usize {
-                None
-            } else {
-                Some(list_response.cursor.clone())
-            };
-
-            // Обновляем курсор для следующей страницы
-            cursor = next_cursor.clone();
-
-            if cursor.is_none() {
+            // Если страница неполная — это последняя.
+            if batch_size < page_size as usize {
                 break;
             }
+
+            // Иначе продолжаем пагинацию с курсором из ответа (updatedAt + nmID последней карточки).
+            cursor = Some(response_cursor);
         }
 
         self.progress_tracker
@@ -2865,7 +2855,7 @@ impl ImportExecutor {
         }
 
         let resolved =
-            crate::usecases::u504_import_from_wildberries::processors::wb_nomenclature::resolve_wb_nomenclature_ref(
+            crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
                 &connection.to_string_id(),
                 nm_id,
                 None,
@@ -2902,30 +2892,26 @@ impl ImportExecutor {
         );
 
         // Разрешаем organization_id и marketplace_id из подключения
-        let organization_id =
-            match uuid::Uuid::parse_str(&connection.organization_ref) {
-                Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
-                    Some(org) => org.base.id.as_string(),
-                    None => {
-                        let msg = format!(
-                            "Организация '{}' не найдена",
-                            connection.organization_ref
-                        );
-                        self.progress_tracker
-                            .fail_aggregate(session_id, aggregate_index, msg.clone());
-                        anyhow::bail!("{}", msg);
-                    }
-                },
-                Err(_) => {
-                    let msg = format!(
-                        "Некорректный organization_ref: '{}'",
-                        connection.organization_ref
-                    );
+        let organization_id = match uuid::Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
+                Some(org) => org.base.id.as_string(),
+                None => {
+                    let msg = format!("Организация '{}' не найдена", connection.organization_ref);
                     self.progress_tracker
                         .fail_aggregate(session_id, aggregate_index, msg.clone());
                     anyhow::bail!("{}", msg);
                 }
-            };
+            },
+            Err(_) => {
+                let msg = format!(
+                    "Некорректный organization_ref: '{}'",
+                    connection.organization_ref
+                );
+                self.progress_tracker
+                    .fail_aggregate(session_id, aggregate_index, msg.clone());
+                anyhow::bail!("{}", msg);
+            }
+        };
 
         let marketplace_id = connection.marketplace_id.clone();
 
@@ -2941,14 +2927,8 @@ impl ImportExecutor {
 
         let total = claim_rows.len() as i32;
         tracing::info!("WB Returns Claims: received {} rows", total);
-        self.progress_tracker.update_aggregate(
-            session_id,
-            aggregate_index,
-            0,
-            Some(total),
-            0,
-            0,
-        );
+        self.progress_tracker
+            .update_aggregate(session_id, aggregate_index, 0, Some(total), 0, 0);
 
         let connection_id = connection.to_string_id();
 

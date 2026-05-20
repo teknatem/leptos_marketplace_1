@@ -92,6 +92,36 @@ pub fn configure_system_routes() -> Router {
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
         )
         // ========================================
+        // SYSTEM FAVORITES
+        // ========================================
+        .route(
+            "/api/system/favorites",
+            get(handlers::favorites::list)
+                .post(handlers::favorites::upsert)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/system/favorites/target",
+            get(handlers::favorites::get_target)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/system/favorites/:id",
+            put(handlers::favorites::update)
+                .delete(handlers::favorites::delete)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        // ========================================
+        // SYSTEM PAGE HISTORY ("История открытых страниц")
+        // ========================================
+        .route(
+            "/api/system/page-history",
+            get(handlers::history::list)
+                .post(handlers::history::record)
+                .delete(handlers::history::clear)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        // ========================================
         // SYSTEM TASKS (sys_tasks) ROUTES
         // ========================================
         .route(

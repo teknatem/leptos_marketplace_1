@@ -94,8 +94,9 @@ pub async fn list_paginated(
     sort_desc: bool,
     q: &str,
     only_mp: bool,
+    no_analytics: bool,
 ) -> anyhow::Result<(Vec<Nomenclature>, u64)> {
-    repository::list_paginated(limit, offset, sort_by, sort_desc, q, only_mp).await
+    repository::list_paginated(limit, offset, sort_by, sort_desc, q, only_mp, no_analytics).await
 }
 
 pub async fn sync_kit_variant_links(

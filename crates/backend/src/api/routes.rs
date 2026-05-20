@@ -46,6 +46,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a030_routes())
         .merge(a031_routes())
         .merge(a032_routes())
+        .merge(a033_routes())
         // External integrations (API-key auth, no JWT required)
         .merge(ext_1c_routes())
         // Usecases — each with their own scope
@@ -68,6 +69,7 @@ pub fn configure_business_routes() -> Router {
         .merge(p907_routes())
         .merge(p908_routes())
         .merge(p912_routes())
+        .merge(p913_routes())
         // System views with scopes
         .merge(dashboard_routes())
         .merge(data_view_routes())
@@ -249,6 +251,18 @@ fn a007_routes() -> Router {
             "/api/a007/marketplace-product",
             get(handlers::a007_marketplace_product::list_paginated),
         )
+        .route(
+            "/api/a007/marketplace-product/wb-mapping-problems",
+            get(handlers::a007_marketplace_product::wb_mapping_problems),
+        )
+        .route(
+            "/api/a007/marketplace-product/wb-stale-postings/summary",
+            get(handlers::a007_marketplace_product::wb_stale_postings_summary),
+        )
+        .route(
+            "/api/a007/marketplace-product/wb-stale-postings/repost",
+            post(handlers::a007_marketplace_product::wb_stale_postings_repost),
+        )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a007_marketplace_product", req, next).await
@@ -407,6 +421,10 @@ fn a012_routes() -> Router {
         .route(
             "/api/a012/wb-sales/:id/journal",
             get(handlers::a012_wb_sales::get_general_ledger_entries),
+        )
+        .route(
+            "/api/a012/wb-sales/:id/advert-attribution",
+            get(handlers::a012_wb_sales::get_advert_attribution),
         )
         .route(
             "/api/a012/wb-sales/:id/refresh-dealer-price",
@@ -780,6 +798,10 @@ fn a026_routes() -> Router {
             "/api/a026/wb-advert-daily/:id/journal",
             get(handlers::a026_wb_advert_daily::get_general_ledger_entries),
         )
+        .route(
+            "/api/a026/wb-advert-daily/:id/projections",
+            get(handlers::a026_wb_advert_daily::get_projections),
+        )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a026_wb_advert_daily", req, next).await
@@ -970,6 +992,44 @@ fn a032_routes() -> Router {
         ))
 }
 
+fn a033_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a033/wb-day-close",
+            get(handlers::a033_wb_day_close::list_paginated)
+                .post(handlers::a033_wb_day_close::create_active),
+        )
+        .route(
+            "/api/a033/wb-day-close/compare",
+            post(handlers::a033_wb_day_close::compare),
+        )
+        .route(
+            "/api/a033/wb-day-close/by-day/:connection_id/:business_date",
+            get(handlers::a033_wb_day_close::list_by_day),
+        )
+        .route(
+            "/api/a033/wb-day-close/:id",
+            get(handlers::a033_wb_day_close::get_by_id),
+        )
+        .route(
+            "/api/a033/wb-day-close/:id/recalculate",
+            post(handlers::a033_wb_day_close::recalculate),
+        )
+        .route(
+            "/api/a033/wb-day-close/:id/repost-problematic-a012",
+            post(handlers::a033_wb_day_close::repost_problematic_a012),
+        )
+        .route(
+            "/api/a033/wb-day-close/:id/archive-and-recreate",
+            post(handlers::a033_wb_day_close::archive_and_recreate),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a033_wb_day_close", req, next).await
+            },
+        ))
+}
+
 fn a027_routes() -> Router {
     Router::new()
         .route(
@@ -983,6 +1043,10 @@ fn a027_routes() -> Router {
         .route(
             "/api/a027/wb-documents/:id/manual",
             put(handlers::a027_wb_documents::update_manual_fields),
+        )
+        .route(
+            "/api/a027/wb-documents/:id/post",
+            post(handlers::a027_wb_documents::post_document),
         )
         .route(
             "/api/a027/wb-documents/:id/download/:extension",
@@ -1461,6 +1525,19 @@ fn p912_routes() -> Router {
         ))
 }
 
+fn p913_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/p913/wb-advert-order-attr",
+            get(handlers::p913_wb_advert_order_attr::list),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p913_wb_advert_order_attr", req, next).await
+            },
+        ))
+}
+
 // ============================================================================
 // Indicators
 // ============================================================================
@@ -1474,6 +1551,14 @@ fn dashboard_routes() -> Router {
         .route(
             "/api/d400/monthly_summary",
             get(handlers::d400_monthly_summary::get_monthly_summary),
+        )
+        .route(
+            "/api/dashboards/wb-order-flow",
+            get(handlers::dashboards::wb_order_flow),
+        )
+        .route(
+            "/api/dashboards/wb-advert-report",
+            get(handlers::dashboards::wb_advert_report),
         )
         .route(
             "/api/d400/periods",
@@ -1736,6 +1821,14 @@ fn general_ledger_routes() -> Router {
             axum::routing::get(handlers::general_ledger::list_turnovers),
         )
         .route(
+            "/api/general-ledger/turnovers/:code",
+            axum::routing::get(handlers::general_ledger::get_turnover_by_code),
+        )
+        .route(
+            "/api/general-ledger/dimensions",
+            axum::routing::get(handlers::general_ledger::dimensions_catalog_index),
+        )
+        .route(
             "/api/general-ledger/report",
             axum::routing::post(handlers::general_ledger::report),
         )
@@ -1770,6 +1863,10 @@ fn general_ledger_routes() -> Router {
         .route(
             "/api/general-ledger/:id",
             axum::routing::get(handlers::general_ledger::get_by_id),
+        )
+        .route(
+            "/api/general-ledger/:id/resource-details",
+            axum::routing::get(handlers::general_ledger::get_resource_details),
         )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {

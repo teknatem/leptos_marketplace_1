@@ -82,6 +82,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "line-chart",
                 ),
                 SidebarItem::new("data_view", tab_label_for_key("data_view"), "layers"),
+                SidebarItem::new(
+                    "d402_wb_order_flow",
+                    tab_label_for_key("d402_wb_order_flow"),
+                    "git-fork",
+                ),
             ],
             admin_only: false,
         },
@@ -162,6 +167,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "a026_wb_advert_daily",
                     tab_label_for_key("a026_wb_advert_daily"),
                     "activity",
+                ),
+                SidebarItem::with_scope(
+                    "a033_wb_day_close",
+                    tab_label_for_key("a033_wb_day_close"),
+                    "calendar-check",
                 ),
                 SidebarItem::with_scope(
                     "a027_wb_documents",
@@ -310,6 +320,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "table",
                 ),
                 SidebarItem::new(
+                    "general_ledger_dimensions",
+                    tab_label_for_key("general_ledger_dimensions"),
+                    "layers",
+                ),
+                SidebarItem::new(
                     "u505_match_nomenclature",
                     tab_label_for_key("u505_match_nomenclature"),
                     "layers",
@@ -405,6 +420,16 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "p908_wb_goods_prices",
                     tab_label_for_key("p908_wb_goods_prices"),
                     "tag",
+                ),
+                SidebarItem::new(
+                    "p913_wb_advert_order_attr",
+                    tab_label_for_key("p913_wb_advert_order_attr"),
+                    "trending-up",
+                ),
+                SidebarItem::new(
+                    "a032_wb_returns_claims",
+                    tab_label_for_key("a032_wb_returns_claims"),
+                    "file-text",
                 ),
             ],
             admin_only: false,

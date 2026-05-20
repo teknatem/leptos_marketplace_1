@@ -615,6 +615,48 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/a033/wb-day-close",
+        scope_id: Some("a033_wb_day_close"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a033/wb-day-close/compare",
+        scope_id: Some("a033_wb_day_close"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a033/wb-day-close/by-day/:connection_id/:business_date",
+        scope_id: Some("a033_wb_day_close"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a033/wb-day-close/:id",
+        scope_id: Some("a033_wb_day_close"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a033/wb-day-close/:id/recalculate",
+        scope_id: Some("a033_wb_day_close"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a033/wb-day-close/:id/repost-problematic-a012",
+        scope_id: Some("a033_wb_day_close"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a033/wb-day-close/:id/archive-and-recreate",
+        scope_id: Some("a033_wb_day_close"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/bi-timeline/indicators",
         scope_id: Some("bi_timeline"),
         mode: PolicyMode::ReadOnly,

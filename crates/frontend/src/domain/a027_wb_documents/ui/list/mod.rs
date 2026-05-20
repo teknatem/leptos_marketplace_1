@@ -55,6 +55,14 @@ pub struct WbDocumentsListDto {
     pub connection_name: Option<String>,
     pub organization_name: Option<String>,
     pub fetched_at: String,
+    pub realized_goods_total: Option<f64>,
+    pub wb_reward_with_vat: Option<f64>,
+    pub seller_transfer_total: Option<f64>,
+    pub other_deductions: Option<f64>,
+    pub logistics: Option<f64>,
+    pub acquiring: Option<f64>,
+    #[serde(default)]
+    pub max_deviation: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +75,22 @@ pub struct PaginatedResponse {
 }
 
 const TABLE_ID: &str = "a027-wb-documents-table";
+const CHECK_TABLE_ID: &str = "a027-wb-documents-check-table";
+
+fn fmt_optional_amount(value: Option<f64>) -> String {
+    value
+        .map(|amount| format!("{:.2}", amount))
+        .unwrap_or_else(|| "—".to_string())
+}
+
+fn fmt_report_period(from: Option<String>, to: Option<String>) -> String {
+    match (from, to) {
+        (Some(from), Some(to)) => format!("{} — {}", from, to),
+        (Some(from), None) => from,
+        (None, Some(to)) => to,
+        (None, None) => "—".to_string(),
+    }
+}
 
 #[component]
 pub fn WbDocumentsList() -> impl IntoView {
@@ -77,6 +101,7 @@ pub fn WbDocumentsList() -> impl IntoView {
     let (error, set_error) = signal::<Option<String>>(None);
     let (is_filter_expanded, set_is_filter_expanded) = signal(false);
     let (connections, set_connections) = signal::<Vec<ConnectionMP>>(Vec::new());
+    let active_tab = RwSignal::new("documents".to_string());
 
     let load_items = move || {
         spawn_local(async move {
@@ -84,13 +109,14 @@ pub fn WbDocumentsList() -> impl IntoView {
             set_error.set(None);
 
             let s = state.get_untracked();
+            let effective_weekly_only = s.weekly_only || active_tab.get_untracked() == "check";
             let offset = s.page * s.page_size;
             let mut url = format!(
                 "{}/api/a027/wb-documents/list?date_from={}&date_to={}&weekly_only={}&limit={}&offset={}&sort_by={}&sort_desc={}",
                 api_base(),
                 s.date_from,
                 s.date_to,
-                s.weekly_only,
+                effective_weekly_only,
                 s.page_size,
                 offset,
                 s.sort_field,
@@ -246,6 +272,12 @@ pub fn WbDocumentsList() -> impl IntoView {
         load_items();
     };
 
+    let select_tab = move |tab: &'static str| {
+        active_tab.set(tab.to_string());
+        state.update(|s| s.page = 0);
+        load_items();
+    };
+
     let start_download = Callback::new(
         move |(document_id, service_name, extension): (String, String, String)| {
             let set_error = set_error;
@@ -258,7 +290,7 @@ pub fn WbDocumentsList() -> impl IntoView {
                 );
                 let fallback_filename = format!("{}_document.{}", service_name, extension);
                 if let Err(err) = download_authenticated_file(&url, &fallback_filename).await {
-                    set_error.set(Some(format!("РћС€РёР±РєР° СЃРєР°С‡РёРІР°РЅРёСЏ: {}", err)));
+                    set_error.set(Some(format!("Ошибка скачивания: {}", err)));
                 }
             });
         },
@@ -273,6 +305,23 @@ pub fn WbDocumentsList() -> impl IntoView {
                         {move || state.get().total_count.to_string()}
                     </Badge>
                 </div>
+            </div>
+
+            <div class="page__tabs">
+                <button
+                    class="page__tab"
+                    class:page__tab--active=move || active_tab.get() == "documents"
+                    on:click=move |_| select_tab("documents")
+                >
+                    {icon("file-text")} "Документы"
+                </button>
+                <button
+                    class="page__tab"
+                    class:page__tab--active=move || active_tab.get() == "check"
+                    on:click=move |_| select_tab("check")
+                >
+                    {icon("check-square")} "Проверка"
+                </button>
             </div>
 
             <div class="page__content">
@@ -371,6 +420,64 @@ pub fn WbDocumentsList() -> impl IntoView {
 
                 {move || error.get().map(|err| view! { <div class="alert alert--error">{err}</div> })}
 
+                <Show when=move || active_tab.get() == "check">
+                    <div class="table-wrapper">
+                        <TableCrosshairHighlight table_id=CHECK_TABLE_ID.to_string() />
+                        <Table attr:id=CHECK_TABLE_ID attr:style="width: 100%; min-width: 1120px;">
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>"Кабинет"</TableHeaderCell>
+                                    <TableHeaderCell>"Период проверки"</TableHeaderCell>
+                                    <TableHeaderCell attr:style="width:120px;text-align:right;">"Итого стоимость реализованного товара"</TableHeaderCell>
+                                    <TableHeaderCell attr:style="width:120px;text-align:right;">"Сумма вознаграждения WB"</TableHeaderCell>
+                                    <TableHeaderCell attr:style="width:120px;text-align:right;">"Итого к перечислению продавцу"</TableHeaderCell>
+                                    <TableHeaderCell attr:style="width:120px;text-align:right;">"Прочие удержания"</TableHeaderCell>
+                                    <TableHeaderCell attr:style="width:120px;text-align:right;">"Логистика"</TableHeaderCell>
+                                    <TableHeaderCell attr:style="width:120px;text-align:right;">"Эквайринг"</TableHeaderCell>
+                                    <TableHeaderCell attr:style="width:120px;text-align:right;">"Макс. отклонение"</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                <For
+                                    each=move || state.get().items
+                                    key=|item| item.id.clone()
+                                    children=move |item| {
+                                        let detail_id = item.id.clone();
+                                        let detail_name = item.service_name.clone();
+                                        let period_display = fmt_report_period(
+                                            item.report_period_from.clone(),
+                                            item.report_period_to.clone(),
+                                        );
+                                        view! {
+                                            <TableRow>
+                                                <TableCell>
+                                                    <TableCellLayout truncate=true>
+                                                        <a href="#" class="table__link" on:click=move |ev| {
+                                                            ev.prevent_default();
+                                                            open_detail(detail_id.clone(), detail_name.clone());
+                                                        }>
+                                                            {item.connection_name.clone().unwrap_or(item.connection_id.clone())}
+                                                        </a>
+                                                    </TableCellLayout>
+                                                </TableCell>
+                                                <TableCell><TableCellLayout>{period_display}</TableCellLayout></TableCell>
+                                                <TableCell attr:style="width:120px;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{fmt_optional_amount(item.realized_goods_total)}</TableCellLayout></TableCell>
+                                                <TableCell attr:style="width:120px;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{fmt_optional_amount(item.wb_reward_with_vat)}</TableCellLayout></TableCell>
+                                                <TableCell attr:style="width:120px;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{fmt_optional_amount(item.seller_transfer_total)}</TableCellLayout></TableCell>
+                                                <TableCell attr:style="width:120px;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{fmt_optional_amount(item.other_deductions)}</TableCellLayout></TableCell>
+                                                <TableCell attr:style="width:120px;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{fmt_optional_amount(item.logistics)}</TableCellLayout></TableCell>
+                                                <TableCell attr:style="width:120px;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{fmt_optional_amount(item.acquiring)}</TableCellLayout></TableCell>
+                                                <TableCell attr:style="width:120px;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;font-weight:600;">{fmt_optional_amount(item.max_deviation)}</TableCellLayout></TableCell>
+                                            </TableRow>
+                                        }
+                                    }
+                                />
+                            </TableBody>
+                        </Table>
+                    </div>
+                </Show>
+
+                <Show when=move || active_tab.get() != "check">
                 <div class="table-wrapper">
                     <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
                     <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1380px;">
@@ -443,13 +550,10 @@ pub fn WbDocumentsList() -> impl IntoView {
                                         .report_period_to
                                         .clone()
                                         .unwrap_or_else(|| format_date(&item.creation_time));
-                                    let period_display =
-                                        match (item.report_period_from.clone(), item.report_period_to.clone()) {
-                                            (Some(from), Some(to)) => format!("{} — {}", from, to),
-                                            (Some(from), None) => from,
-                                            (None, Some(to)) => to,
-                                            (None, None) => "—".to_string(),
-                                        };
+                                    let period_display = fmt_report_period(
+                                        item.report_period_from.clone(),
+                                        item.report_period_to.clone(),
+                                    );
                                     view! {
                                         <TableRow>
                                             <TableCell>
@@ -512,6 +616,7 @@ pub fn WbDocumentsList() -> impl IntoView {
                         </TableBody>
                     </Table>
                 </div>
+                </Show>
             </div>
         </PageFrame>
     }

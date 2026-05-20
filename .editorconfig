@@ -1,0 +1,10 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{rs,sql,md,toml,html,css,js,ts,json,yml,yaml,py,ps1}]
+charset = utf-8

@@ -228,13 +228,31 @@ const ADVERT_LINKS: &[NavLink] = &[
         marketplaces: LinkScope::Only(WB_ONLY),
         entity_type: EntityType::Projection,
     },
+    NavLink {
+        tab_key: "d404_wb_advert_report",
+        label: "Отчет по рекламе WB",
+        annotation: "Дерево начислений, списаний и расходов без заказа по рекламе WB",
+        icon: "bar-chart-3",
+        scope_id: None,
+        marketplaces: LinkScope::Only(WB_ONLY),
+        entity_type: EntityType::Projection,
+    },
+    NavLink {
+        tab_key: "p913_wb_advert_order_attr",
+        label: "Атрибуция рекламных расходов",
+        annotation: "Резервирование и списание рекламных расходов по заказам (p913)",
+        icon: "layers",
+        scope_id: None,
+        marketplaces: LinkScope::Only(WB_ONLY),
+        entity_type: EntityType::Projection,
+    },
 ];
 
 // ──────────────────── Цены и каталог ──────────────────────
 const PRICES_LINKS: &[NavLink] = &[
     NavLink {
         tab_key: "a007_marketplace_product",
-        label: "Товары МП",
+        label: "Товары маркетплейсов",
         annotation: "Карточки товаров на маркетплейсах и связь с номенклатурой",
         icon: "package",
         scope_id: Some("a007_marketplace_product"),

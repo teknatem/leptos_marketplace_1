@@ -41,7 +41,6 @@ fn status_label(status: Option<i32>) -> &'static str {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WbReturnsClaimsListDto {
     pub id: String,
@@ -152,11 +151,21 @@ pub fn WbReturnsClaimsList() -> impl IntoView {
 
     Effect::new(move || {
         let mut v: Vec<i32> = Vec::new();
-        if status1_on.get() { v.push(1); }
-        if status2_on.get() { v.push(2); }
-        if status3_on.get() { v.push(3); }
-        if status4_on.get() { v.push(4); }
-        if status5_on.get() { v.push(5); }
+        if status1_on.get() {
+            v.push(1);
+        }
+        if status2_on.get() {
+            v.push(2);
+        }
+        if status3_on.get() {
+            v.push(3);
+        }
+        if status4_on.get() {
+            v.push(4);
+        }
+        if status5_on.get() {
+            v.push(5);
+        }
         untrack(move || state.update(|s| s.selected_statuses = v));
     });
 

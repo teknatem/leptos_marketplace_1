@@ -205,6 +205,17 @@ async fn replace_for_period_scoped(
             &projection_ref,
         )
         .await?;
+        crate::projections::p911_wb_advert_by_items::repository::delete_by_registrator_ref_with_conn(
+            &txn,
+            id,
+        )
+        .await?;
+        crate::projections::p913_wb_advert_order_attr::repository::delete_by_registrator_with_conn(
+            &txn,
+            "a026_wb_advert_daily",
+            &registrator_ref,
+        )
+        .await?;
     }
 
     tracing::info!(
@@ -536,7 +547,7 @@ pub async fn list_sql(query: WbAdvertDailyListQuery) -> Result<WbAdvertDailyList
 }
 
 /// Максимум документов в одном CSV-отчёте (без тихой обрезки).
-pub const A026_REPORT_MAX_DOCUMENTS: usize = 2000;
+pub const A026_REPORT_MAX_DOCUMENTS: usize = 10_000;
 
 /// Верхняя граница строк позиций в отчёте (после фильтра по позиции), если фильтр пустой — по SUM(lines_count).
 pub const A026_REPORT_MAX_LINE_ROWS: i64 = 200_000;
@@ -670,6 +681,35 @@ pub async fn list_by_advert_id(connection_id: &str, advert_id: i64) -> Result<Ve
         .all(db)
         .await?;
     Ok(models.into_iter().map(Into::into).collect())
+}
+
+/// Возвращает диапазон document_date для каждой пары (connection_id, advert_id):
+/// HashMap<(connection_id, advert_id), (min_date, max_date)>.
+/// Используется для списка a030, чтобы показать первый/последний день отчёта по кампании.
+pub async fn date_range_by_campaign() -> Result<HashMap<(String, i64), (String, String)>> {
+    let db = get_connection();
+    let sql = "SELECT connection_id, advert_id, MIN(document_date) AS min_d, MAX(document_date) AS max_d \
+               FROM a026_wb_advert_daily \
+               WHERE is_deleted = 0 \
+               GROUP BY connection_id, advert_id"
+        .to_string();
+    let rows = db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await?;
+    let mut map = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let conn_id: String = row.try_get("", "connection_id").unwrap_or_default();
+        let advert_id: i64 = row.try_get("", "advert_id").unwrap_or_default();
+        let min_d: String = row.try_get("", "min_d").unwrap_or_default();
+        let max_d: String = row.try_get("", "max_d").unwrap_or_default();
+        if !conn_id.is_empty() && advert_id > 0 {
+            map.insert((conn_id, advert_id), (min_d, max_d));
+        }
+    }
+    Ok(map)
 }
 
 pub fn subtract_metrics(

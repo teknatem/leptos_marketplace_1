@@ -40,20 +40,14 @@ pub async fn auto_fill_references(document: &mut WbOrders) -> Result<()> {
         }
     }
 
-    // Автозаполнение nomenclature_ref из marketplace_product
-    if document.nomenclature_ref.is_none() {
-        if let Some(ref mp_ref) = document.marketplace_product_ref {
-            if let Ok(mp_uuid) = uuid::Uuid::parse_str(mp_ref) {
-                if let Ok(Some(mp)) =
-                    crate::domain::a007_marketplace_product::service::get_by_id(mp_uuid).await
-                {
-                    if let Some(nom_ref) = mp.nomenclature_ref {
-                        document.nomenclature_ref = Some(nom_ref);
-                    }
-                }
-            }
-        }
-    }
+    // Перепроведение всегда зеркалит актуальное состояние a007 — единый резолвер.
+    document.nomenclature_ref =
+        crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
+            &document.header.connection_id,
+            document.line.nm_id,
+            Some(&document.line.supplier_article),
+        )
+        .await?;
 
     refill_base_nomenclature_ref(document).await?;
 

@@ -10,3 +10,4 @@ pub mod p908_wb_goods_prices;
 pub mod p909_mp_order_line_turnovers;
 pub mod p910_mp_unlinked_turnovers;
 pub mod p911_wb_advert_by_items;
+pub mod p913_wb_advert_order_attr;

@@ -26,6 +26,22 @@ pub struct WbAdvertCampaignListItemDto {
     pub nm_count: i32,
     pub change_time: Option<String>,
     pub fetched_at: String,
+    /// Сумма начислений из p913 (advert_clicks_order_accrual) — связано с этой кампанией.
+    #[serde(default)]
+    pub p913_accrual: f64,
+    /// Сумма списаний из p913 (advert_clicks_order_expense) по этой кампании.
+    #[serde(default)]
+    pub p913_writeoff: f64,
+    /// Остаток = accrual - writeoff.
+    #[serde(default)]
+    pub p913_balance: f64,
+    /// Реализация: сумма заказов a012 (finished_price), к которым привязаны расходы кампании.
+    #[serde(default)]
+    pub p913_realization: f64,
+    /// Первая дата документа a026 по этой кампании.
+    pub report_date_from: Option<String>,
+    /// Последняя дата документа a026 по этой кампании.
+    pub report_date_to: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -68,21 +84,54 @@ pub async fn list(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    let p913_aggregates =
+        crate::projections::p913_wb_advert_order_attr::repository::aggregate_by_campaign()
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to aggregate p913 for a030 list: {}", e);
+                std::collections::HashMap::new()
+            });
+
+    let date_ranges = crate::domain::a026_wb_advert_daily::repository::date_range_by_campaign()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to aggregate a026 date range for a030 list: {}", e);
+            std::collections::HashMap::new()
+        });
+
     Ok(Json(
         items
             .into_iter()
-            .map(|item| WbAdvertCampaignListItemDto {
-                id: item.base.id.value().to_string(),
-                advert_id: item.header.advert_id,
-                description: item.base.description,
-                connection_id: item.header.connection_id,
-                organization_id: item.header.organization_id,
-                marketplace_id: item.header.marketplace_id,
-                campaign_type: item.header.campaign_type,
-                status: item.header.status,
-                nm_count: item.header.nm_count,
-                change_time: item.header.change_time,
-                fetched_at: item.source_meta.fetched_at,
+            .map(|item| {
+                let key = item.header.advert_id.to_string();
+                let (accrual, writeoff, realization) = p913_aggregates
+                    .get(&key)
+                    .copied()
+                    .unwrap_or((0.0, 0.0, 0.0));
+                let (date_from, date_to) = date_ranges
+                    .get(&(item.header.connection_id.clone(), item.header.advert_id))
+                    .cloned()
+                    .map(|(a, b)| (Some(a), Some(b)))
+                    .unwrap_or((None, None));
+                WbAdvertCampaignListItemDto {
+                    id: item.base.id.value().to_string(),
+                    advert_id: item.header.advert_id,
+                    description: item.base.description,
+                    connection_id: item.header.connection_id,
+                    organization_id: item.header.organization_id,
+                    marketplace_id: item.header.marketplace_id,
+                    campaign_type: item.header.campaign_type,
+                    status: item.header.status,
+                    nm_count: item.header.nm_count,
+                    change_time: item.header.change_time,
+                    fetched_at: item.source_meta.fetched_at,
+                    p913_accrual: accrual,
+                    p913_writeoff: writeoff,
+                    p913_balance: accrual - writeoff,
+                    p913_realization: realization,
+                    report_date_from: date_from,
+                    report_date_to: date_to,
+                }
             })
             .collect(),
     ))
