@@ -35,6 +35,7 @@ async fn fetch_nomenclature_paginated(
     sort_desc: bool,
     q: &str,
     only_mp: bool,
+    no_analytics: bool,
 ) -> Result<PaginatedResponse, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
@@ -44,13 +45,14 @@ async fn fetch_nomenclature_paginated(
     opts.set_mode(RequestMode::Cors);
 
     let mut url = format!(
-        "{}/api/a004/nomenclature?limit={}&offset={}&sort_by={}&sort_desc={}&only_mp={}",
+        "{}/api/a004/nomenclature?limit={}&offset={}&sort_by={}&sort_desc={}&only_mp={}&no_analytics={}",
         api_base(),
         limit,
         offset,
         sort_by,
         sort_desc,
-        only_mp
+        only_mp,
+        no_analytics
     );
 
     let q_trimmed = q.trim();
@@ -83,6 +85,45 @@ async fn fetch_nomenclature_paginated(
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     serde_json::from_str(&text).map_err(|e| format!("{e}"))
+}
+
+async fn fetch_all_nomenclature_for_export(
+    sort_by: &str,
+    sort_desc: bool,
+    q: &str,
+    only_mp: bool,
+    no_analytics: bool,
+) -> Result<Vec<Nomenclature>, String> {
+    let page_size = 1000;
+    let mut offset = 0;
+    let mut all_items = Vec::new();
+
+    loop {
+        let page = fetch_nomenclature_paginated(
+            page_size,
+            offset,
+            sort_by,
+            sort_desc,
+            q,
+            only_mp,
+            no_analytics,
+        )
+        .await?;
+
+        let total = page.total as usize;
+        if page.items.is_empty() {
+            break;
+        }
+
+        all_items.extend(page.items);
+        if all_items.len() >= total {
+            break;
+        }
+
+        offset += page_size;
+    }
+
+    Ok(all_items)
 }
 
 // Реализация ExcelExportable для экспорта в Excel
@@ -124,11 +165,13 @@ pub fn NomenclatureList() -> impl IntoView {
 
     let (items, set_items) = signal(Vec::<Nomenclature>::new());
     let (is_loading, set_is_loading) = signal(false);
+    let (is_exporting, set_is_exporting) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
     // Фильтры
     let q = RwSignal::new(state.get_untracked().q.clone());
     let only_mp = RwSignal::new(state.get_untracked().only_mp);
+    let no_analytics = RwSignal::new(state.get_untracked().no_analytics);
 
     // Сортировка
     let sort_field = RwSignal::new(state.get_untracked().sort_field.clone());
@@ -184,6 +227,7 @@ pub fn NomenclatureList() -> impl IntoView {
         let sort_desc = !s.sort_ascending;
         let q_val = s.q.clone();
         let only_mp_val = s.only_mp;
+        let no_analytics_val = s.no_analytics;
         let sort_by = s.sort_field.clone();
 
         leptos::task::spawn_local(async move {
@@ -194,6 +238,7 @@ pub fn NomenclatureList() -> impl IntoView {
                 sort_desc,
                 &q_val,
                 only_mp_val,
+                no_analytics_val,
             )
             .await
             {
@@ -274,6 +319,21 @@ pub fn NomenclatureList() -> impl IntoView {
         }
         state.update(|s| {
             s.only_mp = v;
+            s.page = 0;
+        });
+        load();
+    });
+
+    // sync no_analytics -> state.no_analytics and reload
+    let no_analytics_first_run = StoredValue::new(true);
+    Effect::new(move |_| {
+        let v = no_analytics.get();
+        if no_analytics_first_run.get_value() {
+            no_analytics_first_run.set_value(false);
+            return;
+        }
+        state.update(|s| {
+            s.no_analytics = v;
             s.page = 0;
         });
         load();
@@ -386,26 +446,63 @@ pub fn NomenclatureList() -> impl IntoView {
 
     // Обработка экспорта в Excel
     let handle_excel_export = move || {
-        let page_items = items.get();
-        if page_items.is_empty() {
-            web_sys::window()
-                .and_then(|w| Some(w.alert_with_message("Нет данных для экспорта").ok()));
+        if is_exporting.get_untracked() {
             return;
         }
 
-        let filename = format!(
-            "nomenclature_{}.csv",
-            chrono::Utc::now().format("%Y%m%d_%H%M%S")
-        );
+        set_is_exporting.set(true);
+        let s = state.get_untracked();
+        let sort_by = s.sort_field;
+        let sort_desc = !s.sort_ascending;
+        let q_val = s.q;
+        let only_mp_val = s.only_mp;
+        let no_analytics_val = s.no_analytics;
 
-        if let Err(e) = export_to_excel(&page_items, &filename) {
-            web_sys::window().and_then(|w| {
-                Some(
-                    w.alert_with_message(&format!("Ошибка экспорта: {}", e))
-                        .ok(),
-                )
-            });
-        }
+        leptos::task::spawn_local(async move {
+            match fetch_all_nomenclature_for_export(
+                &sort_by,
+                sort_desc,
+                &q_val,
+                only_mp_val,
+                no_analytics_val,
+            )
+            .await
+            {
+                Ok(export_items) => {
+                    if export_items.is_empty() {
+                        web_sys::window().and_then(|w| {
+                            Some(w.alert_with_message("Нет данных для экспорта").ok())
+                        });
+                    } else {
+                        let filename = format!(
+                            "nomenclature_{}.csv",
+                            chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                        );
+
+                        if let Err(e) = export_to_excel(&export_items, &filename) {
+                            web_sys::window().and_then(|w| {
+                                Some(
+                                    w.alert_with_message(&format!("Ошибка экспорта: {}", e))
+                                        .ok(),
+                                )
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    web_sys::window().and_then(|w| {
+                        Some(
+                            w.alert_with_message(&format!(
+                                "Ошибка загрузки данных для экспорта: {}",
+                                e
+                            ))
+                            .ok(),
+                        )
+                    });
+                }
+            }
+            set_is_exporting.set(false);
+        });
     };
 
     view! {
@@ -430,9 +527,13 @@ pub fn NomenclatureList() -> impl IntoView {
                         {icon("upload")}
                         " Импорт"
                     </Button>
-                    <Button appearance=ButtonAppearance::Secondary on_click=move |_| handle_excel_export()>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| handle_excel_export()
+                        disabled=move || is_exporting.get()
+                    >
                         {icon("download")}
-                        "Excel (csv)"
+                        {move || if is_exporting.get() { "Выгрузка..." } else { "Excel (csv)" }}
                     </Button>
                 </div>
             </div>
@@ -484,6 +585,10 @@ pub fn NomenclatureList() -> impl IntoView {
 
                             <div style="min-width: 220px; padding-bottom: 2px;">
                                 <Checkbox checked=only_mp label="Только из маркетплейсов" />
+                            </div>
+
+                            <div style="min-width: 220px; padding-bottom: 2px;">
+                                <Checkbox checked=no_analytics label="Позиции без аналитики" />
                             </div>
                         </Flex>
                     </div>

@@ -177,18 +177,16 @@ pub async fn query_history(req: TaskHistoryRequest) -> Result<TaskHistoryRespons
     let bucket_size_seconds = bucket_size_seconds(req.scale);
     let mut values = vec![0.0_f64; bucket_count as usize];
 
-    let rows = runs_repository::query_history_runs(&date_from_sql, &date_to_sql, req.task_ids.as_deref())
-    .await
-    .map_err(|e| anyhow::anyhow!("Database error: {}", e))?;
+    let rows =
+        runs_repository::query_history_runs(&date_from_sql, &date_to_sql, req.task_ids.as_deref())
+            .await
+            .map_err(|e| anyhow::anyhow!("Database error: {}", e))?;
 
     let now = Utc::now();
     for row in rows {
         let started_local = row.started_at.naive_utc() + Duration::hours(HISTORY_TZ_OFFSET_HOURS);
-        let finished_local = row
-            .finished_at
-            .unwrap_or(now)
-            .naive_utc()
-            + Duration::hours(HISTORY_TZ_OFFSET_HOURS);
+        let finished_local =
+            row.finished_at.unwrap_or(now).naive_utc() + Duration::hours(HISTORY_TZ_OFFSET_HOURS);
         let interval_start = started_local.max(local_start);
         let interval_end = finished_local.min(local_end);
         if interval_end < local_start || interval_start >= local_end {
@@ -196,7 +194,9 @@ pub async fn query_history(req: TaskHistoryRequest) -> Result<TaskHistoryRespons
         }
 
         let start_seconds = (interval_start - local_start).num_seconds().max(0);
-        let end_seconds = (interval_end - local_start).num_seconds().max(start_seconds);
+        let end_seconds = (interval_end - local_start)
+            .num_seconds()
+            .max(start_seconds);
         let first_bucket = (start_seconds / bucket_size_seconds).max(0) as u32;
         let last_bucket = if end_seconds <= start_seconds {
             first_bucket
@@ -304,4 +304,3 @@ fn bucket_count(
         TaskHistoryScale::Month => (minutes / 60) as u32,
     })
 }
-

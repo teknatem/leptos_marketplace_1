@@ -1,6 +1,8 @@
 pub mod audit;
 pub mod auth;
+pub mod favorites;
 pub mod form_settings;
+pub mod history;
 pub mod logs;
 pub mod roles;
 pub mod runtime_info;

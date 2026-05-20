@@ -42,7 +42,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a027_wb_documents" => A027.ui.list_name,
 
         "a003_counterparty" => "Контрагенты",
-        "a007_marketplace_product" => "Товары МП",
+        "a007_marketplace_product" => "Товары маркетплейсов",
         "a008_marketplace_sales" => "Продажи МП",
         "a009_ozon_returns" => "Возвраты OZON",
         "a010_ozon_fbs_posting" => "OZON FBS Posting",
@@ -63,12 +63,15 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "u508_repost_documents" => "Перепроведение по проекции",
         "general_ledger" => "Главная книга",
         "general_ledger_turnovers" => "Обороты GL",
+        "general_ledger_dimensions" => "Измерения GL",
         "general_ledger_report" => "Отчёт GL",
         "gl_account_view__7609" => "Ведомость по кабинетам",
         "wb_weekly_reconciliation" => "Сверка weekly WB и GL 7609",
         k if k.starts_with("gl_drilldown__") => "Детализация GL",
         k if k.starts_with("bi_timeline__") => "BI Timeline",
         k if k.starts_with("general_ledger_details_") => "Главная книга",
+        k if k.starts_with("general_ledger_turnover_details_") => "Оборот GL",
+        k if k.starts_with("general_ledger_dimensions__") => "Измерения GL",
         "a021_production_output" => "Выпуск продукции",
         "a022_kit_variant" => "Варианты комплектации",
         "a023_purchase_of_goods" => "Приобретение товаров",
@@ -81,6 +84,8 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         k if k.starts_with("a031_kb_edit_details_") => "Редактирование KB",
         "a032_wb_returns_claims" => "Заявки на возврат WB",
         k if k.starts_with("a032_wb_returns_claims_details_") => "Заявка на возврат WB",
+        "a033_wb_day_close" => "Закрытие дня WB",
+        k if k.starts_with("a033_wb_day_close_details_") => "Закрытие дня WB",
         "knowledge_base" => "База знаний",
         k if k.starts_with("kb_article_") => "Статья KB",
 
@@ -92,6 +97,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "p909_mp_order_line_turnovers" => "MP Order Line Turnovers",
         "p910_mp_unlinked_turnovers" => "MP Unlinked Turnovers",
         "p911_wb_advert_by_items" => "WB Advert By Items",
+        "p913_wb_advert_order_attr" => "Атрибуция расходов WB",
         "p905_commission_history" => "WB Commission History",
         "p906_nomenclature_prices" => "Дилерские цены (УТ)",
         "p907_ym_payment_report" => "YM Отчёт по платежам",
@@ -100,6 +106,8 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "d400_monthly_summary" => "Сводка за месяц",
         "d401_metadata_dashboard" => "Метаданные",
         "d401_wb_finance" => "WB Finance",
+        "d402_wb_order_flow" => "Схема заказа WB",
+        k if k.starts_with("d402_wb_order_flow_srid_") => "Схема заказа WB",
 
         "sys_users" => "Пользователи",
         k if k.starts_with("sys_user_details_") => "Пользователь",
@@ -121,7 +129,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "filter_registry" => "Реестр фильтров",
         "drilldown__new" => "Детализация",
 
-        "navigator_marketplace" => "Маркетплейсы (навигатор)",
+        "navigator_marketplace" => "Все по маркетплейсам",
 
         _ => "",
     }

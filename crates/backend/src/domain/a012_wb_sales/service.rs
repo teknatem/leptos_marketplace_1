@@ -13,10 +13,6 @@ const ZERO_UUID: &str = "00000000-0000-0000-0000-000000000000";
 pub struct PostingPreparationCache {
     connection_by_id:
         HashMap<String, Option<contracts::domain::a006_connection_mp::aggregate::ConnectionMP>>,
-    marketplace_product_by_id: HashMap<
-        String,
-        Option<contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct>,
-    >,
     acquiring_fee_rate_by_marketplace_id: HashMap<String, f64>,
     resolved_price_by_nom_and_date: HashMap<
         (String, String),
@@ -47,24 +43,6 @@ impl PostingPreparationCache {
         };
         self.connection_by_id
             .insert(connection_id.to_string(), resolved.clone());
-        Ok(resolved)
-    }
-
-    async fn get_marketplace_product(
-        &mut self,
-        marketplace_product_ref: &str,
-    ) -> Result<Option<contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct>>
-    {
-        if let Some(value) = self.marketplace_product_by_id.get(marketplace_product_ref) {
-            return Ok(value.clone());
-        }
-
-        let resolved = match Uuid::parse_str(marketplace_product_ref) {
-            Ok(id) => crate::domain::a007_marketplace_product::service::get_by_id(id).await?,
-            Err(_) => None,
-        };
-        self.marketplace_product_by_id
-            .insert(marketplace_product_ref.to_string(), resolved.clone());
         Ok(resolved)
     }
 
@@ -796,7 +774,7 @@ pub async fn sync_organization_from_connection_cached(
 
 pub async fn auto_fill_references_cached(
     document: &mut WbSales,
-    cache: &mut PostingPreparationCache,
+    _cache: &mut PostingPreparationCache,
 ) -> Result<bool> {
     let mut changed = false;
 
@@ -829,15 +807,16 @@ pub async fn auto_fill_references_cached(
         }
     }
 
-    if document.nomenclature_ref.is_none() {
-        if let Some(mp_ref) = document.marketplace_product_ref.as_deref() {
-            if let Some(mp) = cache.get_marketplace_product(mp_ref).await? {
-                if let Some(nom_ref) = mp.nomenclature_ref {
-                    document.nomenclature_ref = Some(nom_ref);
-                    changed = true;
-                }
-            }
-        }
+    // Перепроведение всегда зеркалит актуальное состояние a007 — единый резолвер.
+    let resolved = crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
+        &document.header.connection_id,
+        document.line.nm_id,
+        Some(&document.line.supplier_article),
+    )
+    .await?;
+    if document.nomenclature_ref != resolved {
+        document.nomenclature_ref = resolved;
+        changed = true;
     }
 
     Ok(changed)

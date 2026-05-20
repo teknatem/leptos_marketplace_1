@@ -8,6 +8,7 @@ pub mod accounting;
 pub mod dto;
 pub mod metadata;
 pub mod report;
+pub mod resource_detail;
 pub mod turnover;
 pub mod weekly_reconciliation;
 
@@ -16,10 +17,12 @@ pub use accounting::{AccountDef, AccountType, NormalBalance, StatementSection};
 pub use dto::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
 pub use metadata::{ENTITY_METADATA, FIELDS};
 pub use report::{
-    GlDimensionDef, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse, GlDrilldownRow,
+    GlDimensionCatalogItem, GlDimensionDef, GlDimensionUsageRef, GlDimensionsCatalogResponse,
+    GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse, GlDrilldownRow,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
     GlReportQuery, GlReportResponse, GlReportRow,
 };
+pub use resource_detail::{GlResourceDetailResponse, GlResourceDetailTotals};
 pub use turnover::{
     AggKind, AmountColumn, DateSource, EventKind, KeySource, ReportGroup, SelectionRule,
     SignPolicy, SourceRefStrategy, TargetProjection, TurnoverClassDef, TurnoverLayer,

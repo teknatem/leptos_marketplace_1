@@ -111,7 +111,7 @@ GET  /api/general-ledger/turnovers  -> реестр видов оборотов 
 | `mp_logistics`                  | Логистика МП                | 4404 | 7609 | logistics    |
 | `mp_storage`                    | Хранение МП                 | 4404 | 7609 | storage      |
 | `mp_penalty`                    | Штраф МП                    | 9102 | 7609 | penalty      |
-| `advertising_allocated`         | Реклама (WB Advert)         | 4401 | 7609 | advertising  |
+| `advert_clicks_no_order`         | Реклама (WB Advert)         | 9102 | 7609 | advertising  |
 | `voluntary_return_compensation` | Добровольная компенсация    | 7609 | 91   | other        |
 
 ## Источники проводок

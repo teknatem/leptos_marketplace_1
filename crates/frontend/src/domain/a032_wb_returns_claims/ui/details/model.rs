@@ -60,6 +60,21 @@ pub struct MetadataDto {
     pub version: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionInfo {
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrganizationInfo {
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceInfo {
+    pub name: String,
+}
+
 pub async fn fetch_by_id(id: &str) -> Result<WbReturnsClaimsDetailDto, String> {
     let url = format!("{}/api/a032/wb-returns-claims/{}", api_base(), id);
     let response = Request::get(&url)
@@ -79,4 +94,104 @@ pub async fn fetch_by_id(id: &str) -> Result<WbReturnsClaimsDetailDto, String> {
         .await
         .map_err(|e| format!("Ошибка чтения ответа: {}", e))?;
     serde_json::from_str(&text).map_err(|e| format!("Ошибка парсинга: {}", e))
+}
+
+pub async fn fetch_connection(id: &str) -> Result<ConnectionInfo, String> {
+    let url = format!("{}/api/connection_mp/{}", api_base(), id);
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch connection: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+
+    Ok(ConnectionInfo {
+        description: json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+pub async fn fetch_organization(id: &str) -> Result<OrganizationInfo, String> {
+    let url = format!("{}/api/organization/{}", api_base(), id);
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch organization: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+
+    Ok(OrganizationInfo {
+        description: json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+pub async fn fetch_marketplace(id: &str) -> Result<MarketplaceInfo, String> {
+    let url = format!("{}/api/marketplace/{}", api_base(), id);
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch marketplace: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+
+    Ok(MarketplaceInfo {
+        name: json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
+#[derive(Deserialize)]
+struct OrderIdDto {
+    pub id: String,
+}
+
+pub async fn resolve_order_uuid_by_srid(srid: &str) -> Option<String> {
+    let url = format!(
+        "{}/api/a015/wb-orders/search-by-srid?srid={}",
+        api_base(),
+        urlencoding::encode(srid)
+    );
+    let response = Request::get(&url).send().await.ok()?;
+    if !response.ok() {
+        return None;
+    }
+    let orders: Vec<OrderIdDto> = response.json().await.ok()?;
+    orders.into_iter().next().map(|o| o.id)
 }

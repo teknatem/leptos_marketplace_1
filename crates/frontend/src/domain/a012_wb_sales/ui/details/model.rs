@@ -2,6 +2,7 @@
 //!
 //! Contains DTOs and async API functions for fetching and mutating WB Sales data.
 
+use crate::general_ledger::api::fetch_document_general_ledger_entries;
 use crate::shared::api_utils::api_base;
 use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
@@ -443,12 +444,60 @@ pub async fn fetch_marketplace(id: &str) -> Result<MarketplaceInfo, String> {
 
 /// Fetch journal entries for a WB Sales document
 pub async fn fetch_general_ledger_entries(id: &str) -> Result<Vec<GeneralLedgerEntryDto>, String> {
-    let url = format!("{}/api/a012/wb-sales/{}/journal", api_base(), id);
+    fetch_document_general_ledger_entries("a012_wb_sales", id).await
+}
+
+// ─── Advert attribution (расшифровка advert_clicks_order_expense) ────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvertAttributionRow {
+    pub id: String,
+    pub entry_date: String,
+    pub advert_id: String,
+    #[serde(default)]
+    pub nomenclature_ref: Option<String>,
+    #[serde(default)]
+    pub nomenclature_article: Option<String>,
+    pub amount: f64,
+    pub ratio_percent: f64,
+    #[serde(default)]
+    pub is_problem: bool,
+    #[serde(default)]
+    pub a026_id: Option<String>,
+    #[serde(default)]
+    pub a026_document_no: Option<String>,
+    #[serde(default)]
+    pub a026_document_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvertAttributionTotals {
+    pub rows_count: usize,
+    pub campaigns_count: usize,
+    pub sum: f64,
+    #[serde(default)]
+    pub gl_advert_expense: Option<f64>,
+    #[serde(default)]
+    pub is_match: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvertAttributionResponse {
+    pub srid: String,
+    pub is_posted: bool,
+    pub is_customer_return: bool,
+    pub totals: AdvertAttributionTotals,
+    pub rows: Vec<AdvertAttributionRow>,
+}
+
+/// Fetch advert attribution for a WB Sales document (расшифровка advert_clicks_order_expense)
+pub async fn fetch_advert_attribution(id: &str) -> Result<AdvertAttributionResponse, String> {
+    let url = format!("{}/api/a012/wb-sales/{}/advert-attribution", api_base(), id);
 
     let response = Request::get(&url)
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch journal entries: {}", e))?;
+        .map_err(|e| format!("Failed to fetch advert attribution: {}", e))?;
 
     if response.status() != 200 {
         return Err(format!("Server error: {}", response.status()));
@@ -459,15 +508,7 @@ pub async fn fetch_general_ledger_entries(id: &str) -> Result<Vec<GeneralLedgerE
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    let json: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
-
-    let entries = json
-        .get("entries")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-
-    Ok(entries)
+    serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))
 }
 
 /// Refresh dealer price

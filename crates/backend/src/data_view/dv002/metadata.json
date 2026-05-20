@@ -4,13 +4,13 @@
   "category": "expenses",
   "version": 1,
   "description": "Метрика рекламных расходов WB по номенклатуре за период. Поддерживает сравнение с предыдущим периодом, sparkline и drilldown по измерениям.",
-  "ai_description": "DataView для расчёта рекламных расходов из таблицы p911_wb_advert_by_items. Использует одну метрику advertising_expenses = SUM(amount). Возвращает scalar за период 1, значение периода 2, change_percent, status и sparkline по дням entry_date. Поддерживает drilldown по date, connection_mp_ref, marketplace, nomenclature_ref, dim1..dim6, layer, turnover_code, registrator_type, registrator_ref и general_ledger_ref. Если period2 не задан, автоматически используется предыдущий месяц.",
+  "ai_description": "DataView для расчёта рекламных расходов из таблицы p911_wb_advert_by_items. Использует одну метрику advertising_expenses = SUM(amount). Возвращает scalar за период 1, значение периода 2, change_percent, status и sparkline по дням entry_date. Поддерживает drilldown по date, connection_mp_ref, marketplace, nomenclature_ref, dim1..dim6, wb_advert_campaign_code, turnover_code, registrator_type, registrator_ref и general_ledger_ref. Если period2 не задан, автоматически используется предыдущий месяц.",
   "data_sources": ["p911_wb_advert_by_items"],
   "available_resources": [
     {
       "id": "advertising_expenses",
       "label": "Рекламные расходы",
-      "description": "SUM(amount) по проводкам advertising_allocated из p911_wb_advert_by_items",
+      "description": "SUM(amount) по проводкам advert_clicks_no_order из p911_wb_advert_by_items",
       "unit": "currency"
     }
   ],
@@ -94,10 +94,10 @@
       "join_on_column": "nomenclature_ref"
     },
     {
-      "id": "layer",
-      "label": "По слою",
-      "description": "oper / accrual / ...",
-      "db_column": "layer"
+      "id": "wb_advert_campaign_code",
+      "label": "По рекламной кампании WB",
+      "description": "Код рекламной кампании WB (advert_id из a030_wb_advert_campaign)",
+      "db_column": "wb_advert_campaign_code"
     },
     {
       "id": "turnover_code",

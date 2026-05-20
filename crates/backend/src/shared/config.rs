@@ -3,10 +3,23 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 static EXT_API_KEY: OnceLock<String> = OnceLock::new();
+static SCHEDULER_CONFIG_ENABLED: OnceLock<bool> = OnceLock::new();
 
 /// Set the external API key once at application startup.
 pub fn set_ext_api_key(key: String) {
     let _ = EXT_API_KEY.set(key);
+}
+
+/// Remember the config.toml `[scheduled_tasks].enabled` value at startup,
+/// so the UI can warn when the scheduler is disabled at the config level.
+pub fn set_scheduler_config_enabled(enabled: bool) {
+    let _ = SCHEDULER_CONFIG_ENABLED.set(enabled);
+}
+
+/// Returns whether the scheduler is enabled in config.toml. Defaults to `true`
+/// if it was never set (e.g. config failed to load).
+pub fn get_scheduler_config_enabled() -> bool {
+    *SCHEDULER_CONFIG_ENABLED.get().unwrap_or(&true)
 }
 
 /// Returns the configured external API key, or `None` if not set or empty.

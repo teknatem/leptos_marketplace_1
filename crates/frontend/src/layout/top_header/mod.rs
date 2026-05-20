@@ -11,6 +11,8 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::theme::ThemeSelect;
 use crate::system::auth::context::{do_logout, use_auth};
+use crate::system::favorites::ui::FavoritesHeaderButton;
+use crate::system::history::ui::HistoryHeaderButton;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -105,6 +107,8 @@ pub fn TopHeader() -> impl IntoView {
                 </button>
 
                 // Theme selector
+                <HistoryHeaderButton />
+                <FavoritesHeaderButton />
                 <ThemeSelect />
 
                 // User info

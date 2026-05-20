@@ -460,6 +460,7 @@ fn StatsTab(
     stats_loading: ReadSignal<bool>,
     stored_stats: StoredValue<Vec<AdvertDailyStatRow>>,
 ) -> impl IntoView {
+    let tabs_ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     view! {
         <div style="padding:var(--spacing-sm);">
             <Show when=move || stats_loading.get()>
@@ -511,12 +512,27 @@ fn StatsTab(
                                             } else {
                                                 "color:var(--color-text-tertiary);"
                                             };
+                                            let doc_id = row.id.clone();
+                                            let doc_date_label = row.document_date.clone();
+                                            let tab_title = format!("WB Ads {}", row.document_date);
+                                            let tabs_ctx = tabs_ctx.clone();
                                             view! {
                                                 <TableRow>
                                                     <TableCell>
-                                                        <span style="font-family:monospace; font-size:13px;">
-                                                            {row.document_date}
-                                                        </span>
+                                                        <a
+                                                            href="#"
+                                                            class="table__link"
+                                                            style="font-family:monospace; font-size:13px;"
+                                                            on:click=move |e| {
+                                                                e.prevent_default();
+                                                                tabs_ctx.open_tab(
+                                                                    &format!("a026_wb_advert_daily_details_{}", doc_id),
+                                                                    &tab_title,
+                                                                );
+                                                            }
+                                                        >
+                                                            {doc_date_label}
+                                                        </a>
                                                     </TableCell>
                                                     <TableCell attr:style="text-align:right;">
                                                         <span style="font-size:13px;">{row.total_views.to_string()}</span>

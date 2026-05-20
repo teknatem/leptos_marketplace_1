@@ -510,7 +510,10 @@ pub async fn get_change_tokens() -> impl IntoResponse {
 /// GET /api/sys/scheduler/status
 pub async fn get_scheduler_status() -> Result<Json<SchedulerStatusDto>, axum::http::StatusCode> {
     match crate::system::settings::service::get_scheduler_enabled().await {
-        Ok(enabled) => Ok(Json(SchedulerStatusDto { enabled })),
+        Ok(enabled) => Ok(Json(SchedulerStatusDto {
+            enabled,
+            config_enabled: crate::shared::config::get_scheduler_config_enabled(),
+        })),
         Err(e) => {
             tracing::error!("Failed to get scheduler status: {}", e);
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
@@ -525,6 +528,7 @@ pub async fn set_scheduler_status(
     match crate::system::settings::service::set_scheduler_enabled(dto.enabled).await {
         Ok(_) => Ok(Json(SchedulerStatusDto {
             enabled: dto.enabled,
+            config_enabled: crate::shared::config::get_scheduler_config_enabled(),
         })),
         Err(e) => {
             tracing::error!("Failed to set scheduler status: {}", e);

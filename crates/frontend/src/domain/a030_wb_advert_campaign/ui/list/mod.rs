@@ -27,6 +27,18 @@ pub struct WbAdvertCampaignListDto {
     pub nm_count: i32,
     pub change_time: Option<String>,
     pub fetched_at: String,
+    #[serde(default)]
+    pub p913_accrual: f64,
+    #[serde(default)]
+    pub p913_writeoff: f64,
+    #[serde(default)]
+    pub p913_balance: f64,
+    #[serde(default)]
+    pub p913_realization: f64,
+    #[serde(default)]
+    pub report_date_from: Option<String>,
+    #[serde(default)]
+    pub report_date_to: Option<String>,
 }
 
 impl Sortable for WbAdvertCampaignListDto {
@@ -43,13 +55,32 @@ impl Sortable for WbAdvertCampaignListDto {
             "change_time" => self.change_time.cmp(&other.change_time),
             "fetched_at" => self.fetched_at.cmp(&other.fetched_at),
             "connection_id" => self.connection_id.cmp(&other.connection_id),
+            "p913_accrual" => self
+                .p913_accrual
+                .partial_cmp(&other.p913_accrual)
+                .unwrap_or(Ordering::Equal),
+            "p913_writeoff" => self
+                .p913_writeoff
+                .partial_cmp(&other.p913_writeoff)
+                .unwrap_or(Ordering::Equal),
+            "p913_balance" => self
+                .p913_balance
+                .partial_cmp(&other.p913_balance)
+                .unwrap_or(Ordering::Equal),
+            "p913_realization" => self
+                .p913_realization
+                .partial_cmp(&other.p913_realization)
+                .unwrap_or(Ordering::Equal),
+            "report_date_from" => self.report_date_from.cmp(&other.report_date_from),
+            "report_date_to" => self.report_date_to.cmp(&other.report_date_to),
             _ => Ordering::Equal,
         }
     }
 }
 
 const TABLE_ID: &str = "a030-wb-advert-campaign-table";
-const COLUMN_WIDTHS_KEY: &str = "a030_wb_advert_campaign_column_widths";
+// v2: ширины сброшены после сужения колонок до ~12 символов и добавления Период с/по.
+const COLUMN_WIDTHS_KEY: &str = "a030_wb_advert_campaign_column_widths_v2";
 
 fn fmt_dt(value: &str) -> String {
     if value.is_empty() {
@@ -95,6 +126,29 @@ fn campaign_status_label(s: Option<i32>) -> &'static str {
         Some(11) => "Пауза",
         _ => "—",
     }
+}
+
+fn fmt_money(value: f64) -> String {
+    if value.abs() < f64::EPSILON {
+        return "—".to_string();
+    }
+    let formatted = format!("{:.2}", value);
+    let parts: Vec<&str> = formatted.split('.').collect();
+    let integer_part = parts[0];
+    let decimal_part = parts.get(1).copied().unwrap_or("00");
+    let mut result = String::new();
+    let chars: Vec<char> = integer_part.chars().rev().collect();
+    for (i, ch) in chars.iter().enumerate() {
+        if i > 0 && i % 3 == 0 && *ch != '-' {
+            result.push('\u{00A0}');
+        }
+        result.push(*ch);
+    }
+    format!(
+        "{}.{}",
+        result.chars().rev().collect::<String>(),
+        decimal_part
+    )
 }
 
 fn campaign_status_badge_color(s: Option<i32>) -> &'static str {
@@ -368,10 +422,10 @@ pub fn WbAdvertCampaignList() -> impl IntoView {
 
                 <div class="table-wrapper">
                     <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
-                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1100px;">
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1600px;">
                         <TableHeader>
                             <TableRow>
-                                <TableHeaderCell resizable=false min_width=120.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=96.0 attr:style="width: 12ch;" class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("advert_id")>
                                         "advertId"
                                         <span class=move || get_sort_class(&sort_field.get(), "advert_id")>
@@ -387,7 +441,7 @@ pub fn WbAdvertCampaignList() -> impl IntoView {
                                         </span>
                                     </div>
                                 </TableHeaderCell>
-                                <TableHeaderCell resizable=false min_width=140.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=96.0 attr:style="width: 12ch;" class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("campaign_type")>
                                         "Тип"
                                         <span class=move || get_sort_class(&sort_field.get(), "campaign_type")>
@@ -408,6 +462,54 @@ pub fn WbAdvertCampaignList() -> impl IntoView {
                                         "Позиций"
                                         <span class=move || get_sort_class(&sort_field.get(), "nm_count")>
                                             {move || get_sort_indicator(&sort_field.get(), "nm_count", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=96.0 attr:style="width: 12ch;" class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("p913_accrual")>
+                                        "Начисление"
+                                        <span class=move || get_sort_class(&sort_field.get(), "p913_accrual")>
+                                            {move || get_sort_indicator(&sort_field.get(), "p913_accrual", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=96.0 attr:style="width: 12ch;" class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("p913_writeoff")>
+                                        "Списание"
+                                        <span class=move || get_sort_class(&sort_field.get(), "p913_writeoff")>
+                                            {move || get_sort_indicator(&sort_field.get(), "p913_writeoff", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=96.0 attr:style="width: 12ch;" class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("p913_balance")>
+                                        "Остаток"
+                                        <span class=move || get_sort_class(&sort_field.get(), "p913_balance")>
+                                            {move || get_sort_indicator(&sort_field.get(), "p913_balance", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=96.0 attr:style="width: 12ch;" class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer; text-align: right;" on:click=move |_| toggle_sort("p913_realization")>
+                                        "Реализация"
+                                        <span class=move || get_sort_class(&sort_field.get(), "p913_realization")>
+                                            {move || get_sort_indicator(&sort_field.get(), "p913_realization", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=96.0 attr:style="width: 12ch;" class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("report_date_from")>
+                                        "Период с"
+                                        <span class=move || get_sort_class(&sort_field.get(), "report_date_from")>
+                                            {move || get_sort_indicator(&sort_field.get(), "report_date_from", sort_ascending.get())}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+                                <TableHeaderCell resizable=false min_width=96.0 attr:style="width: 12ch;" class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("report_date_to")>
+                                        "Период по"
+                                        <span class=move || get_sort_class(&sort_field.get(), "report_date_to")>
+                                            {move || get_sort_indicator(&sort_field.get(), "report_date_to", sort_ascending.get())}
                                         </span>
                                     </div>
                                 </TableHeaderCell>
@@ -489,6 +591,44 @@ pub fn WbAdvertCampaignList() -> impl IntoView {
                                                     } else {
                                                         "—".to_string()
                                                     }}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <div style="text-align: right; font-variant-numeric: tabular-nums;">
+                                                        {fmt_money(item.p913_accrual)}
+                                                    </div>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <div style="text-align: right; font-variant-numeric: tabular-nums;">
+                                                        {fmt_money(item.p913_writeoff)}
+                                                    </div>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <div style="text-align: right; font-variant-numeric: tabular-nums;">
+                                                        {fmt_money(item.p913_balance)}
+                                                    </div>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    <div style="text-align: right; font-variant-numeric: tabular-nums;">
+                                                        {fmt_money(item.p913_realization)}
+                                                    </div>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {item.report_date_from.clone().unwrap_or_else(|| "—".to_string())}
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {item.report_date_to.clone().unwrap_or_else(|| "—".to_string())}
                                                 </TableCellLayout>
                                             </TableCell>
                                             <TableCell>

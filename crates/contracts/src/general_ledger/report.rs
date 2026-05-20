@@ -51,12 +51,58 @@ pub struct GlReportResponse {
 pub struct GlDimensionDef {
     pub id: String,
     pub label: String,
+    pub code: String,
+    pub code_main: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_suffix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    /// Квалифицированное имя поля в БД: таблица.колонка (напр. sys_gl.entry_date).
+    pub db_field: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlDimensionsResponse {
     pub turnover_code: String,
     pub dimensions: Vec<GlDimensionDef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlDimensionUsageRef {
+    pub turnover_code: String,
+    pub turnover_name: String,
+    pub report_group: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlDimensionCatalogItem {
+    pub id: String,
+    pub label: String,
+    pub code: String,
+    pub code_main: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_suffix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    pub root_id: String,
+    pub depth: usize,
+    pub sort_order: usize,
+    #[serde(default)]
+    pub path_ids: Vec<String>,
+    #[serde(default)]
+    pub path_codes: Vec<String>,
+    #[serde(default)]
+    pub turnover_count: usize,
+    #[serde(default)]
+    pub used_by_turnovers: Vec<GlDimensionUsageRef>,
+    /// Квалифицированное имя поля в БД: таблица.колонка.
+    pub db_field: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlDimensionsCatalogResponse {
+    pub items: Vec<GlDimensionCatalogItem>,
+    pub total: usize,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

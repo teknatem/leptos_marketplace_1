@@ -31,6 +31,7 @@ pub mod a029_wb_supply;
 pub mod a030_wb_advert_campaign;
 pub mod a031_kb_edit;
 pub mod a032_wb_returns_claims;
+pub mod a033_wb_day_close;
 
 // Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;
@@ -46,6 +47,7 @@ pub mod p909_mp_order_line_turnovers;
 pub mod p910_mp_unlinked_turnovers;
 pub mod p911_wb_advert_by_items;
 pub mod p912_nomenclature_costs;
+pub mod p913_wb_advert_order_attr;
 
 // DataView semantic layer handlers
 pub mod bi_timeline;
@@ -57,8 +59,9 @@ pub mod sys_drilldown;
 // System journal (общий журнал операций)
 pub mod general_ledger;
 
-// Dashboard handlers (d400)
+// Dashboard handlers (d400, d402)
 pub mod d400_monthly_summary;
+pub mod dashboards;
 
 // Data scheme handlers (ds01-ds02)
 pub mod ds01_wb_finance_report;

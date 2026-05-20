@@ -8,12 +8,14 @@
 //! - Handles lazy loading for nested data
 
 use super::tabs::{
-    GeneralTab, JournalTab, JsonTab, LineTab, LinksTab, PlanFactTab, ProjectionsTab,
+    AdvertAttributionTab, GeneralTab, JournalTab, JsonTab, LineTab, LinksTab, PlanFactTab,
+    ProjectionsTab,
 };
 use super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use crate::system::favorites::ui::FavoriteButton;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -52,6 +54,9 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
             "journal" if !vm.general_ledger_entries_loaded.get() => {
                 vm.load_general_ledger_entries()
             }
+            "advert_attribution" if !vm.advert_attribution_loaded.get() => {
+                vm.load_advert_attribution()
+            }
             _ => {}
         }
     });
@@ -63,7 +68,11 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
 
     view! {
         <PageFrame page_id="a012_wb_sales--detail" category="detail">
-            <Header vm=vm_header on_close=on_close />
+            <Header
+                vm=vm_header
+                favorite_target_id=stored_id.get_value()
+                on_close=on_close
+            />
 
             <TabBar vm=vm_tabs />
 
@@ -99,15 +108,27 @@ pub fn WbSalesDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl I
 // ── Header ────────────────────────────────────────────────────────────────────
 
 #[component]
-fn Header(vm: WbSalesDetailsVm, on_close: Callback<()>) -> impl IntoView {
+fn Header(
+    vm: WbSalesDetailsVm,
+    favorite_target_id: String,
+    on_close: Callback<()>,
+) -> impl IntoView {
     let is_posted = vm.is_posted();
     let sale_id = vm.sale_id();
+    let title = Signal::derive(move || format!("WB Sales {}", sale_id.get()));
     let sale = vm.sale;
+    let tab_key = format!("a012_wb_sales_details_{}", favorite_target_id);
 
     view! {
         <div class="page__header">
             <div class="page__header-left">
-                <h1 class="page__title">{move || format!("WB Sales {}", sale_id.get())}</h1>
+                <FavoriteButton
+                    target_kind="a012_wb_sales_details".to_string()
+                    target_id=favorite_target_id
+                    target_title=title
+                    tab_key=tab_key
+                />
+                <h1 class="page__title">{move || title.get()}</h1>
                 <Show when=move || sale.get().is_some()>
                     {move || {
                         let posted = is_posted.get();
@@ -187,6 +208,7 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
     let projections_count = vm.projections_count();
     let finance_reports_count = vm.finance_reports_count();
     let general_ledger_entries_count = vm.general_ledger_entries_count();
+    let advert_attribution_count = vm.advert_attribution_count();
 
     view! {
         <div class="page__tabs">
@@ -256,6 +278,31 @@ fn TabBar(vm: WbSalesDetailsVm) -> impl IntoView {
                     attr:style="margin-left: 6px;"
                 >
                     {move || finance_reports_count.get().to_string()}
+                </Badge>
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "advert_attribution"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("advert_attribution")
+                }
+            >
+                {icon("megaphone")} "Атрибуция"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "advert_attribution" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || advert_attribution_count.get().to_string()}
                 </Badge>
             </button>
 
@@ -338,17 +385,19 @@ fn TabContent(vm: WbSalesDetailsVm) -> impl IntoView {
     let vm_links = vm.clone();
     let vm_projections = vm.clone();
     let vm_journal = vm.clone();
+    let vm_attribution = vm.clone();
 
     view! {
         {move || match active_tab.get() {
-            "general"     => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
-            "planfact"    => view! { <PlanFactTab    vm=vm_planfact.clone()    /> }.into_any(),
-            "line"        => view! { <LineTab        vm=vm_line.clone()        /> }.into_any(),
-            "json"        => view! { <JsonTab        vm=vm_json.clone()        /> }.into_any(),
-            "links"       => view! { <LinksTab       vm=vm_links.clone()       /> }.into_any(),
-            "projections" => view! { <ProjectionsTab vm=vm_projections.clone() /> }.into_any(),
-            "journal"     => view! { <JournalTab     vm=vm_journal.clone()     /> }.into_any(),
-            _             => view! { <GeneralTab     vm=vm_general.clone()     /> }.into_any(),
+            "general"            => view! { <GeneralTab           vm=vm_general.clone()     /> }.into_any(),
+            "planfact"           => view! { <PlanFactTab          vm=vm_planfact.clone()    /> }.into_any(),
+            "line"               => view! { <LineTab              vm=vm_line.clone()        /> }.into_any(),
+            "json"               => view! { <JsonTab              vm=vm_json.clone()        /> }.into_any(),
+            "links"              => view! { <LinksTab             vm=vm_links.clone()       /> }.into_any(),
+            "advert_attribution" => view! { <AdvertAttributionTab vm=vm_attribution.clone() /> }.into_any(),
+            "projections"        => view! { <ProjectionsTab       vm=vm_projections.clone() /> }.into_any(),
+            "journal"            => view! { <JournalTab           vm=vm_journal.clone()     /> }.into_any(),
+            _                    => view! { <GeneralTab           vm=vm_general.clone()     /> }.into_any(),
         }}
     }
 }

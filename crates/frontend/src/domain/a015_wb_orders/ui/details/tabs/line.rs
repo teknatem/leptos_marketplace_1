@@ -109,7 +109,7 @@ pub fn LineTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                             <PriceMetricLabel
                                                 label="Цена c учетом скидки"
                                                 endpoint="/api/v1/supplier/orders"
-                                                description="priceWithDisc из Statistics API: цена после скидки продавца. Используется отдельно от Marketplace API price."
+                                                description="priceWithDisc из Statistics API: Фактически цена по прайс листу. Используется отдельно от Marketplace API price."
                                             />
                                         </TableCellLayout></TableCell>
                                         <TableCell><TableCellLayout><code>"price_with_disc"</code></TableCellLayout></TableCell>
@@ -240,8 +240,21 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 <TableHeaderCell attr:style="width: 70px;">"Ед."</TableHeaderCell>
                             </TableRow>
                         </TableHeader>
+
                         <TableBody>
-                            <TableRow>
+                        <TableRow>
+                        <TableCell><TableCellLayout>
+                            <PriceMetricLabel
+                                label="Цена продажи"
+                                endpoint="/api/v3/orders/new"
+                                description="salePrice из Marketplace API: цена в валюте продажи с учетом скидки продавца, без учета скидки WB Club. WB передает значение в копейках; поле может отсутствовать."
+                            />
+                        </TableCellLayout></TableCell>
+                        <TableCell><TableCellLayout><code>"salePrice"</code></TableCellLayout></TableCell>
+                        <TableCell attr:style="text-align: right;"><TableCellLayout>{format_money(sale_price)}</TableCellLayout></TableCell>
+                        <TableCell><TableCellLayout>"rub"</TableCellLayout></TableCell>
+                    </TableRow>
+                    <TableRow>
                                 <TableCell><TableCellLayout>
                                     <PriceMetricLabel
                                         label="Цена заказа"
@@ -263,18 +276,6 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 </TableCellLayout></TableCell>
                                 <TableCell><TableCellLayout><code>"finalPrice"</code></TableCellLayout></TableCell>
                                 <TableCell attr:style="text-align: right;"><TableCellLayout>{format_money(final_price)}</TableCellLayout></TableCell>
-                                <TableCell><TableCellLayout>"rub"</TableCellLayout></TableCell>
-                            </TableRow>
-                            <TableRow>
-                                <TableCell><TableCellLayout>
-                                    <PriceMetricLabel
-                                        label="Цена продажи"
-                                        endpoint="/api/v3/orders/new"
-                                        description="salePrice из Marketplace API: цена в валюте продажи с учетом скидки продавца, без учета скидки WB Club. WB передает значение в копейках; поле может отсутствовать."
-                                    />
-                                </TableCellLayout></TableCell>
-                                <TableCell><TableCellLayout><code>"salePrice"</code></TableCellLayout></TableCell>
-                                <TableCell attr:style="text-align: right;"><TableCellLayout>{format_money(sale_price)}</TableCellLayout></TableCell>
                                 <TableCell><TableCellLayout>"rub"</TableCellLayout></TableCell>
                             </TableRow>
                             <TableRow>

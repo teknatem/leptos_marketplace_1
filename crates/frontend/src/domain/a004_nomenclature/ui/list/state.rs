@@ -5,6 +5,7 @@ pub struct NomenclatureListState {
     // filters
     pub q: String,
     pub only_mp: bool,
+    pub no_analytics: bool,
 
     // server sorting
     pub sort_field: String,
@@ -28,6 +29,7 @@ impl Default for NomenclatureListState {
         Self {
             q: String::new(),
             only_mp: true,
+            no_analytics: false,
             sort_field: "article".to_string(),
             sort_ascending: true,
             selected_ids: Vec::new(),

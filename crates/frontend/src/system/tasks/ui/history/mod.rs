@@ -33,8 +33,7 @@ fn default_date_for_scale(scale: TaskHistoryScale) -> String {
 }
 
 fn shift_date_for_scale(date: &str, scale: TaskHistoryScale, direction: i32) -> String {
-    let parsed = NaiveDate::parse_from_str(date, "%Y-%m-%d")
-        .unwrap_or_else(|_| today_msk());
+    let parsed = NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap_or_else(|_| today_msk());
     let shifted = match scale {
         TaskHistoryScale::Day => parsed + Duration::days(direction as i64),
         TaskHistoryScale::Week => parsed + Duration::days((direction * 7) as i64),
@@ -307,7 +306,8 @@ pub fn TaskHistoryView() -> impl IntoView {
         date_from.set(default_date_for_scale(next));
     };
     let move_period = move |direction: i32| {
-        let next = shift_date_for_scale(&date_from.get_untracked(), scale.get_untracked(), direction);
+        let next =
+            shift_date_for_scale(&date_from.get_untracked(), scale.get_untracked(), direction);
         date_from.set(next);
     };
 

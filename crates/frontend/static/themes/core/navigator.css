@@ -23,6 +23,7 @@
   width: 100%;
   height: 100%;
   overflow: auto;
+  scrollbar-gutter: stable;
   animation: nav-fade-in 240ms ease both;
 }
 
@@ -43,10 +44,10 @@
 }
 
 .navigator__title {
+  flex: 1;
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
-  margin-right: auto;
 }
 
 .navigator__search {
@@ -109,6 +110,14 @@
 }
 
 /* ───── View switcher ───── */
+
+/* Slot that owns flex:1 so the pill stays right-aligned */
+.navigator__view-switch-slot {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
 
 .navigator__view-switch {
   display: inline-flex;
@@ -173,6 +182,9 @@
   z-index: var(--z-sticky);
   background: var(--app-main-bg, var(--color-bg-primary));
   padding: 4px 0;
+  max-width: 1200px;
+  margin-inline: auto;
+  width: 100%;
 }
 
 .navigator-mp__column-head {
@@ -202,8 +214,7 @@
   align-items: center;
   justify-content: center;
   transition: transform 240ms ease;
-  /* height is set inline via style="height: Xpx" per column */
-  height: var(--logo-h, 34px);
+  height: 44px; /* uniform across all columns */
 }
 
 .navigator-mp__logo svg {
@@ -232,6 +243,9 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--navigator-gap);
+  max-width: 1200px;
+  margin-inline: auto;
+  width: 100%;
 }
 
 .navigator-mp__block {
@@ -290,7 +304,7 @@
   border-radius: var(--radius-md);
   color: var(--color-text-primary);
   text-decoration: none;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-md);
   cursor: pointer;
   transition: background var(--transition-fast),
               color var(--transition-fast),
@@ -497,13 +511,14 @@
 .navigator-mp__table thead th {
   position: sticky;
   top: 0;
-  background: var(--color-bg-muted, rgba(0, 0, 0, 0.04));
+  background: var(--color-bg-elevated, var(--color-bg-primary));
   text-align: left;
   padding: 7px 10px;
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
-  color: var(--color-text-muted, #555);
-  border-bottom: 2px solid var(--color-border-subtle, rgba(0, 0, 0, 0.1));
+  color: var(--color-text-secondary, var(--color-text-muted, #444));
+  border-bottom: 2px solid var(--color-border-subtle, rgba(0, 0, 0, 0.15));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
   user-select: none;
   z-index: var(--z-sticky);
   white-space: nowrap;
@@ -516,7 +531,7 @@
 
 .navigator-mp__th--sortable:hover {
   color: var(--color-text-primary);
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.06));
 }
 
 .navigator-mp__th-inner {
@@ -579,13 +594,14 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--color-accent, #2563eb);
+  color: var(--color-link);
   text-decoration: none;
   font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
 
 .navigator-mp__td--name a:hover {
+  color: var(--color-link-hover);
   text-decoration: underline;
 }
 
@@ -648,7 +664,7 @@
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.1);
   pointer-events: none;
-  animation: nav-tooltip-fade 140ms ease both;
+  animation: nav-tooltip-fade 500ms ease both;
   white-space: normal;
   word-break: break-word;
 }

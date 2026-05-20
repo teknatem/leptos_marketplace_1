@@ -1,0 +1,47 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Стили страницы «Регламентные задания» (sys_tasks).
+
+   Загружается глобально из index.html, но ВСЕ правила scoped под корневой
+   класс страницы `.scheduled-task-list`, поэтому фактически применяются
+   только на этой странице. Не добавляйте сюда общие/переиспользуемые
+   правила — для них есть themes/core/components.css.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Панель фильтров (вкладки «Все» / «Мониторинг») ──────────────────────── */
+.scheduled-task-list .task-filter__search {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+  max-width: 360px;
+}
+
+.scheduled-task-list .task-filter__search-icon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-secondary);
+  pointer-events: none;
+  font-size: 14px;
+}
+
+.scheduled-task-list .task-filter__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px 6px 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--colorNeutralBackground1);
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
+.scheduled-task-list .task-filter__select {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--colorNeutralBackground1);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}

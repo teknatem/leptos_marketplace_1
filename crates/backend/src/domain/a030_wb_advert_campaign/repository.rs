@@ -215,6 +215,16 @@ pub async fn get_by_id(id: Uuid) -> Result<Option<WbAdvertCampaign>> {
     Ok(model.map(Into::into))
 }
 
+pub async fn get_by_advert_id(advert_id: i64) -> Result<Option<WbAdvertCampaign>> {
+    let db = get_connection();
+    let model = Entity::find()
+        .filter(Column::AdvertId.eq(advert_id))
+        .filter(Column::IsDeleted.eq(false))
+        .one(db)
+        .await?;
+    Ok(model.map(Into::into))
+}
+
 pub async fn list_advert_ids_by_connection(connection_id: &str) -> Result<Vec<i64>> {
     let mut ids: Vec<i64> = list_by_connection(connection_id)
         .await?

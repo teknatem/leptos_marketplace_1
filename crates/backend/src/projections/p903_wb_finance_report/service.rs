@@ -367,7 +367,7 @@ pub async fn rebuild_day_from_existing(
     date: NaiveDate,
 ) -> Result<ReconcileResult> {
     let db = get_connection();
-    let existing = load_day_models(connection_mp_ref, date).await?;
+    let mut existing = load_day_models(connection_mp_ref, date).await?;
     if existing.is_empty() {
         return Ok(ReconcileResult {
             changed: false,
@@ -375,6 +375,10 @@ pub async fn rebuild_day_from_existing(
             general_ledger_rows: 0,
         });
     }
+
+    // Перед перерасчётом GL подтянуть актуальное a004_nomenclature_ref в строки p903
+    // из текущего состояния a007 — закрывает «mismatched_document_link» при перепроведении.
+    refresh_a004_links_from_a007(connection_mp_ref, &mut existing).await?;
 
     let txn = db.begin().await?;
     let registrator_refs = gl_registrator_aliases_from_models(&existing);
@@ -396,6 +400,41 @@ pub async fn rebuild_day_from_existing(
         source_rows: existing.len(),
         general_ledger_rows: general_ledger_entries.len(),
     })
+}
+
+/// Для каждой строки p903 перезаписывает `a004_nomenclature_ref` актуальным значением
+/// из a007 (через единый канонический резолвер). Безусловно: если a007 указывает на
+/// другую номенклатуру или None — это и попадёт в строку.
+async fn refresh_a004_links_from_a007(
+    connection_mp_ref: &str,
+    models: &mut [crate::projections::p903_wb_finance_report::repository::Model],
+) -> Result<()> {
+    use crate::projections::p903_wb_finance_report::repository::ActiveModel;
+
+    let db = get_connection();
+    for model in models.iter_mut() {
+        let Some(nm_id) = model.nm_id else { continue };
+        let new_ref =
+            crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
+                connection_mp_ref,
+                nm_id,
+                model.sa_name.as_deref(),
+            )
+            .await?;
+        if model.a004_nomenclature_ref == new_ref {
+            continue;
+        }
+        let am = ActiveModel {
+            id: Set(model.id.clone()),
+            a004_nomenclature_ref: Set(new_ref.clone()),
+            ..Default::default()
+        };
+        <crate::projections::p903_wb_finance_report::repository::Entity as EntityTrait>::update(am)
+            .exec(db)
+            .await?;
+        model.a004_nomenclature_ref = new_ref;
+    }
+    Ok(())
 }
 
 pub async fn rebuild_range_from_existing(date_from: &str, date_to: &str) -> Result<usize> {

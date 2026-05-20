@@ -8,4 +8,3 @@ pub mod product;
 pub mod promotion;
 pub mod sales;
 pub mod supply;
-pub mod wb_nomenclature;

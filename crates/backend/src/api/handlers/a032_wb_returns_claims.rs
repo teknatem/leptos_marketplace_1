@@ -1,4 +1,5 @@
 use axum::{extract::Path, extract::Query, Json};
+use contracts::domain::common::AggregateId;
 use serde::Deserialize;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -23,34 +24,30 @@ pub async fn list_returns_claims(
     Json<Vec<contracts::domain::a032_wb_returns_claims::aggregate::WbReturnsClaimsListDto>>,
     axum::http::StatusCode,
 > {
-    let items = a032_wb_returns_claims::service::list_all().await.map_err(|e| {
-        tracing::error!("Failed to list wb returns claims: {}", e);
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let items = a032_wb_returns_claims::service::list_all()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list wb returns claims: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
-    // Resolve organization names: collect unique org UUIDs, batch-load orgs
-    let org_name_map: HashMap<String, String> = {
-        let unique_ids: Vec<Uuid> = {
-            let mut seen = std::collections::HashSet::new();
-            items
-                .iter()
-                .filter_map(|a| Uuid::parse_str(&a.organization_id).ok())
-                .filter(|id| seen.insert(*id))
-                .collect()
-        };
-
-        let mut map = HashMap::new();
-        for org_id in unique_ids {
-            if let Ok(Some(org)) = a002_organization::service::get_by_id(org_id).await {
+    // Resolve organization names: load all orgs once, build id → name map
+    let org_name_map: HashMap<String, String> = match a002_organization::service::list_all().await {
+        Ok(orgs) => orgs
+            .into_iter()
+            .map(|org| {
                 let name = if !org.full_name.trim().is_empty() {
                     org.full_name.clone()
                 } else {
                     org.base.description.clone()
                 };
-                map.insert(org_id.to_string(), name);
-            }
+                (org.base.id.as_string(), name)
+            })
+            .collect(),
+        Err(e) => {
+            tracing::warn!("Failed to load organizations for claims list: {}", e);
+            HashMap::new()
         }
-        map
     };
 
     let dtos: Vec<_> = items

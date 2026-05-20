@@ -884,7 +884,7 @@ mod tests {
     #[test]
     fn p911_detail_source_sql_uses_projection_amounts_and_distinct_gl_count() {
         let query = GlDrilldownQuery {
-            turnover_code: "advertising_allocated".to_string(),
+            turnover_code: "advert_clicks_no_order".to_string(),
             group_by: "nomenclature".to_string(),
             date_from: "2026-02-01".to_string(),
             date_to: "2026-02-28".to_string(),

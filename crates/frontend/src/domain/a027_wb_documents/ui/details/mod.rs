@@ -1,6 +1,8 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::auth_download::download_authenticated_file;
+use crate::shared::components::card_animated::CardAnimated;
+use crate::shared::components::ui::FieldDisplay;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
@@ -31,10 +33,44 @@ fn fmt_dt(value: &str) -> String {
     value.to_string()
 }
 
+fn format_amount(amount: f64) -> String {
+    let sign = if amount < 0.0 { "-" } else { "" };
+    let raw = format!("{:.2}", amount.abs());
+    let (whole, fraction) = raw.split_once('.').unwrap_or((raw.as_str(), "00"));
+    let mut grouped = String::new();
+    for (idx, ch) in whole.chars().rev().enumerate() {
+        if idx > 0 && idx % 3 == 0 {
+            grouped.push(' ');
+        }
+        grouped.push(ch);
+    }
+    let whole_grouped: String = grouped.chars().rev().collect();
+    format!("{}{}.{}", sign, whole_grouped, fraction)
+}
+
 fn fmt_optional_amount(value: Option<f64>) -> String {
+    value.map(format_amount).unwrap_or_else(|| "?".to_string())
+}
+
+fn fmt_optional_percent(value: Option<f64>) -> String {
     value
-        .map(|amount| format!("{:.2}", amount))
-        .unwrap_or_else(|| "—".to_string())
+        .map(|amount| format!("{:.2}%", amount))
+        .unwrap_or_else(|| "?".to_string())
+}
+
+fn fmt_reconciliation_difference(line: &ReconciliationLineDto) -> String {
+    if !line.is_available {
+        return "?".to_string();
+    }
+
+    match line.difference_percent {
+        Some(percent) => format!(
+            "{} ({})",
+            fmt_optional_amount(line.difference_amount),
+            fmt_optional_percent(Some(percent)),
+        ),
+        None => fmt_optional_amount(line.difference_amount),
+    }
 }
 
 fn parse_optional_amount(value: String) -> Option<f64> {
@@ -71,10 +107,35 @@ struct DetailsDto {
     realized_goods_total: Option<f64>,
     wb_reward_with_vat: Option<f64>,
     seller_transfer_total: Option<f64>,
+    other_deductions: Option<f64>,
+    logistics: Option<f64>,
+    acquiring: Option<f64>,
+    #[serde(default)]
+    max_deviation: Option<f64>,
+    reconciliation: ReconciliationDto,
     fetched_at: String,
     locale: String,
     created_at: String,
     updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ReconciliationDto {
+    realized_goods_total: ReconciliationLineDto,
+    wb_reward_with_vat: ReconciliationLineDto,
+    seller_transfer_total: ReconciliationLineDto,
+    advert_other_deductions: ReconciliationLineDto,
+    logistics: ReconciliationLineDto,
+    acquiring: ReconciliationLineDto,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ReconciliationLineDto {
+    formula: String,
+    database_value: Option<f64>,
+    difference_amount: Option<f64>,
+    difference_percent: Option<f64>,
+    is_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,14 +146,17 @@ struct UpdateManualFieldsRequest {
     realized_goods_total: Option<f64>,
     wb_reward_with_vat: Option<f64>,
     seller_transfer_total: Option<f64>,
+    other_deductions: Option<f64>,
+    logistics: Option<f64>,
+    acquiring: Option<f64>,
 }
 
 #[component]
 fn ReadField(label: &'static str, value: String) -> impl IntoView {
     view! {
-        <div class="form__group" style="margin-bottom: 10px;">
+        <div class="form__group">
             <label class="form__label">{label}</label>
-            <Input value=RwSignal::new(value) attr:readonly=true />
+            <FieldDisplay value=value />
         </div>
     }
 }
@@ -105,7 +169,7 @@ fn EditField(
     #[prop(default = "".to_string())] placeholder: String,
 ) -> impl IntoView {
     view! {
-        <div class="form__group" style="margin-bottom: 10px;">
+        <div class="form__group">
             <label class="form__label">{label}</label>
             <input
                 class="form__input"
@@ -119,15 +183,45 @@ fn EditField(
 }
 
 #[component]
+fn DocumentTabBar(selected_tab: RwSignal<String>) -> impl IntoView {
+    view! {
+        <div class="page__tabs">
+            <button
+                class="page__tab"
+                class:page__tab--active=move || selected_tab.get() == "general"
+                on:click=move |_| selected_tab.set("general".to_string())
+            >
+                {icon("file-text")} "Общие"
+            </button>
+            <button
+                class="page__tab"
+                class:page__tab--active=move || selected_tab.get() == "check"
+                on:click=move |_| selected_tab.set("check".to_string())
+            >
+                {icon("check-square")} "Проверка"
+            </button>
+            <button
+                class="page__tab"
+                class:page__tab--active=move || selected_tab.get() == "meta"
+                on:click=move |_| selected_tab.set("meta".to_string())
+            >
+                {icon("database")} "Служебное"
+            </button>
+        </div>
+    }
+}
+
+#[component]
 pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let tabs = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let stored_id = StoredValue::new(id.clone());
     let (loading, set_loading) = signal(true);
     let (saving, set_saving) = signal(false);
+    let (posting, set_posting) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (success, set_success) = signal::<Option<String>>(None);
     let (doc, set_doc) = signal::<Option<DetailsDto>>(None);
-    let selected_tab = RwSignal::new("main".to_string());
+    let selected_tab = RwSignal::new("general".to_string());
 
     let is_weekly_report = RwSignal::new(false);
     let report_period_from = RwSignal::new(String::new());
@@ -135,6 +229,9 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
     let realized_goods_total = RwSignal::new(String::new());
     let wb_reward_with_vat = RwSignal::new(String::new());
     let seller_transfer_total = RwSignal::new(String::new());
+    let other_deductions = RwSignal::new(String::new());
+    let logistics = RwSignal::new(String::new());
+    let acquiring = RwSignal::new(String::new());
 
     let apply_doc_to_form = move |data: &DetailsDto| {
         is_weekly_report.set(data.is_weekly_report);
@@ -142,24 +239,26 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
         report_period_to.set(data.report_period_to.clone().unwrap_or_default());
         realized_goods_total.set(
             data.realized_goods_total
-                .map(|v| format!("{:.2}", v))
+                .map(format_amount)
                 .unwrap_or_default(),
         );
         wb_reward_with_vat.set(
             data.wb_reward_with_vat
-                .map(|v| format!("{:.2}", v))
+                .map(format_amount)
                 .unwrap_or_default(),
         );
         seller_transfer_total.set(
             data.seller_transfer_total
-                .map(|v| format!("{:.2}", v))
+                .map(format_amount)
                 .unwrap_or_default(),
         );
+        other_deductions.set(data.other_deductions.map(format_amount).unwrap_or_default());
+        logistics.set(data.logistics.map(format_amount).unwrap_or_default());
+        acquiring.set(data.acquiring.map(format_amount).unwrap_or_default());
     };
 
     let load_doc = {
         let tabs = tabs.clone();
-        let stored_id = stored_id;
         Callback::new(move |()| {
             let current_id = stored_id.get_value();
             let tab_id = stored_id.get_value();
@@ -210,7 +309,6 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
 
     let start_download = Callback::new(
         move |(document_id, service_name, extension): (String, String, String)| {
-            let set_error = set_error;
             spawn_local(async move {
                 let url = format!(
                     "{}/api/a027/wb-documents/{}/download/{}",
@@ -226,7 +324,7 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
         },
     );
 
-    let on_save = move |_| {
+    let on_save = Callback::new(move |()| {
         let Some(current_doc) = doc.get() else {
             return;
         };
@@ -235,23 +333,18 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
             is_weekly_report: is_weekly_report.get(),
             report_period_from: {
                 let value = report_period_from.get();
-                if value.trim().is_empty() {
-                    None
-                } else {
-                    Some(value)
-                }
+                (!value.trim().is_empty()).then_some(value)
             },
             report_period_to: {
                 let value = report_period_to.get();
-                if value.trim().is_empty() {
-                    None
-                } else {
-                    Some(value)
-                }
+                (!value.trim().is_empty()).then_some(value)
             },
             realized_goods_total: parse_optional_amount(realized_goods_total.get()),
             wb_reward_with_vat: parse_optional_amount(wb_reward_with_vat.get()),
             seller_transfer_total: parse_optional_amount(seller_transfer_total.get()),
+            other_deductions: parse_optional_amount(other_deductions.get()),
+            logistics: parse_optional_amount(logistics.get()),
+            acquiring: parse_optional_amount(acquiring.get()),
         };
 
         let document_id = current_doc.id.clone();
@@ -292,7 +385,97 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
 
             set_saving.set(false);
         });
-    };
+    });
+
+    let on_post = Callback::new(move |()| {
+        let Some(current_doc) = doc.get() else {
+            return;
+        };
+
+        let request = UpdateManualFieldsRequest {
+            is_weekly_report: is_weekly_report.get(),
+            report_period_from: {
+                let value = report_period_from.get();
+                (!value.trim().is_empty()).then_some(value)
+            },
+            report_period_to: {
+                let value = report_period_to.get();
+                (!value.trim().is_empty()).then_some(value)
+            },
+            realized_goods_total: parse_optional_amount(realized_goods_total.get()),
+            wb_reward_with_vat: parse_optional_amount(wb_reward_with_vat.get()),
+            seller_transfer_total: parse_optional_amount(seller_transfer_total.get()),
+            other_deductions: parse_optional_amount(other_deductions.get()),
+            logistics: parse_optional_amount(logistics.get()),
+            acquiring: parse_optional_amount(acquiring.get()),
+        };
+
+        let document_id = current_doc.id.clone();
+        set_posting.set(true);
+        set_error.set(None);
+        set_success.set(None);
+
+        spawn_local(async move {
+            let manual_result = match Request::put(&format!(
+                "{}/api/a027/wb-documents/{}/manual",
+                api_base(),
+                document_id
+            ))
+            .json(&request)
+            {
+                Ok(req) => req.send().await,
+                Err(err) => {
+                    set_error.set(Some(format!("Ошибка подготовки запроса: {}", err)));
+                    set_posting.set(false);
+                    return;
+                }
+            };
+
+            match manual_result {
+                Ok(resp) if resp.ok() => {}
+                Ok(resp) => {
+                    set_error.set(Some(format!("Ошибка сохранения: HTTP {}", resp.status())));
+                    set_posting.set(false);
+                    return;
+                }
+                Err(err) => {
+                    set_error.set(Some(format!("Ошибка сети: {}", err)));
+                    set_posting.set(false);
+                    return;
+                }
+            }
+
+            match Request::post(&format!(
+                "{}/api/a027/wb-documents/{}/post",
+                api_base(),
+                document_id
+            ))
+            .send()
+            .await
+            {
+                Ok(resp) if resp.ok() => match resp.json::<DetailsDto>().await {
+                    Ok(updated) => {
+                        apply_doc_to_form(&updated);
+                        set_doc.set(Some(updated));
+                        set_success.set(Some(
+                            "Документ проведен, данные сверки обновлены".to_string(),
+                        ));
+                    }
+                    Err(err) => {
+                        set_error.set(Some(format!("Ошибка парсинга ответа: {}", err)));
+                    }
+                },
+                Ok(resp) => {
+                    set_error.set(Some(format!("Ошибка проведения: HTTP {}", resp.status())));
+                }
+                Err(err) => {
+                    set_error.set(Some(format!("Ошибка сети: {}", err)));
+                }
+            }
+
+            set_posting.set(false);
+        });
+    });
 
     view! {
         <PageFrame page_id="a027_wb_documents--detail" category=PAGE_CAT_DETAIL>
@@ -330,11 +513,13 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                     </Show>
                 </div>
                 <div class="page__header-right">
-                    <Button appearance=ButtonAppearance::Secondary on_click=move |_| on_close.run(())>
+                    <Button appearance=ButtonAppearance::Secondary size=ButtonSize::Medium on_click=move |_| on_close.run(())>
                         "Закрыть"
                     </Button>
                 </div>
             </div>
+
+            <DocumentTabBar selected_tab=selected_tab />
 
             <div class="page__content">
                 {move || if loading.get() {
@@ -347,7 +532,6 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                 } else if let Some(err) = error.get() {
                     view! { <div class="alert alert--error">{err}</div> }.into_any()
                 } else if let Some(d) = doc.get() {
-                    let download_id = d.id.clone();
                     let primary_date = effective_document_date(d.report_period_to.as_ref(), &d.creation_time);
                     let period_text = match (d.report_period_from.clone(), d.report_period_to.clone()) {
                         (Some(from), Some(to)) => format!("{} - {}", from, to),
@@ -355,230 +539,41 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                         (None, Some(to)) => to,
                         (None, None) => "—".to_string(),
                     };
-                    let summary_primary_date = primary_date.clone();
-                    let summary_period_text = period_text.clone();
-                    let summary_service_name = d.service_name.clone();
-                    let summary_category = d.category.clone();
 
                     view! {
-                        <div style="display:flex;flex-direction:column;gap:16px;">
+                        <div style="display:flex;flex-direction:column;gap:var(--spacing-md);">
                             {move || success.get().map(|msg| view! { <div class="alert alert--success">{msg}</div> })}
-
-                            <Card>
-                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
-                                    <div>
-                                        <div style="font-size:12px;color:var(--color-text-secondary);">"Дата документа"</div>
-                                        <div style="font-size:20px;font-weight:700;">{summary_primary_date}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size:12px;color:var(--color-text-secondary);">"Период отчета"</div>
-                                        <div style="font-size:16px;font-weight:600;">{summary_period_text}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size:12px;color:var(--color-text-secondary);">"Service Name"</div>
-                                        <div style="font-size:14px;font-weight:600;word-break:break-word;">{summary_service_name}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size:12px;color:var(--color-text-secondary);">"Категория"</div>
-                                        <div style="font-size:14px;font-weight:600;">{summary_category}</div>
-                                    </div>
-                                </div>
-                            </Card>
-
-                            <TabList selected_value=selected_tab>
-                                <Tab value="main".to_string()>"Основное"</Tab>
-                                <Tab value="meta".to_string()>"Дополнительно"</Tab>
-                            </TabList>
-
-                            {move || {
-                                let d = d.clone();
-                                let primary_date = primary_date.clone();
-                                let period_text = period_text.clone();
-                                let download_id = download_id.clone();
-                                if selected_tab.get() == "main" {
-                                view! {
-                                    <div style="display:flex;flex-direction:column;gap:16px;">
-                                        <Card>
-                                            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-                                                <div style="display:flex;flex-direction:column;gap:4px;">
-                                                    <div style="font-weight:700;">"Поля проверки еженедельного отчета"</div>
-                                                    <div style="font-size:12px;color:var(--color-text-secondary);">
-                                                        "Заполняются вручную для сверки итогов по weekly report"
-                                                    </div>
-                                                </div>
-                                                <Button
-                                                    appearance=ButtonAppearance::Primary
-                                                    on_click=on_save
-                                                    disabled=Signal::derive(move || saving.get())
-                                                >
-                                                    {move || if saving.get() { "Сохранение..." } else { "Сохранить" }}
-                                                </Button>
-                                            </div>
-
-                                            <div style="display:flex;flex-direction:column;gap:18px;margin-top:16px;">
-                                                <div style="display:flex;flex-direction:column;gap:10px;">
-                                                    <div style="font-size:13px;font-weight:700;">"Тип и период"</div>
-                                                    <div style="display:grid;grid-template-columns:minmax(220px,260px) 140px 140px;gap:12px;align-items:end;max-width:580px;">
-                                                        <div class="form__group" style="margin-bottom:0;">
-                                                            <label class="form__label">"Тип документа"</label>
-                                                            <div style="min-height:38px;display:flex;align-items:center;">
-                                                                <Checkbox checked=is_weekly_report label="Еженедельный отчет" />
-                                                            </div>
-                                                        </div>
-                                                        <EditField
-                                                            label="Период с"
-                                                            value=report_period_from
-                                                            input_type="date".to_string()
-                                                        />
-                                                        <EditField
-                                                            label="Период по"
-                                                            value=report_period_to
-                                                            input_type="date".to_string()
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div style="display:flex;flex-direction:column;gap:10px;">
-                                                    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
-                                                        <div style="font-size:13px;font-weight:700;">"Суммы для сверки"</div>
-                                                        <div style="font-size:12px;color:var(--color-text-secondary);">
-                                                            "Итоговые значения из подтвержденного weekly report"
-                                                        </div>
-                                                    </div>
-
-                                                    <div style="display:flex;flex-direction:column;gap:10px;max-width:920px;">
-                                                        <div style="display:grid;grid-template-columns:minmax(320px,1fr) 220px;gap:16px;align-items:center;">
-                                                            <div style="font-size:13px;">"Итого стоимость реализованного товара"</div>
-                                                            <input
-                                                                class="form__input"
-                                                                type="text"
-                                                                inputmode="decimal"
-                                                                prop:value=move || realized_goods_total.get()
-                                                                placeholder="0.00"
-                                                                style="text-align:right;font-variant-numeric:tabular-nums;"
-                                                                on:input=move |ev| realized_goods_total.set(event_target_value(&ev))
-                                                            />
-                                                        </div>
-
-                                                        <div style="display:grid;grid-template-columns:minmax(320px,1fr) 220px;gap:16px;align-items:center;">
-                                                            <div style="font-size:13px;">"Сумма вознаграждения Вайлдберриз (ВВ c YLC)"</div>
-                                                            <input
-                                                                class="form__input"
-                                                                type="text"
-                                                                inputmode="decimal"
-                                                                prop:value=move || wb_reward_with_vat.get()
-                                                                placeholder="0.00"
-                                                                style="text-align:right;font-variant-numeric:tabular-nums;"
-                                                                on:input=move |ev| wb_reward_with_vat.set(event_target_value(&ev))
-                                                            />
-                                                        </div>
-
-                                                        <div style="display:grid;grid-template-columns:minmax(320px,1fr) 220px;gap:16px;align-items:center;">
-                                                            <div style="font-size:13px;font-weight:600;">"Итого к перечислению Продавцу"</div>
-                                                            <input
-                                                                class="form__input"
-                                                                type="text"
-                                                                inputmode="decimal"
-                                                                prop:value=move || seller_transfer_total.get()
-                                                                placeholder="0.00"
-                                                                style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;"
-                                                                on:input=move |ev| seller_transfer_total.set(event_target_value(&ev))
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </Card>
-
-                                        <div class="detail-grid">
-                                            <div class="detail-grid__col">
-                                                <Card>
-                                                    <div style="font-weight:700;margin-bottom:12px;">"Основные поля"</div>
-                                                    <ReadField label="Дата документа" value=primary_date />
-                                                    <ReadField label="Период отчета" value=period_text />
-                                                    <ReadField label="Категория" value=d.category.clone() />
-                                                    <ReadField label="Category ID" value=d.name.clone() />
-                                                    <ReadField label="Кабинет" value=d.connection_name.clone().unwrap_or(d.connection_id.clone()) />
-                                                    <ReadField label="Организация" value=d.organization_name.clone().unwrap_or(d.organization_id.clone()) />
-                                                    <ReadField label="Маркетплейс" value=d.marketplace_name.clone().unwrap_or(d.marketplace_id.clone()) />
-                                                </Card>
-                                            </div>
-                                            <div class="detail-grid__col">
-                                                <Card>
-                                                    <div style="font-weight:700;margin-bottom:12px;">"Скачать документ"</div>
-                                                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                                        <For
-                                                            each=move || d.extensions.clone()
-                                                            key=|ext| ext.clone()
-                                                            children=move |ext| {
-                                                                let download_id_value = download_id.clone();
-                                                                let extension = ext.clone();
-                                                                let service_name = d.service_name.clone();
-                                                                view! {
-                                                                    <Button
-                                                                        appearance=ButtonAppearance::Primary
-                                                                        on_click=move |_| {
-                                                                            set_error.set(None);
-                                                                            start_download.run((
-                                                                                download_id_value.clone(),
-                                                                                service_name.clone(),
-                                                                                extension.clone(),
-                                                                            ));
-                                                                        }
-                                                                    >
-                                                                        <span>{icon("download")}</span>
-                                                                        <span>{format!(" {}", ext)}</span>
-                                                                    </Button>
-                                                                }
-                                                            }
-                                                        />
-                                                    </div>
-
-                                                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:16px;">
-                                                        <div>
-                                                            <div style="font-size:12px;color:var(--color-text-secondary);">"Реализовано"</div>
-                                                            <div style="font-size:16px;font-weight:600;">{fmt_optional_amount(d.realized_goods_total)}</div>
-                                                        </div>
-                                                        <div>
-                                                            <div style="font-size:12px;color:var(--color-text-secondary);">"Вознаграждение WB"</div>
-                                                            <div style="font-size:16px;font-weight:600;">{fmt_optional_amount(d.wb_reward_with_vat)}</div>
-                                                        </div>
-                                                        <div>
-                                                            <div style="font-size:12px;color:var(--color-text-secondary);">"К перечислению"</div>
-                                                            <div style="font-size:16px;font-weight:600;">{fmt_optional_amount(d.seller_transfer_total)}</div>
-                                                        </div>
-                                                    </div>
-                                                </Card>
-                                            </div>
-                                        </div>
-                                    </div>
-                                }.into_any()
-                            } else {
-                                view! {
-                                    <div class="detail-grid">
-                                        <div class="detail-grid__col">
-                                            <Card>
-                                                <div style="font-weight:700;margin-bottom:12px;">"Технические поля"</div>
-                                                <ReadField label="ID" value=d.id.clone() />
-                                                <ReadField label="Service Name" value=d.service_name.clone() />
-                                                <ReadField label="Connection ID" value=d.connection_id.clone() />
-                                                <ReadField label="Organization ID" value=d.organization_id.clone() />
-                                                <ReadField label="Marketplace ID" value=d.marketplace_id.clone() />
-                                                <ReadField label="Locale" value=d.locale.clone() />
-                                            </Card>
-                                        </div>
-                                        <div class="detail-grid__col">
-                                            <Card>
-                                                <div style="font-weight:700;margin-bottom:12px;">"Системные даты"</div>
-                                                <ReadField label="Создан в WB" value=fmt_dt(&d.creation_time) />
-                                                <ReadField label="Загружено" value=fmt_dt(&d.fetched_at) />
-                                                <ReadField label="Создано в БД" value=fmt_dt(&d.created_at) />
-                                                <ReadField label="Обновлено в БД" value=fmt_dt(&d.updated_at) />
-                                            </Card>
-                                        </div>
-                                    </div>
-                                }.into_any()
-                            }}}
+                            {move || match selected_tab.get().as_str() {
+                                "check" => view! {
+                                    <CheckTab
+                                        saving=saving
+                                        posting=posting
+                                        on_save=on_save
+                                        on_post=on_post
+                                        is_weekly_report=is_weekly_report
+                                        report_period_from=report_period_from
+                                        report_period_to=report_period_to
+                                        realized_goods_total=realized_goods_total
+                                        wb_reward_with_vat=wb_reward_with_vat
+                                        seller_transfer_total=seller_transfer_total
+                                        other_deductions=other_deductions
+                                        logistics=logistics
+                                        acquiring=acquiring
+                                        reconciliation=d.reconciliation.clone()
+                                        max_deviation=d.max_deviation
+                                    />
+                                }.into_any(),
+                                "meta" => view! { <MetaTab doc=d.clone() /> }.into_any(),
+                                _ => view! {
+                                    <GeneralTab
+                                        doc=d.clone()
+                                        primary_date=primary_date.clone()
+                                        period_text=period_text.clone()
+                                        start_download=start_download
+                                        set_error=set_error
+                                    />
+                                }.into_any(),
+                            }}
                         </div>
                     }.into_any()
                 } else {
@@ -586,5 +581,275 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                 }}
             </div>
         </PageFrame>
+    }
+}
+
+#[component]
+fn GeneralTab(
+    doc: DetailsDto,
+    primary_date: String,
+    period_text: String,
+    start_download: Callback<(String, String, String)>,
+    set_error: WriteSignal<Option<String>>,
+) -> impl IntoView {
+    let doc_for_files = doc.clone();
+    let document_id = doc.id.clone();
+
+    view! {
+        <div class="detail-grid">
+            <div class="detail-grid__col">
+                <CardAnimated delay_ms=0 nav_id="a027_wb_documents_details_general_main">
+                    <h4 class="details-section__title">"Основные поля"</h4>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm);">
+                        <ReadField label="Дата документа" value=primary_date />
+                        <ReadField label="Период отчета" value=period_text />
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm);">
+                        <ReadField label="Категория" value=doc.category.clone() />
+                        <ReadField label="Category ID" value=doc.name.clone() />
+                    </div>
+                    <ReadField label="Service Name" value=doc.service_name.clone() />
+                </CardAnimated>
+
+                <CardAnimated delay_ms=80 nav_id="a027_wb_documents_details_general_refs">
+                    <h4 class="details-section__title">"Связи"</h4>
+                    <ReadField label="Кабинет" value=doc.connection_name.clone().unwrap_or(doc.connection_id.clone()) />
+                    <ReadField label="Организация" value=doc.organization_name.clone().unwrap_or(doc.organization_id.clone()) />
+                    <ReadField label="Маркетплейс" value=doc.marketplace_name.clone().unwrap_or(doc.marketplace_id.clone()) />
+                </CardAnimated>
+            </div>
+
+            <div class="detail-grid__col">
+                <CardAnimated delay_ms=40 nav_id="a027_wb_documents_details_general_files">
+                    <h4 class="details-section__title">"Файлы"</h4>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <For
+                            each=move || doc_for_files.extensions.clone()
+                            key=|ext| ext.clone()
+                            children=move |ext| {
+                                let document_id = document_id.clone();
+                                let service_name = doc_for_files.service_name.clone();
+                                let extension = ext.clone();
+                                view! {
+                                    <Button
+                                        appearance=ButtonAppearance::Primary
+                                        size=ButtonSize::Small
+                                        on_click=move |_| {
+                                            set_error.set(None);
+                                            start_download.run((
+                                                document_id.clone(),
+                                                service_name.clone(),
+                                                extension.clone(),
+                                            ));
+                                        }
+                                    >
+                                        {icon("download")}
+                                        <span style="margin-left:6px;">{ext}</span>
+                                    </Button>
+                                }
+                            }
+                        />
+                    </div>
+                </CardAnimated>
+
+                <CardAnimated delay_ms=120 nav_id="a027_wb_documents_details_general_totals">
+                    <h4 class="details-section__title">"Итоги проверки"</h4>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm);">
+                        <ReadField label="Реализовано" value=fmt_optional_amount(doc.realized_goods_total) />
+                        <ReadField label="Вознаграждение WB" value=fmt_optional_amount(doc.wb_reward_with_vat) />
+                    </div>
+                    <ReadField label="К перечислению" value=fmt_optional_amount(doc.seller_transfer_total) />
+                </CardAnimated>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn CheckTab(
+    saving: ReadSignal<bool>,
+    posting: ReadSignal<bool>,
+    on_save: Callback<()>,
+    on_post: Callback<()>,
+    is_weekly_report: RwSignal<bool>,
+    report_period_from: RwSignal<String>,
+    report_period_to: RwSignal<String>,
+    realized_goods_total: RwSignal<String>,
+    wb_reward_with_vat: RwSignal<String>,
+    seller_transfer_total: RwSignal<String>,
+    other_deductions: RwSignal<String>,
+    logistics: RwSignal<String>,
+    acquiring: RwSignal<String>,
+    reconciliation: ReconciliationDto,
+    max_deviation: Option<f64>,
+) -> impl IntoView {
+    let max_deviation_display = max_deviation
+        .map(format_amount)
+        .unwrap_or_else(|| "—".to_string());
+    view! {
+        <CardAnimated delay_ms=0 nav_id="a027_wb_documents_details_check">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:var(--spacing-md);">
+                <h4 class="details-section__title" style="margin:0;">"Проверка еженедельного отчета"</h4>
+                <Flex gap=FlexGap::Small align=FlexAlign::Center>
+                    <span style="font-size:13px;color:var(--color-text-secondary);">"Макс. отклонение:"</span>
+                    <span style="font-variant-numeric:tabular-nums;font-weight:600;">
+                        {max_deviation_display}
+                    </span>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        size=ButtonSize::Small
+                        on_click=move |_| on_save.run(())
+                        disabled=Signal::derive(move || saving.get() || posting.get())
+                    >
+                        {move || if saving.get() { "Сохранение..." } else { "Сохранить" }}
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        size=ButtonSize::Small
+                        on_click=move |_| on_post.run(())
+                        disabled=Signal::derive(move || saving.get() || posting.get())
+                    >
+                        {move || if posting.get() { "Проведение..." } else { "Провести" }}
+                    </Button>
+                </Flex>
+            </div>
+
+            <div style="display:grid;grid-template-columns:minmax(220px,260px) 160px 160px;gap:var(--spacing-sm);align-items:end;max-width:640px;">
+                <div class="form__group">
+                    <label class="form__label">"Тип документа"</label>
+                    <div style="min-height:32px;display:flex;align-items:center;">
+                        <Checkbox checked=is_weekly_report label="Еженедельный отчет" />
+                    </div>
+                </div>
+                <EditField label="Период с" value=report_period_from input_type="date".to_string() />
+                <EditField label="Период по" value=report_period_to input_type="date".to_string() />
+            </div>
+
+            <div class="table-wrapper" style="margin-top:var(--spacing-lg);">
+                <Table attr:style="width:100%;min-width:1120px;">
+                    <TableHeader>
+                        <TableRow>
+                            <TableHeaderCell>"Показатель"</TableHeaderCell>
+                            <TableHeaderCell attr:style="width:500px;">"Формула оборотов"</TableHeaderCell>
+                            <TableHeaderCell attr:style="width:150px;text-align:right;">"Отчет WB"</TableHeaderCell>
+                            <TableHeaderCell attr:style="width:150px;text-align:right;">"Данные в базе"</TableHeaderCell>
+                            <TableHeaderCell attr:style="width:180px;text-align:right;">"Расхождение"</TableHeaderCell>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <CheckInputRow
+                            label="Итого стоимость реализованного товара (1.1)"
+                            value=realized_goods_total
+                            line=reconciliation.realized_goods_total.clone()
+                        />
+                        <CheckInputRow
+                            label="Сумма вознаграждения WB (2.1 + 2.2)"
+                            value=wb_reward_with_vat
+                            line=reconciliation.wb_reward_with_vat.clone()
+                        />
+                        <CheckInputRow
+                            label="Прочие удержания / реклама (2.10)"
+                            value=other_deductions
+                            line=reconciliation.advert_other_deductions.clone()
+                        />
+                        <CheckInputRow
+                            label="Логистика (2.7 + 2.8)"
+                            value=logistics
+                            line=reconciliation.logistics.clone()
+                        />
+                        <CheckInputRow
+                            label="Эквайринг (2.6)"
+                            value=acquiring
+                            line=reconciliation.acquiring.clone()
+                        />
+                        <CheckInputRow
+                            label="Итого к перечислению продавцу (8)"
+                            value=seller_transfer_total
+                            line=reconciliation.seller_transfer_total.clone()
+                            emphasis=true
+                        />
+                    </TableBody>
+                </Table>
+            </div>
+        </CardAnimated>
+    }
+}
+
+#[component]
+fn AmountTableInput(
+    #[prop(into)] value: RwSignal<String>,
+    #[prop(optional)] emphasis: bool,
+) -> impl IntoView {
+    let font_weight = if emphasis { "600" } else { "400" };
+    view! {
+        <input
+            class="form__input"
+            type="text"
+            inputmode="decimal"
+            prop:value=move || value.get()
+            placeholder="0.00"
+            style=format!("height:28px;min-height:28px;width:110px;max-width:110px;padding:2px 6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:{};", font_weight)
+            on:input=move |ev| value.set(event_target_value(&ev))
+        />
+    }
+}
+
+#[component]
+fn CheckInputRow(
+    label: &'static str,
+    #[prop(into)] value: RwSignal<String>,
+    line: ReconciliationLineDto,
+    #[prop(optional)] emphasis: bool,
+) -> impl IntoView {
+    let database_value = if line.is_available {
+        fmt_optional_amount(line.database_value)
+    } else {
+        "?".to_string()
+    };
+    let difference = fmt_reconciliation_difference(&line);
+    view! {
+        <TableRow>
+            <TableCell><TableCellLayout>{label}</TableCellLayout></TableCell>
+            <TableCell>
+                <TableCellLayout attr:style="display:block;width:100%;font-size:12px;color:var(--color-text-secondary);white-space:normal;line-height:1.3;">
+                    {line.formula}
+                </TableCellLayout>
+            </TableCell>
+            <TableCell>
+                <TableCellLayout attr:style="display:block;width:100%;text-align:right;">
+                    <AmountTableInput value=value emphasis=emphasis />
+                </TableCellLayout>
+            </TableCell>
+            <TableCell><TableCellLayout attr:style="display:block;width:100%;text-align:right;font-variant-numeric:tabular-nums;">{database_value}</TableCellLayout></TableCell>
+            <TableCell><TableCellLayout attr:style="display:block;width:100%;text-align:right;font-variant-numeric:tabular-nums;">{difference}</TableCellLayout></TableCell>
+        </TableRow>
+    }
+}
+
+#[component]
+fn MetaTab(doc: DetailsDto) -> impl IntoView {
+    view! {
+        <div class="detail-grid">
+            <div class="detail-grid__col">
+                <CardAnimated delay_ms=0 nav_id="a027_wb_documents_details_meta_ids">
+                    <h4 class="details-section__title">"Технические поля"</h4>
+                    <ReadField label="ID" value=doc.id.clone() />
+                    <ReadField label="Service Name" value=doc.service_name.clone() />
+                    <ReadField label="Connection ID" value=doc.connection_id.clone() />
+                    <ReadField label="Organization ID" value=doc.organization_id.clone() />
+                    <ReadField label="Marketplace ID" value=doc.marketplace_id.clone() />
+                    <ReadField label="Locale" value=doc.locale.clone() />
+                </CardAnimated>
+            </div>
+            <div class="detail-grid__col">
+                <CardAnimated delay_ms=40 nav_id="a027_wb_documents_details_meta_dates">
+                    <h4 class="details-section__title">"Системные даты"</h4>
+                    <ReadField label="Создан в WB" value=fmt_dt(&doc.creation_time) />
+                    <ReadField label="Загружено" value=fmt_dt(&doc.fetched_at) />
+                    <ReadField label="Создано в БД" value=fmt_dt(&doc.created_at) />
+                    <ReadField label="Обновлено в БД" value=fmt_dt(&doc.updated_at) />
+                </CardAnimated>
+            </div>
+        </div>
     }
 }

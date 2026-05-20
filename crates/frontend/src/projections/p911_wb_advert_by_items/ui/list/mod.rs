@@ -84,8 +84,9 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
     let date_to = RwSignal::new(state.get_untracked().date_to.clone());
     let connection_mp_ref = RwSignal::new(state.get_untracked().connection_mp_ref.clone());
     let nomenclature_ref = RwSignal::new(state.get_untracked().nomenclature_ref.clone());
-    let layer = RwSignal::new(state.get_untracked().layer.clone());
     let turnover_code = RwSignal::new(state.get_untracked().turnover_code.clone());
+    let wb_advert_campaign_code =
+        RwSignal::new(state.get_untracked().wb_advert_campaign_code.clone());
     let registrator_ref = RwSignal::new(state.get_untracked().registrator_ref.clone());
 
     let active_filters_count = Signal::derive(move || {
@@ -96,8 +97,8 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
             state.date_to.as_str(),
             state.connection_mp_ref.as_str(),
             state.nomenclature_ref.as_str(),
-            state.layer.as_str(),
             state.turnover_code.as_str(),
+            state.wb_advert_campaign_code.as_str(),
             state.registrator_ref.as_str(),
         ] {
             if !value.is_empty() {
@@ -123,8 +124,8 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
                 &current.date_to,
                 &current.connection_mp_ref,
                 &current.nomenclature_ref,
-                &current.layer,
                 &current.turnover_code,
+                &current.wb_advert_campaign_code,
                 &current.registrator_ref,
                 limit,
                 offset,
@@ -170,8 +171,8 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
             state.date_to = date_to.get_untracked();
             state.connection_mp_ref = connection_mp_ref.get_untracked();
             state.nomenclature_ref = nomenclature_ref.get_untracked();
-            state.layer = layer.get_untracked();
             state.turnover_code = turnover_code.get_untracked();
+            state.wb_advert_campaign_code = wb_advert_campaign_code.get_untracked();
             state.registrator_ref = registrator_ref.get_untracked();
             state.page = 0;
         });
@@ -184,16 +185,16 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
         date_to.set(default_to.clone());
         connection_mp_ref.set(String::new());
         nomenclature_ref.set(String::new());
-        layer.set(String::new());
         turnover_code.set(String::new());
+        wb_advert_campaign_code.set(String::new());
         registrator_ref.set(String::new());
         state.update(|state| {
             state.date_from = default_from.clone();
             state.date_to = default_to.clone();
             state.connection_mp_ref.clear();
             state.nomenclature_ref.clear();
-            state.layer.clear();
             state.turnover_code.clear();
+            state.wb_advert_campaign_code.clear();
             state.registrator_ref.clear();
             state.page = 0;
         });
@@ -322,16 +323,16 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
                             </div>
 
                             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;">
-                                <div style="min-width:120px;">
-                                    <Flex vertical=true gap=FlexGap::Small>
-                                        <Label>"Layer"</Label>
-                                        <Input value=layer placeholder="oper" />
-                                    </Flex>
-                                </div>
                                 <div style="min-width:220px;">
                                     <Flex vertical=true gap=FlexGap::Small>
                                         <Label>"Turnover code"</Label>
-                                        <Input value=turnover_code placeholder="advertising_allocated" />
+                                        <Input value=turnover_code placeholder="advert_clicks_no_order" />
+                                    </Flex>
+                                </div>
+                                <div style="min-width:180px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Campaign"</Label>
+                                        <Input value=wb_advert_campaign_code placeholder="advert_id" />
                                     </Flex>
                                 </div>
                                 <div style="min-width:260px;">
@@ -359,6 +360,12 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
                                 </TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=220.0>"Connection"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=260.0>"Nomenclature"</TableHeaderCell>
+                                <TableHeaderCell resizable=true min_width=120.0>
+                                    "Campaign"
+                                    <span class={move || get_sort_class("wb_advert_campaign_code", &state.get().sort_by)} on:click=move |_| toggle_sort("wb_advert_campaign_code")>
+                                        {move || get_sort_indicator("wb_advert_campaign_code", &state.get().sort_by, state.get().sort_ascending)}
+                                    </span>
+                                </TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=220.0>
                                     "Turnover"
                                     <span class={move || get_sort_class("turnover_code", &state.get().sort_by)} on:click=move |_| toggle_sort("turnover_code")>
@@ -380,13 +387,13 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
                             {move || {
                                 if is_loading.get() && items.get().is_empty() {
                                     return vec![view! {
-                                        <TableRow><TableCell attr:colspan="8"><TableCellLayout><span class="text-muted">"Loading..."</span></TableCellLayout></TableCell></TableRow>
+                                        <TableRow><TableCell attr:colspan="9"><TableCellLayout><span class="text-muted">"Loading..."</span></TableCellLayout></TableCell></TableRow>
                                     }.into_view()];
                                 }
                                 let data = items.get();
                                 if data.is_empty() {
                                     return vec![view! {
-                                        <TableRow><TableCell attr:colspan="8"><TableCellLayout><span class="text-muted">"No data"</span></TableCellLayout></TableCell></TableRow>
+                                        <TableRow><TableCell attr:colspan="9"><TableCellLayout><span class="text-muted">"No data"</span></TableCellLayout></TableCell></TableRow>
                                     }.into_view()];
                                 }
 
@@ -407,6 +414,7 @@ pub fn WbAdvertByItemsList() -> impl IntoView {
                                             <TableCell><TableCellLayout>{row.entry_date}</TableCellLayout></TableCell>
                                             <TableCell><TableCellLayout truncate=true>{row.connection_mp_ref.clone()}</TableCellLayout></TableCell>
                                             <TableCell><TableCellLayout truncate=true>{row.nomenclature_ref.clone().unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
+                                            <TableCell><TableCellLayout truncate=true>{row.wb_advert_campaign_code.clone()}</TableCellLayout></TableCell>
                                             <TableCell attr:title=turnover_title>
                                                 <TableCellLayout truncate=true>
                                                     <a
@@ -491,8 +499,8 @@ async fn fetch_items(
     date_to: &str,
     connection_mp_ref: &str,
     nomenclature_ref: &str,
-    layer: &str,
     turnover_code: &str,
+    wb_advert_campaign_code: &str,
     registrator_ref: &str,
     limit: usize,
     offset: usize,
@@ -521,13 +529,16 @@ async fn fetch_items(
             urlencoding::encode(nomenclature_ref)
         ));
     }
-    if !layer.is_empty() {
-        params.push(format!("layer={}", urlencoding::encode(layer)));
-    }
     if !turnover_code.is_empty() {
         params.push(format!(
             "turnover_code={}",
             urlencoding::encode(turnover_code)
+        ));
+    }
+    if !wb_advert_campaign_code.is_empty() {
+        params.push(format!(
+            "wb_advert_campaign_code={}",
+            urlencoding::encode(wb_advert_campaign_code)
         ));
     }
     if !registrator_ref.is_empty() {

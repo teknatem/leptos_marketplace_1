@@ -232,7 +232,7 @@ pub const FIELDS: &[FieldMetadata] = &[
         validation: ValidationRules::required(),
         ai_hint: Some(
             "Код вида оборота: customer_revenue, mp_commission, mp_logistics, \
-             advertising_allocated, mp_penalty, mp_acquiring, ...",
+             advert_clicks_no_order, mp_penalty, mp_acquiring, ...",
         ),
         nested_fields: None,
         ref_aggregate: None,

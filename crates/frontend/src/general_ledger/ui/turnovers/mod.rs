@@ -1,4 +1,8 @@
+pub mod details;
+pub use details::GeneralLedgerTurnoverDetails;
+
 use crate::general_ledger::api::fetch_general_ledger_turnovers;
+use crate::general_ledger::ui::dimensions::{dimension_search_text, DimensionPreview};
 use crate::layout::global_context::AppGlobalContext;
 use crate::layout::tabs::tab_label_for_key;
 use crate::shared::page_frame::PageFrame;
@@ -86,7 +90,7 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                 }
 
                 let haystack = format!(
-                    "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+                    "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
                     item.code,
                     item.name,
                     item.description,
@@ -104,6 +108,8 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                     item.agg_kind.as_str(),
                     item.selection_rule.as_str(),
                     item.sign_policy.as_str(),
+                    item.dimension_signature,
+                    dimension_search_text(&item.available_dimensions),
                 )
                 .to_lowercase();
 
@@ -220,12 +226,12 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                             <TableRow>
                                 <TableHeaderCell>"Code"</TableHeaderCell>
                                 <TableHeaderCell>"Name"</TableHeaderCell>
+                                <TableHeaderCell>"Dimensions"</TableHeaderCell>
                                 <TableHeaderCell>"Classification"</TableHeaderCell>
                                 <TableHeaderCell>"Rules"</TableHeaderCell>
                                 <TableHeaderCell>"Journal"</TableHeaderCell>
                                 <TableHeaderCell>"GL rows"</TableHeaderCell>
                                 <TableHeaderCell>"Aliases / Sources"</TableHeaderCell>
-                                <TableHeaderCell>"Info"</TableHeaderCell>
                             </TableRow>
                         </TableHeader>
 
@@ -256,11 +262,25 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                                             BadgeColor::Warning
                                         };
 
+                                        let code_for_click = item.code.clone();
+                                        let label_for_click = item.code.clone();
+
                                         view! {
                                             <TableRow>
                                                 <TableCell>
                                                     <TableCellLayout truncate=true>
-                                                        <code>{item.code.clone()}</code>
+                                                        <a
+                                                            class="link"
+                                                            href="javascript:void(0)"
+                                                            on:click=move |_| {
+                                                                tabs_store.open_tab(
+                                                                    &format!("general_ledger_turnover_details_{}", code_for_click),
+                                                                    &label_for_click,
+                                                                );
+                                                            }
+                                                        >
+                                                            <code>{item.code.clone()}</code>
+                                                        </a>
                                                     </TableCellLayout>
                                                 </TableCell>
 
@@ -269,6 +289,21 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                                                         <div>{item.name.clone()}</div>
                                                         <div style="font-size: 12px; opacity: 0.75;">
                                                             {item.llm_description.clone()}
+                                                        </div>
+                                                    </TableCellLayout>
+                                                </TableCell>
+
+                                                <TableCell>
+                                                    <TableCellLayout>
+                                                        <div class="gldim-signature">
+                                                            {if item.dimension_signature.trim().is_empty() {
+                                                                "—".to_string()
+                                                            } else {
+                                                                item.dimension_signature.clone()
+                                                            }}
+                                                        </div>
+                                                        <div style="margin-top: 8px;">
+                                                            <DimensionPreview dimensions=item.available_dimensions.clone() />
                                                         </div>
                                                     </TableCellLayout>
                                                 </TableCell>
@@ -336,33 +371,6 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                                                         <div style="margin-top: 6px;">
                                                             <strong>"Sources: "</strong>
                                                             {join_or_dash(&item.source_examples)}
-                                                        </div>
-                                                    </TableCellLayout>
-                                                </TableCell>
-
-                                                <TableCell>
-                                                    <TableCellLayout>
-                                                        <div>{item.description.clone()}</div>
-                                                        <div style="margin-top: 6px; font-size: 12px; opacity: 0.8;">
-                                                            {format!("Formula: {}", if item.formula_hint.is_empty() {
-                                                                "—"
-                                                            } else {
-                                                                item.formula_hint.as_str()
-                                                            })}
-                                                        </div>
-                                                        <div style="margin-top: 6px; font-size: 12px; opacity: 0.8;">
-                                                            {format!("Journal: {}", if item.journal_comment.is_empty() {
-                                                                "—"
-                                                            } else {
-                                                                item.journal_comment.as_str()
-                                                            })}
-                                                        </div>
-                                                        <div style="margin-top: 6px; font-size: 12px; opacity: 0.8;">
-                                                            {format!("Notes: {}", if item.notes.is_empty() {
-                                                                "—"
-                                                            } else {
-                                                                item.notes.as_str()
-                                                            })}
                                                         </div>
                                                     </TableCellLayout>
                                                 </TableCell>

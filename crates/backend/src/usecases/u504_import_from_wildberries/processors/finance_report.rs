@@ -17,9 +17,38 @@ pub async fn map_finance_report_row(
     let rr_dt_str = row.rr_dt.clone().unwrap();
     let rr_dt = chrono::NaiveDate::parse_from_str(&rr_dt_str, "%Y-%m-%d")?;
     let extra_json = serde_json::to_string(row).ok();
-    let a004_nomenclature_ref = match row.nm_id {
+    let a004_nomenclature_ref = match row.nm_id.filter(|v| *v > 0) {
         Some(nm_id) => {
-            super::wb_nomenclature::resolve_wb_nomenclature_ref(
+            // Если a007 для (connection, nm_id) ещё не существует — создаём его прямо здесь,
+            // используя article (`sa_name`) и категорию (`subject_name`) из строки отчёта.
+            // find_or_create_for_sale идемпотентен: если a007 уже есть, ничего не создаёт.
+            // Внутри create запускается search_and_set_nomenclature → если a004 с этим
+            // article уже заведена, привязка установится автоматически.
+            let title = row
+                .subject_name
+                .clone()
+                .filter(|s| !s.trim().is_empty())
+                .or_else(|| {
+                    row.sa_name
+                        .clone()
+                        .filter(|s| !s.trim().is_empty())
+                        .map(|sa| format!("Артикул: {}", sa))
+                })
+                .unwrap_or_else(|| format!("WB nm_id: {}", nm_id));
+
+            let _ = crate::domain::a007_marketplace_product::service::find_or_create_for_sale(
+                crate::domain::a007_marketplace_product::service::FindOrCreateParams {
+                    marketplace_ref: connection.marketplace_id.clone(),
+                    connection_mp_ref: connection.base.id.as_string(),
+                    marketplace_sku: nm_id.to_string(),
+                    article: row.sa_name.clone(),
+                    barcode: None,
+                    title,
+                },
+            )
+            .await?;
+
+            crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
                 &connection.base.id.as_string(),
                 nm_id,
                 row.sa_name.as_deref(),

@@ -627,7 +627,6 @@ pub async fn search_by_document_no(document_no: &str) -> Result<Vec<WbSales>> {
     let items: Vec<WbSales> = Entity::find()
         .filter(Column::DocumentNo.eq(document_no))
         .filter(Column::IsDeleted.eq(false))
-        .filter(Column::TotalPrice.gt(0.0)) // Exclude returns (negative or zero total_price)
         .all(conn())
         .await?
         .into_iter()

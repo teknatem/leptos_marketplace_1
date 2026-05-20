@@ -22,6 +22,8 @@ pub struct GeneralLedgerEntryDto {
     pub qty: Option<f64>,
     pub turnover_code: String,
     #[serde(default)]
+    pub turnover_name: String,
+    #[serde(default)]
     pub resource_table: String,
     #[serde(default = "default_resource_field")]
     pub resource_field: String,
@@ -67,4 +69,6 @@ pub struct GeneralLedgerTurnoverDto {
     pub gl_entries_count: usize,
     #[serde(default)]
     pub available_dimensions: Vec<GlDimensionDef>,
+    #[serde(default)]
+    pub dimension_signature: String,
 }

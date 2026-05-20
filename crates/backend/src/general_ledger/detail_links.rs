@@ -80,6 +80,18 @@ const DETAIL_LINKS: &[GlDetailLinkDescriptor] = &[
         where_sql: "gl.resource_table = 'p911_wb_advert_by_items'",
         nomenclature_ref_expr: "d.nomenclature_ref",
     },
+    GlDetailLinkDescriptor {
+        resource_table: "p913_wb_advert_order_attr",
+        detail_table: "p913_wb_advert_order_attr",
+        detail_alias: "d",
+        kind: GlDetailLinkKind::ProjectionLinked,
+        join_variants: &[GlDetailJoinVariant {
+            join_sql: "INNER JOIN p913_wb_advert_order_attr d ON d.general_ledger_ref = gl.id",
+            extra_where_sql: "",
+        }],
+        where_sql: "gl.resource_table = 'p913_wb_advert_order_attr'",
+        nomenclature_ref_expr: "d.nomenclature_ref",
+    },
 ];
 
 pub fn descriptor_for_resource_table(

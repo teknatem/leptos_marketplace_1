@@ -31,6 +31,7 @@ pub struct Model {
     pub report_period_from: Option<String>,
     pub report_period_to: Option<String>,
     pub weekly_report_manual_json: String,
+    pub max_deviation: Option<f64>,
     pub extensions_json: String,
     pub source_meta_json: String,
     pub is_deleted: bool,
@@ -87,6 +88,7 @@ impl From<Model> for WbDocument {
             report_period_from: m.report_period_from,
             report_period_to: m.report_period_to,
             weekly_report_data,
+            max_deviation: m.max_deviation,
             source_meta,
         }
     }
@@ -121,6 +123,8 @@ pub struct WbDocumentsListRow {
     pub connection_name: Option<String>,
     pub organization_name: Option<String>,
     pub fetched_at: String,
+    pub weekly_report_data: WbWeeklyReportManualData,
+    pub max_deviation: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +200,7 @@ async fn upsert_with_conn<C: ConnectionTrait>(db: &C, document: &WbDocument) -> 
         report_period_from: Set(document.report_period_from.clone()),
         report_period_to: Set(document.report_period_to.clone()),
         weekly_report_manual_json: Set(weekly_report_manual_json),
+        max_deviation: Set(document.max_deviation),
         extensions_json: Set(extensions_json),
         source_meta_json: Set(source_meta_json),
         is_deleted: Set(document.base.metadata.is_deleted),
@@ -293,6 +298,8 @@ pub async fn list_sql(query: WbDocumentsListQuery) -> Result<WbDocumentsListResu
             d.connection_id,
             c.description as connection_name,
             o.description as organization_name,
+            d.weekly_report_manual_json,
+            d.max_deviation,
             json_extract(d.source_meta_json, '$.fetched_at') as fetched_at
          FROM a027_wb_documents d
          LEFT JOIN a006_connection_mp c ON c.id = d.connection_id
@@ -342,6 +349,12 @@ pub async fn list_sql(query: WbDocumentsListQuery) -> Result<WbDocumentsListResu
             connection_name: row.try_get("", "connection_name").ok(),
             organization_name: row.try_get("", "organization_name").ok(),
             fetched_at: row.try_get("", "fetched_at").unwrap_or_default(),
+            weekly_report_data: serde_json::from_str(
+                &row.try_get::<String>("", "weekly_report_manual_json")
+                    .unwrap_or_default(),
+            )
+            .unwrap_or_default(),
+            max_deviation: row.try_get::<f64>("", "max_deviation").ok(),
         })
         .collect();
 

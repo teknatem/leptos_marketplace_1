@@ -1,17 +1,20 @@
 use axum::{extract::Query, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::general_ledger::drilldown_dimensions::dimensions_for_turnover;
+use crate::general_ledger::drilldown_dimensions::{
+    dimension_signature_for_turnover, dimensions_catalog, dimensions_for_turnover,
+};
 use crate::general_ledger::drilldown_session_repository;
 use crate::general_ledger::report_repository;
+use crate::general_ledger::resource_detail;
 use crate::general_ledger::turnover_registry::{get_turnover_class, TURNOVER_CLASSES};
 use contracts::general_ledger::{
     GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
-    GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse, GlDrilldownSessionCreate,
-    GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord, GlReportQuery, GlReportResponse,
-    WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
+    GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
+    GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
+    GlReportQuery, GlReportResponse, GlResourceDetailResponse, WbWeeklyReconciliationQuery,
+    WbWeeklyReconciliationResponse,
 };
-use contracts::shared::analytics::TurnoverLayer;
 
 #[derive(Debug, Deserialize)]
 pub struct GeneralLedgerQuery {
@@ -123,6 +126,58 @@ pub async fn get_by_id(
     Ok(Json(to_dto(item)))
 }
 
+pub async fn get_resource_details(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<GlResourceDetailResponse>, axum::http::StatusCode> {
+    resource_detail::get_resource_details(&id)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("general_ledger resource_details error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+pub async fn get_turnover_by_code(
+    axum::extract::Path(code): axum::extract::Path<String>,
+) -> Result<Json<GeneralLedgerTurnoverDto>, axum::http::StatusCode> {
+    let item = get_turnover_class(&code).ok_or(axum::http::StatusCode::NOT_FOUND)?;
+    let counts = crate::general_ledger::repository::count_grouped_by_turnover_code()
+        .await
+        .map_err(|e| {
+            tracing::error!("general_ledger turnover counts error: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(GeneralLedgerTurnoverDto {
+        code: item.code.to_string(),
+        name: item.name.to_string(),
+        description: item.description.to_string(),
+        llm_description: item.llm_description.to_string(),
+        scope: item.scope,
+        value_kind: item.value_kind,
+        agg_kind: item.agg_kind,
+        selection_rule: item.selection_rule,
+        sign_policy: item.sign_policy,
+        report_group: item.report_group,
+        aliases: item.aliases.iter().map(|value| value.to_string()).collect(),
+        source_examples: item
+            .source_examples
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+        formula_hint: item.formula_hint.to_string(),
+        notes: item.notes.to_string(),
+        debit_account: item.debit_account.to_string(),
+        credit_account: item.credit_account.to_string(),
+        generates_journal_entry: item.generates_journal_entry,
+        journal_comment: item.journal_comment.to_string(),
+        gl_entries_count: counts.get(item.code).copied().unwrap_or(0),
+        available_dimensions: dimensions_for_turnover(item.code),
+        dimension_signature: dimension_signature_for_turnover(item.code),
+    }))
+}
+
 pub async fn list_turnovers(
 ) -> Result<Json<GeneralLedgerTurnoverListResponse>, axum::http::StatusCode> {
     let counts = crate::general_ledger::repository::count_grouped_by_turnover_code()
@@ -159,6 +214,7 @@ pub async fn list_turnovers(
             journal_comment: item.journal_comment.to_string(),
             gl_entries_count: counts.get(item.code).copied().unwrap_or(0),
             available_dimensions: dimensions_for_turnover(item.code),
+            dimension_signature: dimension_signature_for_turnover(item.code),
         })
         .collect::<Vec<_>>();
 
@@ -172,6 +228,12 @@ pub async fn list_turnovers(
     let total = items.len();
 
     Ok(Json(GeneralLedgerTurnoverListResponse { items, total }))
+}
+
+pub async fn dimensions_catalog_index() -> Json<GlDimensionsCatalogResponse> {
+    let items = dimensions_catalog();
+    let total = items.len();
+    Json(GlDimensionsCatalogResponse { items, total })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,27 +368,5 @@ pub async fn wb_weekly_reconciliation(
 }
 
 fn to_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
-    let comment = get_turnover_class(&row.turnover_code)
-        .map(|c| c.journal_comment.to_string())
-        .unwrap_or_default();
-
-    GeneralLedgerEntryDto {
-        id: row.id,
-        entry_date: row.entry_date,
-        layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
-        connection_mp_ref: row.connection_mp_ref,
-        registrator_type: row.registrator_type,
-        registrator_ref: row.registrator_ref,
-        order_id: row.order_id,
-        debit_account: row.debit_account,
-        credit_account: row.credit_account,
-        amount: row.amount,
-        qty: row.qty,
-        turnover_code: row.turnover_code,
-        resource_table: row.resource_table,
-        resource_field: row.resource_field,
-        resource_sign: row.resource_sign,
-        created_at: row.created_at,
-        comment,
-    }
+    crate::general_ledger::dto::entry_to_dto(row)
 }

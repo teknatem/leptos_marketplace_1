@@ -7,7 +7,7 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::layout::tabs::tab_label_for_key;
 use crate::navigator::marketplace::data::BLOCKS;
 use crate::navigator::marketplace::link_matches;
-use crate::navigator::shared::types::{LinkScope, MarketplaceKind, NavBlock, NavLink};
+use crate::navigator::shared::types::{EntityType, LinkScope, MarketplaceKind, NavBlock, NavLink};
 use crate::shared::icons::icon;
 use crate::system::auth::context::{has_read_access, AuthState};
 use leptos::prelude::*;
@@ -44,8 +44,8 @@ pub fn MarketplaceTable(
             <table class="navigator-mp__table">
                 <colgroup>
                     <col class="col-num" />
-                    <col class="col-block" />
                     <col class="col-name" />
+                    <col class="col-block" />
                     <col class="col-type" />
                     <col class="col-desc" />
                     <col class="col-mp-single" />
@@ -53,8 +53,8 @@ pub fn MarketplaceTable(
                 <thead>
                     <tr>
                         <th class="navigator-mp__td--num">"#"</th>
-                        <SortTh label="Раздел"       field=SortField::Block       sort_field=sort_field sort_asc=sort_asc on_click=toggle_sort />
                         <SortTh label="Название"     field=SortField::Name        sort_field=sort_field sort_asc=sort_asc on_click=toggle_sort />
+                        <SortTh label="Раздел"       field=SortField::Block       sort_field=sort_field sort_asc=sort_asc on_click=toggle_sort />
                         <SortTh label="Тип"          field=SortField::Type        sort_field=sort_field sort_asc=sort_asc on_click=toggle_sort />
                         <th>"Описание"</th>
                         <SortTh label="Маркетплейс"  field=SortField::Marketplace sort_field=sort_field sort_asc=sort_asc on_click=toggle_sort />
@@ -147,19 +147,35 @@ fn render_rows(
         SortField::Default => {}
         SortField::Block => rows.sort_by(|(a, _), (b, _)| {
             let c = a.label.to_lowercase().cmp(&b.label.to_lowercase());
-            if sort_asc { c } else { c.reverse() }
+            if sort_asc {
+                c
+            } else {
+                c.reverse()
+            }
         }),
         SortField::Name => rows.sort_by(|(_, a), (_, b)| {
             let c = a.label.to_lowercase().cmp(&b.label.to_lowercase());
-            if sort_asc { c } else { c.reverse() }
+            if sort_asc {
+                c
+            } else {
+                c.reverse()
+            }
         }),
         SortField::Type => rows.sort_by(|(_, a), (_, b)| {
             let c = a.entity_type.label().cmp(b.entity_type.label());
-            if sort_asc { c } else { c.reverse() }
+            if sort_asc {
+                c
+            } else {
+                c.reverse()
+            }
         }),
         SortField::Marketplace => rows.sort_by(|(_, a), (_, b)| {
             let c = mp_label(&a.marketplaces).cmp(mp_label(&b.marketplaces));
-            if sort_asc { c } else { c.reverse() }
+            if sort_asc {
+                c
+            } else {
+                c.reverse()
+            }
         }),
     }
 
@@ -200,15 +216,13 @@ fn FlatRow(
         ctx.open_tab(tab_key, &label);
     };
 
-    let (type_label, type_mod) = (link.entity_type.label(), link.entity_type.css_mod());
+    let type_label = link.entity_type.label();
+    let type_badge = entity_badge_class(link.entity_type);
     let mp_text = mp_label(&link.marketplaces);
 
     view! {
         <tr class="navigator-mp__row">
             <td class="navigator-mp__td--num">{num}</td>
-            <td>
-                <span class="navigator-mp__cell-label">{block.label}</span>
-            </td>
             <td class="navigator-mp__td--name">
                 <a href="#" on:click=move |ev| { ev.prevent_default(); open(ev.clone()); }>
                     {icon(link.icon)}
@@ -216,13 +230,22 @@ fn FlatRow(
                 </a>
             </td>
             <td>
-                <span class=format!("navigator-mp__badge navigator-mp__badge--{}", type_mod)>
-                    {type_label}
-                </span>
+                <span class="navigator-mp__cell-label">{block.label}</span>
+            </td>
+            <td>
+                <span class=type_badge>{type_label}</span>
             </td>
             <td class="navigator-mp__td--desc">{link.annotation}</td>
             <td class="navigator-mp__td--mp-text">{mp_text}</td>
         </tr>
+    }
+}
+
+fn entity_badge_class(entity_type: EntityType) -> &'static str {
+    match entity_type {
+        EntityType::Aggregate => "badge badge--primary",
+        EntityType::Projection => "badge badge--success",
+        EntityType::UseCase => "badge badge--warning",
     }
 }
 

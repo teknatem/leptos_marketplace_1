@@ -40,13 +40,11 @@ pub fn MarketplaceBrief(
 
                 visible_blocks
                     .into_iter()
-                    .enumerate()
-                    .map(|(idx, block)| {
+                    .map(|block| {
                         let needle = needle.clone();
                         view! {
                             <BriefBlockRow
                                 block=block
-                                index=idx
                                 needle=needle
                                 ctx=ctx
                                 auth_state=auth_state
@@ -66,21 +64,16 @@ fn ColumnHeads() -> impl IntoView {
         <div class="navigator-mp__columns-head">
             {COLUMNS
                 .iter()
-                .enumerate()
-                .map(|(idx, col)| {
+                .map(|col| {
                     let logo: String = col.logo_svg.to_string();
                     view! {
                         <div
                             class="navigator-mp__column-head"
-                            style=format!(
-                                "--mp-color: {}; --nav-i: {};",
-                                col.brand_color, idx
-                            )
+                            style=format!("--mp-color: {};", col.brand_color)
                         >
                             <div
                                 class="navigator-mp__logo"
                                 data-mp=col.mp_key
-                                style=format!("height: {}px;", col.logo_height_px)
                                 inner_html=logo
                             ></div>
                             <div class="navigator-mp__column-label">{col.label}</div>
@@ -95,7 +88,6 @@ fn ColumnHeads() -> impl IntoView {
 #[component]
 fn BriefBlockRow(
     block: &'static NavBlock,
-    index: usize,
     needle: String,
     ctx: AppGlobalContext,
     auth_state: ReadSignal<AuthState>,
@@ -105,7 +97,6 @@ fn BriefBlockRow(
         <div
             class="navigator-mp__block"
             data-block=block_id
-            style=format!("--nav-i: {};", index)
         >
             <div class="navigator-mp__block-title form__label">
                 //<span class="navigator-mp__block-title-icon">{icon(block.icon)}</span>
@@ -157,10 +148,9 @@ fn BriefCell(
         >
             {links
                 .into_iter()
-                .enumerate()
-                .map(|(idx, link)| {
+                .map(|link| {
                     view! {
-                        <BriefLink link=link index=idx ctx=ctx />
+                        <BriefLink link=link ctx=ctx />
                     }
                 })
                 .collect_view()}
@@ -169,7 +159,7 @@ fn BriefCell(
 }
 
 #[component]
-fn BriefLink(link: &'static NavLink, index: usize, ctx: AppGlobalContext) -> impl IntoView {
+fn BriefLink(link: &'static NavLink, ctx: AppGlobalContext) -> impl IntoView {
     let tab_key = link.tab_key;
     let annotation = link.annotation;
     let on_click = move |_| {
@@ -180,7 +170,6 @@ fn BriefLink(link: &'static NavLink, index: usize, ctx: AppGlobalContext) -> imp
         <a
             class="navigator-mp__link navigator-mp__link--brief"
             href="#"
-            style=format!("--nav-i: {};", index)
             on:click=move |ev| {
                 ev.prevent_default();
                 on_click(());

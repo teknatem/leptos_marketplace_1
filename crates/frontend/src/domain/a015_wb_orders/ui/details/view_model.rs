@@ -129,8 +129,8 @@ impl WbOrdersDetailsVm {
                     vm.order.set(Some(data.clone()));
                     vm.load_related_data(&data);
                     vm.load_supply_link(&data.id);
-                    vm.load_finance_reports();
-                    vm.load_wb_sales();
+                    // finance_reports и wb_sales грузятся по-требованию
+                    // из Effect в page.rs при переходе на нужную вкладку
                     vm.loading.set(false);
                 }
                 Err(e) => {

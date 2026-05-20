@@ -1,21 +1,10 @@
-use super::tabs::{GeneralTab, JsonTab, LinksTab};
+use super::tabs::{GeneralTab, JsonTab};
 use super::view_model::WbReturnsClaimsDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use leptos::prelude::*;
 use thaw::*;
-
-fn format_date(iso_date: &str) -> String {
-    if let Some(date_part) = iso_date.split('T').next() {
-        if let Some((year, rest)) = date_part.split_once('-') {
-            if let Some((month, day)) = rest.split_once('-') {
-                return format!("{}.{}.{}", day, month, year);
-            }
-        }
-    }
-    iso_date.to_string()
-}
 
 #[component]
 pub fn WbReturnsClaimsDetails(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
@@ -31,9 +20,18 @@ pub fn WbReturnsClaimsDetails(id: String, #[prop(into)] on_close: Callback<()>) 
         move || {
             if let Some(data) = vm.item.get() {
                 let tab_key = format!("a032_wb_returns_claims_details_{}", stored_id.get_value());
-                let short = &data.claim_id[..data.claim_id.len().min(16)];
+                let short: String = data.claim_id.chars().take(16).collect();
                 let tab_title = format!("Заявка {}", short);
                 tabs_store.update_tab_title(&tab_key, &tab_title);
+            }
+        }
+    });
+
+    Effect::new({
+        let vm = vm.clone();
+        move || {
+            if vm.active_tab.get() == "json" && !vm.raw_json_loaded.get() {
+                vm.load_raw_json();
             }
         }
     });
@@ -65,10 +63,7 @@ pub fn WbReturnsClaimsDetails(id: String, #[prop(into)] on_close: Callback<()>) 
                         }
                         .into_any()
                     } else if vm.item.get().is_some() {
-                        view! {
-                            <TabContent vm=vm_content.clone() />
-                        }
-                        .into_any()
+                        view! { <TabContent vm=vm_content.clone() /> }.into_any()
                     } else {
                         view! { <div>"Нет данных"</div> }.into_any()
                     }
@@ -81,6 +76,7 @@ pub fn WbReturnsClaimsDetails(id: String, #[prop(into)] on_close: Callback<()>) 
 #[component]
 fn Header(vm: WbReturnsClaimsDetailsVm, on_close: Callback<()>) -> impl IntoView {
     let claim_id = vm.claim_id();
+    let item = vm.item;
 
     view! {
         <div class="page__header">
@@ -91,15 +87,14 @@ fn Header(vm: WbReturnsClaimsDetailsVm, on_close: Callback<()>) -> impl IntoView
                         if cid.is_empty() {
                             "Заявка на возврат WB".to_string()
                         } else {
-                            format!("Заявка {}", &cid[..cid.len().min(16)])
+                            let short: String = cid.chars().take(16).collect();
+                            format!("Заявка {}", short)
                         }
                     }}
                 </h1>
-                    <Show when=move || vm.item.get().is_some()>
+                <Show when=move || item.get().is_some()>
                     {move || {
-                        let is_archive = vm.item.get().map(|d| d.is_archive).unwrap_or(false);
-                        let status = vm.item.get().and_then(|d| d.status);
-                        let dt_str = vm.item.get().map(|d| format_date(&d.dt)).unwrap_or_default();
+                        let status = item.get().and_then(|d| d.status);
                         view! {
                             <Badge
                                 appearance=BadgeAppearance::Filled
@@ -120,16 +115,6 @@ fn Header(vm: WbReturnsClaimsDetailsVm, on_close: Callback<()>) -> impl IntoView
                                     _ => "Неизвестен",
                                 }}
                             </Badge>
-                            {if is_archive {
-                                view! { <Badge appearance=BadgeAppearance::Outline color=BadgeColor::Subtle>"Архив"</Badge> }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
-                            {if !dt_str.is_empty() {
-                                view! { <span class="page__header-meta">{dt_str}</span> }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
                         }
                     }}
                 </Show>
@@ -166,17 +151,6 @@ fn TabBar(vm: WbReturnsClaimsDetailsVm) -> impl IntoView {
 
             <button
                 class="page__tab"
-                class:page__tab--active=move || active_tab.get() == "links"
-                on:click={
-                    let vm = vm.clone();
-                    move |_| vm.set_tab("links")
-                }
-            >
-                {icon("link")} "Связи"
-            </button>
-
-            <button
-                class="page__tab"
                 class:page__tab--active=move || active_tab.get() == "json"
                 on:click={
                     let vm = vm.clone();
@@ -192,13 +166,14 @@ fn TabBar(vm: WbReturnsClaimsDetailsVm) -> impl IntoView {
 #[component]
 fn TabContent(vm: WbReturnsClaimsDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
+    let vm_general = vm.clone();
+    let vm_json = vm.clone();
 
     view! {
         {move || match active_tab.get() {
-            "general" => view! { <GeneralTab vm=vm.clone() /> }.into_any(),
-            "links" => view! { <LinksTab vm=vm.clone() /> }.into_any(),
-            "json" => view! { <JsonTab vm=vm.clone() /> }.into_any(),
-            _ => view! { <div>"Неизвестная вкладка"</div> }.into_any(),
+            "general" => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+            "json" => view! { <JsonTab vm=vm_json.clone() /> }.into_any(),
+            _ => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
         }}
     }
 }

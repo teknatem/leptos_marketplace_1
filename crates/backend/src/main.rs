@@ -103,6 +103,7 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 println!("✓ External API: enabled (X-Api-Key configured)\n");
             }
+            shared::config::set_scheduler_config_enabled(cfg.scheduled_tasks.enabled);
             cfg.scheduled_tasks.enabled
         }
         Err(e) => {
@@ -133,7 +134,10 @@ async fn main() -> anyhow::Result<()> {
             w
         }
         Err(e) => {
-            println!("✗ ERROR: Task manager registry initialization failed: {}\n", e);
+            println!(
+                "✗ ERROR: Task manager registry initialization failed: {}\n",
+                e
+            );
             return Err(e);
         }
     };

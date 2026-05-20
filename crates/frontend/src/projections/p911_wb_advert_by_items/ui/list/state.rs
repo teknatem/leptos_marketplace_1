@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-const STORAGE_KEY: &str = "p911_wb_advert_by_items_list_state_v1";
+const STORAGE_KEY: &str = "p911_wb_advert_by_items_list_state_v2";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PersistedState {
@@ -9,8 +9,8 @@ struct PersistedState {
     pub date_to: String,
     pub connection_mp_ref: String,
     pub nomenclature_ref: String,
-    pub layer: String,
     pub turnover_code: String,
+    pub wb_advert_campaign_code: String,
     pub registrator_ref: String,
     pub sort_by: String,
     pub sort_ascending: bool,
@@ -24,8 +24,8 @@ pub struct P911ListState {
     pub date_to: String,
     pub connection_mp_ref: String,
     pub nomenclature_ref: String,
-    pub layer: String,
     pub turnover_code: String,
+    pub wb_advert_campaign_code: String,
     pub registrator_ref: String,
     pub sort_by: String,
     pub sort_ascending: bool,
@@ -43,8 +43,8 @@ impl Default for P911ListState {
             date_to: String::new(),
             connection_mp_ref: String::new(),
             nomenclature_ref: String::new(),
-            layer: String::new(),
             turnover_code: String::new(),
+            wb_advert_campaign_code: String::new(),
             registrator_ref: String::new(),
             sort_by: "entry_date".to_string(),
             sort_ascending: false,
@@ -83,8 +83,8 @@ pub fn persist_state(signal: RwSignal<P911ListState>) {
         date_to: state.date_to,
         connection_mp_ref: state.connection_mp_ref,
         nomenclature_ref: state.nomenclature_ref,
-        layer: state.layer,
         turnover_code: state.turnover_code,
+        wb_advert_campaign_code: state.wb_advert_campaign_code,
         registrator_ref: state.registrator_ref,
         sort_by: state.sort_by,
         sort_ascending: state.sort_ascending,
@@ -100,8 +100,8 @@ pub fn create_state() -> RwSignal<P911ListState> {
         state.date_to = persisted.date_to;
         state.connection_mp_ref = persisted.connection_mp_ref;
         state.nomenclature_ref = persisted.nomenclature_ref;
-        state.layer = persisted.layer;
         state.turnover_code = persisted.turnover_code;
+        state.wb_advert_campaign_code = persisted.wb_advert_campaign_code;
         state.registrator_ref = persisted.registrator_ref;
         state.sort_by = persisted.sort_by;
         state.sort_ascending = persisted.sort_ascending;

@@ -5,6 +5,7 @@ use super::view_model::WbOrdersDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use crate::system::favorites::ui::FavoriteButton;
 use leptos::prelude::*;
 use thaw::*;
 
@@ -53,7 +54,11 @@ pub fn WbOrdersDetails(id: String, #[prop(into)] on_close: Callback<()>) -> impl
 
     view! {
         <PageFrame page_id="a015_wb_orders_details" category="detail">
-            <Header vm=vm_header on_close=on_close />
+            <Header
+                vm=vm_header
+                favorite_target_id=stored_id.get_value()
+                on_close=on_close
+            />
 
             <TabBar vm=vm_tabs />
 
@@ -89,15 +94,27 @@ pub fn WbOrdersDetails(id: String, #[prop(into)] on_close: Callback<()>) -> impl
 }
 
 #[component]
-fn Header(vm: WbOrdersDetailsVm, on_close: Callback<()>) -> impl IntoView {
+fn Header(
+    vm: WbOrdersDetailsVm,
+    favorite_target_id: String,
+    on_close: Callback<()>,
+) -> impl IntoView {
     let is_posted = vm.is_posted();
     let document_no = vm.document_no();
+    let title = Signal::derive(move || format!("WB Order {}", document_no.get()));
     let order = vm.order;
+    let tab_key = format!("a015_wb_orders_details_{}", favorite_target_id);
 
     view! {
         <div class="page__header">
             <div class="page__header-left">
-                <h1 class = "page__title">{move || format!("WB Order {}", document_no.get())}</h1>
+                <FavoriteButton
+                    target_kind="a015_wb_orders_details".to_string()
+                    target_id=favorite_target_id
+                    target_title=title
+                    tab_key=tab_key
+                />
+                <h1 class = "page__title">{move || title.get()}</h1>
                 <Show when=move || order.get().is_some()>
                     {move || {
                         let posted = is_posted.get();
@@ -113,6 +130,8 @@ fn Header(vm: WbOrdersDetailsVm, on_close: Callback<()>) -> impl IntoView {
                 </Show>
             </div>
             <div class="page__header-right">
+                <OrderFlowButton vm=vm.clone() />
+
                 <PostButtons vm=vm.clone() />
 
                 <Button
@@ -124,6 +143,38 @@ fn Header(vm: WbOrdersDetailsVm, on_close: Callback<()>) -> impl IntoView {
                 </Button>
             </div>
         </div>
+    }
+}
+
+#[component]
+fn OrderFlowButton(vm: WbOrdersDetailsVm) -> impl IntoView {
+    let order = vm.order;
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+
+    let on_click = move |_| {
+        if let Some(o) = order.get_untracked() {
+            let srid = o.header.document_no.clone();
+            if srid.is_empty() {
+                return;
+            }
+            let encoded = urlencoding::encode(&srid);
+            let key = format!("d402_wb_order_flow_srid_{}", encoded);
+            tabs_store.open_tab(&key, "Схема заказа WB");
+        }
+    };
+
+    view! {
+        <Show when=move || order.get().is_some()>
+            <Button
+                appearance=ButtonAppearance::Secondary
+                size=ButtonSize::Medium
+                on_click=on_click.clone()
+            >
+                {icon("activity")}
+                <span style="margin-left: 6px;">"Схема заказа"</span>
+            </Button>
+        </Show>
     }
 }
 

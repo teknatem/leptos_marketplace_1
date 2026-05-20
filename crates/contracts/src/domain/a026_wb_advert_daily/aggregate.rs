@@ -84,6 +84,12 @@ pub struct WbAdvertDailySourceMeta {
 pub struct WbAdvertFoundOrder {
     /// srid из a015 (header.document_no).
     pub order_key: String,
+    /// UUID документа a015 (base.id). None для старых данных до миграции.
+    #[serde(default)]
+    pub order_id: Option<String>,
+    /// Дата заказа (order_dt из a015.state), формат "yyyy-mm-dd".
+    #[serde(default)]
+    pub order_date: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub finished_price: Option<f64>,
     /// Заказ отменён (a015.state.is_cancel = true). Отображаем как
@@ -91,6 +97,8 @@ pub struct WbAdvertFoundOrder {
     /// активными — последующая обработка отмен идёт отдельным процессом.
     #[serde(default)]
     pub is_cancel: bool,
+    #[serde(default)]
+    pub allocation_basis: f64,
     /// true — заказ попал в расчёт аллокации (первые N по хронологии, где
     /// N = wb_reported_orders). false — заказ найден в БД, но выходит за
     /// пределы N; показываем для информации, расход = 0.

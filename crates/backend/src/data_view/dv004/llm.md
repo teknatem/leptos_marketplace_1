@@ -57,7 +57,7 @@ updated: 2026-05-10
 Для точного списка всегда используй `list_gl_turnovers`.
 
 - Комиссия маркетплейса: `report_group=commission`, обычно `turnover_code=mp_commission`, `layer=fact`.
-- Реклама WB: `report_group=advertising`, обычно `turnover_code=advertising_allocated`, `layer=fact`.
+- Реклама WB: `report_group=advertising`, обычно `turnover_code=advert_clicks_no_order`, `layer=fact`.
 - Логистика: `report_group=logistics`, обычно `turnover_code=mp_logistics`, `layer=fact`.
 - Штрафы: `report_group=penalty`, обычно `turnover_code=mp_penalty`, `layer=fact`.
 - Выручка: `report_group=revenue`, обычно `turnover_code=customer_revenue`, слой зависит от вопроса.
@@ -94,7 +94,7 @@ updated: 2026-05-10
   "description": "Рекламные расходы WB по кабинетам за апрель 2026",
   "params": {
     "layer": "fact",
-    "turnover_code": "advertising_allocated"
+    "turnover_code": "advert_clicks_no_order"
   }
 }
 ```

@@ -106,7 +106,7 @@ pub fn WbAdvertByItemDetail(
                                 <h3 class="proj-detail__section-title">"Summary"</h3>
                                 <div class="proj-detail__kv-grid">
                                     <KvField label="Turnover Code" value=item.turnover_code.clone() mono=true />
-                                    <KvField label="Layer" value=item.layer.as_str().to_string() />
+                                    <KvField label="Campaign" value=item.wb_advert_campaign_code.clone() mono=true />
                                     <KvField label="Connection" value=item.connection_mp_ref.clone() mono=true />
                                     <KvField label="Rows" value=detail.items.len().to_string() />
                                     <KvField label="Problem Rows" value=problem_count.to_string() />

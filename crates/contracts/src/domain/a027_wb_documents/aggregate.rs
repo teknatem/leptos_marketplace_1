@@ -61,6 +61,12 @@ pub struct WbWeeklyReportManualData {
     pub wb_reward_with_vat: Option<f64>,
     #[serde(default)]
     pub seller_transfer_total: Option<f64>,
+    #[serde(default)]
+    pub other_deductions: Option<f64>,
+    #[serde(default)]
+    pub logistics: Option<f64>,
+    #[serde(default)]
+    pub acquiring: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +78,10 @@ pub struct WbDocument {
     pub report_period_from: Option<String>,
     pub report_period_to: Option<String>,
     pub weekly_report_data: WbWeeklyReportManualData,
+    /// Maximum reconciliation deviation (by absolute amount) across the 6 indicators,
+    /// computed and stored at posting time.
+    #[serde(default)]
+    pub max_deviation: Option<f64>,
     pub source_meta: WbDocumentSourceMeta,
 }
 
@@ -91,6 +101,7 @@ impl WbDocument {
             report_period_from: None,
             report_period_to: None,
             weekly_report_data: WbWeeklyReportManualData::default(),
+            max_deviation: None,
             source_meta,
         }
     }

@@ -1,0 +1,542 @@
+/* ─── Page layout ─────────────────────────────────────────────────────────── */
+
+.gldim-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.gldim-split {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: var(--spacing-md);
+  align-items: start;
+}
+
+/* ─── Panel shell ─────────────────────────────────────────────────────────── */
+
+.gldim-panel {
+  min-width: 0;
+  padding: var(--spacing-md);
+}
+
+.gldim-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gldim-panel__title {
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+/* ─── Tree ────────────────────────────────────────────────────────────────── */
+
+.gldim-tree {
+  max-height: 72vh;
+  overflow-y: auto;
+  padding-right: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gldim-tree__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gldim-tree__btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gldim-tree__btn:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-bg-secondary));
+}
+
+.gldim-tree__btn--child {
+  margin-left: 16px;
+  width: calc(100% - 16px);
+  background: var(--color-bg-primary);
+}
+
+.gldim-tree__btn--active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg-primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+.gldim-tree__code {
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-primary));
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 48px;
+  text-align: center;
+}
+
+.gldim-tree__label {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.gldim-tree__empty {
+  padding: 8px 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+/* ─── Details: hero ──────────────────────────────────────────────────────── */
+
+.gldim-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.gldim-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--color-bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border));
+}
+
+.gldim-hero__code {
+  font-family: var(--font-family-mono);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--color-primary);
+  line-height: 1;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg-primary));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  white-space: nowrap;
+}
+
+.gldim-hero__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gldim-hero__label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.gldim-hero__field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.gldim-hero__field-icon {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.gldim-hero__field code {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-text-muted) 10%, transparent);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ─── Details: sections ──────────────────────────────────────────────────── */
+
+.gldim-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gldim-section__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gldim-section__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: 0;
+}
+
+/* ─── Key-value rows ─────────────────────────────────────────────────────── */
+
+.gldim-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.gldim-kv__row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s ease;
+}
+
+.gldim-kv__row:hover {
+  background: var(--color-bg-secondary);
+}
+
+.gldim-kv__key {
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.gldim-kv__val {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.gldim-kv__val code {
+  font-size: 12px;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-secondary);
+}
+
+/* ─── Breadcrumb ─────────────────────────────────────────────────────────── */
+
+.gldim-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.gldim-breadcrumb__item {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.gldim-breadcrumb__item--active {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.gldim-breadcrumb__sep {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  padding: 0 2px;
+}
+
+/* ─── Copy button ────────────────────────────────────────────────────────── */
+
+.gldim-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+
+.gldim-copy-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-primary));
+}
+
+/* ─── Turnover tags ──────────────────────────────────────────────────────── */
+
+.gldim-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gldim-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.gldim-tag:hover {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-primary));
+  color: var(--color-primary);
+}
+
+/* ─── DimensionPreview (used in other pages) ──────────────────────────────── */
+
+.gldim-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gldim-preview__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+}
+
+.gldim-preview__root {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.gldim-preview__children {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.gldim-preview__child {
+  min-width: 20px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-primary));
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 960px) {
+  .gldim-split {
+    grid-template-columns: 1fr;
+  }
+
+  .gldim-tree {
+    max-height: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GL Turnover Details page  (.gl-td-*)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Центрированная колонка контента */
+.gl-td-page {
+  max-width: 740px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Hero: код + описание */
+.gl-td-hero {
+  padding: 14px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gl-td-hero__code {
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: 0.02em;
+}
+
+.gl-td-hero__desc {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+.gl-td-hero__llm {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+  font-style: italic;
+}
+
+/* Двухколоночная сетка для пар секций */
+.gl-td-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+/* Секция (группа строк с заголовком) */
+.gl-td-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-primary);
+  overflow: hidden;
+}
+
+.gl-td-section__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gl-td-section__link {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.8;
+  transition: opacity 0.12s;
+}
+
+.gl-td-section__link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* Строка ключ–значение */
+.gl-td-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+}
+
+.gl-td-row:last-child {
+  border-bottom: none;
+}
+
+.gl-td-key {
+  font-size: 12px;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.gl-td-val {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  word-break: break-word;
+}
+
+/* Монопространственный инлайн-текст внутри значения */
+.gl-td-mono {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 860px) {
+  .gl-td-cols {
+    grid-template-columns: 1fr;
+  }
+}

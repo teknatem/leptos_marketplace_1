@@ -11,11 +11,39 @@ use axum::{
 use base64::{engine::general_purpose, Engine as _};
 use contracts::domain::a027_wb_documents::aggregate::{WbDocument, WbWeeklyReportManualData};
 use contracts::domain::common::AggregateId;
+use sea_orm::{ConnectionTrait, Statement, Value};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::a027_wb_documents;
+use crate::general_ledger::account_view::registry::ACCOUNT_7609_VIEW;
+use crate::shared::data::db::get_connection;
 use crate::usecases::u504_import_from_wildberries::wildberries_api_client::WildberriesApiClient;
+
+const REALIZED_GOODS_TURNOVERS: &[&str] = &["customer_revenue_pl"];
+const WB_REWARD_TURNOVERS: &[&str] = &["mp_commission"];
+const ADVERT_RECONCILIATION_TURNOVERS: &[&str] =
+    &["advert_clicks_no_order", "advert_clicks_order_accrual"];
+const LOGISTICS_TURNOVERS: &[&str] = &[
+    "mp_ppvz_reward",
+    "mp_ppvz_reward_nm",
+    "mp_rebill_logistic_cost",
+    "mp_rebill_logistic_cost_nm",
+];
+const ACQUIRING_TURNOVERS: &[&str] = &["mp_acquiring"];
+
+const OPER_LAYER: &str = "oper";
+const FACT_LAYER: &str = "fact";
+
+const REALIZED_GOODS_FORMULA: &str =
+    "SUM(amount) WHERE turnover_code = 'customer_revenue_pl' AND layer = 'oper'";
+const WB_REWARD_FORMULA: &str =
+    "SUM(amount) WHERE turnover_code = 'mp_commission' AND layer = 'oper'";
+const SELLER_TRANSFER_FORMULA: &str = "Account 7609 main balance";
+const ADVERT_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('advert_clicks_no_order', 'advert_clicks_order_accrual') AND layer = 'oper'";
+const LOGISTICS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_ppvz_reward', 'mp_ppvz_reward_nm', 'mp_rebill_logistic_cost', 'mp_rebill_logistic_cost_nm') AND layer = 'fact'";
+const ACQUIRING_FORMULA: &str =
+    "SUM(amount) WHERE turnover_code = 'mp_acquiring' AND layer = 'fact'";
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -46,6 +74,13 @@ pub struct WbDocumentsListItemDto {
     pub connection_name: Option<String>,
     pub organization_name: Option<String>,
     pub fetched_at: String,
+    pub realized_goods_total: Option<f64>,
+    pub wb_reward_with_vat: Option<f64>,
+    pub seller_transfer_total: Option<f64>,
+    pub other_deductions: Option<f64>,
+    pub logistics: Option<f64>,
+    pub acquiring: Option<f64>,
+    pub max_deviation: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -78,10 +113,35 @@ pub struct WbDocumentDetailsDto {
     pub realized_goods_total: Option<f64>,
     pub wb_reward_with_vat: Option<f64>,
     pub seller_transfer_total: Option<f64>,
+    pub other_deductions: Option<f64>,
+    pub logistics: Option<f64>,
+    pub acquiring: Option<f64>,
+    pub max_deviation: Option<f64>,
+    pub reconciliation: WbDocumentReconciliationDto,
     pub fetched_at: String,
     pub locale: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WbDocumentReconciliationDto {
+    pub realized_goods_total: ReconciliationLineDto,
+    pub wb_reward_with_vat: ReconciliationLineDto,
+    pub seller_transfer_total: ReconciliationLineDto,
+    pub advert_other_deductions: ReconciliationLineDto,
+    pub logistics: ReconciliationLineDto,
+    pub acquiring: ReconciliationLineDto,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReconciliationLineDto {
+    pub formula: String,
+    pub wb_report: Option<f64>,
+    pub database_value: Option<f64>,
+    pub difference_amount: Option<f64>,
+    pub difference_percent: Option<f64>,
+    pub is_available: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,6 +152,9 @@ pub struct UpdateManualFieldsRequest {
     pub realized_goods_total: Option<f64>,
     pub wb_reward_with_vat: Option<f64>,
     pub seller_transfer_total: Option<f64>,
+    pub other_deductions: Option<f64>,
+    pub logistics: Option<f64>,
+    pub acquiring: Option<f64>,
 }
 
 pub async fn list_paginated(
@@ -140,6 +203,13 @@ pub async fn list_paginated(
                         connection_name: row.connection_name,
                         organization_name: row.organization_name,
                         fetched_at: row.fetched_at,
+                        realized_goods_total: row.weekly_report_data.realized_goods_total,
+                        wb_reward_with_vat: row.weekly_report_data.wb_reward_with_vat,
+                        seller_transfer_total: row.weekly_report_data.seller_transfer_total,
+                        other_deductions: row.weekly_report_data.other_deductions,
+                        logistics: row.weekly_report_data.logistics,
+                        acquiring: row.weekly_report_data.acquiring,
+                        max_deviation: row.max_deviation,
                     })
                     .collect(),
                 total: result.total,
@@ -251,6 +321,9 @@ pub async fn update_manual_fields(
             realized_goods_total: req.realized_goods_total,
             wb_reward_with_vat: req.wb_reward_with_vat,
             seller_transfer_total: req.seller_transfer_total,
+            other_deductions: req.other_deductions,
+            logistics: req.logistics,
+            acquiring: req.acquiring,
         },
     )
     .await
@@ -263,6 +336,58 @@ pub async fn update_manual_fields(
     build_details_dto(document).await.map(Json).map_err(|e| {
         tracing::error!("Failed to build updated WB document dto {}: {}", id, e);
         StatusCode::INTERNAL_SERVER_ERROR
+    })
+}
+
+pub async fn post_document(
+    Path(id): Path<String>,
+) -> Result<Json<WbDocumentDetailsDto>, StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let doc = match a027_wb_documents::service::get_by_id(uuid).await {
+        Ok(Some(doc)) => doc,
+        Ok(None) => return Err(StatusCode::NOT_FOUND),
+        Err(e) => {
+            tracing::error!("Failed to load WB document {} for posting: {}", id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    let reconciliation = build_reconciliation_dto(&doc).await.map_err(|e| {
+        tracing::error!("Failed to build reconciliation for WB document {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let max_deviation = compute_max_deviation(&reconciliation);
+
+    let doc = a027_wb_documents::service::store_max_deviation(uuid, max_deviation)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to store max deviation for WB document {}: {}", id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    build_details_dto(doc).await.map(Json).map_err(|e| {
+        tracing::error!("Failed to post WB document {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
+}
+
+/// Largest reconciliation discrepancy (by absolute amount) across the 6 indicators.
+/// Returns `None` when no indicator has a comparable difference.
+fn compute_max_deviation(reconciliation: &WbDocumentReconciliationDto) -> Option<f64> {
+    [
+        &reconciliation.realized_goods_total,
+        &reconciliation.wb_reward_with_vat,
+        &reconciliation.seller_transfer_total,
+        &reconciliation.advert_other_deductions,
+        &reconciliation.logistics,
+        &reconciliation.acquiring,
+    ]
+    .into_iter()
+    .filter_map(|line| line.difference_amount)
+    .map(f64::abs)
+    .fold(None, |acc: Option<f64>, value| {
+        Some(acc.map_or(value, |current| current.max(value)))
     })
 }
 
@@ -287,11 +412,236 @@ async fn build_details_dto(doc: WbDocument) -> anyhow::Result<WbDocumentDetailsD
         realized_goods_total: doc.weekly_report_data.realized_goods_total,
         wb_reward_with_vat: doc.weekly_report_data.wb_reward_with_vat,
         seller_transfer_total: doc.weekly_report_data.seller_transfer_total,
+        other_deductions: doc.weekly_report_data.other_deductions,
+        logistics: doc.weekly_report_data.logistics,
+        acquiring: doc.weekly_report_data.acquiring,
+        max_deviation: doc.max_deviation,
+        reconciliation: build_reconciliation_dto(&doc).await?,
         fetched_at: doc.source_meta.fetched_at.clone(),
         locale: doc.source_meta.locale.clone(),
         created_at: doc.base.metadata.created_at.to_rfc3339(),
         updated_at: doc.base.metadata.updated_at.to_rfc3339(),
     })
+}
+
+async fn build_reconciliation_dto(doc: &WbDocument) -> anyhow::Result<WbDocumentReconciliationDto> {
+    let values = match complete_period(
+        doc.report_period_from.as_deref(),
+        doc.report_period_to.as_deref(),
+    ) {
+        Some((period_from, period_to)) => Some(ReconciliationValues {
+            realized_goods_total: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                REALIZED_GOODS_TURNOVERS,
+                OPER_LAYER,
+            )
+            .await?,
+            wb_reward_with_vat: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                WB_REWARD_TURNOVERS,
+                OPER_LAYER,
+            )
+            .await?,
+            seller_transfer_total: fetch_7609_main_balance(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+            )
+            .await?,
+            other_deductions: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                ADVERT_RECONCILIATION_TURNOVERS,
+                OPER_LAYER,
+            )
+            .await?,
+            logistics: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                LOGISTICS_TURNOVERS,
+                FACT_LAYER,
+            )
+            .await?,
+            acquiring: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                ACQUIRING_TURNOVERS,
+                FACT_LAYER,
+            )
+            .await?,
+        }),
+        None => None,
+    };
+
+    Ok(WbDocumentReconciliationDto {
+        realized_goods_total: build_reconciliation_line(
+            REALIZED_GOODS_FORMULA,
+            doc.weekly_report_data.realized_goods_total,
+            values.as_ref().map(|item| item.realized_goods_total),
+        ),
+        wb_reward_with_vat: build_reconciliation_line(
+            WB_REWARD_FORMULA,
+            doc.weekly_report_data.wb_reward_with_vat,
+            values.as_ref().map(|item| item.wb_reward_with_vat),
+        ),
+        seller_transfer_total: build_reconciliation_line(
+            SELLER_TRANSFER_FORMULA,
+            doc.weekly_report_data.seller_transfer_total,
+            values.as_ref().map(|item| item.seller_transfer_total),
+        ),
+        advert_other_deductions: build_reconciliation_line(
+            ADVERT_FORMULA,
+            doc.weekly_report_data.other_deductions,
+            values.as_ref().map(|item| item.other_deductions),
+        ),
+        logistics: build_reconciliation_line(
+            LOGISTICS_FORMULA,
+            doc.weekly_report_data.logistics,
+            values.as_ref().map(|item| item.logistics),
+        ),
+        acquiring: build_reconciliation_line(
+            ACQUIRING_FORMULA,
+            doc.weekly_report_data.acquiring,
+            values.as_ref().map(|item| item.acquiring),
+        ),
+    })
+}
+
+struct ReconciliationValues {
+    realized_goods_total: f64,
+    wb_reward_with_vat: f64,
+    seller_transfer_total: f64,
+    other_deductions: f64,
+    logistics: f64,
+    acquiring: f64,
+}
+
+fn complete_period<'a>(from: Option<&'a str>, to: Option<&'a str>) -> Option<(&'a str, &'a str)> {
+    let from = from.map(str::trim).filter(|value| !value.is_empty())?;
+    let to = to.map(str::trim).filter(|value| !value.is_empty())?;
+    Some((from, to))
+}
+
+fn build_reconciliation_line(
+    formula: &str,
+    wb_report: Option<f64>,
+    database_value: Option<f64>,
+) -> ReconciliationLineDto {
+    let difference_amount = calculate_difference(wb_report, database_value);
+    let difference_percent = calculate_difference_percent(difference_amount, wb_report);
+
+    ReconciliationLineDto {
+        formula: formula.to_string(),
+        wb_report,
+        database_value,
+        difference_amount,
+        difference_percent,
+        is_available: database_value.is_some(),
+    }
+}
+
+fn calculate_difference(wb_report: Option<f64>, database_value: Option<f64>) -> Option<f64> {
+    Some(wb_report? - database_value?)
+}
+
+fn calculate_difference_percent(difference: Option<f64>, wb_report: Option<f64>) -> Option<f64> {
+    let wb_report = wb_report?;
+    if wb_report.abs() <= f64::EPSILON {
+        return None;
+    }
+    Some(difference? / wb_report * 100.0)
+}
+
+fn sv(value: impl Into<String>) -> Value {
+    Value::String(Some(Box::new(value.into())))
+}
+
+fn turnover_where_clause(turnovers: &[&str]) -> String {
+    let placeholders = turnovers.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    format!("turnover_code IN ({placeholders}) AND layer = ?")
+}
+
+async fn fetch_turnover_total(
+    connection_id: &str,
+    period_from: &str,
+    period_to: &str,
+    turnovers: &[&str],
+    layer: &str,
+) -> anyhow::Result<f64> {
+    let mut params = vec![sv(period_from), sv(period_to), sv(connection_id)];
+    params.extend(turnovers.iter().map(|code| sv(*code)));
+    params.push(sv(layer));
+
+    let sql = format!(
+        "SELECT COALESCE(SUM(amount), 0.0) AS total
+         FROM sys_general_ledger
+         WHERE entry_date >= ?
+           AND entry_date <= ?
+           AND connection_mp_ref = ?
+           AND {}",
+        turnover_where_clause(turnovers)
+    );
+
+    let db = get_connection();
+    let stmt = Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
+    let row = db.query_one(stmt).await?;
+
+    Ok(row
+        .and_then(|raw| raw.try_get::<f64>("", "total").ok())
+        .unwrap_or(0.0))
+}
+
+async fn fetch_7609_main_balance(
+    connection_id: &str,
+    period_from: &str,
+    period_to: &str,
+) -> anyhow::Result<f64> {
+    let mut sql = String::from(
+        "SELECT COALESCE(SUM(
+             CASE
+                 WHEN debit_account = '7609' THEN amount
+                 WHEN credit_account = '7609' THEN -amount
+                 ELSE 0.0
+             END
+         ), 0.0) AS total
+         FROM sys_general_ledger
+         WHERE (debit_account = '7609' OR credit_account = '7609')
+           AND entry_date >= ?
+           AND entry_date <= ?
+           AND connection_mp_ref = ?
+           AND (",
+    );
+    let mut params = vec![sv(period_from), sv(period_to), sv(connection_id)];
+
+    for (idx, entry) in ACCOUNT_7609_VIEW.main_entries.iter().enumerate() {
+        if idx > 0 {
+            sql.push_str(" OR ");
+        }
+        if entry.layer.is_empty() {
+            sql.push_str("(turnover_code = ?)");
+            params.push(sv(entry.turnover_code));
+        } else {
+            sql.push_str("(turnover_code = ? AND layer = ?)");
+            params.push(sv(entry.turnover_code));
+            params.push(sv(entry.layer));
+        }
+    }
+    sql.push(')');
+
+    let db = get_connection();
+    let stmt = Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
+    let row = db.query_one(stmt).await?;
+
+    Ok(row
+        .and_then(|raw| raw.try_get::<f64>("", "total").ok())
+        .unwrap_or(0.0))
 }
 
 async fn resolve_connection_name(connection_id: &str) -> anyhow::Result<Option<String>> {
@@ -346,5 +696,104 @@ fn content_type_for_extension(extension: &str) -> &'static str {
         "csv" => "text/csv; charset=utf-8",
         "xml" => "application/xml",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn weekly_manual_data_deserializes_old_json() {
+        let data: WbWeeklyReportManualData = serde_json::from_str(
+            r#"{"realized_goods_total":100.0,"wb_reward_with_vat":10.0,"seller_transfer_total":90.0}"#,
+        )
+        .expect("old weekly JSON must deserialize");
+
+        assert_eq!(data.realized_goods_total, Some(100.0));
+        assert_eq!(data.wb_reward_with_vat, Some(10.0));
+        assert_eq!(data.seller_transfer_total, Some(90.0));
+        assert_eq!(data.other_deductions, None);
+        assert_eq!(data.logistics, None);
+        assert_eq!(data.acquiring, None);
+    }
+
+    #[test]
+    fn reconciliation_line_calculates_difference_and_percent() {
+        let line = build_reconciliation_line("test", Some(120.0), Some(100.0));
+
+        assert_eq!(line.difference_amount, Some(20.0));
+        assert_eq!(line.difference_percent, Some(20.0 / 120.0 * 100.0));
+        assert!(line.is_available);
+    }
+
+    #[test]
+    fn reconciliation_percent_is_empty_for_zero_report() {
+        let line = build_reconciliation_line("test", Some(0.0), Some(100.0));
+
+        assert_eq!(line.difference_amount, Some(-100.0));
+        assert_eq!(line.difference_percent, None);
+    }
+
+    #[test]
+    fn reconciliation_requires_both_values_for_difference() {
+        let line = build_reconciliation_line("test", Some(120.0), None);
+
+        assert_eq!(line.difference_amount, None);
+        assert_eq!(line.difference_percent, None);
+        assert!(!line.is_available);
+    }
+
+    fn recon_with_differences(differences: [Option<f64>; 6]) -> WbDocumentReconciliationDto {
+        let line = |difference_amount: Option<f64>| ReconciliationLineDto {
+            formula: "test".to_string(),
+            wb_report: None,
+            database_value: None,
+            difference_amount,
+            difference_percent: None,
+            is_available: difference_amount.is_some(),
+        };
+        WbDocumentReconciliationDto {
+            realized_goods_total: line(differences[0]),
+            wb_reward_with_vat: line(differences[1]),
+            seller_transfer_total: line(differences[2]),
+            advert_other_deductions: line(differences[3]),
+            logistics: line(differences[4]),
+            acquiring: line(differences[5]),
+        }
+    }
+
+    #[test]
+    fn max_deviation_picks_largest_absolute_difference() {
+        let recon = recon_with_differences([
+            Some(10.0),
+            Some(-50.0),
+            Some(5.0),
+            None,
+            Some(-3.0),
+            Some(40.0),
+        ]);
+
+        assert_eq!(compute_max_deviation(&recon), Some(50.0));
+    }
+
+    #[test]
+    fn max_deviation_is_none_without_any_difference() {
+        let recon = recon_with_differences([None, None, None, None, None, None]);
+
+        assert_eq!(compute_max_deviation(&recon), None);
+    }
+
+    #[test]
+    fn advert_reconciliation_filter_uses_expected_turnovers_and_layer() {
+        assert_eq!(
+            ADVERT_RECONCILIATION_TURNOVERS,
+            &["advert_clicks_no_order", "advert_clicks_order_accrual"]
+        );
+        assert_eq!(OPER_LAYER, "oper");
+        assert_eq!(
+            turnover_where_clause(ADVERT_RECONCILIATION_TURNOVERS),
+            "turnover_code IN (?, ?) AND layer = ?"
+        );
     }
 }

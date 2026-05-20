@@ -3,6 +3,7 @@
 use super::super::view_model::WbOrdersDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::card_animated::CardAnimated;
+use crate::shared::components::ui::FieldDisplay;
 use crate::shared::date_utils::format_datetime_utc_local;
 use leptos::prelude::*;
 use thaw::*;
@@ -109,39 +110,39 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"№ документа"</label>
-                                    <Input value=RwSignal::new(document_no) attr:readonly=true />
+                                    <FieldDisplay value=document_no />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Code"</label>
-                                    <Input value=RwSignal::new(code) attr:readonly=true />
+                                    <FieldDisplay value=code />
                                 </div>
                             </div>
                             <div class="form__group">
                                 <label class="form__label">"Описание"</label>
-                                <Input value=RwSignal::new(description) attr:readonly=true />
+                                <FieldDisplay value=description />
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"Дата заказа"</label>
-                                    <Input value=RwSignal::new(order_dt) attr:readonly=true />
+                                    <FieldDisplay value=order_dt />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Последнее изменение"</label>
-                                    <Input value=RwSignal::new(last_change_dt) attr:readonly=true />
+                                    <FieldDisplay value=last_change_dt />
                                 </div>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"№ поставки (incomeID)"</label>
-                                    <Input value=RwSignal::new(income_id) attr:readonly=true />
+                                    <FieldDisplay value=income_id />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"G-номер"</label>
-                                    <Input value=RwSignal::new(g_number) attr:readonly=true />
+                                    <FieldDisplay value=g_number />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Стикер (ID)"</label>
-                                    <Input value=RwSignal::new(sticker) attr:readonly=true />
+                                    <FieldDisplay value=sticker />
                                 </div>
                             </div>
                         </CardAnimated>
@@ -302,39 +303,39 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"Line ID"</label>
-                                    <Input value=RwSignal::new(line.line_id) attr:readonly=true />
+                                    <FieldDisplay value=line.line_id />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Артикул продавца"</label>
-                                    <Input value=RwSignal::new(line.supplier_article) attr:readonly=true />
+                                    <FieldDisplay value=line.supplier_article />
                                 </div>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"NM ID"</label>
-                                    <Input value=RwSignal::new(line.nm_id.to_string()) attr:readonly=true />
+                                    <FieldDisplay value=line.nm_id.to_string() />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Бренд"</label>
-                                    <Input value=RwSignal::new(line.brand.unwrap_or_else(|| "—".to_string())) attr:readonly=true />
+                                    <FieldDisplay value=line.brand.unwrap_or_else(|| "—".to_string()) />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Размер"</label>
-                                    <Input value=RwSignal::new(line.tech_size.unwrap_or_else(|| "—".to_string())) attr:readonly=true />
+                                    <FieldDisplay value=line.tech_size.unwrap_or_else(|| "—".to_string()) />
                                 </div>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"Штрихкод"</label>
-                                    <Input value=RwSignal::new(line.barcode) attr:readonly=true />
+                                    <FieldDisplay value=line.barcode />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Категория"</label>
-                                    <Input value=RwSignal::new(line.category.unwrap_or_else(|| "—".to_string())) attr:readonly=true />
+                                    <FieldDisplay value=line.category.unwrap_or_else(|| "—".to_string()) />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Предмет"</label>
-                                    <Input value=RwSignal::new(line.subject.unwrap_or_else(|| "—".to_string())) attr:readonly=true />
+                                    <FieldDisplay value=line.subject.unwrap_or_else(|| "—".to_string()) />
                                 </div>
                             </div>
                         </CardAnimated>
@@ -357,30 +358,30 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"Warehouse"</label>
-                                    <Input value=RwSignal::new(wh_name) attr:readonly=true />
+                                    <FieldDisplay value=wh_name />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Warehouse type"</label>
-                                    <Input value=RwSignal::new(wh_type) attr:readonly=true />
+                                    <FieldDisplay value=wh_type />
                                 </div>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"Страна"</label>
-                                    <Input value=RwSignal::new(country) attr:readonly=true />
+                                    <FieldDisplay value=country />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Округ"</label>
-                                    <Input value=RwSignal::new(district) attr:readonly=true />
+                                    <FieldDisplay value=district />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Регион"</label>
-                                    <Input value=RwSignal::new(region) attr:readonly=true />
+                                    <FieldDisplay value=region />
                                 </div>
                             </div>
                             <div class="form__group">
                                 <label class="form__label">"Дата отмены"</label>
-                                <Input value=RwSignal::new(cancel_dt) attr:readonly=true />
+                                <FieldDisplay value=cancel_dt />
                             </div>
                         </CardAnimated>
 
@@ -446,15 +447,15 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">
                                     <label class="form__label">"Created"</label>
-                                    <Input value=RwSignal::new(created_at) attr:readonly=true />
+                                    <FieldDisplay value=created_at />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Updated"</label>
-                                    <Input value=RwSignal::new(updated_at) attr:readonly=true />
+                                    <FieldDisplay value=updated_at />
                                 </div>
                                 <div class="form__group">
                                     <label class="form__label">"Version"</label>
-                                    <Input value=RwSignal::new(version) attr:readonly=true />
+                                    <FieldDisplay value=version />
                                 </div>
                             </div>
                         </CardAnimated>
