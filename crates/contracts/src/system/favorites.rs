@@ -50,5 +50,12 @@ pub fn is_supported_favorite_color(value: &str) -> bool {
 }
 
 pub fn is_supported_favorite_target_kind(value: &str) -> bool {
-    matches!(value, "a012_wb_sales_details" | "a015_wb_orders_details")
+    matches!(
+        value,
+        "a012_wb_sales_details"
+            | "a015_wb_orders_details"
+            | "a027_wb_documents_details"
+            | "a026_wb_advert_daily_details"
+            | "a007_marketplace_product_details"
+    )
 }

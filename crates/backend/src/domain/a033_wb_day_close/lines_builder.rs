@@ -50,6 +50,7 @@ pub(crate) struct P903Row {
     pub additional_payment: f64,
     pub cashback_amount: f64,
     pub delivery_amount: f64,
+    #[allow(dead_code)]
     pub ppvz_for_pay: f64,
     pub qty_sold: i64,
     pub qty_returned: i64,
@@ -1095,6 +1096,7 @@ mod tests {
             all_a012_for_srid: vec![A012Row {
                 id: "a012-1".to_string(),
                 document_no: "S001".to_string(),
+                sale_id: None,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1102,6 +1104,7 @@ mod tests {
             matched_a012: Some(A012Row {
                 id: "a012-1".to_string(),
                 document_no: "S001".to_string(),
+                sale_id: None,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1142,6 +1145,7 @@ mod tests {
             matched_a012: Some(A012Row {
                 id: "a012-r".to_string(),
                 document_no: "R001".to_string(),
+                sale_id: None,
                 dealer_total: 400.0,
                 is_posted: true,
                 event_type: "return".to_string(),
@@ -1149,6 +1153,7 @@ mod tests {
             all_a012_for_srid: vec![A012Row {
                 id: "a012-r".to_string(),
                 document_no: "R001".to_string(),
+                sale_id: None,
                 dealer_total: 400.0,
                 is_posted: true,
                 event_type: "return".to_string(),
@@ -1229,6 +1234,7 @@ mod tests {
         let a012_1 = A012Row {
             id: "a012-1".to_string(),
             document_no: "S-MULTI".to_string(),
+            sale_id: None,
             dealer_total: 600.0,
             is_posted: true,
             event_type: "sale".to_string(),
@@ -1236,6 +1242,7 @@ mod tests {
         let a012_2 = A012Row {
             id: "a012-2".to_string(),
             document_no: "S-MULTI".to_string(),
+            sale_id: None,
             dealer_total: 600.0,
             is_posted: true,
             event_type: "sale".to_string(),
@@ -1300,6 +1307,7 @@ mod tests {
             matched_a012: Some(A012Row {
                 id: "a012-sa".to_string(),
                 document_no: "SA001".to_string(),
+                sale_id: None,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1307,6 +1315,7 @@ mod tests {
             all_a012_for_srid: vec![A012Row {
                 id: "a012-sa".to_string(),
                 document_no: "SA001".to_string(),
+                sale_id: None,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1336,6 +1345,7 @@ mod tests {
             matched_a012: Some(A012Row {
                 id: "a012-uuid-1".to_string(),
                 document_no: "SB001".to_string(),
+                sale_id: None,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1343,6 +1353,7 @@ mod tests {
             all_a012_for_srid: vec![A012Row {
                 id: "a012-uuid-1".to_string(),
                 document_no: "SB001".to_string(),
+                sale_id: None,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1395,6 +1406,7 @@ mod tests {
             matched_a012: Some(A012Row {
                 id: "a012-d".to_string(),
                 document_no: "D001".to_string(),
+                sale_id: None,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1402,6 +1414,7 @@ mod tests {
             all_a012_for_srid: vec![A012Row {
                 id: "a012-d".to_string(),
                 document_no: "D001".to_string(),
+                sale_id: None,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1451,6 +1464,7 @@ mod tests {
         let a012 = A012Row {
             id: "a012-unposted-1".to_string(),
             document_no: "U001".to_string(),
+            sale_id: None,
             dealer_total: 400.0,
             is_posted: false,
             event_type: "sale".to_string(),

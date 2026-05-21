@@ -23,6 +23,13 @@ uuid = { version = "1.11", features = ["v4", "serde", "js"] }
 # Время компиляции немного возрастает, но вся отладка (паники, stack traces) сохраняется.
 opt-level = 0
 
+# adobe-cmap-parser 0.4.1 имеет integer overflow в парсере CMap (lib.rs:208),
+# который паникует только при включённых overflow-checks (по умолчанию в dev).
+# В release этот `+` просто оборачивается. Отключаем проверки для этого пакета,
+# чтобы извлечение PDF (pdf-extract) работало и в dev-сборке.
+[profile.dev.package.adobe-cmap-parser]
+overflow-checks = false
+
 [profile.release]
 # Одна единица кодогенерации — обязательно для fat LTO
 codegen-units = 1

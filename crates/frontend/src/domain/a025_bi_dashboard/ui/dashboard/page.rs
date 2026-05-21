@@ -134,11 +134,42 @@ struct BiDashboardData {
     pub filters: Vec<FilterRef>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A single drill-down dimension a user can group an indicator by.
+/// Carries structured coverage info so the UI can render it as a colored
+/// badge instead of baking "[100% safe]" into the label text.
+#[derive(Clone, Debug, PartialEq)]
+struct DrillDim {
+    id: String,
+    label: String,
+    /// "safe" → fully covers the indicator; "partial" → covers `coverage_pct`,
+    /// the remainder lands in a "Прочее" bucket.
+    mode: String,
+    coverage_pct: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct DrillDimensionGroup {
     title: &'static str,
-    subtitle: &'static str,
-    items: Vec<(String, String)>,
+    /// CSS accent key ("main" | "docs" | "nom" | "other") for per-group color.
+    accent: &'static str,
+    items: Vec<DrillDim>,
+}
+
+/// Maps a drill dimension id to a feather-style icon name (see `shared/icons.rs`),
+/// giving each analytics breakdown a recognisable glyph instead of a bare arrow.
+fn drill_dim_icon(id: &str) -> &'static str {
+    match id {
+        "turnover" => "activity",
+        "entry_date" => "clock",
+        "connection_mp_ref" => "store",
+        "layer" => "layers",
+        "registrator_type" => "file-text",
+        "registrator_ref" => "file",
+        "nomenclature" => "package",
+        "dim1_category" | "dim2_line" | "dim3_model" | "dim4_format" | "dim5_sink"
+        | "dim6_size" => "tag",
+        _ => "bar-chart-2",
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -478,7 +509,7 @@ async fn fetch_indicator_drill_dimensions(
     def: &IndicatorDef,
     ctx: &ViewContext,
     params: &HashMap<String, String>,
-) -> Result<Vec<(String, String)>, String> {
+) -> Result<Vec<DrillDim>, String> {
     let Some(view_id) = def.data_spec.view_id.as_deref() else {
         return Ok(vec![]);
     };
@@ -492,16 +523,17 @@ async fn fetch_indicator_drill_dimensions(
     Ok(capabilities
         .safe_dimensions
         .into_iter()
-        .map(|dim| (dim.id, format!("{} [100% safe]", dim.label)))
-        .chain(capabilities.partial_dimensions.into_iter().map(|dim| {
-            (
-                dim.id,
-                format!(
-                    "{} [partial {}% + Прочее]",
-                    dim.label,
-                    dim.coverage_pct.unwrap_or(0.0)
-                ),
-            )
+        .map(|dim| DrillDim {
+            id: dim.id,
+            label: dim.label,
+            mode: "safe".to_string(),
+            coverage_pct: dim.coverage_pct.unwrap_or(100.0),
+        })
+        .chain(capabilities.partial_dimensions.into_iter().map(|dim| DrillDim {
+            id: dim.id,
+            label: dim.label,
+            mode: "partial".to_string(),
+            coverage_pct: dim.coverage_pct.unwrap_or(0.0),
         }))
         .collect())
 }
@@ -515,37 +547,37 @@ fn merge_indicator_params(
     merged
 }
 
-fn group_drill_dimensions(dims: &[(String, String)]) -> Vec<DrillDimensionGroup> {
+fn group_drill_dimensions(dims: &[DrillDim]) -> Vec<DrillDimensionGroup> {
     let classify = |id: &str| match id {
-        "entry_date" | "connection_mp_ref" | "layer" => 0,
+        "turnover" | "entry_date" | "connection_mp_ref" | "layer" => 0,
         "registrator_type" | "registrator_ref" => 1,
         "nomenclature" | "dim1_category" | "dim2_line" | "dim3_model" | "dim4_format"
         | "dim5_sink" | "dim6_size" => 2,
         _ => 3,
     };
 
-    let mut buckets: [Vec<(String, String)>; 4] = [vec![], vec![], vec![], vec![]];
-    for (id, label) in dims {
-        buckets[classify(id)].push((id.clone(), label.clone()));
+    let mut buckets: [Vec<DrillDim>; 4] = [vec![], vec![], vec![], vec![]];
+    for dim in dims {
+        buckets[classify(&dim.id)].push(dim.clone());
     }
 
     let specs = [
-        ("Основные", "Период, кабинет и слой учета", 0),
-        ("Документы", "Тип и конкретный документ-регистратор", 1),
-        ("Номенклатура", "Товар и товарные аналитики", 2),
-        ("Другое", "Редко используемые измерения", 3),
+        ("Основные", "main", 0),
+        ("Документы", "docs", 1),
+        ("Номенклатура", "nom", 2),
+        ("Другое", "other", 3),
     ];
 
     specs
         .into_iter()
-        .filter_map(|(title, subtitle, index)| {
+        .filter_map(|(title, accent, index)| {
             let items = std::mem::take(&mut buckets[index]);
             if items.is_empty() {
                 None
             } else {
                 Some(DrillDimensionGroup {
                     title,
-                    subtitle,
+                    accent,
                     items,
                 })
             }
@@ -2823,13 +2855,17 @@ fn IndicatorDetailModal(
     let user_description = build_indicator_description(def.as_ref());
     let computation_details =
         build_indicator_details(def.as_ref(), computed.as_ref(), &effective_indicator_params);
-    let active_tab = RwSignal::new("overview".to_string());
+    // Drilldown ("Детализация") is the primary tab; when an indicator has no
+    // DataView we open straight on the technical "Подробности" tab.
+    let active_tab = RwSignal::new(
+        if has_drilldown { "drill" } else { "details" }.to_string(),
+    );
     let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let about_description = user_description.clone();
     let about_details = computation_details.clone();
 
     // Async-загружаемые измерения из DataViewMeta
-    let dv_dims: RwSignal<Option<Vec<(String, String)>>> = RwSignal::new(None);
+    let dv_dims: RwSignal<Option<Vec<DrillDim>>> = RwSignal::new(None);
     if let Some(def_for_dims) = def.clone() {
         let params_for_dims = effective_indicator_params.clone();
         let ctx_for_dims = ctx.clone();
@@ -3020,31 +3056,14 @@ fn IndicatorDetailModal(
                 on:click=|ev: leptos::ev::MouseEvent| ev.stop_propagation()
             >
                 <div class="modal-header indicator-detail__header">
-                    <div class="modal-header__left indicator-detail__header-main">
-                        <div class="indicator-detail__title-block">
-                            <span class="modal-title">{name.clone()}</span>
-                            {user_description.as_ref().map(|text| view! {
-                                <span class="indicator-detail__title-subtitle">{text.clone()}</span>
-                            })}
-                        </div>
-                        <div class="indicator-detail__header-meta">
-                            {if !code.is_empty() {
-                                view! { <span class="indicator-detail__code-badge">{code.clone()}</span> }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
-                            {if !view_id.is_empty() {
-                                view! { <span class="indicator-detail__header-chip">{view_id.clone()}</span> }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
-                            {if !metric_id.is_empty() {
-                                view! { <span class="indicator-detail__header-chip">{format!("metric: {}", metric_id.clone())}</span> }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
-                            <span class=format!("indicator-detail__status {}", status_class)>{status.clone()}</span>
-                        </div>
+                    <div class="indicator-detail__header-main">
+                        <span class="modal-title indicator-detail__title">{name.clone()}</span>
+                        {if !code.is_empty() {
+                            view! { <span class="indicator-detail__code-badge">{code.clone()}</span> }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
+                        <span class=format!("indicator-detail__status {}", status_class)>{status.clone()}</span>
                     </div>
                     <div class="indicator-detail__header-actions">
                         {move || {
@@ -3054,7 +3073,7 @@ fn IndicatorDetailModal(
                             let is_timeline_compatible = dv_dims
                                 .get()
                                 .map(|dims| {
-                                    dims.iter().any(|(id, _)| id == "date" || id == "entry_date")
+                                    dims.iter().any(|dim| dim.id == "date" || dim.id == "entry_date")
                                 })
                                 .unwrap_or(false);
                             if is_timeline_compatible {
@@ -3077,7 +3096,7 @@ fn IndicatorDetailModal(
                             class="indicator-detail__edit-link"
                             on:click=open_edit
                         >
-                            "Редактировать"
+                            "Изменить"
                         </button>
                         <button
                             class="modal__close"
@@ -3090,37 +3109,95 @@ fn IndicatorDetailModal(
                 </div>
                 <div class="modal-body indicator-detail__body">
                     <div class="indicator-detail__tabs">
+                        {if has_drilldown {
+                            view! {
+                                <button
+                                    type="button"
+                                    class=move || {
+                                        if active_tab.get() == "drill" {
+                                            "indicator-detail__tab indicator-detail__tab--active".to_string()
+                                        } else {
+                                            "indicator-detail__tab".to_string()
+                                        }
+                                    }
+                                    on:click=move |_| active_tab.set("drill".to_string())
+                                >
+                                    "Детализация"
+                                </button>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
                         <button
                             type="button"
                             class=move || {
-                                if active_tab.get() == "overview" {
+                                if active_tab.get() == "details" {
                                     "indicator-detail__tab indicator-detail__tab--active".to_string()
                                 } else {
                                     "indicator-detail__tab".to_string()
                                 }
                             }
-                            on:click=move |_| active_tab.set("overview".to_string())
+                            on:click=move |_| active_tab.set("details".to_string())
                         >
-                            "Обзор"
-                        </button>
-                        <button
-                            type="button"
-                            class=move || {
-                                if active_tab.get() == "about" {
-                                    "indicator-detail__tab indicator-detail__tab--active".to_string()
-                                } else {
-                                    "indicator-detail__tab".to_string()
-                                }
-                            }
-                            on:click=move |_| active_tab.set("about".to_string())
-                        >
-                            "Описание и расчёт"
+                            "Подробности"
                         </button>
                     </div>
 
-                    {move || if active_tab.get() == "about" {
+                    {move || if active_tab.get() == "details" || !has_drilldown {
                         view! {
-                            <div class="indicator-detail__about">
+                            <div class="indicator-detail__details-tab">
+                                // Comparison block lives on the "Детализация" tab; keep it here
+                                // only for indicators that have no drilldown tab to host it.
+                                {if !has_drilldown {
+                                    view! {
+                                        <div class="indicator-detail__periods">
+                                            <div class="indicator-detail__period-card">
+                                                <span class="indicator-detail__period-caption">"Текущий период"</span>
+                                                <span class="indicator-detail__period-range">{overview_current_period_label.clone()}</span>
+                                                <span class="indicator-detail__period-value">{overview_value_full_str.clone()}</span>
+                                            </div>
+                                            <div class="indicator-detail__period-card">
+                                                <span class="indicator-detail__period-caption">{overview_comparison_period_title.clone()}</span>
+                                                <span class="indicator-detail__period-range">{overview_comparison_period_label.clone()}</span>
+                                                <span class="indicator-detail__period-value">{overview_prev_full_str.clone()}</span>
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! { <></> }.into_any()
+                                }}
+                                <div class="indicator-detail__meta">
+                                    <div class="indicator-detail__meta-row">
+                                        <span class="indicator-detail__meta-label">"Изменение"</span>
+                                        <span class=format!("indicator-detail__delta {}", overview_delta_class)>{overview_delta_str.clone()}</span>
+                                    </div>
+                                    {if !overview_view_id.is_empty() {
+                                        view! {
+                                            <div class="indicator-detail__meta-row">
+                                                <span class="indicator-detail__meta-label">"Источник данных"</span>
+                                                <span class="indicator-detail__meta-value">{overview_view_id.clone()}</span>
+                                            </div>
+                                        }.into_any()
+                                    } else {
+                                        view! { <></> }.into_any()
+                                    }}
+                                    {if !metric_id.is_empty() {
+                                        view! {
+                                            <div class="indicator-detail__meta-row">
+                                                <span class="indicator-detail__meta-label">"Метрика"</span>
+                                                <span class="indicator-detail__meta-value">{metric_id.clone()}</span>
+                                            </div>
+                                        }.into_any()
+                                    } else {
+                                        view! { <></> }.into_any()
+                                    }}
+                                    {overview_subtitle.clone().map(|subtitle| view! {
+                                        <div class="indicator-detail__meta-row">
+                                            <span class="indicator-detail__meta-label">"Схема расчёта"</span>
+                                            <span class="indicator-detail__meta-value">{subtitle}</span>
+                                        </div>
+                                    })}
+                                </div>
                                 <section class="indicator-detail__section">
                                     <span class="indicator-detail__section-eyebrow">"Краткое описание"</span>
                                     {if let Some(text) = about_description.clone() {
@@ -3146,7 +3223,15 @@ fn IndicatorDetailModal(
                             </div>
                         }.into_any()
                     } else {
+                        let indicator_id_c = sel.id.clone();
+                        let indicator_name_c = name.clone();
+                        let view_id_c = view_id_opt.clone().unwrap_or_default();
+                        let metric_id_c = metric_id_opt.clone();
+                        let ctx_c = ctx.clone();
+                        let tabs_store = Some(tabs_store.clone());
+
                         view! {
+                            <>
                             <div class="indicator-detail__periods">
                                 <div class="indicator-detail__period-card">
                                     <span class="indicator-detail__period-caption">"Текущий период"</span>
@@ -3159,45 +3244,7 @@ fn IndicatorDetailModal(
                                     <span class="indicator-detail__period-value">{overview_prev_full_str.clone()}</span>
                                 </div>
                             </div>
-                            <div class="indicator-detail__meta">
-                                <div class="indicator-detail__meta-row">
-                                    <span class="indicator-detail__meta-label">"Изменение"</span>
-                                    <span class=format!("indicator-detail__delta {}", overview_delta_class)>{overview_delta_str.clone()}</span>
-                                </div>
-                                {if !overview_view_id.is_empty() {
-                                    view! {
-                                        <div class="indicator-detail__meta-row">
-                                            <span class="indicator-detail__meta-label">"Источник данных"</span>
-                                            <span class="indicator-detail__meta-value">{overview_view_id.clone()}</span>
-                                        </div>
-                                    }.into_any()
-                                } else {
-                                    view! { <></> }.into_any()
-                                }}
-                                {overview_subtitle.clone().map(|subtitle| view! {
-                                    <div class="indicator-detail__meta-row">
-                                        <span class="indicator-detail__meta-label">"Схема расчёта"</span>
-                                        <span class="indicator-detail__meta-value">{subtitle}</span>
-                                    </div>
-                                })}
-                            </div>
-
-                            // Drilldown section — visible only when indicator has a DataView (view_id)
-                            {if has_drilldown {
-                        let indicator_id_c = sel.id.clone();
-                        let indicator_name_c = name.clone();
-                        let view_id_c = view_id_opt.clone().unwrap_or_default();
-                        let metric_id_c = metric_id_opt.clone();
-                        let ctx_c = ctx.clone();
-                        let tabs_store = Some(tabs_store.clone());
-
-                        view! {
                             <div class="drill-picker">
-                                <div class="drill-picker__header">
-                                    <span class="drill-picker__title">"Показать детализацию"</span>
-                                </div>
-
-                                // Reactive: show loading or options depending on async fetch state
                                 {move || {
                                     match dv_dims.get() {
                                         None => view! {
@@ -3228,7 +3275,7 @@ fn IndicatorDetailModal(
                                                     } else {
                                                         grouped_dims.into_iter().map(|group| {
                                                             let group_title = group.title;
-                                                            let group_subtitle = group.subtitle;
+                                                            let group_accent = group.accent;
                                                             let group_items = group.items;
                                                             let id_group = id.clone();
                                                             let vid_group = vid.clone();
@@ -3239,17 +3286,17 @@ fn IndicatorDetailModal(
                                                             let params_group = drill_params.clone();
 
                                                             view! {
-                                                                <section class="drill-picker__group">
-                                                                    <div class="drill-picker__group-header">
-                                                                        <span class="drill-picker__group-title">{group_title}</span>
-                                                                        <span class="drill-picker__group-subtitle">{group_subtitle}</span>
-                                                                    </div>
+                                                                <section class=format!("drill-picker__group drill-picker__group--{}", group_accent)>
+                                                                    <span class="drill-picker__group-title">{group_title}</span>
                                                                     <div class="drill-picker__list">
-                                                                        {group_items.into_iter().map(|(field_id, label)| {
-                                                                            let dim = field_id.clone();
-                                                                            let dim_code = field_id.clone();
-                                                                            let dim_label = label.clone();
-                                                                            let tab_title = format!("{} - {}", iname_group, dim_label);
+                                                                        {group_items.into_iter().map(|item| {
+                                                                            let dim = item.id.clone();
+                                                                            let icon_name = drill_dim_icon(&item.id);
+                                                                            let label_text = item.label.clone();
+                                                                            let dim_label = item.label.clone();
+                                                                            let is_partial = item.mode == "partial";
+                                                                            let coverage = item.coverage_pct;
+                                                                            let tab_title = format!("{} · {}", iname_group, dim_label);
                                                                             let store_opt = ts_group.clone();
                                                                             let vid2 = vid_group.clone();
                                                                             let id2 = id_group.clone();
@@ -3260,7 +3307,7 @@ fn IndicatorDetailModal(
                                                                             view! {
                                                                                 <button
                                                                                     type="button"
-                                                                                    class="drill-picker__item drill-picker__item--button"
+                                                                                    class="drill-picker__item"
                                                                                     on:click=move |_| {
                                                                                         let store_opt = store_opt.clone();
                                                                                         let dim = dim.clone();
@@ -3293,11 +3340,17 @@ fn IndicatorDetailModal(
                                                                                         });
                                                                                     }
                                                                                 >
-                                                                                    <span class="drill-picker__item-main">
-                                                                                        <span class="drill-picker__item-label">{label}</span>
-                                                                                        <span class="drill-picker__item-hint">{dim_code}</span>
-                                                                                    </span>
-                                                                                    <span class="drill-picker__item-arrow">"→"</span>
+                                                                                    <span class="drill-picker__item-icon">{icon(icon_name)}</span>
+                                                                                    <span class="drill-picker__item-label">{label_text}</span>
+                                                                                    {if is_partial {
+                                                                                        view! {
+                                                                                            <span class="drill-picker__item-badge drill-picker__item-badge--partial">
+                                                                                                {format!("≈{:.0}%", coverage)}
+                                                                                            </span>
+                                                                                        }.into_any()
+                                                                                    } else {
+                                                                                        view! { <></> }.into_any()
+                                                                                    }}
                                                                                 </button>
                                                                             }
                                                                         }).collect_view()}
@@ -3312,10 +3365,7 @@ fn IndicatorDetailModal(
                                     }
                                 }}
                             </div>
-                        }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
+                            </>
                         }.into_any()
                     }}
                 </div>

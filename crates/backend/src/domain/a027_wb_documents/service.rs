@@ -30,6 +30,7 @@ pub async fn update_manual_fields(
     report_period_from: Option<String>,
     report_period_to: Option<String>,
     weekly_report_data: WbWeeklyReportManualData,
+    comment: Option<Option<String>>,
 ) -> Result<Option<WbDocument>> {
     let Some(mut document) = repository::get_by_id(id).await? else {
         return Ok(None);
@@ -39,6 +40,11 @@ pub async fn update_manual_fields(
     document.report_period_from = report_period_from;
     document.report_period_to = report_period_to;
     document.weekly_report_data = weekly_report_data;
+    // `None` оставляет комментарий без изменений (например, при извлечении из PDF),
+    // `Some(value)` — перезаписывает его значением из формы проверки.
+    if let Some(comment) = comment {
+        document.base.set_comment(comment);
+    }
     document.before_write();
 
     repository::upsert_by_service_name(&document).await?;

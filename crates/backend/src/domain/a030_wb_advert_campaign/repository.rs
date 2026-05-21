@@ -6,7 +6,7 @@ use contracts::domain::a030_wb_advert_campaign::aggregate::{
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set, Statement};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;

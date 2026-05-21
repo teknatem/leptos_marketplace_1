@@ -180,6 +180,8 @@ pub async fn execute_schema_drilldown(req: &DrilldownRequest) -> Result<Drilldow
         metric_columns: vec![],
         selected_dimension: None,
         coverage: None,
+        extra_columns: vec![],
+        extra_values: std::collections::HashMap::new(),
     })
 }
 

@@ -16,11 +16,13 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::a027_wb_documents;
+use crate::domain::a027_wb_documents::pdf_report_extractor;
 use crate::general_ledger::account_view::registry::ACCOUNT_7609_VIEW;
 use crate::shared::data::db::get_connection;
 use crate::usecases::u504_import_from_wildberries::wildberries_api_client::WildberriesApiClient;
 
-const REALIZED_GOODS_TURNOVERS: &[&str] = &["customer_revenue_pl"];
+const REALIZED_GOODS_TURNOVERS: &[&str] =
+    &["customer_revenue_pl", "spp_discount", "wb_extra_discount"];
 const WB_REWARD_TURNOVERS: &[&str] = &["mp_commission"];
 const ADVERT_RECONCILIATION_TURNOVERS: &[&str] =
     &["advert_clicks_no_order", "advert_clicks_order_accrual"];
@@ -35,8 +37,7 @@ const ACQUIRING_TURNOVERS: &[&str] = &["mp_acquiring"];
 const OPER_LAYER: &str = "oper";
 const FACT_LAYER: &str = "fact";
 
-const REALIZED_GOODS_FORMULA: &str =
-    "SUM(amount) WHERE turnover_code = 'customer_revenue_pl' AND layer = 'oper'";
+const REALIZED_GOODS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('customer_revenue_pl', 'spp_discount', 'wb_extra_discount') AND layer = 'oper'";
 const WB_REWARD_FORMULA: &str =
     "SUM(amount) WHERE turnover_code = 'mp_commission' AND layer = 'oper'";
 const SELLER_TRANSFER_FORMULA: &str = "Account 7609 main balance";
@@ -117,6 +118,7 @@ pub struct WbDocumentDetailsDto {
     pub logistics: Option<f64>,
     pub acquiring: Option<f64>,
     pub max_deviation: Option<f64>,
+    pub comment: Option<String>,
     pub reconciliation: WbDocumentReconciliationDto,
     pub fetched_at: String,
     pub locale: String,
@@ -155,6 +157,7 @@ pub struct UpdateManualFieldsRequest {
     pub other_deductions: Option<f64>,
     pub logistics: Option<f64>,
     pub acquiring: Option<f64>,
+    pub comment: Option<String>,
 }
 
 pub async fn list_paginated(
@@ -307,6 +310,117 @@ pub async fn download_document(
     Ok(response)
 }
 
+pub async fn extract_weekly_report(
+    Path(id): Path<String>,
+) -> Result<Json<WbDocumentDetailsDto>, StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let document = a027_wb_documents::service::get_by_id(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to load WB document {} for extraction: {}", id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let extension = preferred_report_extension(&document).ok_or(StatusCode::BAD_REQUEST)?;
+    let connection_id = Uuid::parse_str(&document.header.connection_id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let connection = crate::domain::a006_connection_mp::service::get_by_id(connection_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                "Failed to load connection for WB document extraction {}: {}",
+                id,
+                e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let api_client = WildberriesApiClient::new();
+    let file = api_client
+        .download_document(&connection, &document.header.service_name, &extension)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to download WB document {} for extraction: {}", id, e);
+            StatusCode::BAD_GATEWAY
+        })?;
+
+    let bytes = general_purpose::STANDARD
+        .decode(&file.document)
+        .map_err(|e| {
+            tracing::error!("Failed to decode WB document {} for extraction: {}", id, e);
+            StatusCode::BAD_GATEWAY
+        })?;
+
+    // Имя документа ("Отчет № … от DD.MM.YYYY") — надёжный источник даты отчёта,
+    // поэтому передаём его в экстрактор вместе с именем файла.
+    let name_hint = format!("{}\n{}", document.header.name, file.file_name);
+    let extracted = pdf_report_extractor::extract_weekly_report_from_document_bytes(
+        &bytes,
+        &file.extension,
+        Some(&name_hint),
+    )
+    .map_err(|e| {
+        tracing::error!("Failed to extract WB weekly report {}: {}", id, e);
+        StatusCode::UNPROCESSABLE_ENTITY
+    })?;
+
+    // TODO(debug): временный лог распарсенных строк отчёта для отладки 2.6/2.10/8.
+    tracing::info!(
+        "WB report {} extracted period {:?}..{:?}, report_date={:?}",
+        id,
+        extracted.report_period_from,
+        extracted.report_period_to,
+        extracted.report_date
+    );
+    for row in &extracted.rows {
+        tracing::info!(
+            "WB report {} row code={} amount={:?} vat={:?} raw=\"{}\"",
+            id,
+            row.code,
+            row.amount,
+            row.vat_amount,
+            row.raw_text
+        );
+    }
+
+    let current = document.weekly_report_data.clone();
+    let extracted_data = extracted.manual_data;
+    let updated_data = WbWeeklyReportManualData {
+        realized_goods_total: extracted_data.realized_goods_total.or(current.realized_goods_total),
+        wb_reward_with_vat: extracted_data.wb_reward_with_vat.or(current.wb_reward_with_vat),
+        seller_transfer_total: extracted_data
+            .seller_transfer_total
+            .or(current.seller_transfer_total),
+        other_deductions: extracted_data.other_deductions.or(current.other_deductions),
+        logistics: extracted_data.logistics.or(current.logistics),
+        acquiring: extracted_data.acquiring.or(current.acquiring),
+    };
+
+    let updated = a027_wb_documents::service::update_manual_fields(
+        uuid,
+        true,
+        extracted
+            .report_period_from
+            .or(document.report_period_from.clone()),
+        extracted.report_period_to.or(document.report_period_to.clone()),
+        updated_data,
+        None,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to store extracted WB report data {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    build_details_dto(updated).await.map(Json).map_err(|e| {
+        tracing::error!("Failed to build extracted WB document dto {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
+}
+
 pub async fn update_manual_fields(
     Path(id): Path<String>,
     Json(req): Json<UpdateManualFieldsRequest>,
@@ -325,6 +439,7 @@ pub async fn update_manual_fields(
             logistics: req.logistics,
             acquiring: req.acquiring,
         },
+        Some(normalize_optional_string(req.comment)),
     )
     .await
     .map_err(|e| {
@@ -416,6 +531,7 @@ async fn build_details_dto(doc: WbDocument) -> anyhow::Result<WbDocumentDetailsD
         logistics: doc.weekly_report_data.logistics,
         acquiring: doc.weekly_report_data.acquiring,
         max_deviation: doc.max_deviation,
+        comment: doc.base.comment.clone(),
         reconciliation: build_reconciliation_dto(&doc).await?,
         fetched_at: doc.source_meta.fetched_at.clone(),
         locale: doc.source_meta.locale.clone(),
@@ -697,6 +813,22 @@ fn content_type_for_extension(extension: &str) -> &'static str {
         "xml" => "application/xml",
         _ => "application/octet-stream",
     }
+}
+
+fn preferred_report_extension(document: &WbDocument) -> Option<String> {
+    document
+        .header
+        .extensions
+        .iter()
+        .find(|ext| ext.eq_ignore_ascii_case("zip"))
+        .or_else(|| {
+            document
+                .header
+                .extensions
+                .iter()
+                .find(|ext| ext.eq_ignore_ascii_case("pdf"))
+        })
+        .cloned()
 }
 
 #[cfg(test)]

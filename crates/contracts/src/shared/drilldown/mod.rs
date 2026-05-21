@@ -10,6 +10,18 @@ pub struct MetricColumnDef {
     pub label: String,
 }
 
+/// Доп. информационная колонка drilldown (напр. «Артикул» для Номенклатуры).
+///
+/// Рендерится после колонки группировки и до колонок метрик. Значения по строкам
+/// лежат в [`DrilldownResponse::extra_values`] (ключ = `group_key` строки → `id` колонки).
+/// Механизм расширяемый: чтобы добавить колонку, бэкенд добавляет `ExtraColumnDef`
+/// и заполняет `extra_values`; фронтенд рендерит их обобщённо без правок.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtraColumnDef {
+    pub id: String,
+    pub label: String,
+}
+
 /// Значения одной метрики для одной строки (П1 + П2 + Δ%).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MetricValues {
@@ -140,4 +152,12 @@ pub struct DrilldownResponse {
     /// Coverage-метаданные для partial drilldown.
     #[serde(default)]
     pub coverage: Option<DrilldownCoverageSummary>,
+    /// Доп. информационные колонки (после группировки, до метрик).
+    /// Пусто, если для измерения доп. колонок нет.
+    #[serde(default)]
+    pub extra_columns: Vec<ExtraColumnDef>,
+    /// Значения доп. колонок: `group_key` строки → (`id` колонки → значение).
+    /// Строки без значения просто не попадают в map.
+    #[serde(default)]
+    pub extra_values: HashMap<String, HashMap<String, String>>,
 }

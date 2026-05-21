@@ -15,7 +15,9 @@ use crate::data_view::ui::FilterBar;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use contracts::shared::data_view::ViewContext;
-use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow, MetricValues};
+use contracts::shared::drilldown::{
+    DrilldownResponse, DrilldownRow, ExtraColumnDef, MetricValues,
+};
 use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -279,6 +281,41 @@ fn capabilities_to_dimension_options(
         .chain(capabilities.partial_dimensions)
         .map(|capability| format_dimension_option(&capability))
         .collect()
+}
+
+// ── Extra columns (dimension-specific, e.g. «Артикул» for nomenclature) ────────
+
+/// Значение доп. колонки `col_id` для строки `group_key` (пусто, если нет).
+fn extra_value(
+    vals: &HashMap<String, HashMap<String, String>>,
+    group_key: &str,
+    col_id: &str,
+) -> String {
+    vals.get(group_key)
+        .and_then(|row| row.get(col_id))
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// `<td>`-ячейки доп. колонок для одной строки (после наименования).
+fn extra_body_cells(
+    cols: &[ExtraColumnDef],
+    vals: &HashMap<String, HashMap<String, String>>,
+    group_key: &str,
+) -> impl IntoView {
+    cols.iter()
+        .map(|col| {
+            let value = extra_value(vals, group_key, &col.id);
+            view! { <td class="data-table__cell drilldown-report__extra-cell">{value}</td> }
+        })
+        .collect_view()
+}
+
+/// Пустые `<td>`-ячейки доп. колонок для строки «Итого».
+fn extra_footer_cells(cols: &[ExtraColumnDef]) -> impl IntoView {
+    cols.iter()
+        .map(|_| view! { <td class="data-table__cell drilldown-report__total-value" /> })
+        .collect_view()
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -714,6 +751,12 @@ pub fn DrilldownReportPage(
                         let cols_rows = cols.clone();
                         let cols_total = cols.clone();
 
+                        // Dimension-specific extra columns (e.g. «Артикул»), shown after the label.
+                        let extra_vals = resp.extra_values.clone();
+                        let extra_head = resp.extra_columns.clone();
+                        let extra_body = resp.extra_columns.clone();
+                        let extra_foot = resp.extra_columns.clone();
+
                         view! {
                             <div class="drilldown-report__table-wrap">
                             <table class="drilldown-report__table">
@@ -731,6 +774,12 @@ pub fn DrilldownReportPage(
                                                 </span>
                                             </div>
                                         </th>
+                                        {extra_head.into_iter().map(|col| view! {
+                                            <th class="drill-th drill-th--extra data-table__cell data-table__cell--header"
+                                                rowspan="2">
+                                                {col.label.clone()}
+                                            </th>
+                                        }).collect_view()}
                                         {cols_h1.into_iter().map(|col| view! {
                                             <th class="drill-th drill-th--metric-group data-table__cell data-table__cell--header"
                                                 colspan="3">
@@ -796,6 +845,7 @@ pub fn DrilldownReportPage(
                                             view! {
                                                 <tr class="data-table__row">
                                                     <td class="data-table__cell">{row.label.clone()}</td>
+                                                    {extra_body_cells(&extra_body, &extra_vals, &row.group_key)}
                                                     {cols.into_iter().map(|col| {
                                                         let mv: MetricValues = row.metric_values
                                                             .get(&col.id)
@@ -824,6 +874,7 @@ pub fn DrilldownReportPage(
                                 <tfoot>
                                     <tr class="drilldown-report__total-row">
                                         <td class="data-table__cell drilldown-report__total-label">"Итого"</td>
+                                        {extra_footer_cells(&extra_foot)}
                                         {cols_total.into_iter().map(|col| {
                                             let (t1, t2) = totals.get(&col.id).copied().unwrap_or((0.0, 0.0));
                                             let td = if t2.abs() > 0.01 {
@@ -864,6 +915,12 @@ pub fn DrilldownReportPage(
                         let p2_label       = resp.period2_label.clone();
                         let group_by_label = resp.group_by_label.clone();
 
+                        // Dimension-specific extra columns (e.g. «Артикул»), shown after the label.
+                        let extra_vals = resp.extra_values.clone();
+                        let extra_head = resp.extra_columns.clone();
+                        let extra_body = resp.extra_columns.clone();
+                        let extra_foot = resp.extra_columns.clone();
+
                         let rows_sorted = Signal::derive(move || {
                             let Some(r) = response.get() else { return vec![] };
                             sort_rows(&r.rows, &sort_col.get(), sort_asc.get())
@@ -892,6 +949,11 @@ pub fn DrilldownReportPage(
                                                 </span>
                                             </div>
                                         </TableHeaderCell>
+                                        {extra_head.into_iter().map(|col| view! {
+                                            <TableHeaderCell class="drill-th drill-th--extra">
+                                                {col.label.clone()}
+                                            </TableHeaderCell>
+                                        }).collect_view()}
                                         <TableHeaderCell class="drill-th">
                                             <div class="drilldown-report__sort-trigger" data-align="end"
                                                 on:click=move |_| toggle_sort(SortCol::Named("value1".to_string()))>
@@ -928,12 +990,13 @@ pub fn DrilldownReportPage(
                                     <For
                                         each=move || rows_sorted.get()
                                         key=|row| row.group_key.clone()
-                                        children=|row: DrilldownRow| {
+                                        children=move |row: DrilldownRow| {
                                             let delta_cls = delta_class(row.delta_pct).to_string();
                                             let delta_str = fmt_delta(row.delta_pct);
                                             view! {
                                                 <tr class="data-table__row">
                                                     <td class="data-table__cell">{row.label.clone()}</td>
+                                                    {extra_body_cells(&extra_body, &extra_vals, &row.group_key)}
                                                     <td class="data-table__cell data-table__cell--num">
                                                         {fmt_value(row.value1)}
                                                     </td>
@@ -951,6 +1014,7 @@ pub fn DrilldownReportPage(
                                 <tfoot>
                                     <tr class="drilldown-report__total-row">
                                         <td class="data-table__cell drilldown-report__total-label">"Итого"</td>
+                                        {extra_footer_cells(&extra_foot)}
                                         <td class="data-table__cell data-table__cell--num drilldown-report__total-value">
                                             {fmt_value(total1)}
                                         </td>
@@ -1153,18 +1217,34 @@ fn export_drilldown_csv(resp: &DrilldownResponse, base_title: &str) {
 
     let mut csv = String::from("\u{FEFF}"); // UTF-8 BOM
 
+    // Dimension-specific extra columns (e.g. «Артикул»), placed after the group label.
+    let extra_header: String = resp
+        .extra_columns
+        .iter()
+        .map(|col| format!(";{}", csv_escape(&col.label)))
+        .collect();
+    let extra_empty: String = ";".repeat(resp.extra_columns.len());
+    let extra_row = |group_key: &str| -> String {
+        resp.extra_columns
+            .iter()
+            .map(|col| format!(";{}", csv_escape(&extra_value(&resp.extra_values, group_key, &col.id))))
+            .collect()
+    };
+
     if resp.metric_columns.is_empty() {
-        // Single-metric: Group | П1 | П2 | Δ%
+        // Single-metric: Group | [extra…] | П1 | П2 | Δ%
         csv.push_str(&format!(
-            "{};{};{};Δ%\n",
+            "{}{};{};{};Δ%\n",
             csv_escape(&resp.group_by_label),
+            extra_header,
             csv_escape(&resp.period1_label),
             csv_escape(&resp.period2_label),
         ));
         for row in &resp.rows {
             csv.push_str(&format!(
-                "{};{};{};{}\n",
+                "{}{};{};{};{}\n",
                 csv_escape(&row.label),
+                extra_row(&row.group_key),
                 fmt_value_raw(row.value1),
                 fmt_value_raw(row.value2),
                 fmt_delta_raw(row.delta_pct),
@@ -1178,14 +1258,15 @@ fn export_drilldown_csv(resp: &DrilldownResponse, base_title: &str) {
             None
         };
         csv.push_str(&format!(
-            "Итого;{};{};{}\n",
+            "Итого{};{};{};{}\n",
+            extra_empty,
             fmt_value_raw(t1),
             fmt_value_raw(t2),
             fmt_delta_raw(td)
         ));
     } else {
         // Multi-resource: flat headers per metric
-        let mut header = csv_escape(&resp.group_by_label);
+        let mut header = format!("{}{}", csv_escape(&resp.group_by_label), extra_header);
         for col in &resp.metric_columns {
             header.push_str(&format!(
                 ";{} {};{} {};{} Δ%",
@@ -1200,7 +1281,7 @@ fn export_drilldown_csv(resp: &DrilldownResponse, base_title: &str) {
         csv.push('\n');
 
         for row in &resp.rows {
-            let mut line = csv_escape(&row.label);
+            let mut line = format!("{}{}", csv_escape(&row.label), extra_row(&row.group_key));
             for col in &resp.metric_columns {
                 let mv = row.metric_values.get(&col.id).cloned().unwrap_or_default();
                 line.push_str(&format!(
@@ -1214,7 +1295,7 @@ fn export_drilldown_csv(resp: &DrilldownResponse, base_title: &str) {
             csv.push('\n');
         }
 
-        let mut total_line = "Итого".to_string();
+        let mut total_line = format!("Итого{}", extra_empty);
         for col in &resp.metric_columns {
             let (t1, t2) = resp.rows.iter().fold((0.0_f64, 0.0_f64), |(s1, s2), r| {
                 let mv = r.metric_values.get(&col.id);

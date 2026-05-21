@@ -27,6 +27,11 @@ use crate::shared::data::db::get_connection;
 const VIEW_ID: &str = "dv004_general_ledger_turnovers";
 const DEFAULT_METRIC_ID: &str = "amount";
 
+/// Synthetic drill dimension that splits a composite indicator into the
+/// component turnovers it sums over. Only offered for multi-turnover formulas.
+const TURNOVER_DIMENSION_ID: &str = "turnover";
+const TURNOVER_DIMENSION_LABEL: &str = "По обороту";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ViewMetric {
     Amount,
@@ -679,6 +684,24 @@ async fn build_drilldown_capabilities(
         }
     }
 
+    // Synthetic dimension: decompose a composite indicator into its component
+    // turnovers. Each turnover becomes its own row, so coverage is always 100%.
+    // Placed first so it leads the "Основные" group in the UI.
+    safe_dimensions.insert(
+        0,
+        DrilldownDimensionCapability {
+            id: TURNOVER_DIMENSION_ID.to_string(),
+            label: TURNOVER_DIMENSION_LABEL.to_string(),
+            mode: "safe".to_string(),
+            coverage_pct: Some(100.0),
+            supported_turnover_codes: turnovers
+                .iter()
+                .map(|turnover| turnover.code.clone())
+                .collect(),
+            missing_turnover_codes: Vec::new(),
+        },
+    );
+
     Ok(DrilldownCapabilitiesResponse {
         safe_dimensions,
         partial_dimensions,
@@ -805,6 +828,11 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
                 display_formula(&turnovers)
             )
         })?;
+
+    if group_by == TURNOVER_DIMENSION_ID {
+        return build_turnover_breakdown(metric, &turnovers, &layer, ctx, selected_dimension).await;
+    }
+
     let supported_turnovers = turnovers
         .iter()
         .filter(|turnover| {
@@ -988,6 +1016,13 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         other_value2,
     };
 
+    // Доп. колонки, зависящие от измерения (напр. «Артикул» для номенклатуры).
+    // Один батч-запрос по уже посчитанным ключам — не утяжеляет агрегацию.
+    let group_keys: Vec<String> = rows.iter().map(|row| row.group_key.clone()).collect();
+    let extra = crate::general_ledger::drilldown_extra::resolve(group_by, &group_keys)
+        .await
+        .unwrap_or_default();
+
     Ok(DrilldownResponse {
         rows,
         group_by_label: crate::general_ledger::drilldown_dimensions::dimension_label(group_by)
@@ -1007,6 +1042,94 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         metric_columns: vec![],
         selected_dimension: Some(selected_dimension),
         coverage: Some(coverage),
+        extra_columns: extra.columns,
+        extra_values: extra.values,
+    })
+}
+
+/// Build the "по обороту" breakdown: one row per component turnover, with the
+/// signed contribution of each to the composite value. Coverage is always 100%
+/// (every turnover is its own row), so there is no "Прочее" remainder.
+async fn build_turnover_breakdown(
+    metric: ViewMetric,
+    turnovers: &[SignedTurnover],
+    layer: &str,
+    ctx: &ViewContext,
+    selected_dimension: DrilldownDimensionCapability,
+) -> Result<DrilldownResponse> {
+    let (p2_from, p2_to) = resolve_period2(ctx);
+
+    let (totals1, totals2) = tokio::join!(
+        fetch_turnover_component_totals_from_table(
+            "sys_general_ledger",
+            metric,
+            turnovers,
+            layer,
+            &ctx.date_from,
+            &ctx.date_to,
+            &ctx.connection_mp_refs,
+        ),
+        fetch_turnover_component_totals_from_table(
+            "sys_general_ledger",
+            metric,
+            turnovers,
+            layer,
+            &p2_from,
+            &p2_to,
+            &ctx.connection_mp_refs,
+        ),
+    );
+    let totals1 = totals1?;
+    let totals2 = totals2?;
+
+    let mut rows: Vec<DrilldownRow> = turnovers
+        .iter()
+        .map(|turnover| {
+            let value1 = totals1.get(&turnover.code).copied().unwrap_or(0.0);
+            let value2 = totals2.get(&turnover.code).copied().unwrap_or(0.0);
+            let label = get_turnover_class(&turnover.code)
+                .map(|class| class.name.to_string())
+                .unwrap_or_else(|| turnover.code.clone());
+            DrilldownRow {
+                group_key: turnover.code.clone(),
+                label,
+                value1,
+                value2,
+                delta_pct: pct_change(value1, value2),
+                metric_values: HashMap::new(),
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        b.value1
+            .partial_cmp(&a.value1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let covered_total1: f64 = rows.iter().map(|row| row.value1).sum();
+    let covered_total2: f64 = rows.iter().map(|row| row.value2).sum();
+
+    let coverage = DrilldownCoverageSummary {
+        mode: "safe".to_string(),
+        coverage_pct_period1: Some(100.0),
+        coverage_pct_period2: Some(100.0),
+        covered_value1: covered_total1,
+        covered_value2: covered_total2,
+        other_value1: 0.0,
+        other_value2: 0.0,
+    };
+
+    Ok(DrilldownResponse {
+        rows,
+        group_by_label: TURNOVER_DIMENSION_LABEL.to_string(),
+        period1_label: period_label(&ctx.date_from, &ctx.date_to),
+        period2_label: period_label(&p2_from, &p2_to),
+        metric_label: format!("{} / {}", display_formula(turnovers), metric_label(metric)),
+        metric_columns: vec![],
+        selected_dimension: Some(selected_dimension),
+        coverage: Some(coverage),
+        extra_columns: vec![],
+        extra_values: std::collections::HashMap::new(),
     })
 }
 

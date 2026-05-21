@@ -4,6 +4,7 @@ use crate::shared::date_utils::format_datetime;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
 use crate::shared::page_frame::PageFrame;
+use crate::system::favorites::ui::FavoriteButton;
 use leptos::prelude::*;
 use std::rc::Rc;
 use thaw::*;
@@ -17,7 +18,19 @@ pub fn MarketplaceProductDetails(
     let modal_stack =
         use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let vm = MarketplaceProductDetailsViewModel::new();
+    // Сохраняем id для избранного до того, как он будет передан во view-model.
+    let favorite_id = id.clone();
     vm.load_if_needed(id);
+
+    let vm_favorite = vm.clone();
+    let favorite_title = Signal::derive(move || {
+        let description = vm_favorite.form.get().description;
+        if description.trim().is_empty() {
+            "Товар маркетплейса".to_string()
+        } else {
+            description
+        }
+    });
 
     let on_saved_clone = on_saved.clone();
     let on_close_clone = on_close.clone();
@@ -143,6 +156,14 @@ pub fn MarketplaceProductDetails(
         <PageFrame page_id="a007_marketplace_product--detail" category="detail">
             <div class="page__header">
                 <div class="page__header-left">
+                    {favorite_id.clone().map(|product_id| view! {
+                        <FavoriteButton
+                            target_kind="a007_marketplace_product_details".to_string()
+                            target_id=product_id.clone()
+                            target_title=favorite_title
+                            tab_key=format!("a007_marketplace_product_details_{}", product_id)
+                        />
+                    })}
                     <h2>
                         {
                             let vm = vm_title.clone();

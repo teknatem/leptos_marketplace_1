@@ -1216,8 +1216,9 @@ th.resizable {
 
 /* BI Indicator detail modal — grows from the clicked card */
 .indicator-detail-modal {
-  width: min(860px, calc(100vw - 32px));
-  max-width: 860px;
+  width: min(1000px, calc(100vw - 32px));
+  max-width: 1000px;
+  max-height: min(86vh, 720px);
   /* Small delay lets stage-1 card-exit animation play first */
   animation: indicatorModalGrow 0.26s cubic-bezier(0.2, 0.9, 0.2, 1) 0.05s both;
 }
@@ -1258,54 +1259,36 @@ th.resizable {
   min-width: 0;
 }
 
+/* Compact single-row header: title + code + status on the left, actions right */
 .indicator-detail__header {
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
 .indicator-detail__header-main {
-  flex: 1 1 auto;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.indicator-detail__title-block {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
-.indicator-detail__title-subtitle {
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.indicator-detail__header-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.indicator-detail__header-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--color-bg-secondary, rgba(128, 128, 128, 0.06));
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  line-height: 1.2;
+.indicator-detail__title {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.25;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .indicator-detail__header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -1313,13 +1296,13 @@ th.resizable {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 14px;
+  min-height: 30px;
+  padding: 0 12px;
   border: 1px solid var(--color-border-light, rgba(128, 128, 128, 0.18));
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--colorBrandForeground1, #2563eb);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -1344,36 +1327,59 @@ th.resizable {
 .indicator-detail__body {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
 }
 
+/* Underlined tabs: flat triggers with an accent bar under the active one */
 .indicator-detail__tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px;
-  width: fit-content;
-  border-radius: 14px;
-  background: var(--color-bg-secondary, rgba(128, 128, 128, 0.05));
+  display: flex;
+  align-items: stretch;
+  gap: 22px;
+  border-bottom: 1px solid var(--color-border, rgba(128, 128, 128, 0.2));
 }
 
 .indicator-detail__tab {
-  min-height: 36px;
-  padding: 0 14px;
+  position: relative;
+  min-height: 34px;
+  padding: 0 2px 8px;
   border: none;
-  border-radius: 10px;
   background: transparent;
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+  transition: color 0.12s;
+}
+
+.indicator-detail__tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.indicator-detail__tab:hover {
+  color: var(--color-text-primary);
 }
 
 .indicator-detail__tab--active {
-  background: var(--color-bg-elevated, rgba(255, 255, 255, 0.88));
   color: var(--color-text-primary);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.indicator-detail__tab--active::after {
+  background: var(--colorBrandForeground1, #2563eb);
+}
+
+/* Technical "Подробности" tab: stacked period cards, meta rows and prose */
+.indicator-detail__details-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .indicator-detail__about {
@@ -1417,7 +1423,7 @@ th.resizable {
 .indicator-detail__details-line {
   padding: 10px 12px;
   border-radius: 10px;
-  background: var(--color-bg-elevated, rgba(255, 255, 255, 0.78));
+  background: var(--color-bg-elevated, var(--color-bg-primary, #fff));
   border: 1px solid var(--color-border-light, rgba(128, 128, 128, 0.1));
   color: var(--color-text-primary);
   font-size: 13px;
@@ -1467,7 +1473,7 @@ th.resizable {
 }
 
 .indicator-detail__period-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1.1;
   color: var(--color-text-primary);
@@ -1568,31 +1574,14 @@ th.resizable {
   color: var(--color-text-secondary);
 }
 
-/* ── Drill picker (drilldown dimension selector in indicator modal) ───────── */
+/* ── Drill picker — the primary "Детализация" tab content ─────────────────
+   Each group carries a colour accent via --accent (set per-group modifier),
+   driving the left border, the title dot and the item hover state. Accent
+   hues are chosen to stay legible on both light and dark themes. */
 .drill-picker {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding-top: 8px;
-  border-top: 1px solid var(--color-border-light, rgba(128, 128, 128, 0.12));
-}
-
-.drill-picker__header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.drill-picker__title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--form-label-text);
-}
-
-.drill-picker__subtitle {
-  font-size: var(--font-size-xs, 11px);
-  color: var(--color-text-secondary);
+  gap: 12px;
 }
 
 .drill-picker__loading {
@@ -1601,42 +1590,65 @@ th.resizable {
   gap: 8px;
   color: var(--color-text-secondary);
   font-size: 14px;
-  padding: 12px 0 4px;
+  padding: 24px 0;
+  justify-content: center;
 }
 
 .drill-picker__groups {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 300px));
+  justify-content: center;
+  gap: 10px;
+  align-items: start;
 }
 
 .drill-picker__group {
+  --accent: #3b82f6;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 14px;
-  border-radius: 14px;
-  background: var(--color-bg-secondary, rgba(128, 128, 128, 0.04));
-  border: 1px solid var(--color-border-light, rgba(128, 128, 128, 0.12));
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--color-bg-secondary, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--color-border-light, rgba(128, 128, 128, 0.12)));
+  border-left: 3px solid var(--accent);
 }
 
-.drill-picker__group-header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.drill-picker__group--main {
+  --accent: #3b82f6;
+}
+
+.drill-picker__group--docs {
+  --accent: #8b5cf6;
+}
+
+.drill-picker__group--nom {
+  --accent: #10b981;
+}
+
+.drill-picker__group--other {
+  --accent: #94a3b8;
 }
 
 .drill-picker__group-title {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
 }
 
-.drill-picker__group-subtitle {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--color-text-secondary);
+.drill-picker__group-title::before {
+  content: "";
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .drill-picker__empty {
@@ -1649,63 +1661,85 @@ th.resizable {
 }
 
 .drill-picker__list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
+/* Analytics dimension tile: accent icon chip + label, no arrow */
 .drill-picker__item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--color-border-light, rgba(128, 128, 128, 0.15));
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
-  user-select: none;
-}
-
-.drill-picker__item--button {
+  gap: 10px;
   width: 100%;
-  background: transparent;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: var(--color-bg-elevated, var(--color-bg-primary, #fff));
   text-align: left;
-  justify-content: space-between;
-  border: 1px solid var(--color-border-light, rgba(128, 128, 128, 0.15));
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
 }
 
 .drill-picker__item:hover {
-  background: var(--color-bg-secondary, rgba(128, 128, 128, 0.06));
-  border-color: var(--color-border, rgba(128, 128, 128, 0.28));
+  background: color-mix(in srgb, var(--accent) 12%, var(--color-bg-elevated, var(--color-bg-primary, #fff)));
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
-.drill-picker__item-main {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+.drill-picker__item:active {
+  transform: translateY(1px);
+}
+
+.drill-picker__item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  transition: background 0.12s;
+}
+
+.drill-picker__item-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.drill-picker__item:hover .drill-picker__item-icon {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 .drill-picker__item-label {
-  font-size: 14px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
   color: var(--color-text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drill-picker__item-badge--partial {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.18);
+  color: #d97706;
+  font-size: 10.5px;
   font-weight: 600;
 }
 
-.drill-picker__item-hint {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.drill-picker__item-arrow {
-  flex-shrink: 0;
-  font-size: 20px;
-  line-height: 1;
-  color: var(--color-text-secondary);
-}
-
-.drill-picker__item--button:hover .drill-picker__item-arrow {
-  color: var(--color-accent, #3b82f6);
+/* Narrower viewports / modal: drop the dimension groups to two columns */
+@media (max-width: 980px) {
+  .drill-picker__groups {
+    grid-template-columns: repeat(2, minmax(0, 300px));
+  }
 }
 
 @media (max-width: 720px) {
@@ -1731,9 +1765,8 @@ th.resizable {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .drill-picker__list,
   .drill-picker__groups {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 300px);
   }
 }
 
@@ -1836,6 +1869,17 @@ th.resizable {
   font-size: 10px;
   vertical-align: middle;
   margin-left: 2px;
+}
+
+/* Dimension-specific extra columns (e.g. «Артикул» for nomenclature) */
+.drill-th--extra {
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+.drilldown-report__extra-cell {
+  white-space: nowrap;
+  color: var(--color-text-secondary);
 }
 
 /* Delta colours in table cells */
