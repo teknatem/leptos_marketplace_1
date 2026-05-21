@@ -12,6 +12,7 @@ use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, S
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
 use crate::shared::table_utils::{clear_resize_flag, init_column_resize, was_just_resizing};
+use crate::system::favorites::ui::FavoriteButton;
 use contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDailyMetrics;
 use contracts::general_ledger::GeneralLedgerEntryDto;
 use gloo_net::http::Request;
@@ -167,6 +168,7 @@ struct FoundOrderDto {
     #[serde(default)]
     order_date: Option<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     nomenclature_ref: Option<String>,
     #[serde(default)]
     finished_price: Option<f64>,
@@ -234,6 +236,7 @@ struct P913Row {
     turnover_code: String,
     amount: f64,
     #[serde(default)]
+    #[allow(dead_code)]
     nomenclature_ref: Option<String>,
     wb_advert_campaign_code: String,
     order_key: String,
@@ -545,10 +548,30 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         lines
     });
 
+    let favorite_target_id = stored_id.get_value();
+    let favorite_tab_key = format!("a026_wb_advert_daily_details_{}", stored_id.get_value());
+    let favorite_title = Signal::derive(move || {
+        doc.get()
+            .map(|d| {
+                if d.advert_id > 0 {
+                    format!("WB Ads {} · {}", d.document_date, d.advert_id)
+                } else {
+                    format!("WB Ads {}", d.document_date)
+                }
+            })
+            .unwrap_or_else(|| "WB Ads".to_string())
+    });
+
     view! {
         <PageFrame page_id="a026_wb_advert_daily--detail" category=PAGE_CAT_DETAIL class="page--wide">
             <div class="page__header">
                 <div class="page__header-left">
+                    <FavoriteButton
+                        target_kind="a026_wb_advert_daily_details".to_string()
+                        target_id=favorite_target_id
+                        target_title=favorite_title
+                        tab_key=favorite_tab_key
+                    />
                     <h1 class="page__title">
                         {move || doc.get().map(|d| {
                             if d.advert_id > 0 {
@@ -663,16 +686,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                             <ReadField label="Создано" value=fmt_dt(&d.created_at) />
                                             <ReadField label="Обновлено" value=fmt_dt(&d.updated_at) />
                                         </div>
-                                    <Show when=move || journal_id.get().is_some()>
-                                        {move || {
-                                            let entry_id = journal_id.get().unwrap_or_default();
-                                            view! {
-                                                <Button appearance=ButtonAppearance::Secondary on_click=move |_| open_journal_general.run(entry_id.clone())>
-                                                    "Открыть проводку"
-                                                </Button>
-                                            }
-                                        }}
-                                    </Show>
+                                    
                                     </CardAnimated>
                                 </div>
                                 </div>

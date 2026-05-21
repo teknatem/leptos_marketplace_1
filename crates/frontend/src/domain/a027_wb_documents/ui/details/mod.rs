@@ -3,9 +3,11 @@ use crate::shared::api_utils::api_base;
 use crate::shared::auth_download::download_authenticated_file;
 use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::components::ui::FieldDisplay;
+use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
+use crate::system::favorites::ui::FavoriteButton;
 use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -73,6 +75,61 @@ fn fmt_reconciliation_difference(line: &ReconciliationLineDto) -> String {
     }
 }
 
+fn fmt_csv_decimal(value: Option<f64>) -> String {
+    value
+        .map(|amount| format!("{:.2}", amount).replace('.', ","))
+        .unwrap_or_default()
+}
+
+/// Одна строка таблицы сверки для выгрузки в CSV (Excel).
+struct CheckExportRow {
+    indicator: String,
+    formula: String,
+    wb_report: String,
+    database_value: String,
+    difference: String,
+}
+
+impl ExcelExportable for CheckExportRow {
+    fn headers() -> Vec<&'static str> {
+        vec![
+            "Показатель",
+            "Формула оборотов",
+            "Отчет WB",
+            "Данные в базе",
+            "Расхождение",
+        ]
+    }
+
+    fn to_csv_row(&self) -> Vec<String> {
+        vec![
+            self.indicator.clone(),
+            self.formula.clone(),
+            self.wb_report.clone(),
+            self.database_value.clone(),
+            self.difference.clone(),
+        ]
+    }
+}
+
+fn check_export_row(
+    label: &str,
+    wb_report_value: String,
+    line: &ReconciliationLineDto,
+) -> CheckExportRow {
+    CheckExportRow {
+        indicator: label.to_string(),
+        formula: line.formula.clone(),
+        wb_report: fmt_csv_decimal(parse_optional_amount(wb_report_value)),
+        database_value: if line.is_available {
+            fmt_csv_decimal(line.database_value)
+        } else {
+            "?".to_string()
+        },
+        difference: fmt_csv_decimal(line.difference_amount),
+    }
+}
+
 fn parse_optional_amount(value: String) -> Option<f64> {
     let normalized = value.trim().replace(' ', "").replace(',', ".");
     if normalized.is_empty() {
@@ -112,6 +169,8 @@ struct DetailsDto {
     acquiring: Option<f64>,
     #[serde(default)]
     max_deviation: Option<f64>,
+    #[serde(default)]
+    comment: Option<String>,
     reconciliation: ReconciliationDto,
     fetched_at: String,
     locale: String,
@@ -149,6 +208,7 @@ struct UpdateManualFieldsRequest {
     other_deductions: Option<f64>,
     logistics: Option<f64>,
     acquiring: Option<f64>,
+    comment: Option<String>,
 }
 
 #[component]
@@ -218,6 +278,7 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
     let (loading, set_loading) = signal(true);
     let (saving, set_saving) = signal(false);
     let (posting, set_posting) = signal(false);
+    let (extracting, set_extracting) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (success, set_success) = signal::<Option<String>>(None);
     let (doc, set_doc) = signal::<Option<DetailsDto>>(None);
@@ -232,6 +293,7 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
     let other_deductions = RwSignal::new(String::new());
     let logistics = RwSignal::new(String::new());
     let acquiring = RwSignal::new(String::new());
+    let comment = RwSignal::new(String::new());
 
     let apply_doc_to_form = move |data: &DetailsDto| {
         is_weekly_report.set(data.is_weekly_report);
@@ -255,6 +317,7 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
         other_deductions.set(data.other_deductions.map(format_amount).unwrap_or_default());
         logistics.set(data.logistics.map(format_amount).unwrap_or_default());
         acquiring.set(data.acquiring.map(format_amount).unwrap_or_default());
+        comment.set(data.comment.clone().unwrap_or_default());
     };
 
     let load_doc = {
@@ -345,6 +408,10 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
             other_deductions: parse_optional_amount(other_deductions.get()),
             logistics: parse_optional_amount(logistics.get()),
             acquiring: parse_optional_amount(acquiring.get()),
+            comment: {
+                let value = comment.get();
+                (!value.trim().is_empty()).then_some(value)
+            },
         };
 
         let document_id = current_doc.id.clone();
@@ -408,6 +475,10 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
             other_deductions: parse_optional_amount(other_deductions.get()),
             logistics: parse_optional_amount(logistics.get()),
             acquiring: parse_optional_amount(acquiring.get()),
+            comment: {
+                let value = comment.get();
+                (!value.trim().is_empty()).then_some(value)
+            },
         };
 
         let document_id = current_doc.id.clone();
@@ -477,10 +548,75 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
         });
     });
 
+    let on_extract_weekly_report = Callback::new(move |()| {
+        let Some(current_doc) = doc.get() else {
+            return;
+        };
+
+        let document_id = current_doc.id.clone();
+        set_extracting.set(true);
+        set_error.set(None);
+        set_success.set(None);
+
+        spawn_local(async move {
+            match Request::post(&format!(
+                "{}/api/a027/wb-documents/{}/extract-weekly-report",
+                api_base(),
+                document_id
+            ))
+            .send()
+            .await
+            {
+                Ok(resp) if resp.ok() => match resp.json::<DetailsDto>().await {
+                    Ok(updated) => {
+                        apply_doc_to_form(&updated);
+                        set_doc.set(Some(updated));
+                        set_success.set(Some(
+                            "Данные отчета извлечены из PDF и заполнены".to_string(),
+                        ));
+                    }
+                    Err(err) => {
+                        set_error.set(Some(format!("Ошибка парсинга ответа: {}", err)));
+                    }
+                },
+                Ok(resp) => {
+                    set_error.set(Some(format!(
+                        "Ошибка извлечения отчета: HTTP {}",
+                        resp.status()
+                    )));
+                }
+                Err(err) => {
+                    set_error.set(Some(format!("Ошибка сети: {}", err)));
+                }
+            }
+
+            set_extracting.set(false);
+        });
+    });
+
+    let favorite_target_id = stored_id.get_value();
+    let favorite_tab_key = format!("a027_wb_documents_details_{}", stored_id.get_value());
+    let favorite_title = Signal::derive(move || {
+        doc.get()
+            .map(|d| {
+                format!(
+                    "WB Document {}",
+                    effective_document_date(d.report_period_to.as_ref(), &d.creation_time)
+                )
+            })
+            .unwrap_or_else(|| "WB Document".to_string())
+    });
+
     view! {
         <PageFrame page_id="a027_wb_documents--detail" category=PAGE_CAT_DETAIL>
             <div class="page__header">
                 <div class="page__header-left">
+                    <FavoriteButton
+                        target_kind="a027_wb_documents_details".to_string()
+                        target_id=favorite_target_id
+                        target_title=favorite_title
+                        tab_key=favorite_tab_key
+                    />
                     <h1 class="page__title">
                         {move || {
                             doc.get()
@@ -548,8 +684,10 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                                     <CheckTab
                                         saving=saving
                                         posting=posting
+                                        extracting=extracting
                                         on_save=on_save
                                         on_post=on_post
+                                        on_extract_weekly_report=on_extract_weekly_report
                                         is_weekly_report=is_weekly_report
                                         report_period_from=report_period_from
                                         report_period_to=report_period_to
@@ -559,8 +697,10 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                                         other_deductions=other_deductions
                                         logistics=logistics
                                         acquiring=acquiring
+                                        comment=comment
                                         reconciliation=d.reconciliation.clone()
                                         max_deviation=d.max_deviation
+                                        document_label=primary_date.clone()
                                     />
                                 }.into_any(),
                                 "meta" => view! { <MetaTab doc=d.clone() /> }.into_any(),
@@ -669,8 +809,10 @@ fn GeneralTab(
 fn CheckTab(
     saving: ReadSignal<bool>,
     posting: ReadSignal<bool>,
+    extracting: ReadSignal<bool>,
     on_save: Callback<()>,
     on_post: Callback<()>,
+    on_extract_weekly_report: Callback<()>,
     is_weekly_report: RwSignal<bool>,
     report_period_from: RwSignal<String>,
     report_period_to: RwSignal<String>,
@@ -680,12 +822,57 @@ fn CheckTab(
     other_deductions: RwSignal<String>,
     logistics: RwSignal<String>,
     acquiring: RwSignal<String>,
+    comment: RwSignal<String>,
     reconciliation: ReconciliationDto,
     max_deviation: Option<f64>,
+    document_label: String,
 ) -> impl IntoView {
     let max_deviation_display = max_deviation
         .map(format_amount)
         .unwrap_or_else(|| "—".to_string());
+
+    let export_filename = format!(
+        "wb_reconciliation_{}.csv",
+        document_label.replace([' ', '.', ':'], "_")
+    );
+    let export_reconciliation = {
+        let reconciliation = reconciliation.clone();
+        move || {
+            let rows = vec![
+                check_export_row(
+                    "Итого стоимость реализованного товара (1.1)",
+                    realized_goods_total.get_untracked(),
+                    &reconciliation.realized_goods_total,
+                ),
+                check_export_row(
+                    "Сумма вознаграждения WB (2.1 + 2.2)",
+                    wb_reward_with_vat.get_untracked(),
+                    &reconciliation.wb_reward_with_vat,
+                ),
+                check_export_row(
+                    "Прочие удержания / реклама (2.10)",
+                    other_deductions.get_untracked(),
+                    &reconciliation.advert_other_deductions,
+                ),
+                check_export_row(
+                    "Логистика (2.7 + 2.8)",
+                    logistics.get_untracked(),
+                    &reconciliation.logistics,
+                ),
+                check_export_row(
+                    "Эквайринг (2.6)",
+                    acquiring.get_untracked(),
+                    &reconciliation.acquiring,
+                ),
+                check_export_row(
+                    "Итого к перечислению продавцу (8)",
+                    seller_transfer_total.get_untracked(),
+                    &reconciliation.seller_transfer_total,
+                ),
+            ];
+            let _ = export_to_excel(&rows, &export_filename);
+        }
+    };
     view! {
         <CardAnimated delay_ms=0 nav_id="a027_wb_documents_details_check">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:var(--spacing-md);">
@@ -698,8 +885,24 @@ fn CheckTab(
                     <Button
                         appearance=ButtonAppearance::Secondary
                         size=ButtonSize::Small
+                        on_click=move |_| export_reconciliation()
+                    >
+                        {icon("download")}
+                        "Excel (csv)"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        size=ButtonSize::Small
+                        on_click=move |_| on_extract_weekly_report.run(())
+                        disabled=Signal::derive(move || saving.get() || posting.get() || extracting.get())
+                    >
+                        {move || if extracting.get() { "Извлечение..." } else { "Заполнить из PDF" }}
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        size=ButtonSize::Small
                         on_click=move |_| on_save.run(())
-                        disabled=Signal::derive(move || saving.get() || posting.get())
+                        disabled=Signal::derive(move || saving.get() || posting.get() || extracting.get())
                     >
                         {move || if saving.get() { "Сохранение..." } else { "Сохранить" }}
                     </Button>
@@ -707,7 +910,7 @@ fn CheckTab(
                         appearance=ButtonAppearance::Primary
                         size=ButtonSize::Small
                         on_click=move |_| on_post.run(())
-                        disabled=Signal::derive(move || saving.get() || posting.get())
+                        disabled=Signal::derive(move || saving.get() || posting.get() || extracting.get())
                     >
                         {move || if posting.get() { "Проведение..." } else { "Провести" }}
                     </Button>
@@ -770,6 +973,18 @@ fn CheckTab(
                         />
                     </TableBody>
                 </Table>
+            </div>
+
+            <div class="form__group" style="margin-top:var(--spacing-lg);max-width:640px;">
+                <label class="form__label">"Комментарий"</label>
+                <textarea
+                    class="form__input"
+                    rows="3"
+                    style="resize:vertical;min-height:64px;"
+                    placeholder="Комментарий к проверке (сохраняется кнопками «Сохранить» / «Провести»)"
+                    prop:value=move || comment.get()
+                    on:input=move |ev| comment.set(event_target_value(&ev))
+                ></textarea>
             </div>
         </CardAnimated>
     }

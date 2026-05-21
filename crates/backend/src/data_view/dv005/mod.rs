@@ -571,6 +571,8 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         metric_columns: vec![],
         selected_dimension: None,
         coverage: None,
+        extra_columns: vec![],
+        extra_values: std::collections::HashMap::new(),
     })
 }
 

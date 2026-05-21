@@ -7,6 +7,7 @@ use contracts::domain::a026_wb_advert_daily::aggregate::{
 use contracts::domain::common::AggregateId;
 use contracts::shared::analytics::TurnoverLayer;
 use sea_orm::TransactionTrait;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::repository;
@@ -147,6 +148,12 @@ fn build_direct_p911_entries(
     let campaign_code = document.header.advert_id.to_string();
     let mut result = Vec::new();
 
+    let reserve_amount: f64 = linked_orders.iter().map(|group| group.wb_advert_sum).sum();
+    let target_direct = round_kopeyka((document.totals.sum - reserve_amount).max(0.0));
+    if target_direct <= f64::EPSILON {
+        return result;
+    }
+
     for (line, group) in document.lines.iter().zip(linked_orders.iter()) {
         let direct_amount = round_kopeyka((line.metrics.sum - group.wb_advert_sum).max(0.0));
         if direct_amount <= f64::EPSILON {
@@ -173,8 +180,6 @@ fn build_direct_p911_entries(
         );
     }
 
-    let reserve_amount: f64 = linked_orders.iter().map(|group| group.wb_advert_sum).sum();
-    let target_direct = round_kopeyka((document.totals.sum - reserve_amount).max(0.0));
     let actual_direct: f64 = result.iter().map(|entry| entry.amount).sum();
     let delta = round_kopeyka(target_direct - actual_direct);
     if delta.abs() > 0.01 {
@@ -219,7 +224,7 @@ async fn build_linked_orders(
     document_id: Uuid,
 ) -> Result<(i64, Vec<WbAdvertLinkedOrdersByNm>)> {
     // ── Phase 1: fetch all raw candidates ────────────────────────────────────
-    let mut raw_per_nm: Vec<(i64, String, i64, f64, Vec<WbOrders>)> = Vec::new();
+    let mut raw_per_nm: Vec<(i64, String, Option<String>, i64, Vec<WbOrders>)> = Vec::new();
 
     for line in &document.lines {
         let raw = if line.metrics.orders > 0 {
@@ -243,8 +248,8 @@ async fn build_linked_orders(
         raw_per_nm.push((
             line.nm_id,
             line.nm_name.clone(),
+            line.nomenclature_ref.clone(),
             line.metrics.orders,
-            line.metrics.sum,
             raw,
         ));
     }
@@ -278,8 +283,15 @@ async fn build_linked_orders(
     }
 
     // ── Phase 4: select first N per nm_id ────────────────────────────────────
-    let mut per_line: Vec<(i64, String, i64, f64, Vec<WbOrders>, Vec<WbOrders>)> = Vec::new();
-    for (nm_id, nm_name, wb_reported_orders, line_sum, raw) in raw_per_nm {
+    let mut per_line: Vec<(
+        i64,
+        String,
+        Option<String>,
+        i64,
+        Vec<WbOrders>,
+        Vec<WbOrders>,
+    )> = Vec::new();
+    for (nm_id, nm_name, line_nomenclature_ref, wb_reported_orders, raw) in raw_per_nm {
         let wb_reported = wb_reported_orders.max(0) as usize;
         let n_take = raw.len().min(wb_reported);
         let mut it = raw.into_iter();
@@ -288,37 +300,36 @@ async fn build_linked_orders(
         per_line.push((
             nm_id,
             nm_name,
+            line_nomenclature_ref,
             wb_reported_orders,
-            line_sum,
             selected,
             extras,
         ));
     }
 
-    // ── Phase 5: allocate per a026 line ──────────────────────────────────────
-    // Allocate each a026 line independently. If a line has no selected orders,
-    // its amount is posted directly by nomenclature instead of being reserved.
+    // ── Phase 5: allocate whole document across selected orders ──────────────
+    // WB can report orders on one nm_id and spend on another, so line-level
+    // allocation would leave part of the reported orders without reserve.
+    let basis_flat: Vec<f64> = per_line
+        .iter()
+        .flat_map(|(_, _, _, _, selected, _)| selected.iter().map(order_allocation_basis))
+        .collect();
+    let (alloc_flat, total_basis, n_with_price) = allocate_costs(document.totals.sum, &basis_flat);
 
-    // Аллокация с last-residual округлением до копейки.
-    // ── Phase 6: build groups ─────────────────────────────────────────────────
     let mut groups = Vec::new();
     let mut total_found = 0i64;
+    let mut flat_index = 0usize;
 
-    for (nm_id, nm_name, wb_reported_orders, line_sum, selected, extras) in per_line {
+    for (nm_id, nm_name, line_nomenclature_ref, wb_reported_orders, selected, extras) in per_line {
         let n = selected.len();
-        let group_basis: Vec<f64> = selected.iter().map(order_allocation_basis).collect();
-        let (group_alloc, total_basis, n_with_price) = if n > 0 {
-            allocate_costs(line_sum, &group_basis)
-        } else {
-            (Vec::new(), 0.0, 0)
-        };
 
         let mut found_orders: Vec<WbAdvertFoundOrder> = selected
             .iter()
             .enumerate()
             .map(|(i, order)| {
-                let basis = group_basis[i];
-                let allocated_cost = group_alloc[i];
+                let current_index = flat_index + i;
+                let basis = basis_flat[current_index];
+                let allocated_cost = alloc_flat[current_index];
                 let is_allocated = allocated_cost.abs() > f64::EPSILON;
                 // allocation_ratio — доля цены этого заказа в ГЛОБАЛЬНОМ basis.
                 let allocation_ratio = if is_allocated && total_basis > f64::EPSILON {
@@ -332,7 +343,10 @@ async fn build_linked_orders(
                     order_key: order.header.document_no.clone(),
                     order_id: Some(order.base.id.as_string()),
                     order_date: Some(order.state.order_dt.format("%Y-%m-%d").to_string()),
-                    nomenclature_ref: order.nomenclature_ref.clone(),
+                    nomenclature_ref: order
+                        .nomenclature_ref
+                        .clone()
+                        .or_else(|| line_nomenclature_ref.clone()),
                     finished_price: order.line.finished_price,
                     is_cancel: order.state.is_cancel,
                     allocation_basis: basis,
@@ -349,7 +363,10 @@ async fn build_linked_orders(
                 order_key: order.header.document_no.clone(),
                 order_id: Some(order.base.id.as_string()),
                 order_date: Some(order.state.order_dt.format("%Y-%m-%d").to_string()),
-                nomenclature_ref: order.nomenclature_ref.clone(),
+                nomenclature_ref: order
+                    .nomenclature_ref
+                    .clone()
+                    .or_else(|| line_nomenclature_ref.clone()),
                 finished_price: order.line.finished_price,
                 is_cancel: order.state.is_cancel,
                 allocation_basis: order_allocation_basis(order),
@@ -359,7 +376,8 @@ async fn build_linked_orders(
             });
         }
 
-        let wb_advert_sum: f64 = group_alloc.iter().copied().sum();
+        let wb_advert_sum: f64 = alloc_flat[flat_index..flat_index + n].iter().copied().sum();
+        flat_index += n;
         total_found += n as i64;
 
         groups.push(WbAdvertLinkedOrdersByNm {
@@ -374,11 +392,40 @@ async fn build_linked_orders(
     Ok((total_found, groups))
 }
 
+async fn refresh_line_nomenclature_refs(document: &mut WbAdvertDaily) -> Result<usize> {
+    let mut cache: HashMap<i64, Option<String>> = HashMap::new();
+    let mut changed = 0usize;
+
+    for line in &mut document.lines {
+        let resolved = if let Some(cached) = cache.get(&line.nm_id) {
+            cached.clone()
+        } else {
+            let resolved =
+                crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
+                    &document.header.connection_id,
+                    line.nm_id,
+                    None,
+                )
+                .await?;
+            cache.insert(line.nm_id, resolved.clone());
+            resolved
+        };
+
+        if line.nomenclature_ref != resolved {
+            line.nomenclature_ref = resolved;
+            changed += 1;
+        }
+    }
+
+    Ok(changed)
+}
+
 pub async fn post_document(id: Uuid) -> Result<()> {
     let mut document = repository::get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
+    let refreshed_lines = refresh_line_nomenclature_refs(&mut document).await?;
     let (total_found, linked_orders) = build_linked_orders(&document, id).await?;
     document.linked_orders_count = total_found;
     document.has_linked_orders = total_found > 0;
@@ -390,8 +437,9 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     repository::upsert_document(&document).await?;
 
     tracing::info!(
-        "a026 post_document: linked orders found={} for document_id={}",
+        "a026 post_document: linked orders found={} refreshed_lines={} for document_id={}",
         total_found,
+        refreshed_lines,
         id
     );
 
@@ -566,5 +614,14 @@ mod tests {
         assert_eq!(total_basis, 100.0);
         assert_eq!(count, 2);
         assert_eq!(allocated, vec![0.0, 30.0, 70.0]);
+    }
+
+    #[test]
+    fn allocate_costs_splits_document_amount_between_wb_orders() {
+        let (allocated, total_basis, count) = allocate_costs(1461.45, &[13675.0, 41964.0]);
+
+        assert_eq!(total_basis, 55639.0);
+        assert_eq!(count, 2);
+        assert_eq!(allocated, vec![359.2, 1102.25]);
     }
 }

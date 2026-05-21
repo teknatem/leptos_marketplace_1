@@ -1045,6 +1045,10 @@ fn a027_routes() -> Router {
             put(handlers::a027_wb_documents::update_manual_fields),
         )
         .route(
+            "/api/a027/wb-documents/:id/extract-weekly-report",
+            post(handlers::a027_wb_documents::extract_weekly_report),
+        )
+        .route(
             "/api/a027/wb-documents/:id/post",
             post(handlers::a027_wb_documents::post_document),
         )

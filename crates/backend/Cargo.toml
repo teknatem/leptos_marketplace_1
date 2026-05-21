@@ -32,6 +32,8 @@ async-openai = { version = "0.32.3", features = ["chat-completion", "model"] }
 thiserror = "1.0"
 csv = "1"
 zip = { version = "8.1.0", default-features = false, features = ["deflate"] }
+pdf-extract = "0.10.0"
+regex = "1"
 ammonia = "3"
 maplit = "1"
 cron = "0.12"
