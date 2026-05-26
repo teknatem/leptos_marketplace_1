@@ -196,6 +196,69 @@ impl MarketplaceProductDetailsViewModel {
         });
     }
 
+    pub fn search_nomenclature_by_barcode(&self) {
+        let barcode = self
+            .form
+            .get()
+            .barcode
+            .map(|b| b.trim().to_string())
+            .unwrap_or_default();
+        if barcode.is_empty() {
+            self.error.set(Some(
+                "Для автоподбора заполните штрихкод товара маркетплейса".to_string(),
+            ));
+            return;
+        }
+
+        let error = self.error;
+        let success = self.success_message;
+        let form = self.form;
+        let nomenclature_name = self.nomenclature_name;
+        let nomenclature_code = self.nomenclature_code;
+        let nomenclature_article = self.nomenclature_article;
+        let show_picker = self.show_picker;
+        let search_results = self.search_results;
+
+        wasm_bindgen_futures::spawn_local(async move {
+            match model::search_nomenclature_by_barcode(&barcode).await {
+                Ok(results) => match results.len() {
+                    0 => {
+                        error.set(Some(format!(
+                            "Автоподбор не нашел позицию 1С по штрихкоду: {}",
+                            barcode
+                        )));
+                        success.set(None);
+                    }
+                    1 => {
+                        let nom = &results[0];
+                        form.update(|f| f.nomenclature_ref = Some(nom.base.id.as_string()));
+                        nomenclature_name.set(nom.base.description.clone());
+                        nomenclature_code.set(nom.base.code.clone());
+                        nomenclature_article.set(nom.article.clone());
+                        success.set(Some(format!(
+                            "Связь с 1С УТ обновлена по штрихкоду: {}",
+                            nom.base.description
+                        )));
+                        error.set(None);
+                    }
+                    n => {
+                        error.set(None);
+                        success.set(Some(format!(
+                            "По штрихкоду найдено {} вариантов. Выберите нужную позицию вручную.",
+                            n
+                        )));
+                        search_results.set(Some(results));
+                        show_picker.set(true);
+                    }
+                },
+                Err(e) => {
+                    error.set(Some(format!("Ошибка поиска по штрихкоду: {}", e)));
+                    success.set(None);
+                }
+            }
+        });
+    }
+
     pub fn clear_nomenclature(&self) {
         self.form.update(|f| f.nomenclature_ref = None);
         self.nomenclature_name.set(String::new());
@@ -208,6 +271,11 @@ impl MarketplaceProductDetailsViewModel {
     pub fn open_picker(&self) {
         self.search_results.set(None);
         self.show_picker.set(true);
+    }
+
+    /// Является ли товар товаром Wildberries (для блока «Быстрый доступ»).
+    pub fn is_wildberries(&self) -> bool {
+        matches!(self.marketplace_type.get(), Some(MarketplaceType::Wildberries))
     }
 
     pub fn marketplace_product_url(&self) -> Option<String> {

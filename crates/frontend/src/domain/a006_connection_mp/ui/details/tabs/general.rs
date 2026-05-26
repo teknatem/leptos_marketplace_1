@@ -28,6 +28,7 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
     // Клоны для всех полей формы
     let vm_description = vm.clone();
     let vm_planned_commission = vm.clone();
+    let vm_planned_acquiring = vm.clone();
     let vm_comment = vm.clone();
     let vm_api_key = vm.clone();
     let vm_supplier_id = vm.clone();
@@ -265,6 +266,42 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                         />
                         <small class="help-text" style="font-size: 11px; color: var(--colorNeutralForeground3); margin-top: 4px; display: block;">
                             {"Плановый процент комиссии маркетплейса"}
+                        </small>
+                    </div>
+
+                    <div class="form__group">
+                        <label class="form__label">{"Плановый процент эквайринга, %"}</label>
+                        <input
+                            class="form__input"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="100"
+                            prop:value={
+                                let vm = vm_planned_acquiring.clone();
+                                move || {
+                                    vm.form.get().planned_acquiring_percent
+                                        .map(|v| v.to_string())
+                                        .unwrap_or_default()
+                                }
+                            }
+                            on:input={
+                                let vm = vm_planned_acquiring.clone();
+                                move |ev| {
+                                    let val = event_target_value(&ev);
+                                    vm.form.update(|f| {
+                                        f.planned_acquiring_percent = if val.is_empty() {
+                                            None
+                                        } else {
+                                            val.parse::<f64>().ok()
+                                        };
+                                    });
+                                }
+                            }
+                            placeholder="Например: 1.5"
+                        />
+                        <small class="help-text" style="font-size: 11px; color: var(--colorNeutralForeground3); margin-top: 4px; display: block;">
+                            {"Плановый процент эквайринга маркетплейса"}
                         </small>
                     </div>
 

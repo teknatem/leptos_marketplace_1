@@ -13,6 +13,11 @@ pub struct SearchNomenclatureQuery {
 }
 
 #[derive(Deserialize)]
+pub struct SearchByBarcodeQuery {
+    pub barcode: String,
+}
+
+#[derive(Deserialize)]
 pub struct NomenclatureListParams {
     pub limit: Option<u64>,
     pub offset: Option<u64>,
@@ -197,6 +202,22 @@ pub async fn search_by_article(
         Ok(items) => Ok(Json(items)),
         Err(e) => {
             tracing::error!("Failed to search nomenclature by article: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// GET /api/nomenclature/search-by-barcode
+pub async fn search_by_barcode(
+    Query(query): Query<SearchByBarcodeQuery>,
+) -> Result<
+    Json<Vec<contracts::domain::a004_nomenclature::aggregate::Nomenclature>>,
+    axum::http::StatusCode,
+> {
+    match a004_nomenclature::service::find_by_barcode(query.barcode.trim()).await {
+        Ok(items) => Ok(Json(items)),
+        Err(e) => {
+            tracing::error!("Failed to search nomenclature by barcode: {}", e);
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

@@ -81,6 +81,13 @@
   border-right: 1px dotted rgba(0, 0, 0, 0.05);
 }
 
+/* Последняя ячейка в строке не должна иметь правую рамку —
+   иначе правый край таблицы выглядит несимметрично. */
+.thaw-table-cell:last-child,
+.thaw-table-header-cell:last-child {
+  border-right: none;
+}
+
 .thaw-table-header-cell__button {
   color: var(--form-label-text) !important;
 

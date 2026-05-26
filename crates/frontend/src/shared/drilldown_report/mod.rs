@@ -106,6 +106,11 @@ enum SortCol {
     Named(String),
 }
 
+/// Измерения «по дням»: в левой колонке день месяца (метка `01`..`31`).
+fn is_day_dimension(group_by: &str) -> bool {
+    matches!(group_by, "date" | "entry_date")
+}
+
 fn sort_rows(rows: &[DrilldownRow], col: &SortCol, asc: bool) -> Vec<DrilldownRow> {
     let mut sorted = rows.to_vec();
     sorted.sort_by(|a, b| {
@@ -468,6 +473,10 @@ pub fn DrilldownReportPage(
         });
     };
 
+    // ── Sort ─────────────────────────────────────────────────────────────────
+    let sort_col = RwSignal::new(SortCol::Named("value1".to_string()));
+    let sort_asc = RwSignal::new(false);
+
     // ── Execute report when fetch_version increments ──────────────────────────
     Effect::new(move |_| {
         let v = fetch_version.get();
@@ -479,6 +488,16 @@ pub fn DrilldownReportPage(
         let group_by = p_group_by.get_untracked();
         if view_id.is_empty() || group_by.is_empty() {
             return;
+        }
+
+        // Natural default sort: day groupings → chronological (by day label asc);
+        // any other dimension → by value descending.
+        if is_day_dimension(&group_by) {
+            sort_col.set(SortCol::Label);
+            sort_asc.set(true);
+        } else {
+            sort_col.set(SortCol::Named("value1".to_string()));
+            sort_asc.set(false);
         }
 
         let url = format!("{}/api/data-view/{}/drilldown", api_base(), view_id);
@@ -529,9 +548,6 @@ pub fn DrilldownReportPage(
         });
     });
 
-    // ── Sort ─────────────────────────────────────────────────────────────────
-    let sort_col = RwSignal::new(SortCol::Named("value1".to_string()));
-    let sort_asc = RwSignal::new(false);
     let group_by_options = Signal::derive(move || dv_dims.get());
 
     let apply_report = Callback::new(move |_: ()| {

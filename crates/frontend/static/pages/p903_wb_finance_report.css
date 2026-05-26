@@ -1,0 +1,35 @@
+/* Page-specific styles for p903_wb_finance_report detail view.
+   Scoped under the page root class `.p903-detail` (set via PageFrame `class`).
+   See per-page CSS convention: all selectors stay under the page root. */
+
+/* Underline-style tabs instead of button-imitating pills */
+.p903-detail .detail-tabs {
+  gap: var(--spacing-lg);
+  padding: 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+}
+
+.p903-detail .detail-tabs__item {
+  padding: var(--spacing-sm) var(--spacing-xs);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  margin-bottom: -1px;
+}
+
+.p903-detail .detail-tabs__item:hover {
+  background: transparent;
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-border);
+}
+
+.p903-detail .detail-tabs__item--active,
+.p903-detail .detail-tabs__item--active:hover {
+  background: transparent;
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}

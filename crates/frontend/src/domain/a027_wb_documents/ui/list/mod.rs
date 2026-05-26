@@ -2,6 +2,7 @@ pub mod state;
 
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::change_tokens::ChangeTokenContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::auth_download::download_authenticated_file;
 use crate::shared::components::date_range_picker::DateRangePicker;
@@ -164,6 +165,17 @@ pub fn WbDocumentsList() -> impl IntoView {
         if !state.with_untracked(|s| s.is_loaded) {
             load_items();
         }
+    });
+
+    // Автообновление списка при изменении токена a027 на сервере.
+    // prev=None при первом вызове — пропускаем, чтобы не делать двойную загрузку.
+    let ct = use_context::<ChangeTokenContext>().expect("ChangeTokenContext not found");
+    Effect::new(move |prev: Option<u64>| {
+        let token = ct.a027_wb_documents.get();
+        if prev.is_some() {
+            load_items();
+        }
+        token
     });
 
     Effect::new(move |_| {

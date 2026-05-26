@@ -19,6 +19,7 @@ use uuid::Uuid;
 const P904_SALES_DATA: &str = "p904_sales_data";
 const P903_FINANCE_REPORT: &str = "p903_wb_finance_report";
 const A012_WB_SALES: &str = "a012_wb_sales";
+const A015_WB_ORDERS: &str = "a015_wb_orders";
 const A021_PRODUCTION_OUTPUT: &str = "a021_production_output";
 const A023_PURCHASE_OF_GOODS: &str = "a023_purchase_of_goods";
 const A026_WB_ADVERT_DAILY: &str = "a026_wb_advert_daily";
@@ -56,6 +57,13 @@ impl RepostExecutor {
                 label: "WB Sales".to_string(),
                 description:
                     "Перепроведение документов a012_wb_sales с пересборкой связанных проекций"
+                        .to_string(),
+            },
+            AggregateOption {
+                key: A015_WB_ORDERS.to_string(),
+                label: "WB Orders".to_string(),
+                description:
+                    "Перепроведение документов a015_wb_orders с пересборкой строк p909"
                         .to_string(),
             },
             AggregateOption {
@@ -176,6 +184,7 @@ impl RepostExecutor {
 
     fn validate_aggregate_request(request: &AggregateRepostRequest) -> Result<()> {
         if request.aggregate_key != A012_WB_SALES
+            && request.aggregate_key != A015_WB_ORDERS
             && request.aggregate_key != A021_PRODUCTION_OUTPUT
             && request.aggregate_key != A023_PURCHASE_OF_GOODS
             && request.aggregate_key != A026_WB_ADVERT_DAILY
@@ -332,6 +341,14 @@ impl RepostExecutor {
         }
 
         let document_ids = match request.aggregate_key.as_str() {
+            A015_WB_ORDERS => {
+                crate::domain::a015_wb_orders::repository::list_ids_by_date_range(
+                    &request.date_from,
+                    &request.date_to,
+                    request.only_posted,
+                )
+                .await?
+            }
             A021_PRODUCTION_OUTPUT => {
                 crate::domain::a021_production_output::repository::list_ids_by_document_date_range(
                     &request.date_from,
@@ -663,6 +680,9 @@ async fn dispatch_repost(registrator_type: &str, registrator_id: Uuid) -> Result
 async fn dispatch_aggregate_repost(aggregate_key: &str, aggregate_id: Uuid) -> Result<()> {
     match aggregate_key {
         A012_WB_SALES => crate::domain::a012_wb_sales::posting::post_document(aggregate_id).await,
+        A015_WB_ORDERS => {
+            crate::domain::a015_wb_orders::posting::post_document(aggregate_id).await
+        }
         A021_PRODUCTION_OUTPUT => {
             crate::domain::a021_production_output::service::post_document(aggregate_id).await
         }

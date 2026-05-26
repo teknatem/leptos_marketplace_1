@@ -348,22 +348,6 @@ impl WbOrdersDetailsVm {
         });
     }
 
-    pub fn unpost(&self) {
-        let Some(id) = self.id.get() else {
-            return;
-        };
-        let vm = self.clone();
-        vm.posting.set(true);
-
-        spawn_local(async move {
-            if let Err(e) = unpost_document(&id).await {
-                leptos::logging::log!("Error unposting: {}", e);
-            } else {
-                vm.reload().await;
-            }
-            vm.posting.set(false);
-        });
-    }
 
     async fn reload(&self) {
         let Some(id) = self.id.get() else {

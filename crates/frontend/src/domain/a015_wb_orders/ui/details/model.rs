@@ -342,6 +342,7 @@ pub async fn post_document(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn unpost_document(id: &str) -> Result<(), String> {
     let url = format!("{}/api/a015/wb-orders/{}/unpost", api_base(), id);
     let response = Request::post(&url)

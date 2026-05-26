@@ -33,6 +33,9 @@ pub fn App() -> impl IntoView {
                 if tokens.sys_tasks != ct.sys_tasks.get_untracked() {
                     ct.sys_tasks.set(tokens.sys_tasks);
                 }
+                if tokens.a027_wb_documents != ct.a027_wb_documents.get_untracked() {
+                    ct.a027_wb_documents.set(tokens.a027_wb_documents);
+                }
             }
         }
     });

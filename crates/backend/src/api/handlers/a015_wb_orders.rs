@@ -35,6 +35,7 @@ pub struct ListOrdersQuery {
 pub struct WbOrdersListItemSimpleDto {
     pub id: String,
     pub document_no: String,
+    pub line_id: Option<String>,
     pub document_date: Option<String>,
     pub supplier_article: Option<String>,
     pub brand: Option<String>,
@@ -46,6 +47,7 @@ pub struct WbOrdersListItemSimpleDto {
     pub is_cancel: Option<bool>,
     pub is_supply: Option<bool>,
     pub is_realization: Option<bool>,
+    pub warehouse_type: Option<String>,
     pub income_id: Option<i64>,
     pub is_posted: bool,
     pub organization_name: Option<String>,
@@ -206,6 +208,7 @@ pub async fn list_orders(
             WbOrdersListItemSimpleDto {
                 id: row.id,
                 document_no: row.document_no,
+                line_id: row.line_id,
                 document_date: row.document_date,
                 supplier_article: row.supplier_article,
                 brand: row.brand,
@@ -217,6 +220,7 @@ pub async fn list_orders(
                 is_cancel: row.is_cancel,
                 is_supply: row.is_supply,
                 is_realization: row.is_realization,
+                warehouse_type: row.warehouse_type,
                 income_id: row.income_id,
                 is_posted: row.is_posted,
                 organization_name,

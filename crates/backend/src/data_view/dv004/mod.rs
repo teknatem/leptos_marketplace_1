@@ -903,44 +903,55 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         .await?
     };
 
+    let is_date_group = group_by == "entry_date";
+    // По дням сливаем строки по дню месяца, чтобы один и тот же день из П1 и П2
+    // совпадал (01 ↔ 01), даже когда периоды лежат в разных месяцах.
+    let day_key = |raw: &str| {
+        if is_date_group {
+            fmt_day_label(raw)
+        } else {
+            raw.to_string()
+        }
+    };
+
     let mut merged: HashMap<String, DrilldownRow> = HashMap::new();
 
     for row in rows1 {
+        let key = day_key(&row.group_key);
+        let label = day_key(&row.group_label);
         merged
-            .entry(row.group_key.clone())
+            .entry(key.clone())
             .or_insert_with(|| DrilldownRow {
-                group_key: row.group_key.clone(),
-                label: row.group_label.clone(),
+                group_key: key,
+                label,
                 value1: 0.0,
                 value2: 0.0,
                 delta_pct: None,
                 metric_values: HashMap::new(),
             })
-            .value1 = row.amount;
+            .value1 += row.amount;
     }
 
     for row in rows2 {
-        let entry = merged
-            .entry(row.group_key.clone())
+        let key = day_key(&row.group_key);
+        let label = day_key(&row.group_label);
+        merged
+            .entry(key.clone())
             .or_insert_with(|| DrilldownRow {
-                group_key: row.group_key.clone(),
-                label: row.group_label.clone(),
+                group_key: key,
+                label,
                 value1: 0.0,
                 value2: 0.0,
                 delta_pct: None,
                 metric_values: HashMap::new(),
-            });
-        entry.value2 = row.amount;
+            })
+            .value2 += row.amount;
     }
 
-    let is_date_group = group_by == "entry_date";
     let mut rows: Vec<DrilldownRow> = merged
         .into_values()
         .map(|mut row| {
             row.delta_pct = pct_change(row.value1, row.value2);
-            if is_date_group {
-                row.label = fmt_day_label(&row.label);
-            }
             row
         })
         .collect();

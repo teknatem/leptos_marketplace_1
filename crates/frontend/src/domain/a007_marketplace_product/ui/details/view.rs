@@ -1,5 +1,6 @@
 use super::view_model::MarketplaceProductDetailsViewModel;
 use crate::domain::a004_nomenclature::ui::picker::NomenclaturePicker;
+use crate::shared::components::ui::FieldDisplayReactive;
 use crate::shared::date_utils::format_datetime;
 use crate::shared::icons::icon;
 use crate::shared::modal_stack::ModalStackService;
@@ -36,6 +37,7 @@ pub fn MarketplaceProductDetails(
     let on_close_clone = on_close.clone();
 
     let vm_title = vm.clone();
+    let vm_header_badge = vm.clone();
     let vm_save = vm.clone();
     let vm_is_valid = vm.clone();
     let vm_button_label = vm.clone();
@@ -43,6 +45,8 @@ pub fn MarketplaceProductDetails(
     let vm_success = vm.clone();
     let vm_search_nom = vm.clone();
     let vm_search_nom_disabled = vm.clone();
+    let vm_search_barcode = vm.clone();
+    let vm_search_barcode_disabled = vm.clone();
     let vm_open_picker = vm.clone();
     let vm_clear_nom = vm.clone();
     let vm_clear_nom_disabled = vm.clone();
@@ -164,18 +168,34 @@ pub fn MarketplaceProductDetails(
                             tab_key=format!("a007_marketplace_product_details_{}", product_id)
                         />
                     })}
-                    <h2>
+                    <h1 class="page__title">
                         {
                             let vm = vm_title.clone();
                             move || {
                                 if vm.is_edit_mode()() {
-                                    format!("Редактирование: {}", vm.form.get().description)
+                                    let description = vm.form.get().description;
+                                    if description.trim().is_empty() {
+                                        "Товар маркетплейса".to_string()
+                                    } else {
+                                        description
+                                    }
                                 } else {
                                     "Новый товар маркетплейса".to_string()
                                 }
                             }
                         }
-                    </h2>
+                    </h1>
+                    {
+                        let vm = vm_header_badge.clone();
+                        move || {
+                            let linked = vm.form.get().nomenclature_ref.is_some();
+                            view! {
+                                <span class=if linked { "badge badge--success" } else { "badge badge--error" }>
+                                    {if linked { "Связан с 1С" } else { "Нет связи с 1С" }}
+                                </span>
+                            }
+                        }
+                    }
                 </div>
                 <div class="page__header-right">
                     <Flex gap=FlexGap::Small>
@@ -271,36 +291,38 @@ pub fn MarketplaceProductDetails(
                                 </Flex>
                             </Flex>
 
-                            <div class="a007-link-card__summary">
-                                <div class="a007-link-card__summary-label">"Быстрый доступ"</div>
-                                <div class="a007-link-card__summary-value">
-                                    {move || {
-                                        let sku = vm_product_link.form.get().marketplace_sku.trim().to_string();
-                                        match vm_product_link.marketplace_product_url() {
-                                            Some(url) => view! {
-                                                <a
-                                                    href=url
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    style="display: inline-flex; align-items: center; gap: 8px;"
-                                                >
-                                                    {icon("link")}
-                                                    "Открыть карточку товара на WB"
-                                                </a>
-                                            }
-                                            .into_any(),
-                                            None if sku.is_empty() => view! {
-                                                <span>"Заполните SKU, чтобы собрать ссылку на товар."</span>
-                                            }
-                                            .into_any(),
-                                            None => view! {
-                                                <span>"Быстрая внешняя ссылка сейчас поддерживается только для Wildberries."</span>
-                                            }
-                                            .into_any(),
-                                        }
-                                    }}
-                                </div>
-                            </div>
+                            {move || {
+                                // Блок «Быстрый доступ» отображается только для товаров Wildberries.
+                                if !vm_product_link.is_wildberries() {
+                                    return view! { <></> }.into_any();
+                                }
+                                view! {
+                                    <div class="a007-link-card__summary a007-quick-access">
+                                        <div class="a007-link-card__summary-label">"Быстрый доступ"</div>
+                                        <div class="a007-link-card__summary-value">
+                                            {match vm_product_link.marketplace_product_url() {
+                                                Some(url) => view! {
+                                                    <a
+                                                        href=url
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        class="a007-quick-access__link"
+                                                    >
+                                                        {icon("link")}
+                                                        "Открыть карточку на Wildberries"
+                                                    </a>
+                                                }
+                                                .into_any(),
+                                                None => view! {
+                                                    <span>"Заполните SKU, чтобы собрать ссылку на карточку товара Wildberries."</span>
+                                                }
+                                                .into_any(),
+                                            }}
+                                        </div>
+                                    </div>
+                                }
+                                .into_any()
+                            }}
 
                             <div class="a007-link-card__summary">
                                 <div class="a007-link-card__summary-label">"Оперативная сводка"</div>
@@ -373,9 +395,9 @@ pub fn MarketplaceProductDetails(
                                 <h3 class="a007-link-card__title">"Связь с 1С УТ"</h3>
                                 <span class=move || {
                                     if vm.form.get().nomenclature_ref.is_some() {
-                                        "a007-link-card__status a007-link-card__status--linked"
+                                        "badge badge--success"
                                     } else {
-                                        "a007-link-card__status a007-link-card__status--empty"
+                                        "badge badge--error"
                                     }
                                 }>
                                     {move || {
@@ -389,7 +411,7 @@ pub fn MarketplaceProductDetails(
                             </div>
 
                             <p class="a007-link-card__hint">
-                                "Автоподбор ищет точное совпадение по артикулу товара маркетплейса. Если найдено несколько вариантов, откроется выбор."
+                                "Автоподбор по артикулу ищет точное совпадение в номенклатуре 1С. Автоподбор по штрихкоду использует таблицу штрихкодов p901. Если найдено несколько вариантов, откроется выбор."
                             </p>
 
                             <div class="a007-link-card__summary">
@@ -397,23 +419,35 @@ pub fn MarketplaceProductDetails(
                                 <div class="a007-link-card__summary-value">
                                     {move || {
                                         let form = vm.form.get();
-                                        if form.article.trim().is_empty() {
-                                            "Артикул товара маркетплейса не заполнен".to_string()
+                                        let article = form.article.trim();
+                                        let barcode = form.barcode.as_deref().map(str::trim).unwrap_or("");
+                                        if article.is_empty() && barcode.is_empty() {
+                                            "Артикул и штрихкод товара маркетплейса не заполнены".to_string()
                                         } else {
-                                            format!("Артикул: {} | SKU: {}", form.article, form.marketplace_sku)
+                                            format!(
+                                                "Артикул: {} | Штрихкод: {}",
+                                                if article.is_empty() { "—" } else { article },
+                                                if barcode.is_empty() { "—" } else { barcode },
+                                            )
                                         }
                                     }}
                                 </div>
                             </div>
 
-                            <Flex vertical=true gap=FlexGap::Small>
-                                <Label>"Связанная номенклатура 1С"</Label>
-                                <Input
-                                    value=vm.nomenclature_name.clone()
-                                    disabled=Signal::derive(|| true)
-                                    placeholder="Связь еще не выбрана"
-                                />
-                            </Flex>
+                            <div class="form__group">
+                                <label class="form__label">"Связанная номенклатура 1С"</label>
+                                <FieldDisplayReactive value=Signal::derive({
+                                    let name = vm.nomenclature_name;
+                                    move || {
+                                        let value = name.get();
+                                        if value.trim().is_empty() {
+                                            "Связь еще не выбрана".to_string()
+                                        } else {
+                                            value
+                                        }
+                                    }
+                                }) />
+                            </div>
 
                             <div class="a007-link-card__actions">
                                 <Button
@@ -429,6 +463,20 @@ pub fn MarketplaceProductDetails(
                                 >
                                     {icon("search")}
                                     " Автоподбор по артикулу"
+                                </Button>
+                                <Button
+                                    appearance=ButtonAppearance::Primary
+                                    on_click={
+                                        let vm = vm_search_barcode.clone();
+                                        move |_| vm.search_nomenclature_by_barcode()
+                                    }
+                                    disabled=Signal::derive({
+                                        let vm = vm_search_barcode_disabled.clone();
+                                        move || vm.form.get().barcode.map(|b| b.trim().is_empty()).unwrap_or(true)
+                                    })
+                                >
+                                    {icon("search")}
+                                    " Автоподбор по штрихкоду"
                                 </Button>
                                 <Button
                                     appearance=ButtonAppearance::Secondary
@@ -460,16 +508,16 @@ pub fn MarketplaceProductDetails(
                                 "Ручной выбор открывает список номенклатуры 1С. Очистка снимает текущую связь и не меняет карточку товара маркетплейса."
                             </div>
 
-                            <Flex gap=FlexGap::Medium>
-                                <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
-                                    <Label>"Код 1С"</Label>
-                                    <Input value=vm.nomenclature_code.clone() disabled=Signal::derive(|| true) />
-                                </Flex>
-                                <Flex vertical=true gap=FlexGap::Small style="flex: 1;">
-                                    <Label>"Артикул 1С"</Label>
-                                    <Input value=vm.nomenclature_article.clone() disabled=Signal::derive(|| true) />
-                                </Flex>
-                            </Flex>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
+                                <div class="form__group">
+                                    <label class="form__label">"Код 1С"</label>
+                                    <FieldDisplayReactive value=vm.nomenclature_code />
+                                </div>
+                                <div class="form__group">
+                                    <label class="form__label">"Артикул 1С"</label>
+                                    <FieldDisplayReactive value=vm.nomenclature_article />
+                                </div>
+                            </div>
                         </div>
                     </Card>
                 </div>

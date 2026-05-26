@@ -138,6 +138,7 @@ pub(crate) fn model_to_dto(
         registrator_type: model.registrator_type,
         registrator_ref: model.registrator_ref,
         general_ledger_ref: model.general_ledger_ref,
+        marketplace_product_ref: model.marketplace_product_ref,
         is_problem: model.is_problem,
         created_at: model.created_at,
         updated_at: model.updated_at,

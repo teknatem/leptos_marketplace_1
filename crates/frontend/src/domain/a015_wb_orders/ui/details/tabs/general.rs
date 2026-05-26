@@ -26,7 +26,6 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
             let org_id = order_data.header.organization_id.clone();
             let mp_id = order_data.header.marketplace_id.clone();
             let document_no = order_data.header.document_no.clone();
-            let code = order_data.code.clone();
             let description = order_data.description.clone();
             let order_dt =
                 format_datetime_utc_local(&order_data.state.order_dt, "%d.%m.%Y %H:%M:%S");
@@ -113,23 +112,17 @@ pub fn GeneralTab(vm: WbOrdersDetailsVm) -> impl IntoView {
                                     <FieldDisplay value=document_no />
                                 </div>
                                 <div class="form__group">
-                                    <label class="form__label">"Code"</label>
-                                    <FieldDisplay value=code />
+                                    <label class="form__label">"Дата заказа"</label>
+                                    <FieldDisplay value=order_dt />
                                 </div>
                             </div>
                             <div class="form__group">
                                 <label class="form__label">"Описание"</label>
                                 <FieldDisplay value=description />
                             </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
-                                <div class="form__group">
-                                    <label class="form__label">"Дата заказа"</label>
-                                    <FieldDisplay value=order_dt />
-                                </div>
-                                <div class="form__group">
-                                    <label class="form__label">"Последнее изменение"</label>
-                                    <FieldDisplay value=last_change_dt />
-                                </div>
+                            <div class="form__group">
+                                <label class="form__label">"Последнее изменение"</label>
+                                <FieldDisplay value=last_change_dt />
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">
                                 <div class="form__group">

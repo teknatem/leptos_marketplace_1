@@ -6,7 +6,7 @@ use contracts::domain::a015_wb_orders::aggregate::{
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -559,6 +559,77 @@ pub async fn list_by_date_range(
     Ok(models.into_iter().map(|m| m.into()).collect())
 }
 
+pub async fn list_ids_by_date_range(
+    date_from: &str,
+    date_to: &str,
+    only_posted: bool,
+) -> Result<Vec<String>> {
+    let db = get_connection();
+    let to_str = format!("{}T23:59:59.999", date_to);
+    let mut query = Entity::find()
+        .select_only()
+        .column(Column::Id)
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::DocumentDate.gte(date_from))
+        .filter(Column::DocumentDate.lte(to_str));
+
+    if only_posted {
+        query = query.filter(Column::IsPosted.eq(true));
+    }
+
+    let models = query.into_model::<IdOnly>().all(db).await?;
+    Ok(models.into_iter().map(|m| m.id).collect())
+}
+
+#[derive(sea_orm::FromQueryResult)]
+struct IdOnly {
+    id: String,
+}
+
+/// Direct UPDATE by ID for the posting flow — skips the `get_by_document_no` round-trip of
+/// `upsert_document`. Use only when the document was loaded by ID and is guaranteed to exist.
+pub async fn update_posted_document(document: &WbOrders) -> Result<()> {
+    let db = get_connection();
+    let uuid = document.base.id.value().to_string();
+
+    let header_json = serde_json::to_string(&document.header)?;
+    let line_json = serde_json::to_string(&document.line)?;
+    let state_json = serde_json::to_string(&document.state)?;
+    let warehouse_json = serde_json::to_string(&document.warehouse)?;
+    let geography_json = serde_json::to_string(&document.geography)?;
+    let source_meta_json = serde_json::to_string(&document.source_meta)?;
+
+    let active_model = ActiveModel {
+        id: Set(uuid),
+        code: Set(document.base.code.clone()),
+        description: Set(document.base.description.clone()),
+        comment: Set(document.base.comment.clone()),
+        document_no: Set(document.header.document_no.clone()),
+        document_date: Set(document.document_date.clone()),
+        g_number: Set(document.source_meta.g_number.clone()),
+        spp: Set(document.line.spp),
+        is_cancel: Set(Some(document.state.is_cancel)),
+        cancel_date: Set(document.state.cancel_dt.map(|dt| dt.to_rfc3339())),
+        header_json: Set(header_json),
+        line_json: Set(line_json),
+        state_json: Set(state_json),
+        warehouse_json: Set(warehouse_json),
+        geography_json: Set(geography_json),
+        source_meta_json: Set(source_meta_json),
+        marketplace_product_ref: Set(document.marketplace_product_ref.clone()),
+        nomenclature_ref: Set(document.nomenclature_ref.clone()),
+        base_nomenclature_ref: Set(document.base_nomenclature_ref.clone()),
+        is_deleted: Set(document.base.metadata.is_deleted),
+        is_posted: Set(document.is_posted),
+        updated_at: Set(Some(Utc::now())),
+        version: Set(document.base.metadata.version + 1),
+        created_at: sea_orm::ActiveValue::NotSet,
+    };
+
+    Entity::update(active_model).exec(db).await?;
+    Ok(())
+}
+
 pub async fn upsert_document(document: &WbOrders) -> Result<Uuid> {
     let db = get_connection();
     let uuid = document.base.id.value();
@@ -698,6 +769,7 @@ pub struct WbOrdersListQuery {
 pub struct WbOrdersListRow {
     pub id: String,
     pub document_no: String,
+    pub line_id: Option<String>,
     pub document_date: Option<String>,
     pub organization_id: Option<String>,
     pub organization_name: Option<String>,
@@ -711,6 +783,7 @@ pub struct WbOrdersListRow {
     pub is_cancel: Option<bool>,
     pub is_supply: Option<bool>,
     pub is_realization: Option<bool>,
+    pub warehouse_type: Option<String>,
     pub income_id: Option<i64>,
     pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
@@ -761,6 +834,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
             let escaped = search_query.replace('\'', "''");
             conditions.push(format!(
                 "(w.document_no LIKE '%{0}%' OR \
+                 json_extract(w.line_json, '$.line_id') LIKE '%{0}%' OR \
                  json_extract(w.line_json, '$.supplier_article') LIKE '%{0}%' OR \
                  EXISTS (SELECT 1 FROM a004_nomenclature n \
                          WHERE n.id = COALESCE( \
@@ -799,6 +873,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
     // Build ORDER BY
     let order_column = match query.sort_by.as_str() {
         "document_no" => "w.document_no",
+        "line_id" => "json_extract(w.line_json, '$.line_id')",
         "order_date" | "document_date" => "w.document_date",
         "supplier_article" => "json_extract(w.line_json, '$.supplier_article')",
         "brand" => "json_extract(w.line_json, '$.brand')",
@@ -819,6 +894,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
         r#"SELECT 
             w.id, 
             w.document_no, 
+            json_extract(w.line_json, '$.line_id') as line_id,
             w.document_date,
             json_extract(w.header_json, '$.organization_id') as organization_id,
             org.description as organization_name,
@@ -832,6 +908,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
             w.is_cancel,
             json_extract(w.state_json, '$.is_supply') as is_supply,
             json_extract(w.state_json, '$.is_realization') as is_realization,
+            json_extract(w.warehouse_json, '$.warehouse_type') as warehouse_type,
             CASE WHEN json_extract(w.source_meta_json, '$.income_id') > 0
                  THEN json_extract(w.source_meta_json, '$.income_id')
                  ELSE NULL END as income_id,
@@ -873,6 +950,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
             Some(WbOrdersListRow {
                 id: row.try_get("", "id").ok()?,
                 document_no: row.try_get("", "document_no").ok()?,
+                line_id: row.try_get("", "line_id").ok(),
                 document_date: row.try_get("", "document_date").ok(),
                 organization_id: row.try_get("", "organization_id").ok(),
                 organization_name: row.try_get("", "organization_name").ok(),
@@ -889,6 +967,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
                     .try_get::<i32>("", "is_realization")
                     .ok()
                     .map(|v| v != 0),
+                warehouse_type: row.try_get("", "warehouse_type").ok(),
                 income_id: row.try_get::<i64>("", "income_id").ok(),
                 marketplace_product_ref: row.try_get("", "marketplace_product_ref").ok(),
                 nomenclature_ref: row.try_get("", "nomenclature_ref").ok(),

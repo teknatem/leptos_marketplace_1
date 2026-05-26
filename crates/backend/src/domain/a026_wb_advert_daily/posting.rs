@@ -143,6 +143,7 @@ fn build_direct_p911_entries(
     document: &WbAdvertDaily,
     linked_orders: &[WbAdvertLinkedOrdersByNm],
     general_ledger_ref: Option<&str>,
+    product_refs: &HashMap<i64, String>,
 ) -> Vec<crate::projections::p911_wb_advert_by_items::repository::Model> {
     let registrator_ref = document_id.to_string();
     let campaign_code = document.header.advert_id.to_string();
@@ -173,6 +174,7 @@ fn build_direct_p911_entries(
                 registrator_type: REGISTRATOR_TYPE.to_string(),
                 registrator_ref: registrator_ref.clone(),
                 general_ledger_ref: general_ledger_ref.map(str::to_string),
+                marketplace_product_ref: product_refs.get(&line.nm_id).cloned(),
                 is_problem: line.nomenclature_ref.is_none(),
                 created_at: timestamp.clone(),
                 updated_at: timestamp,
@@ -199,6 +201,7 @@ fn build_direct_p911_entries(
                     registrator_type: REGISTRATOR_TYPE.to_string(),
                     registrator_ref,
                     general_ledger_ref: general_ledger_ref.map(str::to_string),
+                    marketplace_product_ref: None,
                     is_problem: true,
                     created_at: timestamp.clone(),
                     updated_at: timestamp,
@@ -420,12 +423,48 @@ async fn refresh_line_nomenclature_refs(document: &mut WbAdvertDaily) -> Result<
     Ok(changed)
 }
 
+/// Гарантирует наличие a007_marketplace_product для каждого nm_id документа.
+///
+/// Позиции рекламного отчёта могут отсутствовать в a007 — в этом случае элемент
+/// создаётся автоматически (с пометкой в комментарии). Возвращает карту
+/// `nm_id → a007 id` для заполнения измерения `marketplace_product_ref` в p911.
+async fn ensure_marketplace_products(
+    document: &WbAdvertDaily,
+    document_id: Uuid,
+) -> Result<HashMap<i64, String>> {
+    let mut refs: HashMap<i64, String> = HashMap::new();
+
+    for line in &document.lines {
+        if line.nm_id <= 0 || refs.contains_key(&line.nm_id) {
+            continue;
+        }
+
+        let product_ref = crate::domain::a007_marketplace_product::service::find_or_create_for_advert(
+            crate::domain::a007_marketplace_product::service::AdvertProductParams {
+                connection_mp_ref: document.header.connection_id.clone(),
+                marketplace_ref: document.header.marketplace_id.clone(),
+                nm_id: line.nm_id,
+                nm_name: line.nm_name.clone(),
+                document_no: document.header.document_no.clone(),
+                document_id: document_id.to_string(),
+                document_date: document.header.document_date.clone(),
+            },
+        )
+        .await?;
+
+        refs.insert(line.nm_id, product_ref);
+    }
+
+    Ok(refs)
+}
+
 pub async fn post_document(id: Uuid) -> Result<()> {
     let mut document = repository::get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
     let refreshed_lines = refresh_line_nomenclature_refs(&mut document).await?;
+    let product_refs = ensure_marketplace_products(&document, id).await?;
     let (total_found, linked_orders) = build_linked_orders(&document, id).await?;
     document.linked_orders_count = total_found;
     document.has_linked_orders = total_found > 0;
@@ -491,6 +530,7 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         &document,
         &document.linked_orders,
         gl_direct_entry.as_ref().map(|entry| entry.id.as_str()),
+        &product_refs,
     );
 
     let db = get_connection();

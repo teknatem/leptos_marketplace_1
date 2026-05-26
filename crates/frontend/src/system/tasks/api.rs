@@ -446,6 +446,7 @@ pub async fn set_watermark(id: &str, date: Option<String>) -> Result<(), String>
 /// Текущие токены изменений по доменам (легковесный опрос).
 pub struct ChangeTokensDto {
     pub sys_tasks: u64,
+    pub a027_wb_documents: u64,
 }
 
 pub async fn fetch_change_tokens() -> Result<ChangeTokensDto, String> {
@@ -471,6 +472,7 @@ pub async fn fetch_change_tokens() -> Result<ChangeTokensDto, String> {
 
     Ok(ChangeTokensDto {
         sys_tasks: json["sys_tasks"].as_u64().unwrap_or(0),
+        a027_wb_documents: json["a027_wb_documents"].as_u64().unwrap_or(0),
     })
 }
 

@@ -71,6 +71,7 @@ pub fn configure_business_routes() -> Router {
         .merge(p912_routes())
         .merge(p913_routes())
         // System views with scopes
+        .merge(quality_routes())
         .merge(dashboard_routes())
         .merge(data_view_routes())
         .merge(bi_timeline_routes())
@@ -174,6 +175,10 @@ fn a004_routes() -> Router {
             get(handlers::a004_nomenclature::search_by_article),
         )
         .route(
+            "/api/nomenclature/search-by-barcode",
+            get(handlers::a004_nomenclature::search_by_barcode),
+        )
+        .route(
             "/api/a004/nomenclature",
             get(handlers::a004_nomenclature::list_paginated),
         )
@@ -250,18 +255,6 @@ fn a007_routes() -> Router {
         .route(
             "/api/a007/marketplace-product",
             get(handlers::a007_marketplace_product::list_paginated),
-        )
-        .route(
-            "/api/a007/marketplace-product/wb-mapping-problems",
-            get(handlers::a007_marketplace_product::wb_mapping_problems),
-        )
-        .route(
-            "/api/a007/marketplace-product/wb-stale-postings/summary",
-            get(handlers::a007_marketplace_product::wb_stale_postings_summary),
-        )
-        .route(
-            "/api/a007/marketplace-product/wb-stale-postings/repost",
-            post(handlers::a007_marketplace_product::wb_stale_postings_repost),
         )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
@@ -1895,6 +1888,51 @@ fn ext_1c_routes() -> Router {
         )
         .layer(middleware::from_fn(
             crate::system::auth::middleware::check_api_key,
+        ))
+}
+
+// ============================================================================
+// Quality check routes — /api/quality/checks
+// ============================================================================
+
+fn quality_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/quality/checks",
+            get(handlers::quality::list_checks),
+        )
+        .route(
+            "/api/quality/checks/:id/run",
+            post(handlers::quality::run_check),
+        )
+        .route(
+            "/api/quality/checks/:id/details",
+            get(handlers::quality::check_details),
+        )
+        .route(
+            "/api/quality/checks/:id/sources",
+            get(handlers::quality::list_sources),
+        )
+        .route(
+            "/api/quality/checks/:id/groups",
+            get(handlers::quality::list_groups),
+        )
+        .route(
+            "/api/quality/checks/:id/rows",
+            get(handlers::quality::list_rows),
+        )
+        .route(
+            "/api/quality/checks/:id/repost",
+            post(handlers::quality::bulk_repost),
+        )
+        .route(
+            "/api/quality/checks/:id/cleanup",
+            post(handlers::quality::cleanup_orphans),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                crate::system::auth::middleware::require_auth(req, next).await
+            },
         ))
 }
 

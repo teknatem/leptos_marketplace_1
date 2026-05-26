@@ -1,4 +1,7 @@
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
+use crate::general_ledger::ui::{
+    document_general_ledger_entries_nav_id, DocumentGeneralLedgerEntries,
+};
 use crate::shared::icons::icon;
 use crate::shared::json_viewer::widget::JsonViewer;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
@@ -846,24 +849,28 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
     };
 
     view! {
-        <PageFrame page_id="p903_wb_finance_report--detail" category="detail">
+        <PageFrame page_id="p903_wb_finance_report--detail" category="detail" class="p903-detail">
             <div class="modal-header">
                 <h3 class="modal-title">"WB Finance Report Details"</h3>
-                <Button
-                    appearance=ButtonAppearance::Primary
-                    on_click=post_click
-                    disabled=Signal::derive(move || loading.get() || posting.get())
-                >
-                    <span>{vec![icon("refresh").into_view()]}</span>
-                    <span>{move || if posting.get() { " Проведение..." } else { " Post" }}</span>
-                </Button>
-                <Button
-                    appearance=ButtonAppearance::Secondary
-                    on_click=move |_| on_close.run(())
-                >
-                    <span>{vec![icon("x").into_view()]}</span>
-                    <span>" Закрыть"</span>
-                </Button>
+                <div class="modal-header-actions">
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        size=ButtonSize::Small
+                        on_click=post_click
+                        disabled=Signal::derive(move || loading.get() || posting.get())
+                    >
+                        {icon("refresh")}
+                        {move || if posting.get() { " Проведение..." } else { " Post" }}
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        size=ButtonSize::Small
+                        on_click=move |_| on_close.run(())
+                    >
+                        {icon("x")}
+                        " Закрыть"
+                    </Button>
+                </div>
             </div>
 
             <div class="page__content">
@@ -938,11 +945,12 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                     let export_excel = export_to_excel.clone();
                                     view! {
                                         <Button
-                                            appearance=ButtonAppearance::Primary
+                                            appearance=ButtonAppearance::Secondary
+                                            size=ButtonSize::Small
                                             on_click=move |_| export_excel()
                                         >
                                             {icon("download")}
-                                            "Excel (csv)"
+                                            " Excel (csv)"
                                         </Button>
                                     }
                                 }
@@ -1104,56 +1112,18 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                     }
                                         .into_any()
                                 } else if active_tab.get() == "general_ledger" {
-                                    let entries = general_ledger_entries.get();
-                                    if entries.is_empty() {
-                                        view! { <p class="text-muted">"Нет связанных записей general ledger."</p> }.into_any()
-                                    } else {
-                                        view! {
-                                            <div>
-                                                <div style="padding: 10px; margin-bottom: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--font-size-sm); font-weight: 600;">
-                                                    <span>"Entries: " {entries.len()}</span>
-                                                    <span>"ID: " {data.get().map(|item| item.id).unwrap_or_default()}</span>
-                                                    <span>"Source: " {data.get().map(|item| item.source_row_ref).unwrap_or_default()}</span>
-                                                </div>
-
-                                                <div style="width: 100%; overflow-x: auto;">
-                                                    <Table attr:style="width: 100%;">
-                                                        <TableHeader>
-                                                            <TableRow>
-                                                                <TableHeaderCell resizable=true min_width=120.0>"Entry Date"</TableHeaderCell>
-                                                                <TableHeaderCell resizable=true min_width=140.0>"Turnover"</TableHeaderCell>
-                                                                <TableHeaderCell resizable=true min_width=90.0>"Amount"</TableHeaderCell>
-                                                                <TableHeaderCell resizable=true min_width=120.0>"Resource"</TableHeaderCell>
-                                                                <TableHeaderCell resizable=true min_width=80.0>"Sign"</TableHeaderCell>
-                                                                <TableHeaderCell resizable=true min_width=120.0>"Debit"</TableHeaderCell>
-                                                                <TableHeaderCell resizable=true min_width=120.0>"Credit"</TableHeaderCell>
-                                                            </TableRow>
-                                                        </TableHeader>
-                                                        <TableBody>
-                                                            {entries
-                                                                .into_iter()
-                                                                .map(|entry| {
-                                                                    view! {
-                                                                        <TableRow>
-                                                                            <TableCell><TableCellLayout>{entry.entry_date}</TableCellLayout></TableCell>
-                                                                            <TableCell><TableCellLayout truncate=true>{entry.turnover_code}</TableCellLayout></TableCell>
-                                                                            <TableCell class="table__cell--right"><TableCellLayout>{format_number(entry.amount)}</TableCellLayout></TableCell>
-                                                                            <TableCell><TableCellLayout truncate=true>{entry.resource_field}</TableCellLayout></TableCell>
-                                                                            <TableCell class="table__cell--right"><TableCellLayout>{entry.resource_sign}</TableCellLayout></TableCell>
-                                                                            <TableCell><TableCellLayout>{entry.debit_account}</TableCellLayout></TableCell>
-                                                                            <TableCell><TableCellLayout>{entry.credit_account}</TableCellLayout></TableCell>
-                                                                        </TableRow>
-                                                                    }
-                                                                    .into_view()
-                                                                })
-                                                                .collect_view()}
-                                                        </TableBody>
-                                                    </Table>
-                                                </div>
-                                            </div>
-                                        }
-                                        .into_any()
+                                    let entries = Signal::derive(move || general_ledger_entries.get());
+                                    view! {
+                                        <DocumentGeneralLedgerEntries
+                                            entries=entries
+                                            loading=Signal::derive(|| false)
+                                            error=Signal::derive(|| None::<String>)
+                                            nav_id=document_general_ledger_entries_nav_id("p903_wb_finance_report")
+                                            title="Журнал операций"
+                                            empty_message="Нет связанных записей general ledger. Проведите документ для формирования проводок."
+                                        />
                                     }
+                                    .into_any()
                                 } else if active_tab.get() == "links" {
                                     if links_loading.get() {
                                         view! { <p class="text-muted">"Загрузка связанных документов..."</p> }.into_any()
@@ -1187,21 +1157,21 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                         <span>"Finished: " {format_number(total_finished)}</span>
                                                     </div>
 
-                                                    <div style="width: 100%; overflow-x: auto;">
-                                                        <Table attr:style="width: 100%;">
+                                                    <div class="table-wrapper">
+                                                        <Table attr:style="width:100%;table-layout:fixed;">
                                                             <TableHeader>
                                                                 <TableRow>
-                                                                    <TableHeaderCell resizable=true min_width=100.0>"Date"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=120.0>"Document No"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=80.0>"NM ID"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=120.0>"Supplier Article"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=200.0>"Name"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=70.0>"Qty"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=100.0>"Total Price"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=100.0>"Payment"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=100.0>"Price Effective"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=100.0>"Amount Line"</TableHeaderCell>
-                                                                    <TableHeaderCell resizable=true min_width=100.0>"Finished Price"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:96px;">"Date"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:120px;">"Document No"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:84px;">"NM ID"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:120px;">"Supplier Article"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:auto;">"Name"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:64px;text-align:right;">"Qty"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:96px;text-align:right;">"Total Price"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:96px;text-align:right;">"Payment"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:96px;text-align:right;">"Price Eff."</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:96px;text-align:right;">"Amount Line"</TableHeaderCell>
+                                                                    <TableHeaderCell attr:style="width:96px;text-align:right;">"Finished Price"</TableHeaderCell>
                                                                 </TableRow>
                                                             </TableHeader>
                                                             <TableBody>
@@ -1210,18 +1180,18 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                                     .map(|sale| {
                                                                         let sale_id = sale.id.clone();
                                                                         view! {
-                                                                            <TableRow on:click=move |_| set_selected_sale_id.set(Some(sale_id.clone()))>
-                                                                                <TableCell><TableCellLayout>{sale.state.sale_dt}</TableCellLayout></TableCell>
-                                                                                <TableCell><TableCellLayout>{sale.header.document_no}</TableCellLayout></TableCell>
-                                                                                <TableCell><TableCellLayout>{sale.line.nm_id}</TableCellLayout></TableCell>
-                                                                                <TableCell><TableCellLayout truncate=true>{sale.line.supplier_article}</TableCellLayout></TableCell>
+                                                                            <TableRow attr:style="cursor:pointer;" on:click=move |_| set_selected_sale_id.set(Some(sale_id.clone()))>
+                                                                                <TableCell attr:style="width:96px;"><TableCellLayout truncate=true>{sale.state.sale_dt}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:120px;"><TableCellLayout truncate=true>{sale.header.document_no}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:84px;"><TableCellLayout truncate=true>{sale.line.nm_id}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:120px;"><TableCellLayout truncate=true>{sale.line.supplier_article}</TableCellLayout></TableCell>
                                                                                 <TableCell><TableCellLayout truncate=true>{sale.line.name}</TableCellLayout></TableCell>
-                                                                                <TableCell class="table__cell--right"><TableCellLayout>{format_number(sale.line.qty)}</TableCellLayout></TableCell>
-                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.total_price.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.payment_sale_amount.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.price_effective.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.amount_line.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
-                                                                                <TableCell class="table__cell--right"><TableCellLayout>{sale.line.finished_price.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:64px;text-align:right;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{format_number(sale.line.qty)}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:96px;text-align:right;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{sale.line.total_price.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:96px;text-align:right;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{sale.line.payment_sale_amount.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:96px;text-align:right;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{sale.line.price_effective.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:96px;text-align:right;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{sale.line.amount_line.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                                                <TableCell attr:style="width:96px;text-align:right;"><TableCellLayout attr:style="display:block;width:100%;text-align:right;">{sale.line.finished_price.map(|v| format_number(v)).unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
                                                                             </TableRow>
                                                                         }
                                                                         .into_view()

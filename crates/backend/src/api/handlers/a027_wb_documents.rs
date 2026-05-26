@@ -21,9 +21,27 @@ use crate::general_ledger::account_view::registry::ACCOUNT_7609_VIEW;
 use crate::shared::data::db::get_connection;
 use crate::usecases::u504_import_from_wildberries::wildberries_api_client::WildberriesApiClient;
 
-const REALIZED_GOODS_TURNOVERS: &[&str] =
-    &["customer_revenue_pl", "spp_discount", "wb_extra_discount"];
-const WB_REWARD_TURNOVERS: &[&str] = &["mp_commission"];
+const REALIZED_GOODS_TURNOVERS: &[&str] = &[
+    "customer_revenue_pl",
+    "spp_discount",
+    "wb_extra_discount",
+    // Сторно возвратов: показатель 1.1 в отчёте WB — нетто с учётом возвратов,
+    // поэтому возвраты (storno-обороты) вычитаются наравне с продажами.
+    "customer_revenue_pl_storno",
+    "spp_discount_storno",
+    "wb_extra_discount_storno",
+];
+// Вознаграждение WB (2.1+2.2) на oper-слое = маржа WB сверх цены продавца
+// (mp_commission, когда покупатель заплатил больше цены продавца) плюс
+// соинвестирование WB в скидку (wb_coinvestment, когда меньше). Эти обороты
+// взаимоисключающие построчно, вместе дают полную разницу цен = вознаграждение
+// WB с учётом софинансирования. Сторно-варианты вычитают возвраты (отчёт — нетто).
+const WB_REWARD_TURNOVERS: &[&str] = &[
+    "mp_commission",
+    "mp_commission_storno",
+    "wb_coinvestment",
+    "wb_coinvestment_storno",
+];
 const ADVERT_RECONCILIATION_TURNOVERS: &[&str] =
     &["advert_clicks_no_order", "advert_clicks_order_accrual"];
 const LOGISTICS_TURNOVERS: &[&str] = &[
@@ -37,14 +55,52 @@ const ACQUIRING_TURNOVERS: &[&str] = &["mp_acquiring"];
 const OPER_LAYER: &str = "oper";
 const FACT_LAYER: &str = "fact";
 
-const REALIZED_GOODS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('customer_revenue_pl', 'spp_discount', 'wb_extra_discount') AND layer = 'oper'";
-const WB_REWARD_FORMULA: &str =
-    "SUM(amount) WHERE turnover_code = 'mp_commission' AND layer = 'oper'";
+const REALIZED_GOODS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('customer_revenue_pl', 'spp_discount', 'wb_extra_discount', 'customer_revenue_pl_storno', 'spp_discount_storno', 'wb_extra_discount_storno') AND layer = 'oper'";
+const WB_REWARD_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_commission', 'mp_commission_storno', 'wb_coinvestment', 'wb_coinvestment_storno') AND layer = 'oper'";
 const SELLER_TRANSFER_FORMULA: &str = "Account 7609 main balance";
 const ADVERT_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('advert_clicks_no_order', 'advert_clicks_order_accrual') AND layer = 'oper'";
 const LOGISTICS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_ppvz_reward', 'mp_ppvz_reward_nm', 'mp_rebill_logistic_cost', 'mp_rebill_logistic_cost_nm') AND layer = 'fact'";
 const ACQUIRING_FORMULA: &str =
     "SUM(amount) WHERE turnover_code = 'mp_acquiring' AND layer = 'fact'";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Сверка по слою FACT (отдельная таблица, не влияет на старую).
+//
+// Слой fact формируется из p903 — это и есть исходные данные недельного отчёта
+// WB, поэтому fact-обороты должны совпадать с отчётом. Старая (oper) таблица
+// расходится, т.к. oper считается независимо из a012/a015/a026.
+//
+// Логистика и эквайринг в старой таблице уже считаются по fact, поэтому здесь
+// повторяют тот же состав. Реклама (2.10) на fact отсутствует — вместо неё
+// берём прочие удержания p903 (приёмка, хранение, штрафы).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 1.1 — выручка от покупателя и возвраты по факту (p903): retail_amount минус
+// возвраты. Соответствует «Итого стоимость реализованного товара».
+const FACT_REALIZED_GOODS_TURNOVERS: &[&str] = &["customer_revenue", "customer_return"];
+// 2.1+2.2 — комиссия WB по факту: комиссия по продаже (mp_commission) и её
+// сторно по возврату (mp_commission_storno, знак инвертирован в GL-билдере p903).
+// Корректировки комиссии (mp_commission_adjustment[_nm]) сюда НЕ входят: они
+// возникают на логистических/прочих операциях p903 (строки «Возмещение издержек
+// по перевозке…», где ppvz_vw заполнен паразитно), а отчёт WB не включает их в
+// строку «Вознаграждение Вайлдберриз (2.1+2.2)».
+const FACT_WB_REWARD_TURNOVERS: &[&str] = &["mp_commission", "mp_commission_storno"];
+// 2.10 — прочие удержания по факту: платная приёмка, хранение, штрафы и их
+// сторно. Рекламы на fact нет, поэтому здесь её не будет.
+const FACT_OTHER_DEDUCTIONS_TURNOVERS: &[&str] =
+    &["acceptance", "mp_storage", "mp_penalty", "mp_penalty_storno"];
+// 2.7+2.8 — логистика по факту (тот же состав, что и в старой таблице).
+const FACT_LOGISTICS_TURNOVERS: &[&str] = LOGISTICS_TURNOVERS;
+// 2.6 — эквайринг по факту (тот же состав, что и в старой таблице).
+const FACT_ACQUIRING_TURNOVERS: &[&str] = ACQUIRING_TURNOVERS;
+
+const FACT_REALIZED_GOODS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('customer_revenue', 'customer_return') AND layer = 'fact'";
+const FACT_WB_REWARD_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_commission', 'mp_commission_storno') AND layer = 'fact'";
+const FACT_SELLER_TRANSFER_FORMULA: &str =
+    "SUM over account 7609 (Dt − Cr) WHERE layer = 'fact'";
+const FACT_OTHER_DEDUCTIONS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('acceptance', 'mp_storage', 'mp_penalty', 'mp_penalty_storno') AND layer = 'fact'";
+const FACT_LOGISTICS_FORMULA: &str = LOGISTICS_FORMULA;
+const FACT_ACQUIRING_FORMULA: &str = ACQUIRING_FORMULA;
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -120,6 +176,7 @@ pub struct WbDocumentDetailsDto {
     pub max_deviation: Option<f64>,
     pub comment: Option<String>,
     pub reconciliation: WbDocumentReconciliationDto,
+    pub fact_reconciliation: WbDocumentReconciliationFactDto,
     pub fetched_at: String,
     pub locale: String,
     pub created_at: String,
@@ -128,6 +185,18 @@ pub struct WbDocumentDetailsDto {
 
 #[derive(Debug, Serialize)]
 pub struct WbDocumentReconciliationDto {
+    pub realized_goods_total: ReconciliationLineDto,
+    pub wb_reward_with_vat: ReconciliationLineDto,
+    pub seller_transfer_total: ReconciliationLineDto,
+    pub advert_other_deductions: ReconciliationLineDto,
+    pub logistics: ReconciliationLineDto,
+    pub acquiring: ReconciliationLineDto,
+}
+
+/// Сверка по слою FACT — независимая копия структуры сверки. Те же 6
+/// показателей, но «Данные в базе» считаются по слою fact (p903).
+#[derive(Debug, Serialize)]
+pub struct WbDocumentReconciliationFactDto {
     pub realized_goods_total: ReconciliationLineDto,
     pub wb_reward_with_vat: ReconciliationLineDto,
     pub seller_transfer_total: ReconciliationLineDto,
@@ -533,6 +602,7 @@ async fn build_details_dto(doc: WbDocument) -> anyhow::Result<WbDocumentDetailsD
         max_deviation: doc.max_deviation,
         comment: doc.base.comment.clone(),
         reconciliation: build_reconciliation_dto(&doc).await?,
+        fact_reconciliation: build_fact_reconciliation_dto(&doc).await?,
         fetched_at: doc.source_meta.fetched_at.clone(),
         locale: doc.source_meta.locale.clone(),
         created_at: doc.base.metadata.created_at.to_rfc3339(),
@@ -637,6 +707,102 @@ struct ReconciliationValues {
     other_deductions: f64,
     logistics: f64,
     acquiring: f64,
+}
+
+/// Сверка по слою FACT. Полностью независимая от старой (oper) сверки: все
+/// показатели считаются по слою fact, который формируется из p903 (исходные
+/// данные недельного отчёта WB). Логистика и эквайринг повторяют состав старой
+/// таблицы (они уже считались по fact).
+async fn build_fact_reconciliation_dto(
+    doc: &WbDocument,
+) -> anyhow::Result<WbDocumentReconciliationFactDto> {
+    let values = match complete_period(
+        doc.report_period_from.as_deref(),
+        doc.report_period_to.as_deref(),
+    ) {
+        Some((period_from, period_to)) => Some(ReconciliationValues {
+            realized_goods_total: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                FACT_REALIZED_GOODS_TURNOVERS,
+                FACT_LAYER,
+            )
+            .await?,
+            wb_reward_with_vat: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                FACT_WB_REWARD_TURNOVERS,
+                FACT_LAYER,
+            )
+            .await?,
+            seller_transfer_total: fetch_7609_fact_balance(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+            )
+            .await?,
+            other_deductions: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                FACT_OTHER_DEDUCTIONS_TURNOVERS,
+                FACT_LAYER,
+            )
+            .await?,
+            logistics: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                FACT_LOGISTICS_TURNOVERS,
+                FACT_LAYER,
+            )
+            .await?,
+            acquiring: fetch_turnover_total(
+                &doc.header.connection_id,
+                period_from,
+                period_to,
+                FACT_ACQUIRING_TURNOVERS,
+                FACT_LAYER,
+            )
+            .await?,
+        }),
+        None => None,
+    };
+
+    Ok(WbDocumentReconciliationFactDto {
+        realized_goods_total: build_reconciliation_line(
+            FACT_REALIZED_GOODS_FORMULA,
+            doc.weekly_report_data.realized_goods_total,
+            values.as_ref().map(|item| item.realized_goods_total),
+        ),
+        wb_reward_with_vat: build_reconciliation_line(
+            FACT_WB_REWARD_FORMULA,
+            doc.weekly_report_data.wb_reward_with_vat,
+            values.as_ref().map(|item| item.wb_reward_with_vat),
+        ),
+        seller_transfer_total: build_reconciliation_line(
+            FACT_SELLER_TRANSFER_FORMULA,
+            doc.weekly_report_data.seller_transfer_total,
+            values.as_ref().map(|item| item.seller_transfer_total),
+        ),
+        advert_other_deductions: build_reconciliation_line(
+            FACT_OTHER_DEDUCTIONS_FORMULA,
+            doc.weekly_report_data.other_deductions,
+            values.as_ref().map(|item| item.other_deductions),
+        ),
+        logistics: build_reconciliation_line(
+            FACT_LOGISTICS_FORMULA,
+            doc.weekly_report_data.logistics,
+            values.as_ref().map(|item| item.logistics),
+        ),
+        acquiring: build_reconciliation_line(
+            FACT_ACQUIRING_FORMULA,
+            doc.weekly_report_data.acquiring,
+            values.as_ref().map(|item| item.acquiring),
+        ),
+    })
 }
 
 fn complete_period<'a>(from: Option<&'a str>, to: Option<&'a str>) -> Option<(&'a str, &'a str)> {
@@ -753,6 +919,42 @@ async fn fetch_7609_main_balance(
 
     let db = get_connection();
     let stmt = Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
+    let row = db.query_one(stmt).await?;
+
+    Ok(row
+        .and_then(|raw| raw.try_get::<f64>("", "total").ok())
+        .unwrap_or(0.0))
+}
+
+/// Сальдо счёта 7609 (Дт − Кт) только по слою fact за период. Используется в
+/// fact-таблице сверки для показателя «Итого к перечислению продавцу (8)».
+async fn fetch_7609_fact_balance(
+    connection_id: &str,
+    period_from: &str,
+    period_to: &str,
+) -> anyhow::Result<f64> {
+    let sql = "SELECT COALESCE(SUM(
+             CASE
+                 WHEN debit_account = '7609' THEN amount
+                 WHEN credit_account = '7609' THEN -amount
+                 ELSE 0.0
+             END
+         ), 0.0) AS total
+         FROM sys_general_ledger
+         WHERE (debit_account = '7609' OR credit_account = '7609')
+           AND entry_date >= ?
+           AND entry_date <= ?
+           AND connection_mp_ref = ?
+           AND layer = ?";
+    let params = vec![
+        sv(period_from),
+        sv(period_to),
+        sv(connection_id),
+        sv(FACT_LAYER),
+    ];
+
+    let db = get_connection();
+    let stmt = Statement::from_sql_and_values(db.get_database_backend(), sql, params);
     let row = db.query_one(stmt).await?;
 
     Ok(row

@@ -223,6 +223,7 @@ pub struct ConnectionMPFormDto {
     pub api_key_stats: Option<String>,
     pub test_mode: bool,
     pub planned_commission_percent: Option<f64>,
+    pub planned_acquiring_percent: Option<f64>,
     pub authorization_type: AuthorizationType,
 }
 
@@ -243,6 +244,7 @@ impl Default for ConnectionMPFormDto {
             api_key_stats: None,
             test_mode: false,
             planned_commission_percent: None,
+            planned_acquiring_percent: None,
             authorization_type: AuthorizationType::default(),
         }
     }
@@ -266,6 +268,7 @@ impl From<ConnectionMP> for ConnectionMPFormDto {
             api_key_stats: conn.api_key_stats,
             test_mode: conn.test_mode,
             planned_commission_percent: conn.planned_commission_percent,
+            planned_acquiring_percent: conn.planned_acquiring_percent,
             authorization_type: conn.authorization_type,
         }
     }
@@ -288,6 +291,7 @@ impl From<ConnectionMPFormDto> for ConnectionMPDto {
             api_key_stats: form.api_key_stats,
             test_mode: form.test_mode,
             planned_commission_percent: form.planned_commission_percent,
+            planned_acquiring_percent: form.planned_acquiring_percent,
             authorization_type: form.authorization_type,
         }
     }

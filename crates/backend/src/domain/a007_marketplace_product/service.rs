@@ -186,125 +186,6 @@ pub async fn list_paginated(
     repository::list_paginated(query).await
 }
 
-pub async fn list_wb_mapping_problems(
-    query: repository::WbMappingProblemsQuery,
-) -> anyhow::Result<repository::WbMappingProblemsResult> {
-    repository::list_wb_mapping_problems(query).await
-}
-
-/// Сводка по «устаревшим» проводкам для одной строки WB-проблем.
-pub async fn get_stale_postings_summary(
-    connection_mp_ref: &str,
-    nm_id: i64,
-    supplier_article: Option<&str>,
-    date_from: &str,
-    date_to: &str,
-) -> anyhow::Result<contracts::domain::a007_marketplace_product::aggregate::WbStalePostingsSummary> {
-    let expected_ref =
-        resolve_wb_nomenclature_ref(connection_mp_ref, nm_id, supplier_article).await?;
-    let refs = repository::list_stale_postings_for_problem(
-        connection_mp_ref,
-        nm_id,
-        date_from,
-        date_to,
-        expected_ref.as_deref(),
-    )
-    .await?;
-
-    let period_from = refs.iter().map(|r| r.doc_date.as_str()).min().map(str::to_owned);
-    let period_to = refs.iter().map(|r| r.doc_date.as_str()).max().map(str::to_owned);
-
-    Ok(
-        contracts::domain::a007_marketplace_product::aggregate::WbStalePostingsSummary {
-            doc_count: refs.len() as i64,
-            period_from,
-            period_to,
-        },
-    )
-}
-
-/// Перепровести все «устаревшие» проводки строки WB-проблем в хронологическом порядке.
-///
-/// Возвращает `(total, succeeded, failed, failures)`. `failures` содержит до 20 кратких
-/// диагностик; этого достаточно для UI и не раздувает ответ.
-pub async fn repost_stale_postings(
-    connection_mp_ref: &str,
-    nm_id: i64,
-    supplier_article: Option<&str>,
-    date_from: &str,
-    date_to: &str,
-) -> anyhow::Result<contracts::domain::a007_marketplace_product::aggregate::WbStalePostingsRepostResponse> {
-    let expected_ref =
-        resolve_wb_nomenclature_ref(connection_mp_ref, nm_id, supplier_article).await?;
-    let refs = repository::list_stale_postings_for_problem(
-        connection_mp_ref,
-        nm_id,
-        date_from,
-        date_to,
-        expected_ref.as_deref(),
-    )
-    .await?;
-
-    let total = refs.len();
-    let mut succeeded = 0usize;
-    let mut failed = 0usize;
-    let mut failures: Vec<String> = Vec::new();
-
-    for r in refs {
-        let res = repost_one(&r.registrator_type, &r.registrator_id).await;
-        match res {
-            Ok(()) => succeeded += 1,
-            Err(e) => {
-                failed += 1;
-                if failures.len() < 20 {
-                    failures.push(format!(
-                        "{} {} ({}): {}",
-                        r.registrator_type, r.registrator_id, r.doc_date, e
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(
-        contracts::domain::a007_marketplace_product::aggregate::WbStalePostingsRepostResponse {
-            total,
-            succeeded,
-            failed,
-            failures,
-        },
-    )
-}
-
-async fn repost_one(registrator_type: &str, registrator_id: &str) -> anyhow::Result<()> {
-    match registrator_type {
-        "a012_wb_sales" => {
-            let uuid = Uuid::parse_str(registrator_id)
-                .map_err(|e| anyhow::anyhow!("Invalid UUID for a012_wb_sales: {}", e))?;
-            crate::domain::a012_wb_sales::posting::post_document(uuid).await
-        }
-        "a015_wb_orders" => {
-            let uuid = Uuid::parse_str(registrator_id)
-                .map_err(|e| anyhow::anyhow!("Invalid UUID for a015_wb_orders: {}", e))?;
-            crate::domain::a015_wb_orders::posting::post_document(uuid).await
-        }
-        "p903_wb_finance_report" => {
-            // registrator_id формата "{connection_mp_ref}|YYYY-MM-DD"
-            let (conn_ref, day_str) = registrator_id
-                .split_once('|')
-                .ok_or_else(|| anyhow::anyhow!("Bad p903 registrator_id: {}", registrator_id))?;
-            let day = chrono::NaiveDate::parse_from_str(day_str, "%Y-%m-%d")
-                .map_err(|e| anyhow::anyhow!("Invalid p903 day '{}': {}", day_str, e))?;
-            crate::projections::p903_wb_finance_report::service::rebuild_day_from_existing(
-                conn_ref, day,
-            )
-            .await
-            .map(|_| ())
-        }
-        other => Err(anyhow::anyhow!("Unknown registrator_type: {}", other)),
-    }
-}
-
 /// Получение товара по connection_mp_ref и SKU
 pub async fn get_by_connection_and_sku(
     connection_mp_ref: &str,
@@ -490,6 +371,74 @@ pub async fn find_or_create_for_sale(params: FindOrCreateParams) -> anyhow::Resu
     };
 
     create(dto).await
+}
+
+/// Параметры для поиска/создания товара при проведении рекламного отчёта a026.
+pub struct AdvertProductParams {
+    pub connection_mp_ref: String,
+    pub marketplace_ref: String,
+    pub nm_id: i64,
+    pub nm_name: String,
+    /// Номер документа-источника a026 (для комментария).
+    pub document_no: String,
+    /// UUID документа-источника a026 (для комментария).
+    pub document_id: String,
+    /// Дата документа-источника a026 (для комментария).
+    pub document_date: String,
+}
+
+/// Найти a007 по (connection_mp_ref, nm_id) либо создать автоматически.
+///
+/// Позиции рекламного отчёта несут только nm_id и наименование WB — артикул и
+/// штрихкод недоступны, поэтому `marketplace_sku` и `article` заполняются как nm_id.
+/// В комментарии фиксируется, что элемент создан автоматически, когда и каким документом.
+///
+/// Возвращает UUID найденного или созданного a007 (строкой).
+pub async fn find_or_create_for_advert(params: AdvertProductParams) -> anyhow::Result<String> {
+    let sku = params.nm_id.to_string();
+
+    if let Some(existing) =
+        repository::get_by_connection_and_sku(&params.connection_mp_ref, &sku).await?
+    {
+        return Ok(existing.base.id.as_string());
+    }
+
+    let now = chrono::Utc::now();
+    let description = {
+        let trimmed = params.nm_name.trim();
+        if trimmed.is_empty() {
+            format!("WB nm {}", params.nm_id)
+        } else {
+            trimmed.to_string()
+        }
+    };
+    let comment = format!(
+        "Автоматически создано при проведении a026_wb_advert_daily №{} от {} (id {}) [{}]",
+        params.document_no,
+        params.document_date,
+        params.document_id,
+        now.format("%Y-%m-%d %H:%M:%S UTC")
+    );
+
+    let dto = MarketplaceProductDto {
+        id: None,
+        code: Some(format!("MP-AUTO-{}", Uuid::new_v4())),
+        description,
+        marketplace_ref: params.marketplace_ref,
+        connection_mp_ref: params.connection_mp_ref,
+        marketplace_sku: sku.clone(),
+        barcode: None,
+        article: sku,
+        brand: None,
+        category_id: None,
+        category_name: None,
+        last_update: Some(now),
+        nomenclature_ref: None,
+        comment: Some(comment),
+    };
+
+    let id = create(dto).await?;
+    Ok(id.to_string())
 }
 
 /// Вставка тестовых данных

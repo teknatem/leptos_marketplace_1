@@ -135,11 +135,14 @@ fn Header(
                 <PostButtons vm=vm.clone() />
 
                 <Button
-                    appearance=ButtonAppearance::Secondary
+                    appearance=ButtonAppearance::Subtle
                     size=ButtonSize::Medium
                     on_click=move |_| on_close.run(())
                 >
-                    "Закрыть"
+                    <span class="page-action-button__content">
+                        <span class="page-action-button__icon page-action-button__icon--close">{icon("x")}</span>
+                        <span class="page-action-button__text">"Закрыть"</span>
+                    </span>
                 </Button>
             </div>
         </div>
@@ -160,19 +163,21 @@ fn OrderFlowButton(vm: WbOrdersDetailsVm) -> impl IntoView {
             }
             let encoded = urlencoding::encode(&srid);
             let key = format!("d402_wb_order_flow_srid_{}", encoded);
-            tabs_store.open_tab(&key, "Схема заказа WB");
+            tabs_store.open_tab(&key, "Схема");
         }
     };
 
     view! {
         <Show when=move || order.get().is_some()>
             <Button
-                appearance=ButtonAppearance::Secondary
+                appearance=ButtonAppearance::Subtle
                 size=ButtonSize::Medium
                 on_click=on_click.clone()
             >
-                {icon("activity")}
-                <span style="margin-left: 6px;">"Схема заказа"</span>
+                <span class="page-action-button__content">
+                    <span class="page-action-button__icon">{icon("activity")}</span>
+                    <span class="page-action-button__text">"Схема"</span>
+                </span>
             </Button>
         </Show>
     }
@@ -180,42 +185,35 @@ fn OrderFlowButton(vm: WbOrdersDetailsVm) -> impl IntoView {
 
 #[component]
 fn PostButtons(vm: WbOrdersDetailsVm) -> impl IntoView {
-    let is_posted = vm.is_posted();
     let posting = vm.posting;
     let order = vm.order;
 
     let on_post = {
-        let vm = vm.clone();
-        Callback::new(move |_: ()| vm.post())
-    };
-    let on_unpost = {
         let vm = vm;
-        Callback::new(move |_: ()| vm.unpost())
+        Callback::new(move |_: ()| vm.post())
     };
 
     view! {
         <Show when=move || order.get().is_some()>
-            <Show when=move || !is_posted.get()>
-                <Button
-                    appearance=ButtonAppearance::Primary
-                    size=ButtonSize::Medium
-                    on_click=move |_| on_post.run(())
-                    disabled=Signal::derive(move || posting.get())
-                >
-                    {move || if posting.get() { "Проведение..." } else { "✓ Post" }}
-                </Button>
-            </Show>
-
-            <Show when=move || is_posted.get()>
-                <Button
-                    appearance=ButtonAppearance::Secondary
-                    size=ButtonSize::Medium
-                    on_click=move |_| on_unpost.run(())
-                    disabled=Signal::derive(move || posting.get())
-                >
-                    {move || if posting.get() { "Отмена..." } else { "✗ Unpost" }}
-                </Button>
-            </Show>
+            <Button
+                appearance=ButtonAppearance::Subtle
+                size=ButtonSize::Medium
+                on_click=move |_| on_post.run(())
+                disabled=Signal::derive(move || posting.get())
+            >
+                <span class="page-action-button__content">
+                    <span class="page-action-button__icon">
+                        {move || {
+                            if posting.get() {
+                                view! { <span class="page-action-button__spinner"></span> }.into_any()
+                            } else {
+                                view! { <>{icon("refresh-cw")}</> }.into_any()
+                            }
+                        }}
+                    </span>
+                    <span class="page-action-button__text page-action-button__text--post">"Post"</span>
+                </span>
+            </Button>
         </Show>
     }
 }

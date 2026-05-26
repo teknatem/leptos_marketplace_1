@@ -522,7 +522,7 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                 };
 
                 view! {
-                    <div style="padding: 0 var(--spacing-lg);">
+                    <div style="padding: var(--spacing-sm);">
                         <MessageBar intent=intent>
                             <span>
                                 <strong>{title}</strong>

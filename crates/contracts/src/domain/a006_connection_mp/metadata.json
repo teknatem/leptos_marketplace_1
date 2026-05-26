@@ -136,6 +136,21 @@
       },
       "validation": { "required": false },
       "ai_hint": "Плановый процент комиссии маркетплейса для этого магазина. Используется в расчёте плановой прибыли."
+    },
+    {
+      "name": "planned_acquiring_percent",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Плановый эквайринг %",
+        "label_en": "Planned Acquiring %",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": { "required": false },
+      "ai_hint": "Плановый процент эквайринга маркетплейса для этого магазина. Используется в расчёте плановой маржи."
     }
   ],
 

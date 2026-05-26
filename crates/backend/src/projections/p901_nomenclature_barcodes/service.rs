@@ -142,6 +142,36 @@ pub async fn find_nomenclature_ref_by_barcode_from_marketplace(
     find_nomenclature_ref_by_barcode_from_1c(barcode).await
 }
 
+/// Найти все привязанные nomenclature_ref по штрихкоду (по всем источникам).
+///
+/// Возвращает список уникальных непустых `nomenclature_ref` для записей p901 с
+/// данным штрихкодом. Записи источника `1C` идут первыми как наиболее
+/// достоверный канонический источник связи штрихкод → номенклатура.
+pub async fn find_nomenclature_refs_by_barcode(barcode: &str) -> Result<Vec<String>> {
+    use super::repository;
+
+    let barcode = barcode.trim();
+    if barcode.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut models = repository::get_all_by_barcode(barcode).await?;
+    // Сначала источник 1C — он считается каноническим для связи с номенклатурой.
+    models.sort_by_key(|m| if m.source == "1C" { 0 } else { 1 });
+
+    let mut refs: Vec<String> = Vec::new();
+    for model in models {
+        if let Some(nom_ref) = model.nomenclature_ref {
+            let nom_ref = nom_ref.trim().to_string();
+            if !nom_ref.is_empty() && !refs.contains(&nom_ref) {
+                refs.push(nom_ref);
+            }
+        }
+    }
+
+    Ok(refs)
+}
+
 /// Найти nomenclature_ref по артикулу YM (shop_sku)
 /// Алгоритм:
 /// 1. Ищем в p901 по source="YM" и article=shop_sku

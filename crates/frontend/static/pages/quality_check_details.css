@@ -1,0 +1,18 @@
+/* Per-page styles for the quality_check_details page.
+   Scoped under the PageFrame root id `#quality_check_details--detail`.
+
+   The page stacks several short tables inside a single scrolling
+   `.page__content`. The shared `.table__head { position: sticky; top: 0 }`
+   rule (meant for full-height list pages inside a `.table-wrapper`) makes
+   these headers pin to the viewport top and slide under / over the sticky
+   `.page__header`, covering the page title. On a detail page the tables are
+   short, so sticky headers are unnecessary — pin them off. */
+#quality_check_details--detail .table__head {
+  position: static;
+}
+
+/* Breathing room above each section heading so it never butts against the
+   table that precedes it. */
+#quality_check_details--detail .page__content h3 {
+  margin-top: 20px;
+}
