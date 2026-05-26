@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::io::{Cursor, Read};
 
 use anyhow::{anyhow, Context, Result};
-use chrono::{Duration, NaiveDate};
+use chrono::{Datelike, Duration, NaiveDate};
 use contracts::domain::a027_wb_documents::aggregate::WbWeeklyReportManualData;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -90,15 +90,15 @@ pub fn extract_weekly_report_from_text(
         .lines()
         .map(normalize_space)
         .find(|line| line.contains("Отчет Вайлдберриз") || line.contains("Отчёт Вайлдберриз"));
-    let source = match file_name {
-        Some(name) => format!("{text}\n{name}"),
-        None => text.to_string(),
-    };
-    let report_date = extract_report_date(&source);
-    // Период считаем в первую очередь от даты отчёта ("Отчет № … от DD.MM.YYYY"
-    // в имени документа) — это самый надёжный якорь: недельный отчёт WB
-    // покрывает эту дату + 6 дней. Скан периода из тела PDF используем только
-    // как запасной вариант, т.к. там встречаются посторонние интервалы дат.
+    // Дата отчёта берётся в первую очередь из имени документа/файла
+    // ("Отчет № … от DD.MM.YYYY") — это самый надёжный якорь начала недельного
+    // периода. Тело PDF используем только как запасной вариант: там встречаются
+    // посторонние даты (дата формирования отчёта и т.п.), которые сбивают период.
+    let report_date =
+        report_date_from_file_name(file_name).or_else(|| extract_report_date(text));
+    // Недельный отчёт WB всегда покрывает понедельник–воскресенье, поэтому от
+    // даты отчёта восстанавливаем полную неделю. Скан периода из тела PDF — тоже
+    // запасной вариант.
     let (period_from, period_to) = report_date
         .as_deref()
         .and_then(weekly_period_from_report_date)
@@ -113,8 +113,7 @@ pub fn extract_weekly_report_from_text(
 
     let manual_data = WbWeeklyReportManualData {
         realized_goods_total: amount_for(&rows_by_code, "1.1"),
-        wb_reward_with_vat: sum_amounts(&rows_by_code, &["2.1", "2.2"])
-            .or_else(|| amount_for(&rows_by_code, "2")),
+        wb_reward_with_vat: reward_with_vat(&rows_by_code),
         // Строка 8 («Итого к перечислению Продавцу») — это итоговая сумма с
         // одним значением и без НДС, к тому же последняя кодовая строка таблицы:
         // после неё в текст подклеиваются числа из футера/соседних строк.
@@ -265,10 +264,28 @@ fn extract_report_date(source: &str) -> Option<String> {
         })
 }
 
+/// Дата отчёта из имени документа/файла. Ищем только метку "от DD.MM.YYYY"
+/// (или ISO) в самом имени, не в теле PDF, чтобы не подхватить постороннюю дату.
+fn report_date_from_file_name(file_name: Option<&str>) -> Option<String> {
+    let name = file_name?;
+    REPORT_DATE_ISO_RE
+        .captures(name)
+        .map(|caps| format!("{}-{}-{}", &caps[1], &caps[2], &caps[3]))
+        .or_else(|| {
+            REPORT_DATE_DMY_RE
+                .captures(name)
+                .map(|caps| format!("{}-{}-{}", &caps[3], &caps[2], &caps[1]))
+        })
+}
+
+/// Недельный отчёт WB всегда покрывает понедельник–воскресенье. Привязываем
+/// начало периода к понедельнику недели, в которую попадает дата отчёта, а конец
+/// — к воскресенью (начало + 6 дней). Так период остаётся корректным, даже если
+/// дата отчёта пришлась на другой день недели.
 fn weekly_period_from_report_date(report_date: &str) -> Option<(Option<String>, Option<String>)> {
     let date = NaiveDate::parse_from_str(report_date, "%Y-%m-%d").ok()?;
-    let from = date;
-    let to = date.checked_add_signed(Duration::days(6))?;
+    let from = date - Duration::days(date.weekday().num_days_from_monday() as i64);
+    let to = from.checked_add_signed(Duration::days(6))?;
     Some((
         Some(from.format("%Y-%m-%d").to_string()),
         Some(to.format("%Y-%m-%d").to_string()),
@@ -322,6 +339,42 @@ fn first_amount_for(rows_by_code: &BTreeMap<String, WbWeeklyReportRow>, code: &s
     rows_by_code
         .get(code)
         .and_then(|row| collect_amounts(&row.raw_text).into_iter().next())
+}
+
+/// Вознаграждение WB с НДС (показатель 2.1 + 2.2).
+///
+/// В отчёте это две суммы — вознаграждение без НДС и НДС с вознаграждения. Итог
+/// — это удержание, и его знак важен для сверки: в книге проводок
+/// `mp_commission` хранится отрицательным, а сверка считает `отчёт − проводки`.
+/// Величину берём как сумму модулей (знаки колонок в выгрузке PDF нестабильны),
+/// но если хотя бы одна из составляющих в отчёте идёт со знаком «минус»
+/// (удержание), итог делаем отрицательным.
+///
+/// Поддерживаем две раскладки таблицы:
+/// 1. Раздельные строки 2.1 (без НДС) и 2.2 (НДС) — берём суммы обеих строк.
+/// 2. Единая строка 2.1 (или 2) с двумя колонками — берём `amount` (без НДС) и
+///    `vat_amount` (НДС) одной строки.
+fn reward_with_vat(rows_by_code: &BTreeMap<String, WbWeeklyReportRow>) -> Option<f64> {
+    if let (Some(base), Some(vat)) = (rows_by_code.get("2.1"), rows_by_code.get("2.2")) {
+        let base_amount = base.amount?;
+        return Some(signed_reward(base_amount, vat.amount.unwrap_or(0.0)));
+    }
+
+    let row = rows_by_code.get("2.1").or_else(|| rows_by_code.get("2"))?;
+    let base_amount = row.amount?;
+    Some(signed_reward(base_amount, row.vat_amount.unwrap_or(0.0)))
+}
+
+/// Складывает вознаграждение (2.1) и НДС (2.2) по модулю, но сохраняет знак
+/// удержания: если в отчёте хотя бы одна из сумм отрицательна, итог тоже
+/// отрицательный.
+fn signed_reward(base: f64, vat: f64) -> f64 {
+    let magnitude = base.abs() + vat.abs();
+    if base < 0.0 || vat < 0.0 {
+        -magnitude
+    } else {
+        magnitude
+    }
 }
 
 fn sum_amounts(rows_by_code: &BTreeMap<String, WbWeeklyReportRow>, codes: &[&str]) -> Option<f64> {
@@ -388,6 +441,57 @@ mod tests {
         assert_eq!(extracted.manual_data.logistics, Some(70.0));
         assert_eq!(extracted.manual_data.other_deductions, Some(55.0));
         assert_eq!(extracted.manual_data.seller_transfer_total, Some(976.22));
+    }
+
+    #[test]
+    fn reward_is_negative_deduction_when_report_shows_minus() {
+        // В реальных отчётах удержания (вознаграждение и НДС) идут со знаком
+        // «минус». Итог 2.1+2.2 складывает модули по величине, но сохраняет знак
+        // удержания: при минусе хотя бы в одной строке итог отрицательный.
+        let text = "\
+            2.1 Вознаграждение Вайлдберриз — — -416 628,60
+            2.2 НДС с вознаграждения Вайлдберриз — — -91 658,41";
+
+        let extracted = extract_weekly_report_from_text(text, None).unwrap();
+        let reward = extracted.manual_data.wb_reward_with_vat.unwrap();
+        assert!((reward + 508_287.01).abs() < 1e-6, "got {reward}");
+    }
+
+    #[test]
+    fn period_uses_file_name_date_over_body_date() {
+        // В теле PDF может встретиться посторонняя дата ("от 2026-04-13" — дата
+        // формирования отчёта). Период должен браться от даты из имени файла и
+        // покрывать понедельник–воскресенье.
+        let text = "\
+            Отчет Вайлдберриз № 685740510 от 2026-04-13
+            1.1 Итого стоимость реализованного товара — — 1 234,56 0,00";
+
+        let extracted = extract_weekly_report_from_text(
+            text,
+            Some("Отчет №685740510 от 2026-04-06.pdf"),
+        )
+        .unwrap();
+
+        assert_eq!(extracted.report_period_from.as_deref(), Some("2026-04-06"));
+        assert_eq!(extracted.report_period_to.as_deref(), Some("2026-04-12"));
+    }
+
+    #[test]
+    fn weekly_period_snaps_to_monday_sunday() {
+        // Даже если дата отчёта пришлась на середину недели, период привязывается
+        // к понедельнику–воскресенью.
+        let (from, to) = weekly_period_from_report_date("2026-04-08").unwrap();
+        assert_eq!(from.as_deref(), Some("2026-04-06"));
+        assert_eq!(to.as_deref(), Some("2026-04-12"));
+    }
+
+    #[test]
+    fn reward_from_single_row_uses_amount_plus_vat() {
+        // Единая строка с двумя колонками: вознаграждение без НДС + НДС.
+        let text = "2.1 Вознаграждение Вайлдберриз — — 100,00 20,00";
+
+        let extracted = extract_weekly_report_from_text(text, None).unwrap();
+        assert_eq!(extracted.manual_data.wb_reward_with_vat, Some(120.0));
     }
 
     #[test]

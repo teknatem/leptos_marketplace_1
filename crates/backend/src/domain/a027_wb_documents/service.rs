@@ -2,11 +2,14 @@ use anyhow::Result;
 use contracts::domain::a027_wb_documents::aggregate::{WbDocument, WbWeeklyReportManualData};
 use uuid::Uuid;
 
+use super::change_token;
 use super::repository;
 pub use repository::{WbDocumentsListQuery, WbDocumentsListResult, WbDocumentsListRow};
 
 pub async fn upsert_by_service_name(document: &WbDocument) -> Result<bool> {
-    repository::upsert_by_service_name(document).await
+    let result = repository::upsert_by_service_name(document).await?;
+    change_token::TOKEN.bump();
+    Ok(result)
 }
 
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbDocument>> {
@@ -47,7 +50,7 @@ pub async fn update_manual_fields(
     }
     document.before_write();
 
-    repository::upsert_by_service_name(&document).await?;
+    upsert_by_service_name(&document).await?;
     repository::get_by_id(id).await
 }
 
@@ -61,6 +64,6 @@ pub async fn store_max_deviation(
 
     document.max_deviation = max_deviation;
 
-    repository::upsert_by_service_name(&document).await?;
+    upsert_by_service_name(&document).await?;
     repository::get_by_id(id).await
 }

@@ -32,6 +32,7 @@ pub struct Model {
     pub api_key_stats: Option<String>,
     pub test_mode: bool,
     pub planned_commission_percent: Option<f64>,
+    pub planned_acquiring_percent: Option<f64>,
     pub authorization_type: String,
     pub is_deleted: bool,
     pub is_posted: bool,
@@ -81,6 +82,7 @@ impl From<Model> for ConnectionMP {
             api_key_stats: m.api_key_stats,
             test_mode: m.test_mode,
             planned_commission_percent: m.planned_commission_percent,
+            planned_acquiring_percent: m.planned_acquiring_percent,
             authorization_type,
         }
     }
@@ -130,6 +132,7 @@ pub async fn insert(aggregate: &ConnectionMP) -> anyhow::Result<Uuid> {
         api_key_stats: Set(aggregate.api_key_stats.clone()),
         test_mode: Set(aggregate.test_mode),
         planned_commission_percent: Set(aggregate.planned_commission_percent),
+        planned_acquiring_percent: Set(aggregate.planned_acquiring_percent),
         authorization_type: Set(aggregate.authorization_type.as_str().to_string()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
@@ -159,6 +162,7 @@ pub async fn update(aggregate: &ConnectionMP) -> anyhow::Result<()> {
         api_key_stats: Set(aggregate.api_key_stats.clone()),
         test_mode: Set(aggregate.test_mode),
         planned_commission_percent: Set(aggregate.planned_commission_percent),
+        planned_acquiring_percent: Set(aggregate.planned_acquiring_percent),
         authorization_type: Set(aggregate.authorization_type.as_str().to_string()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),

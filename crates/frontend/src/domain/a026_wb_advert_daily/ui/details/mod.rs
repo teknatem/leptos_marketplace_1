@@ -244,6 +244,22 @@ struct P913Row {
     is_problem: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct P911Row {
+    id: String,
+    entry_date: String,
+    #[allow(dead_code)]
+    turnover_code: String,
+    amount: f64,
+    #[serde(default)]
+    nomenclature_ref: Option<String>,
+    #[serde(default)]
+    marketplace_product_ref: Option<String>,
+    wb_advert_campaign_code: String,
+    #[serde(default)]
+    is_problem: bool,
+}
+
 #[component]
 fn ReadField(label: &'static str, value: String) -> impl IntoView {
     view! {
@@ -302,6 +318,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
     let (journal_loading, set_journal_loading) = signal(false);
     let (journal_error, set_journal_error) = signal::<Option<String>>(None);
     let (projections, set_projections) = signal(Vec::<P913Row>::new());
+    let (projections_p911, set_projections_p911) = signal(Vec::<P911Row>::new());
     let (projections_loaded, set_projections_loaded) = signal(false);
     let (lines_sort_field, set_lines_sort_field) = signal("wb_name".to_string());
     let (lines_sort_ascending, set_lines_sort_ascending) = signal(true);
@@ -399,7 +416,18 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                         .collect()
                                 })
                                 .unwrap_or_default();
+                            let rows_p911 = value["p911_wb_advert_by_items"]
+                                .as_array()
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|row| {
+                                            serde_json::from_value::<P911Row>(row.clone()).ok()
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default();
                             set_projections.set(rows);
+                            set_projections_p911.set(rows_p911);
                             set_projections_loaded.set(true);
                         }
                     }
@@ -484,6 +512,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                         set_journal.set(Vec::new());
                         set_projections_loaded.set(false);
                         set_projections.set(Vec::new());
+                        set_projections_p911.set(Vec::new());
                         load_doc.run(());
                     }
                     Ok(resp) => {
@@ -528,6 +557,16 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
             tabs.open_tab(
                 &format!("a004_nomenclature_details_{}", nom_ref),
                 "Номенклатура",
+            );
+        }
+    });
+
+    let open_product = Callback::new({
+        let tabs = tabs.clone();
+        move |product_ref: String| {
+            tabs.open_tab(
+                &format!("a007_marketplace_product_details_{}", product_ref),
+                "Товар маркетплейса",
             );
         }
     });
@@ -1013,6 +1052,14 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                             let problem_count = rows.iter().filter(|r| r.is_problem).count();
                             let row_count = rows.len();
                             let is_empty = rows.is_empty();
+
+                            let rows_p911 = projections_p911.get();
+                            let p911_total: f64 = rows_p911.iter().map(|r| r.amount).sum();
+                            let p911_problem_count = rows_p911.iter().filter(|r| r.is_problem).count();
+                            let p911_row_count = rows_p911.len();
+                            let p911_is_empty = rows_p911.is_empty();
+                            let open_nom_p911 = open_nomenclature.clone();
+                            let open_product_p911 = open_product.clone();
                             view! {
                                 <div style="display:flex;flex-direction:column;gap:var(--spacing-md);width:100%;">
                                     <CardAnimated delay_ms=0 nav_id="a026_wb_advert_daily_details_projections_summary">
@@ -1075,6 +1122,100 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                     <TableCell><TableCellLayout>{fmt_date(&r.entry_date)}</TableCellLayout></TableCell>
                                                                     <TableCell><TableCellLayout>{type_label}</TableCellLayout></TableCell>
                                                                     <TableCell><TableCellLayout truncate=true>{order_key}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout truncate=true>{r.wb_advert_campaign_code.clone()}</TableCellLayout></TableCell>
+                                                                    <TableCell class="text-right"><TableCellLayout>{fmt_money(r.amount)}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout>
+                                                                        <Badge appearance=BadgeAppearance::Tint color=badge_color>{badge_label}</Badge>
+                                                                    </TableCellLayout></TableCell>
+                                                                </TableRow>
+                                                            }
+                                                        } />
+                                                    </TableBody>
+                                                </Table>
+                                                </div>
+                                            }.into_any()
+                                        }}
+                                    </CardAnimated>
+
+                                    <CardAnimated delay_ms=80 nav_id="a026_wb_advert_daily_details_projections_p911_summary">
+                                        <h4 class="details-section__title">"p911 — Обороты рекламы по номенклатуре"</h4>
+                                        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>
+                                                {format!("Строк: {}", p911_row_count)}
+                                            </Badge>
+                                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Success>
+                                                {format!("Оборот: {}", fmt_money(p911_total))}
+                                            </Badge>
+                                            {if p911_problem_count > 0 {
+                                                view! {
+                                                    <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Danger>
+                                                        {format!("Без номенклатуры: {}", p911_problem_count)}
+                                                    </Badge>
+                                                }.into_any()
+                                            } else {
+                                                view! { <span></span> }.into_any()
+                                            }}
+                                        </div>
+                                    </CardAnimated>
+                                    <CardAnimated delay_ms=120 nav_id="a026_wb_advert_daily_details_projections_p911_table">
+                                        {if p911_is_empty {
+                                            view! {
+                                                <div class="text-muted">"Нет записей p911. Обороты по номенклатуре формируются при проведении документа."</div>
+                                            }.into_any()
+                                        } else {
+                                            view! {
+                                                <div class="table-wrapper">
+                                                <Table attr:style="width:100%;min-width:760px;table-layout:fixed;">
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHeaderCell attr:style="width:80px;">"Дата"</TableHeaderCell>
+                                                            <TableHeaderCell>"Товар МП"</TableHeaderCell>
+                                                            <TableHeaderCell>"Номенклатура"</TableHeaderCell>
+                                                            <TableHeaderCell attr:style="width:110px;">"Кампания"</TableHeaderCell>
+                                                            <TableHeaderCell class="text-right" attr:style="width:90px;">"Сумма"</TableHeaderCell>
+                                                            <TableHeaderCell>"Статус"</TableHeaderCell>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        <For each=move || projections_p911.get() key=|r| r.id.clone() children=move |r| {
+                                                            let (badge_color, badge_label) = if r.is_problem {
+                                                                (BadgeColor::Danger, "Без номенклатуры")
+                                                            } else {
+                                                                (BadgeColor::Success, "OK")
+                                                            };
+                                                            let nom_ref_val = r.nomenclature_ref.clone().unwrap_or_default();
+                                                            let product_ref_val = r.marketplace_product_ref.clone().unwrap_or_default();
+                                                            let open_nom_click = open_nom_p911.clone();
+                                                            let open_product_click = open_product_p911.clone();
+                                                            view! {
+                                                                <TableRow>
+                                                                    <TableCell><TableCellLayout>{fmt_date(&r.entry_date)}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout truncate=true>
+                                                                        {if product_ref_val.is_empty() {
+                                                                            view! { <span class="text-muted">"—"</span> }.into_any()
+                                                                        } else {
+                                                                            let product_ref_click = product_ref_val.clone();
+                                                                            view! {
+                                                                                <a href="#" class="table__link" on:click=move |e| {
+                                                                                    e.prevent_default();
+                                                                                    open_product_click.run(product_ref_click.clone());
+                                                                                }>{product_ref_val.clone()}</a>
+                                                                            }.into_any()
+                                                                        }}
+                                                                    </TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout truncate=true>
+                                                                        {if nom_ref_val.is_empty() {
+                                                                            view! { <span class="text-muted">"—"</span> }.into_any()
+                                                                        } else {
+                                                                            let nom_ref_click = nom_ref_val.clone();
+                                                                            view! {
+                                                                                <a href="#" class="table__link" on:click=move |e| {
+                                                                                    e.prevent_default();
+                                                                                    open_nom_click.run(nom_ref_click.clone());
+                                                                                }>{nom_ref_val.clone()}</a>
+                                                                            }.into_any()
+                                                                        }}
+                                                                    </TableCellLayout></TableCell>
                                                                     <TableCell><TableCellLayout truncate=true>{r.wb_advert_campaign_code.clone()}</TableCellLayout></TableCell>
                                                                     <TableCell class="text-right"><TableCellLayout>{fmt_money(r.amount)}</TableCellLayout></TableCell>
                                                                     <TableCell><TableCellLayout>

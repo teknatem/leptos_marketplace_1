@@ -1306,6 +1306,23 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
 
         // ═══════════════════════════════════════════════════════════════════
+        // Quality checks subsystem
+        // ═══════════════════════════════════════════════════════════════════
+        "quality_checks" => {
+            use crate::quality::ui::list::QualityCheckList;
+            view! { <QualityCheckList /> }.into_any()
+        }
+
+        k if k.starts_with("quality_check_details_") => {
+            use crate::quality::ui::details::QualityCheckDetails;
+            let check_id = k
+                .strip_prefix("quality_check_details_")
+                .unwrap()
+                .to_string();
+            view! { <QualityCheckDetails check_id=check_id /> }.into_any()
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
         // Unknown / Fallback
         // ═══════════════════════════════════════════════════════════════════
         _ => {

@@ -23,6 +23,10 @@ pub struct Model {
     pub registrator_ref: String,
     #[sea_orm(nullable)]
     pub general_ledger_ref: Option<String>,
+    /// Ссылка на a007_marketplace_product (товар маркетплейса по nm_id).
+    /// При проведении a026 заполняется всегда (a007 создаётся автоматически при отсутствии).
+    #[sea_orm(nullable)]
+    pub marketplace_product_ref: Option<String>,
     pub is_problem: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -57,6 +61,7 @@ pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> 
         registrator_type: Set(entry.registrator_type.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
         general_ledger_ref: Set(entry.general_ledger_ref.clone()),
+        marketplace_product_ref: Set(entry.marketplace_product_ref.clone()),
         is_problem: Set(entry.is_problem),
         created_at: Set(entry.created_at.clone()),
         updated_at: Set(entry.updated_at.clone()),

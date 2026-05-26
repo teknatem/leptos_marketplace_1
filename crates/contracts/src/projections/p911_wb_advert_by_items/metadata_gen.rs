@@ -30,6 +30,7 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
             "a026_wb_advert_daily",
             "general_ledger",
             "a004_nomenclature",
+            "a007_marketplace_product",
         ],
     },
     access: None,
@@ -125,6 +126,15 @@ pub const FIELDS: &[FieldMetadata] = &[
         false,
         Some("Связь со сводной записью general_ledger."),
         None,
+    ),
+    field(
+        "marketplace_product_ref",
+        "Option<String>",
+        "Marketplace Product",
+        true,
+        false,
+        Some("Ссылка на a007_marketplace_product (товар маркетплейса по nm_id). При проведении a026 создаётся автоматически, если отсутствует."),
+        Some("a007_marketplace_product"),
     ),
     field(
         "is_problem",

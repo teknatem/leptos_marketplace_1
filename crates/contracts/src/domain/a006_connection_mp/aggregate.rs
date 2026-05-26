@@ -138,6 +138,9 @@ pub struct ConnectionMP {
     #[serde(rename = "ПлановыйПроцентКомиссии")]
     pub planned_commission_percent: Option<f64>,
 
+    #[serde(rename = "ПлановыйПроцентЭквайринга")]
+    pub planned_acquiring_percent: Option<f64>,
+
     #[serde(rename = "ТипАвторизации")]
     pub authorization_type: AuthorizationType,
 }
@@ -167,6 +170,7 @@ impl ConnectionMP {
             api_key_stats: None,
             test_mode: false,
             planned_commission_percent: None,
+            planned_acquiring_percent: None,
             authorization_type: AuthorizationType::default(),
         }
     }
@@ -196,6 +200,7 @@ impl ConnectionMP {
         self.api_key_stats = dto.api_key_stats.clone();
         self.test_mode = dto.test_mode;
         self.planned_commission_percent = dto.planned_commission_percent;
+        self.planned_acquiring_percent = dto.planned_acquiring_percent;
         self.authorization_type = dto.authorization_type.clone();
     }
 
@@ -315,6 +320,9 @@ pub struct ConnectionMPDto {
 
     #[serde(rename = "ПлановыйПроцентКомиссии")]
     pub planned_commission_percent: Option<f64>,
+
+    #[serde(rename = "ПлановыйПроцентЭквайринга")]
+    pub planned_acquiring_percent: Option<f64>,
 
     #[serde(rename = "ТипАвторизации")]
     pub authorization_type: AuthorizationType,

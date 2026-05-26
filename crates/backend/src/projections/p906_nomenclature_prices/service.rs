@@ -116,6 +116,60 @@ pub async fn resolve_price_for_nomenclature(
     Ok(None)
 }
 
+/// Variant that accepts a pre-computed `known_base_ref`, skipping the DB lookup of
+/// `a004_nomenclature`. Use this when the caller already has `base_nomenclature_ref` resolved
+/// (e.g. after `refill_base_nomenclature_ref` ran), to avoid a redundant DB round-trip.
+pub async fn resolve_price_for_nomenclature_with_known_base(
+    nomenclature_ref: &str,
+    known_base_ref: Option<&str>,
+    target_date: &str,
+) -> Result<Option<ResolvedPrice>> {
+    if nomenclature_ref.trim().is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(price) = get_positive_price_for_date(nomenclature_ref, target_date).await? {
+        return Ok(Some(ResolvedPrice {
+            price,
+            source: ResolvedPriceSource::NomenclatureOnDate,
+            source_ref: nomenclature_ref.to_string(),
+        }));
+    }
+
+    let effective_base_ref = known_base_ref
+        .filter(|r| !r.is_empty() && *r != ZERO_UUID && *r != nomenclature_ref);
+
+    if let Some(base_ref) = effective_base_ref {
+        if let Some(price) = get_positive_price_for_date(base_ref, target_date).await? {
+            return Ok(Some(ResolvedPrice {
+                price,
+                source: ResolvedPriceSource::BaseNomenclatureOnDate,
+                source_ref: base_ref.to_string(),
+            }));
+        }
+    }
+
+    if let Some(price) = repository::get_last_nonzero_price(nomenclature_ref).await? {
+        return Ok(Some(ResolvedPrice {
+            price,
+            source: ResolvedPriceSource::NomenclatureLastNonzero,
+            source_ref: nomenclature_ref.to_string(),
+        }));
+    }
+
+    if let Some(base_ref) = effective_base_ref {
+        if let Some(price) = repository::get_last_nonzero_price(base_ref).await? {
+            return Ok(Some(ResolvedPrice {
+                price,
+                source: ResolvedPriceSource::BaseNomenclatureLastNonzero,
+                source_ref: base_ref.to_string(),
+            }));
+        }
+    }
+
+    Ok(None)
+}
+
 pub async fn resolve_price_for_optional_nomenclature(
     nomenclature_ref: Option<&str>,
     target_date: &str,

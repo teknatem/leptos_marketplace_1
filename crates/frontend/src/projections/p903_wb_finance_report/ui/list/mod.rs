@@ -1,6 +1,7 @@
 mod state;
 
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::auth_download::download_authenticated_file;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{TableCellMoney, TableCrosshairHighlight};
 use crate::shared::icons::icon;
@@ -407,7 +408,7 @@ pub fn WbFinanceReportList() -> impl IntoView {
 
         set_is_exporting.set(true);
         leptos::task::spawn_local(async move {
-            match fetch_finance_report_export(
+            let url = build_export_url(
                 &date_from_val,
                 &date_to_val,
                 &nm_id_val,
@@ -417,11 +418,12 @@ pub fn WbFinanceReportList() -> impl IntoView {
                 &srid_val,
                 &sort_by_val,
                 sort_desc,
-            )
-            .await
+            );
+            if let Err(e) =
+                download_authenticated_file(&url, "wb_finance_report.csv").await
             {
-                Ok(data) => download_finance_report_csv(&data),
-                Err(e) => log!("Failed to export finance report: {}", e),
+                log!("Failed to export finance report: {}", e);
+                set_error.set(Some(format!("Экспорт CSV: {e}")));
             }
             set_is_exporting.set(false);
         });
@@ -1002,7 +1004,8 @@ async fn fetch_finance_report(
     Ok(data)
 }
 
-async fn fetch_finance_report_export(
+/// Строит URL эндпоинта CSV-экспорта с учётом всех фильтров (без пагинации).
+fn build_export_url(
     date_from: &str,
     date_to: &str,
     nm_id: &str,
@@ -1012,13 +1015,7 @@ async fn fetch_finance_report_export(
     srid: &str,
     sort_by: &str,
     sort_desc: bool,
-) -> Result<Vec<WbFinanceReportDto>, String> {
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-    opts.set_mode(RequestMode::Cors);
-
+) -> String {
     let mut url = format!(
         "/api/p903/finance-report/export?date_from={}&date_to={}&sort_by={}&sort_desc={}",
         encode_q(date_from),
@@ -1051,127 +1048,5 @@ async fn fetch_finance_report_export(
         url.push_str(&format!("&srid={}", encode_q(srid.trim())));
     }
 
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let text = JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: Vec<WbFinanceReportDto> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    Ok(data)
-}
-
-fn download_finance_report_csv(data: &[WbFinanceReportDto]) {
-    if data.is_empty() {
-        log!("No data to export");
-        return;
-    }
-
-    let mut csv = String::from("\u{FEFF}");
-    csv.push_str("Date;RRD_ID;NM_ID;SA_Name;Subject;Operation;Qty;Retail_Amount;Price_withDisc;Commission%;Sales_Commission;Acquiring_Fee;Penalty;Storage_Fee;SRID;Loaded_At\n");
-
-    for item in data {
-        let nm_id_str = item
-            .nm_id
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        let sa_name_str = item.sa_name.as_deref().unwrap_or("-");
-        let subject_str = item.subject_name.as_deref().unwrap_or("-");
-        let operation_str = item.supplier_oper_name.as_deref().unwrap_or("-");
-
-        let qty_str = item
-            .quantity
-            .map(|q| format!("{}", q))
-            .unwrap_or_else(|| "-".to_string());
-        let retail_amount_str = item
-            .retail_amount
-            .map(|r| format!("{:.2}", r).replace(".", ","))
-            .unwrap_or_else(|| "-".to_string());
-        let price_withdisc_str = item
-            .retail_price_withdisc_rub
-            .map(|p| format!("{:.2}", p).replace(".", ","))
-            .unwrap_or_else(|| "-".to_string());
-        let commission_str = item
-            .commission_percent
-            .map(|c| format!("{:.2}", c).replace(".", ","))
-            .unwrap_or_else(|| "-".to_string());
-        let sales_commission_str = item
-            .ppvz_sales_commission
-            .map(|sc| format!("{:.2}", sc).replace(".", ","))
-            .unwrap_or_else(|| "-".to_string());
-        let acquiring_str = item
-            .acquiring_fee
-            .map(|a| format!("{:.2}", a).replace(".", ","))
-            .unwrap_or_else(|| "-".to_string());
-        let penalty_str = item
-            .penalty
-            .map(|p| format!("{:.2}", p).replace(".", ","))
-            .unwrap_or_else(|| "-".to_string());
-        let storage_str = item
-            .storage_fee
-            .map(|s| format!("{:.2}", s).replace(".", ","))
-            .unwrap_or_else(|| "-".to_string());
-        let srid_str = item.srid.as_deref().unwrap_or("-");
-
-        csv.push_str(&format!(
-            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};{};{};{};{};\"{}\";\"{}\"\n",
-            item.rr_dt,
-            item.rrd_id,
-            nm_id_str,
-            sa_name_str.replace('\"', "\"\""),
-            subject_str.replace('\"', "\"\""),
-            operation_str.replace('\"', "\"\""),
-            qty_str,
-            retail_amount_str,
-            price_withdisc_str,
-            commission_str,
-            sales_commission_str,
-            acquiring_str,
-            penalty_str,
-            storage_str,
-            srid_str.replace('\"', "\"\""),
-            item.loaded_at_utc.replace('\"', "\"\"")
-        ));
-    }
-
-    use js_sys::Array;
-    use wasm_bindgen::JsValue;
-
-    let array = Array::new();
-    array.push(&JsValue::from_str(&csv));
-
-    let blob_props = web_sys::BlobPropertyBag::new();
-    blob_props.set_type("text/csv;charset=utf-8;");
-
-    if let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&array, &blob_props) {
-        if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
-            if let Some(window) = web_sys::window() {
-                if let Some(document) = window.document() {
-                    if let Ok(a) = document.create_element("a") {
-                        let a: web_sys::HtmlAnchorElement = a.unchecked_into();
-                        a.set_href(&url);
-                        let filename = format!(
-                            "wb_finance_report_{}.csv",
-                            chrono::Utc::now().format("%Y%m%d_%H%M%S")
-                        );
-                        a.set_download(&filename);
-                        a.click();
-                        let _ = web_sys::Url::revoke_object_url(&url);
-                    }
-                }
-            }
-        }
-    }
+    url
 }

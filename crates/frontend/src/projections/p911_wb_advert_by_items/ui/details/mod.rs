@@ -140,6 +140,7 @@ pub fn WbAdvertByItemDetail(
                     let current_general_ledger_ref = detail.general_ledger_ref.clone();
                     let tabs_for_general_ledger = tabs_store.clone();
                     let tabs_for_registrator = tabs_store.clone();
+                    let tabs_for_product = tabs_store.clone();
 
                     view! {
                         <div class="proj-detail">
@@ -193,6 +194,7 @@ pub fn WbAdvertByItemDetail(
                                                 <TableRow>
                                                     <TableHeaderCell min_width=120.0>"Entry Date"</TableHeaderCell>
                                                     <TableHeaderCell min_width=220.0>"Nomenclature"</TableHeaderCell>
+                                                    <TableHeaderCell min_width=220.0>"Marketplace Product"</TableHeaderCell>
                                                     <TableHeaderCell min_width=120.0>"Amount"</TableHeaderCell>
                                                     <TableHeaderCell min_width=120.0>"Problem"</TableHeaderCell>
                                                     <TableHeaderCell min_width=260.0>"Registrator"</TableHeaderCell>
@@ -200,10 +202,29 @@ pub fn WbAdvertByItemDetail(
                                             </TableHeader>
                                             <TableBody>
                                                 <For each=move || detail.items.clone() key=|item| item.id.clone() children=move |item| {
+                                                    let product_ref = item.marketplace_product_ref.clone();
+                                                    let tabs_for_row = tabs_for_product.clone();
                                                     view! {
                                                         <TableRow>
                                                             <TableCell><TableCellLayout>{item.entry_date}</TableCellLayout></TableCell>
                                                             <TableCell><TableCellLayout truncate=true>{item.nomenclature_ref.unwrap_or_else(|| "-".to_string())}</TableCellLayout></TableCell>
+                                                            <TableCell><TableCellLayout truncate=true>
+                                                                {match product_ref {
+                                                                    Some(pref) if !pref.is_empty() => {
+                                                                        let pref_click = pref.clone();
+                                                                        view! {
+                                                                            <a href="#" class="table__link" on:click=move |e| {
+                                                                                e.prevent_default();
+                                                                                tabs_for_row.open_tab(
+                                                                                    &format!("a007_marketplace_product_details_{}", pref_click),
+                                                                                    "Товар маркетплейса",
+                                                                                );
+                                                                            }>{truncate(&pref, 18)}</a>
+                                                                        }.into_any()
+                                                                    }
+                                                                    _ => view! { <span class="text-muted">"—"</span> }.into_any(),
+                                                                }}
+                                                            </TableCellLayout></TableCell>
                                                             <TableCell class="table__cell--right"><TableCellLayout>{format_number(item.amount)}</TableCellLayout></TableCell>
                                                             <TableCell>
                                                                 <TableCellLayout>

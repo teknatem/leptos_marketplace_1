@@ -131,6 +131,8 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
 
         "navigator_marketplace" => "Все по маркетплейсам",
 
+        "quality_checks" => "Контроль качества данных",
+
         _ => "",
     }
 }

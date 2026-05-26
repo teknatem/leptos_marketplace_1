@@ -581,46 +581,56 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
     let rows1 = rows1_result?;
     let rows2 = rows2_result?;
 
+    let is_date_group = group_by == "date";
+    // По дням сливаем строки по дню месяца, чтобы один и тот же день из П1 и П2
+    // совпадал (01 ↔ 01), даже когда периоды лежат в разных месяцах.
+    let day_key = |raw: &str| {
+        if is_date_group {
+            fmt_day_label(raw)
+        } else {
+            raw.to_string()
+        }
+    };
+
     let mut merged: std::collections::HashMap<String, DrilldownRow> =
         std::collections::HashMap::new();
 
     for r in rows1 {
+        let key = day_key(&r.group_key);
+        let label = day_key(&r.label);
         merged
-            .entry(r.group_key.clone())
+            .entry(key.clone())
             .or_insert_with(|| DrilldownRow {
-                group_key: r.group_key.clone(),
-                label: r.label.clone(),
+                group_key: key,
+                label,
                 value1: 0.0,
                 value2: 0.0,
                 delta_pct: None,
                 metric_values: std::collections::HashMap::new(),
             })
-            .value1 = r.total;
+            .value1 += r.total;
     }
 
     for r in rows2 {
-        let entry = merged
-            .entry(r.group_key.clone())
+        let key = day_key(&r.group_key);
+        let label = day_key(&r.label);
+        merged
+            .entry(key.clone())
             .or_insert_with(|| DrilldownRow {
-                group_key: r.group_key.clone(),
-                label: r.label.clone(),
+                group_key: key,
+                label,
                 value1: 0.0,
                 value2: 0.0,
                 delta_pct: None,
                 metric_values: std::collections::HashMap::new(),
-            });
-        entry.value2 = r.total;
+            })
+            .value2 += r.total;
     }
-
-    let is_date_group = group_by == "date";
 
     let mut rows: Vec<DrilldownRow> = merged
         .into_values()
         .map(|mut r| {
             r.delta_pct = pct_change(r.value1, r.value2);
-            if is_date_group {
-                r.label = fmt_day_label(&r.label);
-            }
             r
         })
         .collect();
@@ -710,15 +720,26 @@ pub async fn compute_drilldown_multi(
     let rows1 = rows1_result?;
     let rows2 = rows2_result?;
 
+    // По дням ключом служит день месяца, чтобы один и тот же день из П1 и П2
+    // совпадал (01 ↔ 01) даже в разных месяцах.
+    let day_key = |raw: &str| {
+        if is_date_group {
+            fmt_day_label(raw)
+        } else {
+            raw.to_string()
+        }
+    };
     let mut merged: std::collections::HashMap<String, DrilldownRow> =
         std::collections::HashMap::new();
 
     for (group_key, label, values) in rows1 {
+        let key = day_key(&group_key);
+        let label = day_key(&label);
         let entry = merged
-            .entry(group_key.clone())
+            .entry(key.clone())
             .or_insert_with(|| DrilldownRow {
-                group_key: group_key.clone(),
-                label: label.clone(),
+                group_key: key,
+                label,
                 value1: 0.0,
                 value2: 0.0,
                 delta_pct: None,
@@ -726,16 +747,18 @@ pub async fn compute_drilldown_multi(
             });
         for (i, (id, _)) in metric_resolved.iter().enumerate() {
             let mv = entry.metric_values.entry(id.clone()).or_default();
-            mv.value1 = values.get(i).copied().unwrap_or(0.0);
+            mv.value1 += values.get(i).copied().unwrap_or(0.0);
         }
     }
 
     for (group_key, label, values) in rows2 {
+        let key = day_key(&group_key);
+        let label = day_key(&label);
         let entry = merged
-            .entry(group_key.clone())
+            .entry(key.clone())
             .or_insert_with(|| DrilldownRow {
-                group_key: group_key.clone(),
-                label: label.clone(),
+                group_key: key,
+                label,
                 value1: 0.0,
                 value2: 0.0,
                 delta_pct: None,
@@ -743,7 +766,7 @@ pub async fn compute_drilldown_multi(
             });
         for (i, (id, _)) in metric_resolved.iter().enumerate() {
             let mv = entry.metric_values.entry(id.clone()).or_default();
-            mv.value2 = values.get(i).copied().unwrap_or(0.0);
+            mv.value2 += values.get(i).copied().unwrap_or(0.0);
         }
     }
 
@@ -752,9 +775,6 @@ pub async fn compute_drilldown_multi(
         .map(|mut r| {
             for mv in r.metric_values.values_mut() {
                 mv.delta_pct = pct_change(mv.value1, mv.value2);
-            }
-            if is_date_group {
-                r.label = fmt_day_label(&r.label);
             }
             r
         })

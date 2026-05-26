@@ -834,8 +834,17 @@ pub async fn get_projections(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    let p911_items =
+        crate::projections::p911_wb_advert_by_items::repository::list_by_registrator_ref(&id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get p911 projections for {}: {}", id, e);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
     Ok(Json(serde_json::json!({
-        "p913_wb_advert_order_attr": p913_items
+        "p913_wb_advert_order_attr": p913_items,
+        "p911_wb_advert_by_items": p911_items
     })))
 }
 

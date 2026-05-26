@@ -246,20 +246,192 @@ pub async fn fill_dealer_price_resolved(document: &mut WbOrders) -> Result<()> {
     Ok(())
 }
 
-/// Расчёт margin_pro в процентах, если dealer_price_ut и price_with_disc > 0:
-/// (price_with_disc - dealer_price_ut) / price_with_disc * 100
+/// Variant that uses the already-computed `document.base_nomenclature_ref`, skipping the
+/// `a004_nomenclature` DB lookup inside `resolve_price_for_nomenclature`. Call this after
+/// `auto_fill_references` (which runs `refill_base_nomenclature_ref` internally).
+pub async fn fill_dealer_price_with_known_base_ref(document: &mut WbOrders) -> Result<()> {
+    let nom_ref = match document.nomenclature_ref.clone() {
+        Some(r) => r,
+        None => {
+            document.line.dealer_price_ut = None;
+            return Ok(());
+        }
+    };
+
+    let order_date = wb_business_date(&document.state.order_dt).to_string();
+    let base_ref = document.base_nomenclature_ref.as_deref();
+
+    let resolved = crate::projections::p906_nomenclature_prices::service::resolve_price_for_nomenclature_with_known_base(
+        &nom_ref,
+        base_ref,
+        &order_date,
+    )
+    .await
+    .unwrap_or_else(|e| {
+        tracing::warn!("Failed to resolve dealer price for {}: {}", nom_ref, e);
+        None
+    });
+
+    if let Some(ref resolved_price) = resolved {
+        tracing::info!(
+            "Filled dealer_price_ut = {:?} for WB Orders document {} (from {})",
+            resolved_price.price,
+            document.base.id.as_string(),
+            resolved_price.describe(&order_date)
+        );
+    } else {
+        tracing::warn!(
+            "Could not find dealer_price_ut for WB Orders document {} (nomenclature: {})",
+            document.base.id.as_string(),
+            nom_ref
+        );
+    }
+
+    document.line.dealer_price_ut = resolved.map(|r| r.price);
+    Ok(())
+}
+
+/// Цена продажи из Marketplace API (/api/v3/orders), приведённая к рублям.
+///
+/// WB отдаёт `salePrice` в копейках в сыром payload (`marketplace_raw_payload_ref`).
+/// Для FBS-заказов это аналог `price_with_disc` из Statistics API, но доступный
+/// оперативно (Statistics API отстаёт на 1-3 дня). Возвращает None, если
+/// marketplace-payload отсутствует или в нём нет валидного salePrice.
+async fn marketplace_sale_price_rubles(document: &WbOrders) -> Option<f64> {
+    let raw_ref = document.source_meta.marketplace_raw_payload_ref.as_deref()?;
+    let raw_json = crate::shared::data::raw_storage::get_by_ref(raw_ref)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to load marketplace raw payload {}: {}", raw_ref, e);
+            None
+        })?;
+    let value: serde_json::Value = serde_json::from_str(&raw_json).ok()?;
+    let sale_price_kopecks = value.get("salePrice").and_then(|v| v.as_f64())?;
+    Some(sale_price_kopecks / 100.0)
+}
+
+/// Расчёт плановой маржи margin_pro в процентах.
+///
+/// margin_pro = (base_price * (100 - П1 - П2) / 100 - dealer_price_ut)
+///              / dealer_price_ut * 100
+///
+/// `base_price` = salePrice из Marketplace API (если есть и > 0), иначе
+/// price_with_disc из Statistics API. salePrice доступен оперативно для
+/// FBS-заказов, поэтому имеет приоритет.
+///
+/// где П1 — плановый процент комиссии, П2 — плановый процент эквайринга,
+/// оба берутся из подключения маркетплейса (a006_connection_mp).
+/// Возвращает None, если dealer_price_ut или base_price <= 0.
 pub async fn calculate_margin_pro(document: &mut WbOrders) -> Result<()> {
     let dealer_price = document.line.dealer_price_ut.unwrap_or(0.0);
-    let price_with_disc = document.line.price_with_disc.unwrap_or(0.0);
 
-    if dealer_price <= 0.0 || price_with_disc <= 0.0 {
+    // salePrice из Marketplace API имеет приоритет над price_with_disc.
+    let sale_price = marketplace_sale_price_rubles(document).await;
+    let (base_price, price_source) = match sale_price {
+        Some(sp) if sp > 0.0 => (sp, "salePrice (Marketplace API)"),
+        _ => (
+            document.line.price_with_disc.unwrap_or(0.0),
+            "price_with_disc (Statistics API)",
+        ),
+    };
+
+    if dealer_price <= 0.0 || base_price <= 0.0 {
         document.line.margin_pro = None;
         return Ok(());
     }
 
-    let margin = (price_with_disc - dealer_price) / price_with_disc * 100.0;
+    // Плановые проценты комиссии (П1) и эквайринга (П2) из подключения МП.
+    let (commission_percent, acquiring_percent) =
+        load_planned_percents(&document.header.connection_id).await;
+
+    let net_price = base_price * (100.0 - commission_percent - acquiring_percent) / 100.0;
+    let margin = (net_price - dealer_price) / dealer_price * 100.0;
+    tracing::debug!(
+        "margin_pro for WB Orders {} = {:.2}% (base_price={:.2} from {})",
+        document.base.id.as_string(),
+        margin,
+        base_price,
+        price_source
+    );
     document.line.margin_pro = Some(margin);
     Ok(())
+}
+
+/// Variant that accepts a pre-loaded connection, skipping the `a006_connection_mp` DB lookup.
+/// Call this when the connection was already loaded earlier in the same posting flow.
+pub async fn calculate_margin_pro_with_connection(
+    document: &mut WbOrders,
+    connection: Option<&contracts::domain::a006_connection_mp::aggregate::ConnectionMP>,
+) -> Result<()> {
+    let dealer_price = document.line.dealer_price_ut.unwrap_or(0.0);
+
+    let sale_price = marketplace_sale_price_rubles(document).await;
+    let (base_price, price_source) = match sale_price {
+        Some(sp) if sp > 0.0 => (sp, "salePrice (Marketplace API)"),
+        _ => (
+            document.line.price_with_disc.unwrap_or(0.0),
+            "price_with_disc (Statistics API)",
+        ),
+    };
+
+    if dealer_price <= 0.0 || base_price <= 0.0 {
+        document.line.margin_pro = None;
+        return Ok(());
+    }
+
+    let (commission_percent, acquiring_percent) = match connection {
+        Some(conn) => (
+            conn.planned_commission_percent.unwrap_or(0.0),
+            conn.planned_acquiring_percent.unwrap_or(0.0),
+        ),
+        None => load_planned_percents(&document.header.connection_id).await,
+    };
+
+    let net_price = base_price * (100.0 - commission_percent - acquiring_percent) / 100.0;
+    let margin = (net_price - dealer_price) / dealer_price * 100.0;
+    tracing::debug!(
+        "margin_pro for WB Orders {} = {:.2}% (base_price={:.2} from {})",
+        document.base.id.as_string(),
+        margin,
+        base_price,
+        price_source
+    );
+    document.line.margin_pro = Some(margin);
+    Ok(())
+}
+
+/// Загрузить плановые проценты комиссии и эквайринга из подключения маркетплейса.
+/// Отсутствующие значения трактуются как 0.
+async fn load_planned_percents(connection_id: &str) -> (f64, f64) {
+    let Ok(connection_uuid) = Uuid::parse_str(connection_id) else {
+        tracing::warn!(
+            "calculate_margin_pro: invalid connection_id={}, using 0% commission/acquiring",
+            connection_id
+        );
+        return (0.0, 0.0);
+    };
+
+    match crate::domain::a006_connection_mp::service::get_by_id(connection_uuid).await {
+        Ok(Some(connection)) => (
+            connection.planned_commission_percent.unwrap_or(0.0),
+            connection.planned_acquiring_percent.unwrap_or(0.0),
+        ),
+        Ok(None) => {
+            tracing::warn!(
+                "calculate_margin_pro: connection not found, connection_id={}, using 0% commission/acquiring",
+                connection_id
+            );
+            (0.0, 0.0)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "calculate_margin_pro: failed to load connection {}: {}, using 0% commission/acquiring",
+                connection_id,
+                e
+            );
+            (0.0, 0.0)
+        }
+    }
 }
 
 pub async fn store_document_with_raw(mut document: WbOrders, raw_json: &str) -> Result<Uuid> {

@@ -73,6 +73,9 @@ pub mod usecases;
 // External integration API (1C, etc.)
 pub mod ext_1c_wb_supply;
 
+// Data quality checks
+pub mod quality;
+
 // Debug endpoints (dev only)
 pub mod debug;
 pub mod kb_read;

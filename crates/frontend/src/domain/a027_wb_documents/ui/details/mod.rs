@@ -172,6 +172,7 @@ struct DetailsDto {
     #[serde(default)]
     comment: Option<String>,
     reconciliation: ReconciliationDto,
+    fact_reconciliation: ReconciliationDto,
     fetched_at: String,
     locale: String,
     created_at: String,
@@ -699,6 +700,7 @@ pub fn WbDocumentsDetail(id: String, #[prop(into)] on_close: Callback<()>) -> im
                                         acquiring=acquiring
                                         comment=comment
                                         reconciliation=d.reconciliation.clone()
+                                        fact_reconciliation=d.fact_reconciliation.clone()
                                         max_deviation=d.max_deviation
                                         document_label=primary_date.clone()
                                     />
@@ -824,6 +826,7 @@ fn CheckTab(
     acquiring: RwSignal<String>,
     comment: RwSignal<String>,
     reconciliation: ReconciliationDto,
+    fact_reconciliation: ReconciliationDto,
     max_deviation: Option<f64>,
     document_label: String,
 ) -> impl IntoView {
@@ -975,6 +978,16 @@ fn CheckTab(
                 </Table>
             </div>
 
+            <FactCheckTable
+                realized_goods_total=realized_goods_total
+                wb_reward_with_vat=wb_reward_with_vat
+                seller_transfer_total=seller_transfer_total
+                other_deductions=other_deductions
+                logistics=logistics
+                acquiring=acquiring
+                fact_reconciliation=fact_reconciliation
+            />
+
             <div class="form__group" style="margin-top:var(--spacing-lg);max-width:640px;">
                 <label class="form__label">"Комментарий"</label>
                 <textarea
@@ -1033,6 +1046,111 @@ fn CheckInputRow(
             <TableCell>
                 <TableCellLayout attr:style="display:block;width:100%;text-align:right;">
                     <AmountTableInput value=value emphasis=emphasis />
+                </TableCellLayout>
+            </TableCell>
+            <TableCell><TableCellLayout attr:style="display:block;width:100%;text-align:right;font-variant-numeric:tabular-nums;">{database_value}</TableCellLayout></TableCell>
+            <TableCell><TableCellLayout attr:style="display:block;width:100%;text-align:right;font-variant-numeric:tabular-nums;">{difference}</TableCellLayout></TableCell>
+        </TableRow>
+    }
+}
+
+/// Вторая таблица сверки — по слою FACT. Полностью независимый код от старой
+/// таблицы. Значения «Отчет WB» переиспользуют те же сигналы (только чтение),
+/// «Данные в базе» и «Расхождение» приходят из fact-сверки бэкенда.
+#[component]
+fn FactCheckTable(
+    realized_goods_total: RwSignal<String>,
+    wb_reward_with_vat: RwSignal<String>,
+    seller_transfer_total: RwSignal<String>,
+    other_deductions: RwSignal<String>,
+    logistics: RwSignal<String>,
+    acquiring: RwSignal<String>,
+    fact_reconciliation: ReconciliationDto,
+) -> impl IntoView {
+    view! {
+        <CardAnimated delay_ms=40 nav_id="a027_wb_documents_details_check_fact">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:var(--spacing-md);margin-top:var(--spacing-lg);">
+                <h4 class="details-section__title" style="margin:0;">"Проверка по слою fact"</h4>
+                <span style="font-size:12px;color:var(--color-text-secondary);max-width:560px;text-align:right;">
+                    "Слой fact формируется из p903 (исходные данные отчёта WB). Логистика и эквайринг повторяют состав основной таблицы; рекламы на fact нет."
+                </span>
+            </div>
+
+            <div class="table-wrapper">
+                <Table attr:style="width:100%;min-width:1120px;">
+                    <TableHeader>
+                        <TableRow>
+                            <TableHeaderCell>"Показатель"</TableHeaderCell>
+                            <TableHeaderCell attr:style="width:500px;">"Формула оборотов (fact)"</TableHeaderCell>
+                            <TableHeaderCell attr:style="width:150px;text-align:right;">"Отчет WB"</TableHeaderCell>
+                            <TableHeaderCell attr:style="width:150px;text-align:right;">"Данные в базе (fact)"</TableHeaderCell>
+                            <TableHeaderCell attr:style="width:180px;text-align:right;">"Расхождение"</TableHeaderCell>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <FactCheckRow
+                            label="Итого стоимость реализованного товара (1.1)"
+                            value=realized_goods_total
+                            line=fact_reconciliation.realized_goods_total.clone()
+                        />
+                        <FactCheckRow
+                            label="Сумма вознаграждения WB (2.1 + 2.2)"
+                            value=wb_reward_with_vat
+                            line=fact_reconciliation.wb_reward_with_vat.clone()
+                        />
+                        <FactCheckRow
+                            label="Прочие удержания / реклама (2.10)"
+                            value=other_deductions
+                            line=fact_reconciliation.advert_other_deductions.clone()
+                        />
+                        <FactCheckRow
+                            label="Логистика (2.7 + 2.8)"
+                            value=logistics
+                            line=fact_reconciliation.logistics.clone()
+                        />
+                        <FactCheckRow
+                            label="Эквайринг (2.6)"
+                            value=acquiring
+                            line=fact_reconciliation.acquiring.clone()
+                        />
+                        <FactCheckRow
+                            label="Итого к перечислению продавцу (8)"
+                            value=seller_transfer_total
+                            line=fact_reconciliation.seller_transfer_total.clone()
+                            emphasis=true
+                        />
+                    </TableBody>
+                </Table>
+            </div>
+        </CardAnimated>
+    }
+}
+
+#[component]
+fn FactCheckRow(
+    label: &'static str,
+    #[prop(into)] value: RwSignal<String>,
+    line: ReconciliationLineDto,
+    #[prop(optional)] emphasis: bool,
+) -> impl IntoView {
+    let database_value = if line.is_available {
+        fmt_optional_amount(line.database_value)
+    } else {
+        "?".to_string()
+    };
+    let difference = fmt_reconciliation_difference(&line);
+    let report_weight = if emphasis { "600" } else { "400" };
+    view! {
+        <TableRow>
+            <TableCell><TableCellLayout>{label}</TableCellLayout></TableCell>
+            <TableCell>
+                <TableCellLayout attr:style="display:block;width:100%;font-size:12px;color:var(--color-text-secondary);white-space:normal;line-height:1.3;">
+                    {line.formula}
+                </TableCellLayout>
+            </TableCell>
+            <TableCell>
+                <TableCellLayout attr:style=format!("display:block;width:100%;text-align:right;font-variant-numeric:tabular-nums;font-weight:{};", report_weight)>
+                    {move || value.get()}
                 </TableCellLayout>
             </TableCell>
             <TableCell><TableCellLayout attr:style="display:block;width:100%;text-align:right;font-variant-numeric:tabular-nums;">{database_value}</TableCellLayout></TableCell>

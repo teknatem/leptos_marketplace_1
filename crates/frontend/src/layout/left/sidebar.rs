@@ -481,6 +481,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "table",
                 ),
                 SidebarItem::new("sys_audit", tab_label_for_key("sys_audit"), "shield-check"),
+                SidebarItem::new(
+                    "quality_checks",
+                    tab_label_for_key("quality_checks"),
+                    "check-circle",
+                ),
                 SidebarItem::new("sys_tasks", tab_label_for_key("sys_tasks"), "calendar"),
                 SidebarItem::new(
                     "sys_task_type_registry",

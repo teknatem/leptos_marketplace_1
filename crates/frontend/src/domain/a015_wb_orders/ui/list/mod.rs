@@ -2,7 +2,6 @@ pub mod state;
 
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
-use crate::shared::components::close_page_button::ClosePageButton;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{
@@ -74,6 +73,7 @@ fn format_time(iso_date: &str) -> String {
 pub struct WbOrdersDto {
     pub id: String,
     pub document_no: String,
+    pub line_id: Option<String>,
     pub order_date: String,
     pub supplier_article: String,
     pub brand: Option<String>,
@@ -85,6 +85,7 @@ pub struct WbOrdersDto {
     pub is_cancel: bool,
     pub is_supply: Option<bool>,
     pub is_realization: Option<bool>,
+    pub warehouse_type: Option<String>,
     pub income_id: Option<i64>,
     pub has_wb_sales: Option<bool>,
     pub organization_name: Option<String>,
@@ -111,6 +112,7 @@ impl Sortable for WbOrdersDto {
                 .document_no
                 .to_lowercase()
                 .cmp(&other.document_no.to_lowercase()),
+            "line_id" => self.line_id.cmp(&other.line_id),
             "order_date" => self.order_date.cmp(&other.order_date),
             "supplier_article" => self
                 .supplier_article
@@ -202,15 +204,22 @@ pub fn WbOrdersList() -> impl IntoView {
 
     // Batch post/unpost state
     let (posting_in_progress, set_posting_in_progress) = signal(false);
-    let (operation_notification, set_operation_notification) = signal(None::<String>);
+    let (_, set_operation_notification) = signal(None::<String>);
 
     const FORM_KEY: &str = "a015_wb_orders";
 
+    let tabs_store_for_detail = tabs_store.clone();
     let open_detail = move |id: String, document_no: String| {
-        tabs_store.open_tab(
+        tabs_store_for_detail.open_tab(
             &format!("a015_wb_orders_details_{}", id),
             &format!("WB Order {}", document_no),
         );
+    };
+    let tabs_store_for_close = tabs_store.clone();
+    let close_current_tab = move |_| {
+        if let Some(key) = tabs_store_for_close.active.get_untracked() {
+            tabs_store_for_close.close_tab(&key);
+        }
     };
 
     let load_orders = move || {
@@ -273,6 +282,10 @@ pub fn WbOrdersList() -> impl IntoView {
                                         let id = item.get("id")?.as_str()?.to_string();
                                         let document_no =
                                             item.get("document_no")?.as_str()?.to_string();
+                                        let line_id = item
+                                            .get("line_id")
+                                            .and_then(|v| v.as_str())
+                                            .map(String::from);
                                         let order_date = item
                                             .get("document_date")
                                             .and_then(|v| v.as_str())
@@ -302,6 +315,10 @@ pub fn WbOrdersList() -> impl IntoView {
                                             item.get("is_supply").and_then(|v| v.as_bool());
                                         let is_realization =
                                             item.get("is_realization").and_then(|v| v.as_bool());
+                                        let warehouse_type = item
+                                            .get("warehouse_type")
+                                            .and_then(|v| v.as_str())
+                                            .map(String::from);
                                         let income_id =
                                             item.get("income_id").and_then(|v| v.as_i64());
                                         let has_wb_sales =
@@ -334,6 +351,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                         Some(WbOrdersDto {
                                             id,
                                             document_no,
+                                            line_id,
                                             order_date,
                                             supplier_article,
                                             brand,
@@ -345,6 +363,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                             is_cancel,
                                             is_supply,
                                             is_realization,
+                                            warehouse_type,
                                             income_id,
                                             has_wb_sales,
                                             organization_name,
@@ -615,47 +634,6 @@ pub fn WbOrdersList() -> impl IntoView {
         });
     };
 
-    let unpost_selected = move |_: leptos::ev::MouseEvent| {
-        let ids: Vec<String> = state.with(|s| s.selected_ids.iter().cloned().collect());
-        if ids.is_empty() {
-            return;
-        }
-
-        set_posting_in_progress.set(true);
-        set_operation_notification.set(None);
-
-        spawn_local(async move {
-            let mut ok_count = 0usize;
-            let mut fail_count = 0usize;
-
-            for id in &ids {
-                let url = format!("{}/api/a015/wb-orders/{}/unpost", api_base(), id);
-                match Request::post(&url).send().await {
-                    Ok(resp) if resp.ok() => ok_count += 1,
-                    Ok(resp) => {
-                        fail_count += 1;
-                        log!("Unpost failed for {}: status {}", id, resp.status());
-                    }
-                    Err(e) => {
-                        fail_count += 1;
-                        log!("Unpost failed for {}: {}", id, e);
-                    }
-                }
-            }
-
-            let msg = if fail_count == 0 {
-                format!("Unpost: успешно {}", ok_count)
-            } else {
-                format!("Unpost: успешно {}, ошибок {}", ok_count, fail_count)
-            };
-            set_operation_notification.set(Some(msg));
-            selected.update(|s| s.clear());
-            state.update(|s| s.selected_ids.clear());
-            load_orders();
-            set_posting_in_progress.set(false);
-        });
-    };
-
     let items_signal = Signal::derive(move || state.get().orders);
     let selected_signal = Signal::derive(move || selected.get());
 
@@ -672,39 +650,32 @@ pub fn WbOrdersList() -> impl IntoView {
                 <div class="page__header-right">
                     <Space>
                         <Button
-                            appearance=ButtonAppearance::Primary
+                            appearance=ButtonAppearance::Subtle
+                            size=ButtonSize::Medium
                             on_click=post_selected
                             disabled=Signal::derive(move || {
                                 selected_count.get() == 0 || posting_in_progress.get() || loading.get()
                             })
                         >
-                            {move || {
-                                if posting_in_progress.get() {
-                                    "Post..."
-                                } else {
+                            <span class="page-action-button__content">
+                                <span class="page-action-button__icon">
+                                    {move || {
+                                        if posting_in_progress.get() {
+                                            view! { <span class="page-action-button__spinner"></span> }.into_any()
+                                        } else {
+                                            view! { <>{icon("refresh-cw")}</> }.into_any()
+                                        }
+                                    }}
+                                </span>
+                                <span class="page-action-button__text page-action-button__text--post">
                                     "Post"
-                                }
-                            }}
-                            {move || format!(" ({})", selected_count.get())}
+                                    {move || format!(" ({})", selected_count.get())}
+                                </span>
+                            </span>
                         </Button>
                         <Button
-                            appearance=ButtonAppearance::Secondary
-                            on_click=unpost_selected
-                            disabled=Signal::derive(move || {
-                                selected_count.get() == 0 || posting_in_progress.get() || loading.get()
-                            })
-                        >
-                            {move || {
-                                if posting_in_progress.get() {
-                                    "Unpost..."
-                                } else {
-                                    "Unpost"
-                                }
-                            }}
-                            {move || format!(" ({})", selected_count.get())}
-                        </Button>
-                        <Button
-                            appearance=ButtonAppearance::Secondary
+                            appearance=ButtonAppearance::Subtle
+                            size=ButtonSize::Medium
                             on_click=move |_| {
                                 let data = state.get().orders;
                                 if let Err(e) = export_to_csv(&data) {
@@ -713,17 +684,26 @@ pub fn WbOrdersList() -> impl IntoView {
                             }
                             disabled=Signal::derive(move || loading.get() || state.get().orders.is_empty())
                         >
-                            {icon("download")}
-                            "Excel (csv)"
+                            <span class="page-action-button__content">
+                                <span class="page-action-button__icon">{icon("download")}</span>
+                                <span class="page-action-button__text">"Excel (csv)"</span>
+                            </span>
                         </Button>
                         <RunTaskButton
                             task_code="task001-wb-orders-fbs".to_string()
                             label="Получить заказы".to_string()
+                            page_action_style=true
                         />
-                        {move || operation_notification.get().map(|msg| view! {
-                            <span style="font-size: 12px; color: var(--colorNeutralForeground2, #666);">{msg}</span>
-                        })}
-                        <ClosePageButton />
+                        <Button
+                            appearance=ButtonAppearance::Subtle
+                            size=ButtonSize::Medium
+                            on_click=close_current_tab
+                        >
+                            <span class="page-action-button__content">
+                                <span class="page-action-button__icon page-action-button__icon--close">{icon("x")}</span>
+                                <span class="page-action-button__text">"Закрыть"</span>
+                            </span>
+                        </Button>
                     </Space>
                 </div>
             </div>
@@ -827,7 +807,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                         <Label>"Поиск:"</Label>
                                         <Input
                                             value=search_query
-                                            placeholder="Артикул, номер, бренд, наименование базы..."
+                                            placeholder="Артикул, номер, Line ID, наименование базы..."
                                         />
                                     </Flex>
                                 </div>
@@ -862,7 +842,7 @@ pub fn WbOrdersList() -> impl IntoView {
                 <div class="table-wrapper">
                     <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
 
-                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1400px;">
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1220px;">
                         <TableHeader>
                             <TableRow>
                                 <TableHeaderCheckbox
@@ -872,16 +852,16 @@ pub fn WbOrdersList() -> impl IntoView {
                                     on_change=Callback::new(toggle_all)
                                 />
 
-                                <TableHeaderCell resizable=false min_width=140.0 class="resizable">
-                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("document_no")>
-                                        "Номер заказа"
-                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "document_no"))>
-                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "document_no", state.with(|s| s.sort_ascending))}
+                                <TableHeaderCell resizable=false min_width=84.0 class="resizable" attr:style="width: 10ch; max-width: 10ch;">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("line_id")>
+                                        "Line ID"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "line_id"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "line_id", state.with(|s| s.sort_ascending))}
                                         </span>
                                     </div>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=86.0 class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("order_date")>
                                         "Дата"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "order_date"))>
@@ -890,7 +870,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=68.0 class="resizable">
                                     "Время"
                                 </TableHeaderCell>
 
@@ -930,16 +910,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=false min_width=120.0 class="resizable">
-                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("brand")>
-                                        "Бренд"
-                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "brand"))>
-                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "brand", state.with(|s| s.sort_ascending))}
-                                        </span>
-                                    </div>
-                                </TableHeaderCell>
-
-                                <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=76.0 class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("margin_pro")>
                                         "Маржа, %"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "margin_pro"))>
@@ -948,7 +919,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=86.0 class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("dealer_price_ut")>
                                         "Дил. цена УТ"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "dealer_price_ut"))>
@@ -957,7 +928,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=96.0 class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("finished_price")>
                                         "Итоговая цена"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "finished_price"))>
@@ -988,7 +959,11 @@ pub fn WbOrdersList() -> impl IntoView {
                                     let order_id = order.id.clone();
                                     let order_id_for_link = order_id.clone();
                                     let document_no_for_link = order.document_no.clone();
-                                    let document_no_text = order.document_no.clone();
+                                    let line_id_text = order
+                                        .line_id
+                                        .clone()
+                                        .filter(|v| !v.trim().is_empty())
+                                        .unwrap_or_else(|| order.document_no.clone());
                                     let formatted_date = format_date(&order.order_date);
                                     let formatted_time = format_time(&order.order_date);
 
@@ -1000,15 +975,15 @@ pub fn WbOrdersList() -> impl IntoView {
                                                 on_change=Callback::new(move |(id, checked)| toggle_selection(id, checked))
                                             />
 
-                                            <TableCell>
+                                            <TableCell attr:style="width: 10ch; max-width: 10ch;">
                                                 <TableCellLayout truncate=true>
                                                     <a
                                                         href="#"
                                                         class="table__link"
                                                         style=if order.has_wb_sales.unwrap_or(false) {
-                                                            "color: #1b5e20; text-decoration: underline; font-weight: 600;"
+                                                            "display: inline-block; max-width: 10ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1b5e20; text-decoration: underline; font-weight: 600;"
                                                         } else {
-                                                            "color: #0f6cbd; text-decoration: underline;"
+                                                            "display: inline-block; max-width: 10ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #0f6cbd; text-decoration: underline;"
                                                         }
                                                         title=if order.has_wb_sales.unwrap_or(false) {
                                                             "Есть связанные WB Sales"
@@ -1020,7 +995,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                                             open_detail(order_id_for_link.clone(), document_no_for_link.clone());
                                                         }
                                                     >
-                                                        {document_no_text}
+                                                        {line_id_text}
                                                     </a>
                                                 </TableCellLayout>
                                             </TableCell>
@@ -1061,12 +1036,6 @@ pub fn WbOrdersList() -> impl IntoView {
                                                 </TableCellLayout>
                                             </TableCell>
 
-                                            <TableCell>
-                                                <TableCellLayout truncate=true>
-                                                    {order.brand.clone().unwrap_or_else(|| "—".to_string())}
-                                                </TableCellLayout>
-                                            </TableCell>
-
                                             <TableCellMoney
                                                 value=order.margin_pro
                                                 show_currency=false
@@ -1088,7 +1057,17 @@ pub fn WbOrdersList() -> impl IntoView {
                                             <TableCell>
                                                 <TableCellLayout>
                                                     {
-                                                        if order.income_id.map_or(false, |v| v != 0) {
+                                                        let is_fbw = order
+                                                            .warehouse_type
+                                                            .as_deref()
+                                                            == Some("Склад WB");
+                                                        if is_fbw {
+                                                            view! {
+                                                                <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Warning>
+                                                                    "FBW"
+                                                                </Badge>
+                                                            }.into_any()
+                                                        } else if order.income_id.map_or(false, |v| v != 0) {
                                                             view! {
                                                                 <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
                                                                     "FBS"

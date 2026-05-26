@@ -267,6 +267,12 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/nomenclature/search-by-barcode",
+        scope_id: Some("a004_nomenclature"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/a004/nomenclature",
         scope_id: Some("a004_nomenclature"),
         mode: PolicyMode::Auto,
@@ -1308,6 +1314,49 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         path: "/api/sys-drilldown/:id/data",
         scope_id: Some("data_view"),
         mode: PolicyMode::ReadOnly,
+    },
+    // Quality check routes (authenticated, no scope required)
+    RoutePolicy {
+        method: "GET",
+        path: "/api/quality/checks",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/quality/checks/:id/run",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/quality/checks/:id/details",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/quality/checks/:id/sources",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/quality/checks/:id/groups",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/quality/checks/:id/rows",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/quality/checks/:id/repost",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
     },
 ];
 

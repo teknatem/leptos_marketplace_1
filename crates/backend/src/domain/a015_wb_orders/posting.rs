@@ -1,23 +1,32 @@
 use super::repository;
 use anyhow::Result;
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use uuid::Uuid;
 
+/// Загрузить подключение маркетплейса для документа. Используется единожды в начале
+/// `post_document` и передаётся во все под-функции, которые в нём нуждаются.
+async fn load_connection(
+    document: &contracts::domain::a015_wb_orders::aggregate::WbOrders,
+) -> Option<ConnectionMP> {
+    let connection_uuid = Uuid::parse_str(&document.header.connection_id).ok()?;
+    crate::domain::a006_connection_mp::service::get_by_id(connection_uuid)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(
+                "Failed to load connection {} for WB Orders {}: {}",
+                document.header.connection_id,
+                document.base.id.value(),
+                e
+            );
+            None
+        })
+}
+
+/// Синхронизировать organization_id из уже загруженного подключения.
 async fn sync_organization_from_connection(
     document: &mut contracts::domain::a015_wb_orders::aggregate::WbOrders,
+    connection: Option<&ConnectionMP>,
 ) -> Result<()> {
-    let connection_uuid = match Uuid::parse_str(&document.header.connection_id) {
-        Ok(uuid) => uuid,
-        Err(_) => {
-            tracing::warn!(
-                "Skip organization sync for WB Orders {}: invalid connection_id={}",
-                document.base.id.value(),
-                document.header.connection_id
-            );
-            return Ok(());
-        }
-    };
-
-    let connection = crate::domain::a006_connection_mp::service::get_by_id(connection_uuid).await?;
     let Some(connection) = connection else {
         tracing::warn!(
             "Skip organization sync for WB Orders {}: connection not found, connection_id={}",
@@ -53,7 +62,6 @@ async fn sync_organization_from_connection(
     }
 
     let resolved_org_id = organization_uuid.to_string();
-
     if document.header.organization_id != resolved_org_id {
         tracing::info!(
             "Sync organization for WB Orders {}: {} -> {}",
@@ -67,25 +75,54 @@ async fn sync_organization_from_connection(
     Ok(())
 }
 
+const REGISTRATOR_TYPE: &str = "a015_wb_orders";
+
+fn registrator_ref(id: Uuid) -> String {
+    format!("a015:{id}")
+}
+
 pub async fn post_document(id: Uuid) -> Result<()> {
     let mut document = repository::get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
-    sync_organization_from_connection(&mut document).await?;
+    // Load connection once — reused by sync_org and calculate_margin_pro,
+    // avoiding two separate DB round-trips to a006_connection_mp.
+    let connection = load_connection(&document).await;
+
+    sync_organization_from_connection(&mut document, connection.as_ref()).await?;
+
+    // auto_fill_references calls refill_base_nomenclature_ref internally —
+    // do NOT call refill_base_nomenclature_ref separately after this.
     super::service::auto_fill_references(&mut document).await?;
-    super::service::refill_base_nomenclature_ref(&mut document).await?;
-    super::service::fill_dealer_price_resolved(&mut document).await?;
-    super::service::calculate_margin_pro(&mut document).await?;
+
+    // document.base_nomenclature_ref is already resolved above;
+    // passing it through skips the third a004_nomenclature DB lookup.
+    super::service::fill_dealer_price_with_known_base_ref(&mut document).await?;
+    super::service::calculate_margin_pro_with_connection(&mut document, connection.as_ref())
+        .await?;
 
     document.is_posted = true;
-    document.base.metadata.is_posted = document.is_posted;
+    document.base.metadata.is_posted = true;
     document.before_write();
 
-    repository::upsert_document(&document).await?;
+    // Direct UPDATE by ID — skips the get_by_document_no round-trip of upsert_document.
+    repository::update_posted_document(&document).await?;
+
+    // Идемпотентное перепроведение: удаляем старые строки p909 и GL, затем
+    // создаём заново, чтобы повторный Post всегда давал актуальный результат.
+    let p909_ref = registrator_ref(id);
+    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
+        &p909_ref,
+    )
+    .await?;
+    crate::general_ledger::service::remove_by_registrator(REGISTRATOR_TYPE, &id.to_string())
+        .await?;
+
+    crate::projections::p909_mp_order_line_turnovers::service::project_wb_order(&document, id)
+        .await?;
 
     tracing::info!("Posted WB Orders document: {}", id);
-
     Ok(())
 }
 
@@ -95,10 +132,19 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
     document.is_posted = false;
-    document.base.metadata.is_posted = document.is_posted;
+    document.base.metadata.is_posted = false;
     document.before_write();
 
-    repository::upsert_document(&document).await?;
+    repository::update_posted_document(&document).await?;
+
+    // Убираем все связанные результаты при отмене проведения.
+    let p909_ref = registrator_ref(id);
+    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
+        &p909_ref,
+    )
+    .await?;
+    crate::general_ledger::service::remove_by_registrator(REGISTRATOR_TYPE, &id.to_string())
+        .await?;
 
     tracing::info!("Unposted WB Orders document: {}", id);
 

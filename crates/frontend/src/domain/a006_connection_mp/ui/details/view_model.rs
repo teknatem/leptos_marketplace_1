@@ -67,6 +67,12 @@ impl ConnectionMPDetailsVm {
                 return Err("Процент комиссии должен быть от 0 до 100");
             }
         }
+        // Валидация процента эквайринга
+        if let Some(percent) = dto.planned_acquiring_percent {
+            if percent < 0.0 || percent > 100.0 {
+                return Err("Процент эквайринга должен быть от 0 до 100");
+            }
+        }
         Ok(())
     }
 

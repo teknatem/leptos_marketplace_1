@@ -43,7 +43,20 @@ fn amount_sign(amount: f64) -> i32 {
     }
 }
 
-fn resource_amount(amount: f64, resource_field: &'static str) -> Option<ResourceAmount> {
+/// Строит `ResourceAmount` по исходному значению поля детализации (`value`)
+/// и итоговой сумме проводки (`amount`).
+///
+/// `resource_sign` по смыслу сверки — это множитель перехода `value → amount`
+/// (`amount = value × resource_sign`), а не знак самой суммы. Так как все
+/// преобразования здесь меняют только знак/множитель ±1, всегда выполняется
+/// `|amount| == |value|`, поэтому `sign(amount) × sign(value)` даёт корректный
+/// `±1`. Брать `sign(amount)` напрямую нельзя: при `value < 0` (штраф-сторно,
+/// корректировки) знак выходит инвертированным.
+fn resource_amount(
+    value: f64,
+    amount: f64,
+    resource_field: &'static str,
+) -> Option<ResourceAmount> {
     if amount.abs() <= f64::EPSILON {
         return None;
     }
@@ -51,12 +64,13 @@ fn resource_amount(amount: f64, resource_field: &'static str) -> Option<Resource
     Some(ResourceAmount {
         amount,
         resource_field,
-        resource_sign: amount_sign(amount),
+        resource_sign: amount_sign(amount) * amount_sign(value),
     })
 }
 
 fn passthrough_amount(value: Option<f64>, resource_field: &'static str) -> Option<ResourceAmount> {
-    resource_amount(opt_nonzero(value)?, resource_field)
+    let value = opt_nonzero(value)?;
+    resource_amount(value, value, resource_field)
 }
 
 fn scaled_passthrough_amount(
@@ -64,7 +78,8 @@ fn scaled_passthrough_amount(
     resource_field: &'static str,
     multiplier: f64,
 ) -> Option<ResourceAmount> {
-    resource_amount(opt_nonzero(value)? * multiplier, resource_field)
+    let value = opt_nonzero(value)?;
+    resource_amount(value, value * multiplier, resource_field)
 }
 
 fn normalized_expense_amount(
@@ -73,7 +88,7 @@ fn normalized_expense_amount(
 ) -> Option<ResourceAmount> {
     let raw = opt_nonzero(value)?;
     let amount = if raw > 0.0 { -raw } else { raw };
-    resource_amount(amount, resource_field)
+    resource_amount(raw, amount, resource_field)
 }
 
 fn build_entry(
@@ -242,7 +257,7 @@ fn ppvz_reward_amount(
         return None;
     };
 
-    resource_amount(amount, "extra.ppvz_reward")
+    resource_amount(raw, amount, "extra.ppvz_reward")
 }
 
 fn commission_sale_return_amount(
@@ -302,9 +317,9 @@ fn push_penalty_entry(
     };
 
     let (turnover_code, resource) = if raw > 0.0 {
-        ("mp_penalty", resource_amount(raw, "penalty"))
+        ("mp_penalty", resource_amount(raw, raw, "penalty"))
     } else {
-        ("mp_penalty_storno", resource_amount(raw, "penalty"))
+        ("mp_penalty_storno", resource_amount(raw, raw, "penalty"))
     };
 
     push_optional_entry(entries, row, posting_id, turnover_code, resource);
@@ -337,18 +352,39 @@ pub fn build_general_ledger_entries(
     }
 
     if is_sale_or_return_operation(row) {
-        let resource = if linked {
-            passthrough_amount(
+        if is_return_row(row) {
+            // Сторно комиссии при возврате: WB возвращает ранее удержанную
+            // комиссию. В p903 ppvz_vw/ppvz_vw_nds возврата хранятся тем же
+            // (отрицательным) знаком, что и при продаже, поэтому без инверсии
+            // комиссия возврата углубляла бы удержание вместо сторно. Инвертируем
+            // знак и пишем отдельным turnover_code — по аналогии с customer_return,
+            // чтобы возвратная комиссия нетто-сальдировала продажную.
+            let resource = scaled_passthrough_amount(
                 commission_sale_return_amount(row),
                 "commission_ppvz_vw_plus_ppvz_vw_nds",
-            )
+                -1.0,
+            );
+            push_optional_entry(
+                &mut entries,
+                row,
+                posting_id,
+                "mp_commission_storno",
+                resource,
+            );
         } else {
-            normalized_expense_amount(
-                commission_sale_return_amount(row),
-                "commission_ppvz_vw_plus_ppvz_vw_nds",
-            )
-        };
-        push_optional_entry(&mut entries, row, posting_id, "mp_commission", resource);
+            let resource = if linked {
+                passthrough_amount(
+                    commission_sale_return_amount(row),
+                    "commission_ppvz_vw_plus_ppvz_vw_nds",
+                )
+            } else {
+                normalized_expense_amount(
+                    commission_sale_return_amount(row),
+                    "commission_ppvz_vw_plus_ppvz_vw_nds",
+                )
+            };
+            push_optional_entry(&mut entries, row, posting_id, "mp_commission", resource);
+        }
     } else {
         let resource = if linked {
             passthrough_amount(
@@ -544,6 +580,35 @@ mod tests {
         assert_eq!(acquiring.debit_account, "4403");
         assert_eq!(acquiring.amount, -50.0);
         assert_eq!(acquiring.resource_sign, -1);
+    }
+
+    #[test]
+    fn linked_return_row_books_commission_as_positive_storno() {
+        // Возврат: ppvz_vw/ppvz_vw_nds в p903 отрицательные (как у продажи).
+        // Сторно комиссии должно инвертировать знак, чтобы сальдировать
+        // продажную комиссию, и писаться отдельным turnover_code.
+        let mut row = base_row();
+        row.srid = Some("srid-1".to_string());
+        row.supplier_oper_name = Some(OP_RETURN_RU.to_string());
+        row.return_amount = Some(1000.0);
+        row.ppvz_vw = Some(-120.0);
+        row.ppvz_vw_nds = Some(-24.0);
+
+        let entries = build_general_ledger_entries(&row, "posting-1").unwrap();
+
+        let storno = entries
+            .iter()
+            .find(|item| item.turnover_code == "mp_commission_storno")
+            .unwrap();
+        assert_eq!(storno.debit_account, "4401");
+        assert_eq!(storno.credit_account, "7609");
+        // -(-120 + -24) = +144 — обратный знак к продажной комиссии.
+        assert_eq!(storno.amount, 144.0);
+        assert_eq!(storno.resource_sign, -1);
+        // Возврат не должен порождать обычную mp_commission.
+        assert!(!entries
+            .iter()
+            .any(|item| item.turnover_code == "mp_commission"));
     }
 
     #[test]
@@ -796,6 +861,9 @@ mod tests {
         assert_eq!(storno.debit_account, "9102");
         assert_eq!(storno.credit_account, "7609");
         assert_eq!(storno.amount, -150.0);
-        assert_eq!(storno.resource_sign, -1);
+        // penalty — passthrough: amount = value, поэтому множитель перехода
+        // value → amount всегда +1, даже когда value < 0 (сторно).
+        // Инвариант сверки: amount == penalty × resource_sign = -150 × 1 = -150.
+        assert_eq!(storno.resource_sign, 1);
     }
 }

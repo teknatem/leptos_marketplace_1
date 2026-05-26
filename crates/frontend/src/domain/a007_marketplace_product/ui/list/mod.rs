@@ -11,165 +11,14 @@ use crate::shared::list_utils::{get_sort_class, get_sort_indicator, highlight_ma
 use crate::shared::page_frame::PageFrame;
 use contracts::domain::a005_marketplace::aggregate::Marketplace;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
-use contracts::domain::a007_marketplace_product::aggregate::{
-    MarketplaceProductListItemDto, WbMappingProblemDto, WbMappingProblemsResponse,
-    WbStalePostingsRepostResponse, WbStalePostingsRequest, WbStalePostingsSummary,
-};
+use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProductListItemDto;
 use contracts::domain::common::AggregateId;
 use gloo_net::http::Request;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use thaw::*;
-
-#[derive(Debug, Clone, Default)]
-struct StaleEntry {
-    pub loading: bool,
-    pub posting: bool,
-    pub summary: Option<WbStalePostingsSummary>,
-    pub error: Option<String>,
-}
-
-fn stale_key(connection_mp_ref: &str, nm_id: Option<i64>, supplier_article: Option<&str>) -> String {
-    format!(
-        "{}|{}|{}",
-        connection_mp_ref,
-        nm_id.unwrap_or(0),
-        supplier_article.unwrap_or("")
-    )
-}
-
-fn spawn_fetch_stale_summary(
-    set_map: WriteSignal<HashMap<String, StaleEntry>>,
-    connection_mp_ref: String,
-    nm_id: i64,
-    supplier_article: Option<String>,
-    date_from: String,
-    date_to: String,
-) {
-    let key = stale_key(&connection_mp_ref, Some(nm_id), supplier_article.as_deref());
-
-    set_map.update(|m| {
-        let entry = m.entry(key.clone()).or_default();
-        entry.loading = true;
-        entry.error = None;
-    });
-
-    let key_for_async = key.clone();
-    spawn_local(async move {
-        let mut url = format!(
-            "{}/api/a007/marketplace-product/wb-stale-postings/summary?connection_mp_ref={}&nm_id={}&date_from={}&date_to={}",
-            api_base(),
-            urlencoding::encode(&connection_mp_ref),
-            nm_id,
-            urlencoding::encode(&date_from),
-            urlencoding::encode(&date_to),
-        );
-        if let Some(sa) = supplier_article.as_deref().filter(|v| !v.is_empty()) {
-            url.push_str(&format!("&supplier_article={}", urlencoding::encode(sa)));
-        }
-
-        let result: Result<WbStalePostingsSummary, String> = match Request::get(&url).send().await {
-            Ok(resp) if resp.status() == 200 => resp
-                .json::<WbStalePostingsSummary>()
-                .await
-                .map_err(|e| format!("parse: {}", e)),
-            Ok(resp) => Err(format!("HTTP {}", resp.status())),
-            Err(e) => Err(format!("net: {}", e)),
-        };
-
-        set_map.update(|m| {
-            let entry = m.entry(key_for_async.clone()).or_default();
-            entry.loading = false;
-            match result {
-                Ok(summary) => {
-                    entry.summary = Some(summary);
-                    entry.error = None;
-                }
-                Err(err) => entry.error = Some(err),
-            }
-        });
-    });
-}
-
-fn spawn_repost_stale(
-    set_map: WriteSignal<HashMap<String, StaleEntry>>,
-    connection_mp_ref: String,
-    nm_id: i64,
-    supplier_article: Option<String>,
-    date_from: String,
-    date_to: String,
-) {
-    let key = stale_key(&connection_mp_ref, Some(nm_id), supplier_article.as_deref());
-
-    set_map.update(|m| {
-        let entry = m.entry(key.clone()).or_default();
-        entry.posting = true;
-        entry.error = None;
-    });
-
-    let key_for_async = key.clone();
-    let conn_for_summary = connection_mp_ref.clone();
-    let sa_for_summary = supplier_article.clone();
-    let from_for_summary = date_from.clone();
-    let to_for_summary = date_to.clone();
-
-    spawn_local(async move {
-        let url = format!(
-            "{}/api/a007/marketplace-product/wb-stale-postings/repost",
-            api_base()
-        );
-        let body = WbStalePostingsRequest {
-            connection_mp_ref,
-            nm_id,
-            supplier_article,
-            date_from,
-            date_to,
-        };
-        let result: Result<WbStalePostingsRepostResponse, String> =
-            match Request::post(&url).json(&body) {
-                Ok(req) => match req.send().await {
-                    Ok(resp) if resp.status() == 200 => resp
-                        .json::<WbStalePostingsRepostResponse>()
-                        .await
-                        .map_err(|e| format!("parse: {}", e)),
-                    Ok(resp) => Err(format!("HTTP {}", resp.status())),
-                    Err(e) => Err(format!("net: {}", e)),
-                },
-                Err(e) => Err(format!("build: {}", e)),
-            };
-
-        set_map.update(|m| {
-            let entry = m.entry(key_for_async.clone()).or_default();
-            entry.posting = false;
-            match result {
-                Ok(resp) => {
-                    if resp.failed > 0 {
-                        entry.error = Some(format!(
-                            "{} из {} ошиблись",
-                            resp.failed, resp.total
-                        ));
-                    } else {
-                        entry.error = None;
-                    }
-                }
-                Err(err) => entry.error = Some(err),
-            }
-        });
-
-        // Перезапрашиваем summary, чтобы счётчик/период обновились.
-        spawn_fetch_stale_summary(
-            set_map,
-            conn_for_summary,
-            nm_id,
-            sa_for_summary,
-            from_for_summary,
-            to_for_summary,
-        );
-    });
-}
 
 impl ExcelExportable for MarketplaceProductListItemDto {
     fn headers() -> Vec<&'static str> {
@@ -202,17 +51,6 @@ pub struct PaginatedResponse {
     pub total_pages: usize,
 }
 
-fn wb_problem_label(kind: &str) -> &'static str {
-    match kind {
-        "missing_a007" => "Нет товара МП",
-        "missing_nomenclature" => "Нет номенклатуры",
-        "stale_document_link" => "Документы не пересчитаны",
-        "article_ambiguous" => "Неоднозначный артикул",
-        "missing_nm_id" => "Нет nm_id",
-        _ => "Проблема",
-    }
-}
-
 #[component]
 #[allow(non_snake_case)]
 pub fn MarketplaceProductList() -> impl IntoView {
@@ -220,20 +58,13 @@ pub fn MarketplaceProductList() -> impl IntoView {
     let global_ctx = expect_context::<AppGlobalContext>();
 
     let (items, set_items) = signal::<Vec<MarketplaceProductListItemDto>>(Vec::new());
-    let (wb_problem_items, set_wb_problem_items) = signal::<Vec<WbMappingProblemDto>>(Vec::new());
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
     let (marketplaces, set_marketplaces) = signal::<Vec<Marketplace>>(Vec::new());
     let (connections, set_connections) = signal::<Vec<ConnectionMP>>(Vec::new());
-    let (wb_problems_mode, set_wb_problems_mode) = signal(false);
-    // Сводки по «устаревшим» проводкам для строк stale_document_link.
-    // Ключ строится через stale_key(connection_mp_ref, nm_id, supplier_article).
-    let (stale_map, set_stale_map) = signal::<HashMap<String, StaleEntry>>(HashMap::new());
 
-    // Filter panel expansion state
     let (is_filter_expanded, set_is_filter_expanded) = signal(false);
 
-    // RwSignal для Thaw Input/Select компонентов
     let search_text = RwSignal::new(state.get_untracked().search.clone());
     let filter_marketplace = RwSignal::new(
         state
@@ -250,11 +81,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
             .unwrap_or_default(),
     );
     let filter_problems_only = RwSignal::new(state.get_untracked().problems_only);
-    let today = chrono::Utc::now().date_naive();
-    let wb_date_to = RwSignal::new(today.to_string());
-    let wb_date_from = RwSignal::new((today - chrono::Duration::days(30)).to_string());
 
-    // Обновление state при изменении RwSignal
     Effect::new(move || {
         let text = search_text.get();
         untrack(move || {
@@ -367,100 +194,6 @@ pub fn MarketplaceProductList() -> impl IntoView {
         });
     };
 
-    let load_wb_problems = move || {
-        let connection = filter_connection.get_untracked();
-        let date_from = wb_date_from.get_untracked();
-        let date_to = wb_date_to.get_untracked();
-        set_loading.set(true);
-        set_error.set(None);
-
-        spawn_local(async move {
-            let mut url = format!(
-                "{}/api/a007/marketplace-product/wb-mapping-problems?date_from={}&date_to={}&limit=500",
-                api_base(),
-                urlencoding::encode(&date_from),
-                urlencoding::encode(&date_to)
-            );
-            if !connection.trim().is_empty() {
-                url.push_str(&format!(
-                    "&connection_mp_ref={}",
-                    urlencoding::encode(&connection)
-                ));
-            }
-
-            match Request::get(&url).send().await {
-                Ok(response) => {
-                    if response.status() == 200 {
-                        match response.json::<WbMappingProblemsResponse>().await {
-                            Ok(data) => {
-                                // Ленивая подгрузка сводок по stale-проводкам только для
-                                // строк, где это нужно. Параметры периода берём из
-                                // ответа сервера — те же, по которым посчитаны проблемы.
-                                let summary_date_from = data.date_from.clone();
-                                let summary_date_to = data.date_to.clone();
-                                for item in &data.items {
-                                    if item.problem_kind == "stale_document_link" {
-                                        if let Some(nm_id) = item.nm_id {
-                                            spawn_fetch_stale_summary(
-                                                set_stale_map,
-                                                item.connection_mp_ref.clone(),
-                                                nm_id,
-                                                item.supplier_article.clone(),
-                                                summary_date_from.clone(),
-                                                summary_date_to.clone(),
-                                            );
-                                        }
-                                    }
-                                }
-
-                                // Сбрасываем устаревшие сводки от предыдущих загрузок.
-                                set_stale_map.update(|m| {
-                                    let valid_keys: std::collections::HashSet<String> = data
-                                        .items
-                                        .iter()
-                                        .filter(|i| i.problem_kind == "stale_document_link")
-                                        .filter_map(|i| {
-                                            i.nm_id.map(|nm_id| {
-                                                stale_key(
-                                                    &i.connection_mp_ref,
-                                                    Some(nm_id),
-                                                    i.supplier_article.as_deref(),
-                                                )
-                                            })
-                                        })
-                                        .collect();
-                                    m.retain(|k, _| valid_keys.contains(k));
-                                });
-
-                                set_wb_problem_items.set(data.items);
-                                state.update(|s| {
-                                    s.total_count = data.total;
-                                    s.total_pages = 1;
-                                    s.page = 0;
-                                    s.is_loaded = true;
-                                });
-                                set_loading.set(false);
-                            }
-                            Err(e) => {
-                                log!("Failed to parse WB mapping problems: {:?}", e);
-                                set_error.set(Some(format!("Failed to parse: {}", e)));
-                                set_loading.set(false);
-                            }
-                        }
-                    } else {
-                        set_error.set(Some(format!("Server error: {}", response.status())));
-                        set_loading.set(false);
-                    }
-                }
-                Err(e) => {
-                    log!("Failed to fetch WB mapping problems: {:?}", e);
-                    set_error.set(Some(format!("Failed to fetch: {}", e)));
-                    set_loading.set(false);
-                }
-            }
-        });
-    };
-
     let fetch_marketplaces = move || {
         spawn_local(async move {
             match Request::get(&format!("{}/api/marketplace", api_base()))
@@ -493,7 +226,6 @@ pub fn MarketplaceProductList() -> impl IntoView {
         });
     };
 
-    // Initial load
     Effect::new(move |_| {
         if !state.with_untracked(|s| s.is_loaded) {
             fetch_marketplaces();
@@ -502,7 +234,6 @@ pub fn MarketplaceProductList() -> impl IntoView {
         }
     });
 
-    // Auto-reload при изменении фильтров
     let search_first_run = StoredValue::new(true);
     Effect::new(move || {
         let _ = search_text.get();
@@ -543,7 +274,6 @@ pub fn MarketplaceProductList() -> impl IntoView {
         }
     });
 
-    // Handlers
     let toggle_sort = move |field: &'static str| {
         move |_| {
             state.update(|s| {
@@ -718,21 +448,6 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     </thaw::Button>
                     <thaw::Button
                         appearance=ButtonAppearance::Secondary
-                        on_click=move |_| {
-                            let next = !wb_problems_mode.get_untracked();
-                            set_wb_problems_mode.set(next);
-                            if next {
-                                load_wb_problems();
-                            } else {
-                                load_data();
-                            }
-                        }
-                    >
-                        {icon("warning")}
-                        {move || if wb_problems_mode.get() { " Список товаров" } else { " Проблемы WB" }}
-                    </thaw::Button>
-                    <thaw::Button
-                        appearance=ButtonAppearance::Secondary
                         on_click=move |_| handle_export(())
                     >
                         {icon("excel")}
@@ -748,13 +463,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     </thaw::Button>
                     <thaw::Button
                         appearance=ButtonAppearance::Secondary
-                        on_click=move |_| {
-                            if wb_problems_mode.get_untracked() {
-                                load_wb_problems();
-                            } else {
-                                load_data();
-                            }
-                        }
+                        on_click=move |_| load_data()
                     >
                         {icon("refresh")}
                         " Обновить"
@@ -813,13 +522,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
                     <div class="filter-panel-header__right">
                         <thaw::Button
                             appearance=ButtonAppearance::Subtle
-                            on_click=move |_| {
-                                if wb_problems_mode.get_untracked() {
-                                    load_wb_problems();
-                                } else {
-                                    load_data();
-                                }
-                            }
+                            on_click=move |_| load_data()
                             disabled=loading.get()
                         >
                             {icon("refresh")}
@@ -881,33 +584,6 @@ pub fn MarketplaceProductList() -> impl IntoView {
                                     </Field>
                                 </Flex>
                             </div>
-                            {move || if wb_problems_mode.get() {
-                                view! {
-                                    <>
-                                        <div style="width: 150px;">
-                                            <Flex vertical=true gap=FlexGap::Small>
-                                                <Label>"WB дата с:"</Label>
-                                                <Input value=wb_date_from />
-                                            </Flex>
-                                        </div>
-                                        <div style="width: 150px;">
-                                            <Flex vertical=true gap=FlexGap::Small>
-                                                <Label>"WB дата по:"</Label>
-                                                <Input value=wb_date_to />
-                                            </Flex>
-                                        </div>
-                                        <thaw::Button
-                                            appearance=ButtonAppearance::Primary
-                                            on_click=move |_| load_wb_problems()
-                                        >
-                                            {icon("search")}
-                                            " Показать WB"
-                                        </thaw::Button>
-                                    </>
-                                }.into_any()
-                            } else {
-                                view! { <></> }.into_any()
-                            }}
                             <thaw::Button
                                 appearance=ButtonAppearance::Subtle
                                 on_click=move |_| clear_all_filters(())
@@ -922,166 +598,7 @@ pub fn MarketplaceProductList() -> impl IntoView {
             {move || error.get().map(|e| view! { <div class="warning-box" style="margin: 10px;">{e}</div> })}
 
             <div class="page__content">
-                <div
-                    class="a007-mp-list__table-shell"
-                    style=move || if wb_problems_mode.get() {
-                        "border: none; border-radius: 0; padding: 0;"
-                    } else {
-                        "display:none;"
-                    }
-                >
-                    <table class="table__data table--striped">
-                        <thead class="table__head a007-mp-list__sticky-head">
-                            <tr>
-                                <th class="table__header-cell a007-mp-list__sticky-cell">"Проблема"</th>
-                                <th class="table__header-cell a007-mp-list__sticky-cell">"Кабинет"</th>
-                                <th class="table__header-cell a007-mp-list__sticky-cell">"nm_id"</th>
-                                <th class="table__header-cell a007-mp-list__sticky-cell">"Артикул WB"</th>
-                                <th class="table__header-cell a007-mp-list__sticky-cell">"SKU a007"</th>
-                                <th class="table__header-cell a007-mp-list__sticky-cell">"Номенклатура"</th>
-                                <th class="table__header-cell a007-mp-list__sticky-cell">"Данные"</th>
-                                <th class="table__header-cell a007-mp-list__sticky-cell">"Перепровести"</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {move || {
-                                let summary_date_from = wb_date_from.get();
-                                let summary_date_to = wb_date_to.get();
-                                wb_problem_items.get().into_iter().map(|item| {
-                                    let product_id = item.marketplace_product_id.clone();
-                                    let article = item
-                                        .marketplace_article
-                                        .clone()
-                                        .or_else(|| item.supplier_article.clone())
-                                        .unwrap_or_default();
-                                    let description = item
-                                        .nomenclature_name
-                                        .clone()
-                                        .unwrap_or_else(|| item.supplier_article.clone().unwrap_or_default());
-
-                                    let problem_kind = item.problem_kind.clone();
-                                    let connection_mp_ref = item.connection_mp_ref.clone();
-                                    let supplier_article = item.supplier_article.clone();
-                                    let nm_id = item.nm_id;
-                                    let entry_key = nm_id
-                                        .map(|v| stale_key(&connection_mp_ref, Some(v), supplier_article.as_deref()))
-                                        .unwrap_or_default();
-
-                                    let is_stale = problem_kind == "stale_document_link";
-
-                                    let date_from_for_btn = summary_date_from.clone();
-                                    let date_to_for_btn = summary_date_to.clone();
-                                    let conn_for_btn = connection_mp_ref.clone();
-                                    let sa_for_btn = supplier_article.clone();
-
-                                    view! {
-                                        <tr
-                                            class="table__row"
-                                            on:click=move |_| {
-                                                if let Some(id) = product_id.clone() {
-                                                    open_detail(id, article.clone(), description.clone());
-                                                }
-                                            }
-                                        >
-                                            <td class="table__cell">
-                                                <Badge variant="danger".to_string()>{wb_problem_label(&problem_kind)}</Badge>
-                                            </td>
-                                            <td class="table__cell">{item.connection_name.unwrap_or(item.connection_mp_ref)}</td>
-                                            <td class="table__cell">{item.nm_id.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string())}</td>
-                                            <td class="table__cell">{item.supplier_article.unwrap_or_else(|| "-".to_string())}</td>
-                                            <td class="table__cell">{item.marketplace_sku.unwrap_or_else(|| "-".to_string())}</td>
-                                            <td class="table__cell">
-                                                {item.nomenclature_name
-                                                    .or(item.marketplace_nomenclature_ref)
-                                                    .unwrap_or_else(|| "-".to_string())}
-                                            </td>
-                                            <td class="table__cell">
-                                                {if is_stale {
-                                                    let key_summary = entry_key.clone();
-                                                    view! {
-                                                        {move || {
-                                                            let map = stale_map.get();
-                                                            let entry = map.get(&key_summary).cloned().unwrap_or_default();
-                                                            if let Some(err) = entry.error.clone() {
-                                                                view! { <span style="color:var(--color-error);">{err}</span> }.into_any()
-                                                            } else if let Some(summary) = entry.summary.clone() {
-                                                                let period = match (summary.period_from.as_deref(), summary.period_to.as_deref()) {
-                                                                    (Some(f), Some(t)) if f == t => f.to_string(),
-                                                                    (Some(f), Some(t)) => format!("{} — {}", f, t),
-                                                                    _ => "—".to_string(),
-                                                                };
-                                                                view! { <span>{format!("{} док., {}", summary.doc_count, period)}</span> }.into_any()
-                                                            } else if entry.loading {
-                                                                view! { <span style="color:var(--color-text-secondary);">"…"</span> }.into_any()
-                                                            } else {
-                                                                view! { <span style="color:var(--color-text-secondary);">"—"</span> }.into_any()
-                                                            }
-                                                        }}
-                                                    }.into_any()
-                                                } else {
-                                                    view! {
-                                                        <span>{format!(
-                                                            "p903: {}, orders: {}, sales: {}, empty: {}, mismatch: {}, article matches: {}",
-                                                            item.p903_rows,
-                                                            item.order_rows,
-                                                            item.sale_rows,
-                                                            item.missing_document_links,
-                                                            item.mismatched_document_links,
-                                                            item.article_match_count
-                                                        )}</span>
-                                                    }.into_any()
-                                                }}
-                                            </td>
-                                            <td class="table__cell" style="text-align:center;">
-                                                {if is_stale {
-                                                    let key_btn = entry_key.clone();
-                                                    let conn = conn_for_btn.clone();
-                                                    let sa = sa_for_btn.clone();
-                                                    let df = date_from_for_btn.clone();
-                                                    let dt = date_to_for_btn.clone();
-                                                    let nm = nm_id.unwrap_or(0);
-                                                    view! {
-                                                        <thaw::Button
-                                                            appearance=ButtonAppearance::Subtle
-                                                            size=ButtonSize::Small
-                                                            disabled=Signal::derive(move || {
-                                                                let map = stale_map.get();
-                                                                let entry = map.get(&key_btn).cloned().unwrap_or_default();
-                                                                entry.posting
-                                                                    || entry.loading
-                                                                    || entry.summary.as_ref().map(|s| s.doc_count == 0).unwrap_or(false)
-                                                                    || nm_id.is_none()
-                                                            })
-                                                            on_click=move |ev: leptos::ev::MouseEvent| {
-                                                                ev.stop_propagation();
-                                                                spawn_repost_stale(
-                                                                    set_stale_map,
-                                                                    conn.clone(),
-                                                                    nm,
-                                                                    sa.clone(),
-                                                                    df.clone(),
-                                                                    dt.clone(),
-                                                                );
-                                                            }
-                                                        >
-                                                            "Перепровести"
-                                                        </thaw::Button>
-                                                    }.into_any()
-                                                } else {
-                                                    view! { <></> }.into_any()
-                                                }}
-                                            </td>
-                                        </tr>
-                                    }
-                                }).collect_view()
-                            }}
-                        </tbody>
-                    </table>
-                </div>
-                <div
-                    class="list-container a007-mp-list__table-shell"
-                    style=move || if wb_problems_mode.get() { "display:none;" } else { "" }
-                >
+                <div class="list-container a007-mp-list__table-shell">
                     <table class="table__data table--striped">
                         <thead class="table__head a007-mp-list__sticky-head">
                             <tr>

@@ -1,4 +1,10 @@
-use axum::{extract::Query, Json};
+use axum::{
+    body::Body,
+    extract::Query,
+    http::{header, StatusCode},
+    response::Response,
+    Json,
+};
 use chrono::NaiveDate;
 use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::{
@@ -59,10 +65,10 @@ pub async fn list_reports(
     }))
 }
 
-pub async fn export_reports(
-    Query(req): Query<WbFinanceReportListRequest>,
-) -> Result<Json<Vec<WbFinanceReportDto>>, axum::http::StatusCode> {
-    let items = repository::list_all_with_filters(
+/// Экспорт в CSV: все строки с учётом фильтров (без пагинации), все колонки
+/// таблицы `p903_wb_finance_report` с их оригинальными названиями.
+pub async fn export_reports(Query(req): Query<WbFinanceReportListRequest>) -> Response {
+    let items = match repository::list_all_with_filters(
         &req.date_from,
         &req.date_to,
         req.nm_id,
@@ -75,29 +81,153 @@ pub async fn export_reports(
         req.sort_desc,
     )
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to export finance report: {}", e);
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::error!("Failed to export finance report: {}", e);
+            return csv_plain_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Не удалось загрузить данные для экспорта",
+            );
+        }
+    };
 
-    let gl_counts = crate::general_ledger::repository::count_by_registrator_refs(
-        &items.iter().map(|item| item.id.clone()).collect::<Vec<_>>(),
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to count p903 general ledger rows for export: {}", e);
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    match build_finance_report_csv(&items) {
+        Ok(buffer) => {
+            let filename = format!(
+                "wb_finance_report_{}.csv",
+                chrono::Utc::now().format("%Y%m%d_%H%M%S")
+            );
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
+                .header(
+                    header::CONTENT_DISPOSITION,
+                    format!(r#"attachment; filename="{filename}""#),
+                )
+                .body(Body::from(buffer))
+                .unwrap_or_else(|_| Response::new(Body::empty()))
+        }
+        Err(e) => {
+            tracing::error!("Failed to build p903 export CSV: {}", e);
+            csv_plain_error(StatusCode::INTERNAL_SERVER_ERROR, "Ошибка формирования CSV")
+        }
+    }
+}
 
-    let dtos = items
-        .into_iter()
-        .map(|item| {
-            let count = gl_counts.get(&item.id).copied().unwrap_or_default();
-            model_to_dto(item, count)
-        })
-        .collect::<Vec<_>>();
+fn csv_plain_error(status: StatusCode, message: impl Into<String>) -> Response {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .body(Body::from(message.into()))
+        .unwrap_or_else(|_| Response::new(Body::empty()))
+}
 
-    Ok(Json(dtos))
+/// Заголовки = оригинальные имена колонок таблицы `p903_wb_finance_report`,
+/// в порядке объявления в `repository::Model`.
+const EXPORT_HEADERS: &[&str] = &[
+    "id",
+    "rr_dt",
+    "rrd_id",
+    "source_row_ref",
+    "connection_mp_ref",
+    "organization_ref",
+    "acquiring_fee",
+    "acquiring_percent",
+    "additional_payment",
+    "bonus_type_name",
+    "commission_percent",
+    "delivery_amount",
+    "delivery_rub",
+    "nm_id",
+    "a004_nomenclature_ref",
+    "penalty",
+    "ppvz_vw",
+    "ppvz_vw_nds",
+    "ppvz_sales_commission",
+    "quantity",
+    "rebill_logistic_cost",
+    "retail_amount",
+    "retail_price",
+    "retail_price_withdisc_rub",
+    "return_amount",
+    "sa_name",
+    "storage_fee",
+    "subject_name",
+    "supplier_oper_name",
+    "cashback_amount",
+    "ppvz_for_pay",
+    "ppvz_kvw_prc",
+    "ppvz_kvw_prc_base",
+    "srv_dbs",
+    "srid",
+    "loaded_at_utc",
+    "payload_version",
+];
+
+/// Десятичный разделитель — запятая (Excel/1С, ru-локаль). Полная точность.
+fn fmt_opt_f64(v: Option<f64>) -> String {
+    v.map(|x| x.to_string().replace('.', ","))
+        .unwrap_or_default()
+}
+
+fn build_finance_report_csv(items: &[repository::Model]) -> anyhow::Result<Vec<u8>> {
+    let mut buffer: Vec<u8> = Vec::new();
+    // UTF-8 BOM — корректная кириллица при открытии в Excel.
+    buffer.extend_from_slice("\u{FEFF}".as_bytes());
+
+    let mut wtr = csv::WriterBuilder::new()
+        .delimiter(b';')
+        .from_writer(&mut buffer);
+
+    wtr.write_record(EXPORT_HEADERS)?;
+
+    for m in items {
+        let row: [String; 37] = [
+            m.id.clone(),
+            m.rr_dt.clone(),
+            m.rrd_id.to_string(),
+            m.source_row_ref.clone(),
+            m.connection_mp_ref.clone(),
+            m.organization_ref.clone(),
+            fmt_opt_f64(m.acquiring_fee),
+            fmt_opt_f64(m.acquiring_percent),
+            fmt_opt_f64(m.additional_payment),
+            m.bonus_type_name.clone().unwrap_or_default(),
+            fmt_opt_f64(m.commission_percent),
+            fmt_opt_f64(m.delivery_amount),
+            fmt_opt_f64(m.delivery_rub),
+            m.nm_id.map(|v| v.to_string()).unwrap_or_default(),
+            m.a004_nomenclature_ref.clone().unwrap_or_default(),
+            fmt_opt_f64(m.penalty),
+            fmt_opt_f64(m.ppvz_vw),
+            fmt_opt_f64(m.ppvz_vw_nds),
+            fmt_opt_f64(m.ppvz_sales_commission),
+            m.quantity.map(|v| v.to_string()).unwrap_or_default(),
+            fmt_opt_f64(m.rebill_logistic_cost),
+            fmt_opt_f64(m.retail_amount),
+            fmt_opt_f64(m.retail_price),
+            fmt_opt_f64(m.retail_price_withdisc_rub),
+            fmt_opt_f64(m.return_amount),
+            m.sa_name.clone().unwrap_or_default(),
+            fmt_opt_f64(m.storage_fee),
+            m.subject_name.clone().unwrap_or_default(),
+            m.supplier_oper_name.clone().unwrap_or_default(),
+            fmt_opt_f64(m.cashback_amount),
+            fmt_opt_f64(m.ppvz_for_pay),
+            fmt_opt_f64(m.ppvz_kvw_prc),
+            fmt_opt_f64(m.ppvz_kvw_prc_base),
+            m.srv_dbs.map(|v| v.to_string()).unwrap_or_default(),
+            m.srid.clone().unwrap_or_default(),
+            m.loaded_at_utc.clone(),
+            m.payload_version.to_string(),
+        ];
+        wtr.write_record(&row)?;
+    }
+
+    wtr.flush()?;
+    drop(wtr);
+    Ok(buffer)
 }
 
 /// Handler для получения детальной информации по композитному ключу

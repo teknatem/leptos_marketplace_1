@@ -207,17 +207,45 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                 .into_any();
             }
 
+            // FBW (продажа со склада WB) не обслуживается Marketplace API /api/v3/orders,
+            // поэтому marketplace_raw_payload_ref у таких заказов отсутствует по дизайну.
+            let is_fbw = vm
+                .order
+                .get()
+                .and_then(|o| o.warehouse.warehouse_type)
+                .as_deref()
+                == Some("Склад WB");
+            let fbw_notice = || {
+                view! {
+                    <CardAnimated delay_ms=40 nav_id="a015_wb_orders_details_line_marketplace_fbw">
+                        <h4 class="details-section__title">"Marketplace API: /api/v3/orders"</h4>
+                        <div class="form__hint">
+                            "FBW — данные Marketplace API не предусмотрены"
+                        </div>
+                    </CardAnimated>
+                }
+                .into_any()
+            };
+
             let raw_value = vm
                 .marketplace_raw_json
                 .get()
                 .and_then(|json| serde_json::from_str::<Value>(&json).ok());
 
             let Some(raw_value) = raw_value else {
-                return view! { <></> }.into_any();
+                return if is_fbw {
+                    fbw_notice()
+                } else {
+                    view! { <></> }.into_any()
+                };
             };
 
             if !has_marketplace_order_payload(&raw_value) {
-                return view! { <></> }.into_any();
+                return if is_fbw {
+                    fbw_notice()
+                } else {
+                    view! { <></> }.into_any()
+                };
             }
 
             let price = json_kopecks_to_rubles(&raw_value, "price");

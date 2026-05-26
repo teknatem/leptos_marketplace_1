@@ -33,6 +33,7 @@ pub mod general_ledger;
 pub mod layout;
 pub mod navigator;
 pub mod projections;
+pub mod quality;
 pub mod shared;
 pub mod system;
 pub mod usecases;

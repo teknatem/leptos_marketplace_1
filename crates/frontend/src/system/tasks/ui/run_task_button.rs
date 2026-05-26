@@ -14,6 +14,9 @@ pub fn RunTaskButton(
     /// Подпись на кнопке
     #[prop(default = String::from("Выполнить"))]
     label: String,
+    /// Use shared page header action markup.
+    #[prop(default = false)]
+    page_action_style: bool,
 ) -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (hint, set_hint) = signal::<Option<String>>(None);
@@ -63,19 +66,44 @@ pub fn RunTaskButton(
     view! {
         <Flex gap=FlexGap::Small align=FlexAlign::Center>
             <Button
-                appearance=ButtonAppearance::Secondary
+                appearance=if page_action_style {
+                    ButtonAppearance::Subtle
+                } else {
+                    ButtonAppearance::Secondary
+                }
+                size=ButtonSize::Medium
                 on_click=on_click
                 disabled=busy
             >
                 {move || if busy.get() {
-                    view! { <Spinner size=SpinnerSize::Tiny /> }.into_any()
+                    if page_action_style {
+                        view! {
+                            <span class="page-action-button__content">
+                                <span class="page-action-button__icon">
+                                    <span class="page-action-button__spinner"></span>
+                                </span>
+                                <span class="page-action-button__text">{move || label.get()}</span>
+                            </span>
+                        }.into_any()
+                    } else {
+                        view! { <Spinner size=SpinnerSize::Tiny /> }.into_any()
+                    }
                 } else {
-                    view! {
-                        <Flex gap=FlexGap::Small align=FlexAlign::Center>
-                            {icon("play")}
-                            <span>{move || label.get()}</span>
-                        </Flex>
-                    }.into_any()
+                    if page_action_style {
+                        view! {
+                            <span class="page-action-button__content">
+                                <span class="page-action-button__icon">{icon("play")}</span>
+                                <span class="page-action-button__text">{move || label.get()}</span>
+                            </span>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <Flex gap=FlexGap::Small align=FlexAlign::Center>
+                                {icon("play")}
+                                <span>{move || label.get()}</span>
+                            </Flex>
+                        }.into_any()
+                    }
                 }}
             </Button>
             {move || hint.get().map(|h| view! {

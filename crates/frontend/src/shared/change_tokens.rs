@@ -6,12 +6,14 @@ use leptos::prelude::*;
 #[derive(Clone, Copy)]
 pub struct ChangeTokenContext {
     pub sys_tasks: RwSignal<u64>,
+    pub a027_wb_documents: RwSignal<u64>,
 }
 
 impl ChangeTokenContext {
     pub fn new() -> Self {
         Self {
             sys_tasks: RwSignal::new(0),
+            a027_wb_documents: RwSignal::new(0),
         }
     }
 }

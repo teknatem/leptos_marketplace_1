@@ -511,37 +511,49 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         ),
     );
 
+    let is_date_group = group_by == "entry_date";
+    // По дням сливаем строки по дню месяца, чтобы один и тот же день из П1 и П2
+    // совпадал (01 ↔ 01), даже когда периоды лежат в разных месяцах.
+    let day_key = |raw: &str| {
+        if is_date_group {
+            fmt_day_label(raw)
+        } else {
+            raw.to_string()
+        }
+    };
+
     let mut merged: HashMap<String, DrilldownRow> = HashMap::new();
 
     for row in rows1? {
-        let label = row_label(group_by, &row.group_key);
-        merged.insert(
-            row.group_key.clone(),
-            DrilldownRow {
-                group_key: row.group_key,
-                label,
-                value1: row.total,
-                value2: 0.0,
-                delta_pct: None,
-                metric_values: HashMap::new(),
-            },
-        );
-    }
-
-    for row in rows2? {
-        let key = row.group_key.clone();
+        let key = day_key(&row.group_key);
         let label = row_label(group_by, &row.group_key);
         merged
             .entry(key.clone())
-            .and_modify(|item| item.value2 = row.total)
-            .or_insert(DrilldownRow {
+            .or_insert_with(|| DrilldownRow {
                 group_key: key,
                 label,
                 value1: 0.0,
-                value2: row.total,
+                value2: 0.0,
                 delta_pct: None,
                 metric_values: HashMap::new(),
-            });
+            })
+            .value1 += row.total;
+    }
+
+    for row in rows2? {
+        let key = day_key(&row.group_key);
+        let label = row_label(group_by, &row.group_key);
+        merged
+            .entry(key.clone())
+            .or_insert_with(|| DrilldownRow {
+                group_key: key,
+                label,
+                value1: 0.0,
+                value2: 0.0,
+                delta_pct: None,
+                metric_values: HashMap::new(),
+            })
+            .value2 += row.total;
     }
 
     let mut rows: Vec<DrilldownRow> = merged

@@ -87,6 +87,27 @@ pub async fn list_all() -> anyhow::Result<Vec<Nomenclature>> {
     repository::list_all().await
 }
 
+/// Поиск номенклатуры по штрихкоду через проекцию p901_nomenclature_barcodes.
+///
+/// Штрихкод резолвится в `nomenclature_ref` (источник 1C приоритетнее), после чего
+/// загружаются соответствующие карточки номенклатуры. Возвращает 0/1/N позиций —
+/// фронтенд обрабатывает их так же, как автоподбор по артикулу.
+pub async fn find_by_barcode(barcode: &str) -> anyhow::Result<Vec<Nomenclature>> {
+    let refs = crate::projections::p901_nomenclature_barcodes::service::find_nomenclature_refs_by_barcode(barcode).await?;
+
+    let mut result = Vec::new();
+    for nom_ref in refs {
+        let Ok(uuid) = Uuid::parse_str(&nom_ref) else {
+            continue;
+        };
+        if let Some(nomenclature) = repository::get_by_id(uuid).await? {
+            result.push(nomenclature);
+        }
+    }
+
+    Ok(result)
+}
+
 pub async fn list_paginated(
     limit: u64,
     offset: u64,
