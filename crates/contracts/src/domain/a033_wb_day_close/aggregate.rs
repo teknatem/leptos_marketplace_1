@@ -244,6 +244,10 @@ pub struct WbDayCloseLine {
     #[serde(default)]
     pub sales_doc_no: Option<String>,
 
+    /// sale_date из a012 (YYYY-MM-DD, первые 10 символов).
+    #[serde(default)]
+    pub sales_doc_date: Option<String>,
+
     /// event_type из a012 («sale» или «return»).
     #[serde(default)]
     pub sales_event_type: Option<String>,
@@ -266,7 +270,9 @@ pub struct WbDayCloseLine {
     pub p903_rrd_id: Option<i64>,
 
     // ── 10 колонок ───────────────────────────────────────────────────────────
-    /// 1. Реализация: SUM(retail_amount) − SUM(return_amount)
+    /// 1. Реализация.
+    ///    Продажа: retail_amount − return_amount (> 0).
+    ///    Возврат: −retail_amount или −return_amount (< 0, WB кладёт сумму в retail_amount).
     pub revenue: f64,
 
     /// 2. Реклама: −SUM(p913.amount WHERE turnover_code='advert_clicks_order_expense' AND order_key=srid)
@@ -275,11 +281,16 @@ pub struct WbDayCloseLine {
     /// 3. Логистика: −(delivery_rub + rebill_logistic_cost + storage_fee)
     pub logistics: f64,
 
-    /// 4. Эквайринг: −SUM(acquiring_fee)
+    /// 4. Эквайринг.
+    ///    Продажа: −acquiring_fee (расход).
+    ///    Возврат: +acquiring_fee (WB возвращает комиссию эквайрера → доход/сторно).
     pub acquiring: f64,
 
-    /// 5. Комиссия: −(ppvz_vw + ppvz_vw_nds + ppvz_sales_commission)
-    ///    Поглощает соинвест: если WB переплачивает, значение становится положительным.
+    /// 5. Комиссия.
+    ///    Sale/Return: ±(ppvz_vw + ppvz_vw_nds) — ppvz_sales_commission исключён (GL-rule).
+    ///    Прочие:      −(ppvz_vw + ppvz_vw_nds + ppvz_sales_commission).
+    ///      • ppvz > 0 → WB возвращает комиссию → положительное (доход).
+    ///      • ppvz < 0 → WB берёт обратно соинвест → отрицательное (расход).
     pub commission: f64,
 
     /// 6. Штрафы: −SUM(penalty)
@@ -317,6 +328,48 @@ impl WbDayCloseLine {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Advert snapshot lines
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Строка рекламного снапшота из p911 (advert_clicks_no_order).
+/// Хранится в документе как JSON-массив, заполняется при recalculate.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WbDayCloseAdvertNoOrderLine {
+    /// p911_wb_advert_by_items.id
+    pub projection_ref_id: String,
+    pub nomenclature_ref: Option<String>,
+    pub sa_name: Option<String>,
+    pub amount: f64,
+    pub general_ledger_ref: Option<String>,
+    /// wb_advert_campaign_code из p911 (числовой advert_id WB, для отображения)
+    pub campaign_code: String,
+    /// UUID записи a030_wb_advert_campaign (для ссылки), если найден
+    pub campaign_ref: Option<String>,
+}
+
+/// Строка рекламного снапшота из p913 (advert_clicks_order_accrual).
+/// Хранится в документе как JSON-массив, заполняется при recalculate.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WbDayCloseAdvertOrderAccrualLine {
+    /// p913_wb_advert_order_attr.id
+    pub projection_ref_id: String,
+    pub nomenclature_ref: Option<String>,
+    pub sa_name: Option<String>,
+    pub amount: f64,
+    /// order_key из p913 (= srid из p903)
+    pub order_key: String,
+    /// UUID документа a015 (если найден)
+    pub order_id: Option<String>,
+    pub order_date: Option<String>,
+    /// wb_advert_campaign_code из p913 (числовой advert_id WB, для отображения)
+    pub campaign_code: String,
+    /// UUID записи a030_wb_advert_campaign (для ссылки), если найден
+    pub campaign_ref: Option<String>,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Problem
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -339,6 +392,10 @@ pub struct WbDayCloseProblem {
     /// UUID документов a012_wb_sales, которые нужно перепровести для устранения проблемы.
     #[serde(default)]
     pub a012_ids: Vec<String>,
+
+    /// Сумма advert_clicks_order_expense по связанным a012 (если есть).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub a012_advert_expense: Option<f64>,
 
     /// Человекочитаемое описание проблемы.
     pub message: String,
@@ -386,7 +443,7 @@ impl WbDayCloseTotals {
             t.result += line.result;
             t.dealer_price += line.dealer_price;
             t.margin_diff += line.margin_diff;
-            if !line.problem_codes.is_empty() {
+            if !line.problem_codes.is_empty() && !line.kind.is_info() {
                 t.problem_lines += 1;
             }
         }
@@ -453,6 +510,30 @@ pub struct WbDayClose {
 
     /// Итоги по документу.
     pub totals: WbDayCloseTotals,
+
+    /// Снапшот рекламных строк из p911 (advert_clicks_no_order).
+    #[serde(default)]
+    pub advert_clicks_no_order_lines: Vec<WbDayCloseAdvertNoOrderLine>,
+
+    /// Снапшот рекламных строк из p913 (advert_clicks_order_accrual).
+    #[serde(default)]
+    pub advert_clicks_order_accrual_lines: Vec<WbDayCloseAdvertOrderAccrualLine>,
+
+    /// GL-итог из sys_general_ledger по advert_clicks_no_order, заполняется при recalculate.
+    #[serde(default)]
+    pub gl_advert_no_order: f64,
+
+    /// GL-итог из sys_general_ledger по advert_clicks_order_accrual, заполняется при recalculate.
+    #[serde(default)]
+    pub gl_advert_order_accrual: f64,
+
+    /// GL-итог из sys_general_ledger по advert_clicks_order_expense, заполняется при recalculate.
+    #[serde(default)]
+    pub gl_advert_order_expense: f64,
+
+    /// Снапшот p913 (advert_clicks_order_expense) за дату документа — для колонки «Документ».
+    #[serde(default)]
+    pub snap_advert_order_expense: f64,
 }
 
 impl WbDayClose {
@@ -482,6 +563,12 @@ impl WbDayClose {
             lines: Vec::new(),
             problems: Vec::new(),
             totals: WbDayCloseTotals::default(),
+            advert_clicks_no_order_lines: Vec::new(),
+            advert_clicks_order_accrual_lines: Vec::new(),
+            gl_advert_no_order: 0.0,
+            gl_advert_order_accrual: 0.0,
+            gl_advert_order_expense: 0.0,
+            snap_advert_order_expense: 0.0,
         }
     }
 
@@ -512,12 +599,32 @@ impl WbDayClose {
         self.recompute_snapshot_hash();
     }
 
-    /// Пересчитывает SHA-256 хэш снапшота по lines + problems + totals.
+    pub fn set_advert_lines(
+        &mut self,
+        no_order: Vec<WbDayCloseAdvertNoOrderLine>,
+        order_accrual: Vec<WbDayCloseAdvertOrderAccrualLine>,
+        gl_no_order: f64,
+        gl_order_accrual: f64,
+        gl_order_expense: f64,
+        snap_order_expense: f64,
+    ) {
+        self.advert_clicks_no_order_lines = no_order;
+        self.advert_clicks_order_accrual_lines = order_accrual;
+        self.gl_advert_no_order = gl_no_order;
+        self.gl_advert_order_accrual = gl_order_accrual;
+        self.gl_advert_order_expense = gl_order_expense;
+        self.snap_advert_order_expense = snap_order_expense;
+        self.recompute_snapshot_hash();
+    }
+
+    /// Пересчитывает SHA-256 хэш снапшота по lines + problems + totals + advert snapshots.
     pub fn recompute_snapshot_hash(&mut self) {
         let snap = SnapshotData {
             lines: &self.lines,
             problems: &self.problems,
             totals: &self.totals,
+            advert_no_order: &self.advert_clicks_no_order_lines,
+            advert_order_accrual: &self.advert_clicks_order_accrual_lines,
         };
 
         if let Ok(json) = serde_json::to_string(&snap) {
@@ -556,6 +663,8 @@ struct SnapshotData<'a> {
     lines: &'a Vec<WbDayCloseLine>,
     problems: &'a Vec<WbDayCloseProblem>,
     totals: &'a WbDayCloseTotals,
+    advert_no_order: &'a Vec<WbDayCloseAdvertNoOrderLine>,
+    advert_order_accrual: &'a Vec<WbDayCloseAdvertOrderAccrualLine>,
 }
 
 /// Простая 64-bit хэш-функция (FNV-1a).
@@ -728,6 +837,7 @@ mod tests {
             srid: Some("S001".to_string()),
             nomenclature_ref: None,
             a012_ids: vec![],
+            a012_advert_expense: None,
             message: "test".to_string(),
         }];
         doc.lines = vec![line];
@@ -776,6 +886,7 @@ mod tests {
             srid: None,
             nomenclature_ref: None,
             a012_ids: vec![],
+            a012_advert_expense: None,
             message: String::new(),
         }];
         let totals = WbDayCloseTotals::from_lines(&lines, &problems);

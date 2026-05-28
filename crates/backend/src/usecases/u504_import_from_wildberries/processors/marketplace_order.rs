@@ -66,6 +66,10 @@ pub async fn process_marketplace_order(
             let _ = a015_wb_orders::service::store_marketplace_raw_payload(&document_no, &raw_json)
                 .await?;
         }
+        if let Some(price_rub) = order.price.filter(|&p| p > 0).map(|p| p as f64 / 100.0) {
+            let _ = a015_wb_orders::service::update_line_price_if_missing(&document_no, price_rub)
+                .await;
+        }
         return Ok(false);
     }
 
@@ -107,6 +111,7 @@ pub async fn process_marketplace_order(
         spp: None,
         finished_price: None,
         price_with_disc: None,
+        price: order.price.map(|p| p as f64 / 100.0),
         dealer_price_ut: None,
         margin_pro: None,
     };

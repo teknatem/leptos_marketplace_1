@@ -348,7 +348,6 @@ impl WbOrdersDetailsVm {
         });
     }
 
-
     async fn reload(&self) {
         let Some(id) = self.id.get() else {
             return;

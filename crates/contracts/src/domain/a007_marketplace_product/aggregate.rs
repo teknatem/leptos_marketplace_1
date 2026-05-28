@@ -313,4 +313,3 @@ pub struct MarketplaceProductListItemDto {
     pub is_posted: bool,
     pub created_at: String,
 }
-

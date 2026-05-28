@@ -1,7 +1,5 @@
 use axum::{extract::Query, http::StatusCode, Json};
-use contracts::system::history::{
-    PageHistoryDto, PageHistoryListQuery, PageHistoryRecordRequest,
-};
+use contracts::system::history::{PageHistoryDto, PageHistoryListQuery, PageHistoryRecordRequest};
 
 use crate::system::auth::extractor::CurrentUser;
 use crate::system::history::service;

@@ -680,9 +680,7 @@ async fn dispatch_repost(registrator_type: &str, registrator_id: Uuid) -> Result
 async fn dispatch_aggregate_repost(aggregate_key: &str, aggregate_id: Uuid) -> Result<()> {
     match aggregate_key {
         A012_WB_SALES => crate::domain::a012_wb_sales::posting::post_document(aggregate_id).await,
-        A015_WB_ORDERS => {
-            crate::domain::a015_wb_orders::posting::post_document(aggregate_id).await
-        }
+        A015_WB_ORDERS => crate::domain::a015_wb_orders::posting::post_document(aggregate_id).await,
         A021_PRODUCTION_OUTPUT => {
             crate::domain::a021_production_output::service::post_document(aggregate_id).await
         }

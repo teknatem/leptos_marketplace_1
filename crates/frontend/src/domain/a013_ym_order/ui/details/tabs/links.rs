@@ -103,11 +103,11 @@ pub fn LinksTab(vm: YmOrderDetailsVm) -> impl IntoView {
                             <TableBody>
                                 <For
                                     each=move || reports_for_table.clone()
-                                    key=|r| r.record_key.clone()
+                                    key=|r| r.id.clone()
                                     children={
                                         let tabs_store = tabs_store;
                                         move |report| {
-                                            let record_key = report.record_key.clone();
+                                            let row_id = report.id.clone();
                                             let date_str = report.transaction_date.as_deref().map(fmt_date).unwrap_or_default();
                                             let date_for_title = date_str.clone();
 
@@ -116,13 +116,12 @@ pub fn LinksTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                                     on:click={
                                                         let tabs_store = tabs_store;
                                                         move |_| {
+                                                            // UUID is URL-safe — no encoding needed.
                                                             let tab_key = format!(
                                                                 "p907_ym_payment_report_details_{}",
-                                                                js_sys::encode_uri_component(&record_key)
-                                                                    .as_string()
-                                                                    .unwrap_or_else(|| record_key.clone())
+                                                                row_id
                                                             );
-                                                            let tab_title = format!("ЯМ Платёж {}", date_for_title);
+                                                            let tab_title = format!("YM Платёж {}", date_for_title);
                                                             tabs_store.open_tab(&tab_key, &tab_title);
                                                         }
                                                     }

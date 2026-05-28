@@ -7,6 +7,26 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WbAdvertDailyId(pub Uuid);
 
+fn fnv1a64(input: &str) -> u64 {
+    const OFFSET: u64 = 0xcbf29ce484222325;
+    const PRIME: u64 = 0x100000001b3;
+    let mut hash = OFFSET;
+    for byte in input.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
+}
+
+fn stable_uuid_bytes(key: &str) -> [u8; 16] {
+    let h1 = fnv1a64(key);
+    let h2 = fnv1a64(&format!("{key}\0salt"));
+    let mut bytes = [0u8; 16];
+    bytes[..8].copy_from_slice(&h1.to_le_bytes());
+    bytes[8..].copy_from_slice(&h2.to_le_bytes());
+    bytes
+}
+
 impl WbAdvertDailyId {
     pub fn new(value: Uuid) -> Self {
         Self(value)
@@ -14,6 +34,18 @@ impl WbAdvertDailyId {
 
     pub fn new_v4() -> Self {
         Self(Uuid::new_v4())
+    }
+
+    /// Детерминированный id документа по (connection, advert_id, date).
+    /// Один и тот же суточный отчёт WB всегда получает один UUID — перепроведение
+    /// и replace_for_period не плодят «осиротевшие» p913 от случайных id.
+    /// FNV-1a → 16 байт, без feature `v5` у uuid (и без лишних зависимостей).
+    pub fn stable_for_header(header: &WbAdvertDailyHeader) -> Self {
+        let key = format!(
+            "a026_wb_advert_daily:{}:{}:{}",
+            header.connection_id, header.advert_id, header.document_date,
+        );
+        Self(Uuid::from_bytes(stable_uuid_bytes(&key)))
     }
 
     pub fn value(&self) -> Uuid {
@@ -162,7 +194,7 @@ impl WbAdvertDaily {
             header.advert_id, header.document_date
         );
         let base = BaseAggregate::new(
-            WbAdvertDailyId::new_v4(),
+            WbAdvertDailyId::stable_for_header(&header),
             header.document_no.clone(),
             description,
         );

@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::general_ledger::turnover_registry::get_turnover_class;
+use crate::shared::marketplaces::wildberries::datetime::wb_business_date_str;
 
 const REGISTRATOR_TYPE: &str = "a012_wb_sales";
 const TURNOVER_CODE_EXPENSE: &str = "advert_clicks_order_expense";
@@ -130,7 +131,7 @@ pub async fn post_document_with_cache(
             .await?;
         if !reserve_rows.is_empty() {
             let total_amount: f64 = reserve_rows.iter().map(|r| r.amount).sum();
-            let entry_date = document.state.sale_dt.format("%Y-%m-%d").to_string();
+            let entry_date = wb_business_date_str(&document.state.sale_dt);
             let gl_id = Uuid::new_v4().to_string();
             let gl_entry = to_gl_advert_expense(
                 &gl_id,
@@ -147,6 +148,7 @@ pub async fn post_document_with_cache(
                     srid,
                     &reserve_rows,
                     sale_finished_price,
+                    &entry_date,
                     &gl_id,
                 )
             {

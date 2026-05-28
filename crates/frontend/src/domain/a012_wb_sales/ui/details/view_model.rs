@@ -3,6 +3,7 @@
 //! Contains reactive state, commands, and lazy loading logic.
 
 use super::model::*;
+use crate::layout::global_context::AppGlobalContext;
 use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use leptos::prelude::*;
@@ -147,7 +148,11 @@ impl WbSalesDetailsVm {
                         .as_array()
                         .map(|a| a.len())
                         .unwrap_or(0);
-                    p900_len + p904_len
+                    let p913_len = p["p913_wb_advert_order_attr"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    p900_len + p904_len + p913_len
                 })
                 .unwrap_or(0)
         })
@@ -497,6 +502,21 @@ impl WbSalesDetailsVm {
             self.advert_attribution.set(Some(data));
             self.advert_attribution_loaded.set(true);
         }
+    }
+
+    pub fn open_order_by_srid(&self, srid: String, tabs_store: AppGlobalContext) {
+        if srid.is_empty() {
+            return;
+        }
+        spawn_local(async move {
+            if let Some(uuid) = resolve_order_uuid_by_srid(&srid).await {
+                let short: String = srid.chars().take(16).collect();
+                tabs_store.open_tab(
+                    &format!("a015_wb_orders_details_{}", uuid),
+                    &format!("WB Order {}", short),
+                );
+            }
+        });
     }
 
     /// Refresh dealer price

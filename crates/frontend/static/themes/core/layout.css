@@ -891,6 +891,10 @@
   margin-bottom: var(--spacing-sm);
 }
 
+.filter-grid__period {
+  grid-column: 1 / -1;
+}
+
 .filter-tags {
   display: flex;
   align-items: center;

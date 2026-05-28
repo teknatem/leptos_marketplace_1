@@ -507,6 +507,27 @@ pub async fn update_line_id_by_document_no(document_no: &str, line_id: i64) -> R
     Ok(())
 }
 
+/// Записывает `price` в line_json, если поле ещё не задано (для FBS до прихода Statistics API).
+pub async fn update_line_price_if_missing(document_no: &str, price_rub: f64) -> Result<bool> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let sql = format!(
+        "UPDATE a015_wb_orders \
+         SET line_json = json_set(line_json, '$.price', {price}), \
+             updated_at = datetime('now') \
+         WHERE document_no = '{doc}' \
+           AND is_deleted = 0 \
+           AND (json_extract(line_json, '$.price') IS NULL \
+             OR CAST(json_extract(line_json, '$.price') AS REAL) <= 0)",
+        price = price_rub,
+        doc = document_no.replace('\'', "''"),
+    );
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    let result = db.execute(stmt).await?;
+    Ok(result.rows_affected() > 0)
+}
+
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbOrders>> {
     let db = get_connection();
     let id_str = id.to_string();

@@ -76,10 +76,29 @@ pub struct WbOrdersLine {
     pub finished_price: Option<f64>,
     /// Цена с учетом скидки
     pub price_with_disc: Option<f64>,
+    /// Цена продавца (Statistics totalPrice или Marketplace API `price` в рублях)
+    #[serde(default)]
+    pub price: Option<f64>,
     /// Дилерская цена УТ
     pub dealer_price_ut: Option<f64>,
     /// Маржинальность, %
     pub margin_pro: Option<f64>,
+}
+
+impl WbOrdersLine {
+    /// База распределения рекламных расходов: price_with_disc → finished_price → price → total_price.
+    pub fn allocation_basis(&self) -> f64 {
+        [
+            self.price_with_disc,
+            self.finished_price,
+            self.price,
+            self.total_price,
+        ]
+        .into_iter()
+        .flatten()
+        .find(|v| *v > f64::EPSILON)
+        .unwrap_or(0.0)
+    }
 }
 
 /// Статусы и временные метки

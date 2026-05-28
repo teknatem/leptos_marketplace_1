@@ -32,7 +32,9 @@ pub async fn resolve_wb_nomenclature_ref(
         }
     }
 
-    Ok(resolved.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()))
+    Ok(resolved
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty()))
 }
 
 /// Поиск и установка nomenclature_ref по артикулу

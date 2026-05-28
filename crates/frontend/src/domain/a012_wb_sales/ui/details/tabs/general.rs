@@ -38,8 +38,10 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
             let mp_id = sale_data.header.marketplace_id.clone();
             let document_no = sale_data.header.document_no.clone();
             let sale_id = sale_data.header.sale_id.clone().unwrap_or_else(|| "—".to_string());
-            let code = sale_data.code.clone();
             let description = sale_data.description.clone();
+            let srid = sale_data.header.document_no.clone();
+            let srid_for_click = srid.clone();
+            let vm_for_order = vm.clone();
             let event_type = sale_data.state.event_type.clone();
             let status_norm = sale_data.state.status_norm.clone();
             let sale_dt = format_datetime_utc_local(&sale_data.state.sale_dt, "%d.%m.%Y %H:%M:%S");
@@ -111,15 +113,9 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                     <Input value=RwSignal::new(sale_id) attr:readonly=true />
                                 </div>
                             </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);">
-                                <div class="form__group">
-                                    <label class="form__label">"№"</label>
-                                    <Input value=RwSignal::new(document_no) attr:readonly=true />
-                                </div>
-                                <div class="form__group">
-                                    <label class="form__label">"Code"</label>
-                                    <Input value=RwSignal::new(code) attr:readonly=true />
-                                </div>
+                            <div class="form__group">
+                                <label class="form__label">"№"</label>
+                                <Input value=RwSignal::new(document_no) attr:readonly=true />
                             </div>
                             <div class="form__group">
                                 <label class="form__label">"Описание"</label>
@@ -386,6 +382,26 @@ pub fn GeneralTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                             .get()
                                             .map(|i| i.name)
                                             .unwrap_or_else(|| "Загрузка...".to_string())
+                                    }}
+                                </Button>
+                            </div>
+                            <div class="form__group">
+                                <label class="form__label">"Исходный заказ"</label>
+                                <Button
+                                    appearance=ButtonAppearance::Subtle
+                                    size=ButtonSize::Small
+                                    disabled=srid.is_empty()
+                                    on_click={
+                                        let srid = srid_for_click.clone();
+                                        let vm = vm_for_order.clone();
+                                        move |_| vm.open_order_by_srid(srid.clone(), tabs_store.clone())
+                                    }
+                                    attr:style="width: 100%; justify-content: flex-start;"
+                                >
+                                    {if srid.is_empty() {
+                                        "—".to_string()
+                                    } else {
+                                        srid.clone()
                                     }}
                                 </Button>
                             </div>

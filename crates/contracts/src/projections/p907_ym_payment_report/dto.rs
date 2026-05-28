@@ -3,7 +3,12 @@ use serde::{Deserialize, Serialize};
 /// DTO для строки отчёта по платежам Yandex Market
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmPaymentReportDto {
-    /// Internal stable primary key (real transaction_id or SYNTH_... synthetic key)
+    /// Internal stable UUID used for UI navigation and internal links.
+    /// Assigned once on first insert and never changes.
+    pub id: String,
+
+    /// Business deduplication key (ymid_... format).
+    /// Used only during import; prefer `id` for links.
     pub record_key: String,
 
     // Metadata
@@ -66,6 +71,8 @@ pub struct YmPaymentReportListRequest {
     #[serde(default)]
     pub payment_status: Option<String>,
     #[serde(default)]
+    pub transaction_source: Option<String>,
+    #[serde(default)]
     pub shop_sku: Option<String>,
     #[serde(default)]
     pub order_id: Option<i64>,
@@ -101,4 +108,11 @@ pub struct YmPaymentReportListResponse {
     pub items: Vec<YmPaymentReportDto>,
     pub total_count: i32,
     pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmPaymentReportFilterOptionsResponse {
+    pub transaction_types: Vec<String>,
+    pub payment_statuses: Vec<String>,
+    pub transaction_sources: Vec<String>,
 }

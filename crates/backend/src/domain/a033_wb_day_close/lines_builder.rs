@@ -3,16 +3,31 @@
 /// Шаги:
 ///   1. Агрегация p903_wb_finance_report по (srid, nm_id, nomenclature_ref, sa_name, supplier_oper_name)
 ///      Включает строки БЕЗ srid (хранение, штрафы, возмещение ПВЗ, приёмка).
-///   2. p913_wb_advert_order_attr — фактически списанная реклама + детектор «резерв без expense»
-///   3. a012_wb_sales — dealer_price_ut × qty per (srid, event_type); fallback на p912_nomenclature_costs
+///   2. p913 — reserve по order_key; expense в колонке «Реклама» = advert_clicks_order_expense matched a012
+///   3. a012_wb_sales — по srid из p903, sale_date<=business_date+1д (лаг WB), знак суммы; fallback p912
 ///   4. a015_wb_orders — дата и статус отмены заказа
 ///   5. In-memory join, классификация LineKind/LineDetail, вычисление 10 колонок
 use anyhow::Result;
+use chrono::{Days, NaiveDate};
 use contracts::domain::a033_wb_day_close::aggregate::{
     LineDetail, LineKind, ProblemSeverity, SaleEvent, WbDayCloseLine, WbDayCloseProblem,
 };
 use sea_orm::{ConnectionTrait, Statement, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/// sale_date в a012 может быть на сутки позже `rr_dt` в p903 (особенность WB).
+pub(crate) const A012_SALE_DATE_LAG_DAYS: i64 = 1;
+
+/// Верхняя граница `sale_date` (YYYY-MM-DD) для привязки a012 к закрытию дня `business_date`.
+pub(crate) fn a012_sale_date_upper_bound(business_date: &str) -> String {
+    NaiveDate::parse_from_str(business_date, "%Y-%m-%d")
+        .ok()
+        .and_then(|d| {
+            d.checked_add_days(Days::new(A012_SALE_DATE_LAG_DAYS.try_into().unwrap_or(1)))
+        })
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| business_date.to_string())
+}
 
 use crate::shared::data::db::get_connection;
 
@@ -75,9 +90,41 @@ pub(crate) struct A012Row {
     pub id: String,
     pub document_no: String,
     pub sale_id: Option<String>,
+    pub sale_date: String,
+    /// COALESCE(amount_line, finished_price, total_price) — реализация > 0, возврат < 0.
+    pub line_amount: f64,
     pub dealer_total: f64,
     pub is_posted: bool,
     pub event_type: String,
+}
+
+fn a012_is_sale(row: &A012Row) -> bool {
+    row.line_amount > 0.0
+}
+
+fn a012_is_return(row: &A012Row) -> bool {
+    row.line_amount < 0.0
+}
+
+fn a012_rows_for_kind<'a>(rows: &'a [A012Row], kind: &LineKind) -> Vec<&'a A012Row> {
+    match kind {
+        LineKind::Sale => rows.iter().filter(|r| a012_is_sale(r)).collect(),
+        LineKind::Return => rows.iter().filter(|r| a012_is_return(r)).collect(),
+        _ => vec![],
+    }
+}
+
+/// Предпочитаем a012 с sale_date на дату закрытия; при лаге WB — ближайшую не позже upper bound.
+fn sort_a012_for_pick(docs: &mut [A012Row], business_date: &str) {
+    docs.sort_by(|a, b| {
+        let a_on_close = a.sale_date.as_str() <= business_date;
+        let b_on_close = b.sale_date.as_str() <= business_date;
+        match (a_on_close, b_on_close) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.sale_date.cmp(&b.sale_date),
+        }
+    });
 }
 
 /// Строка a015_wb_orders.
@@ -180,9 +227,31 @@ fn classify_detail(row: &P903Row) -> LineDetail {
 // Шаг 1: p903 агрегация (включает строки без srid)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Непустые srid из уже загруженных строк p903.
+pub(crate) fn p903_srids_from_rows(p903_rows: &[P903Row]) -> Vec<String> {
+    p903_rows
+        .iter()
+        .map(|r| r.srid.clone())
+        .filter(|s| !s.is_empty())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Загружает агрегированные строки p903 за день (один SQL).
+pub(crate) async fn load_p903_day(
+    connection_id: &str,
+    business_date: &str,
+) -> Result<Vec<P903Row>> {
+    fetch_p903_rows(connection_id, business_date).await
+}
+
 async fn fetch_p903_rows(connection_id: &str, business_date: &str) -> Result<Vec<P903Row>> {
-    // MIN(supplier_oper_name) для классификатора; COUNT(DISTINCT ...) для kind_ambiguous.
-    // Строки с пустым/NULL srid включаются.
+    // GROUP BY включает supplier_oper_name, поэтому каждая группа имеет ровно одно значение
+    // этого поля — так разные типы операций (Продажа/Возврат) не смешиваются.
+    // Следствие: COUNT(DISTINCT supplier_oper_name) внутри группы = всегда 1,
+    // а oper_name_count > 1 никогда не выполняется через SQL-путь.
+    // kind_ambiguous срабатывает только через unknown_flag из classify_kind — это корректно.
     let sql = r#"
         SELECT
             COALESCE(srid, '')                           AS srid,
@@ -315,10 +384,67 @@ async fn fetch_p913_advert(srids: &[String]) -> Result<HashMap<String, P913Adver
     Ok(map)
 }
 
+/// Фактически списанная реклама (advert_clicks_order_expense) по registrator_ref a012.
+async fn fetch_p913_expense_by_a012_ids(ids: &[String]) -> Result<HashMap<String, f64>> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut map = HashMap::with_capacity(ids.len());
+    const CHUNK: usize = 400;
+    for chunk in ids.chunks(CHUNK) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            r#"
+            SELECT registrator_ref, COALESCE(SUM(amount), 0.0) AS expense_amount
+            FROM p913_wb_advert_order_attr
+            WHERE registrator_ref IN ({placeholders})
+              AND turnover_code = 'advert_clicks_order_expense'
+            GROUP BY registrator_ref
+            "#,
+        );
+        let params: Vec<Value> = chunk.iter().map(|s| sv(s)).collect();
+        let stmt = Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+        let rows = conn().query_all(stmt).await?;
+        for row in rows {
+            let id: String = row.try_get("", "registrator_ref").unwrap_or_default();
+            if id.is_empty() {
+                continue;
+            }
+            map.insert(id, row.try_get("", "expense_amount").unwrap_or(0.0));
+        }
+    }
+    Ok(map)
+}
+
+/// Сумма advert_clicks_order_expense по списку a012 id.
+fn sum_a012_advert_expense(ids: &[String], map: &HashMap<String, f64>) -> Option<f64> {
+    if ids.is_empty() {
+        return None;
+    }
+    Some(
+        ids.iter()
+            .map(|id| map.get(id).copied().unwrap_or(0.0))
+            .sum(),
+    )
+}
+
+/// Реклама для колонки строки: advert_clicks_order_expense matched a012 (как в карточке a012).
+fn advert_expense_from_matched_a012(
+    matched_a012: &Option<A012Row>,
+    expense_by_a012: &HashMap<String, f64>,
+) -> f64 {
+    matched_a012
+        .as_ref()
+        .and_then(|a| expense_by_a012.get(&a.id).copied())
+        .unwrap_or(0.0)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Шаг 3: a012 per srid (по всем event_type)
+// Шаг 3: a012 per srid (sale_date <= business_date + лаг; знак суммы — в join по LineKind)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// a012 кабинета по document_no (= srid), `sale_date` не позже `a012_sale_date_upper_bound`.
 async fn fetch_a012_for_srids(
     connection_id: &str,
     business_date: &str,
@@ -328,54 +454,61 @@ async fn fetch_a012_for_srids(
         return Ok(HashMap::new());
     }
 
-    let date_prefix = format!("{}%", business_date);
-    let placeholders = srids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-
-    let sql = format!(
-        r#"
-        SELECT
-            id,
-            document_no,
-            sale_id,
-            COALESCE(dealer_price_ut, 0.0) * COALESCE(ABS(qty), 1.0) AS dealer_total,
-            is_posted,
-            COALESCE(event_type, 'sale') AS event_type
-        FROM a012_wb_sales
-        WHERE connection_id = ?
-          AND sale_date LIKE ?
-          AND document_no IN ({})
-          AND is_deleted = 0
-        "#,
-        placeholders
-    );
-
-    let mut params: Vec<Value> = vec![sv(connection_id), sv(date_prefix)];
-    params.extend(srids.iter().map(|s| sv(s)));
-
-    let stmt = Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
-    let rows = conn().query_all(stmt).await?;
-
+    let sale_date_to = a012_sale_date_upper_bound(business_date);
+    const CHUNK: usize = 400;
     let mut map: HashMap<String, Vec<A012Row>> = HashMap::new();
-    for row in rows {
-        let doc_no: String = row.try_get("", "document_no").unwrap_or_default();
-        if doc_no.is_empty() {
-            continue;
+
+    for chunk in srids.chunks(CHUNK) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            r#"
+            SELECT
+                id,
+                document_no,
+                sale_id,
+                SUBSTR(COALESCE(sale_date, ''), 1, 10) AS sale_date,
+                COALESCE(amount_line, finished_price, total_price, 0.0) AS line_amount,
+                COALESCE(dealer_price_ut, 0.0) * COALESCE(ABS(qty), 1.0) AS dealer_total,
+                is_posted,
+                COALESCE(event_type, 'sale') AS event_type
+            FROM a012_wb_sales
+            WHERE connection_id = ?
+              AND substr(COALESCE(sale_date, ''), 1, 10) <= ?
+              AND document_no IN ({placeholders})
+              AND is_deleted = 0
+            "#,
+        );
+
+        let mut params: Vec<Value> = vec![sv(connection_id), sv(&sale_date_to)];
+        params.extend(chunk.iter().map(|s| sv(s)));
+
+        let stmt = Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+        let rows = conn().query_all(stmt).await?;
+
+        for row in rows {
+            let doc_no: String = row.try_get("", "document_no").unwrap_or_default();
+            if doc_no.is_empty() {
+                continue;
+            }
+            let event_type: String = row
+                .try_get("", "event_type")
+                .unwrap_or_else(|_| "sale".to_string());
+            map.entry(doc_no.clone()).or_default().push(A012Row {
+                id: row.try_get("", "id").unwrap_or_default(),
+                document_no: doc_no,
+                sale_id: row
+                    .try_get("", "sale_id")
+                    .ok()
+                    .filter(|s: &String| !s.is_empty()),
+                sale_date: row.try_get("", "sale_date").unwrap_or_default(),
+                line_amount: row.try_get("", "line_amount").unwrap_or(0.0),
+                dealer_total: row.try_get("", "dealer_total").unwrap_or(0.0),
+                is_posted: row.try_get("", "is_posted").unwrap_or(false),
+                event_type,
+            });
         }
-        let event_type: String = row
-            .try_get("", "event_type")
-            .unwrap_or_else(|_| "sale".to_string());
-        map.entry(doc_no.clone()).or_default().push(A012Row {
-            id: row.try_get("", "id").unwrap_or_default(),
-            document_no: doc_no,
-            sale_id: row
-                .try_get("", "sale_id")
-                .ok()
-                .filter(|s: &String| !s.is_empty()),
-            dealer_total: row.try_get("", "dealer_total").unwrap_or(0.0),
-            is_posted: row.try_get("", "is_posted").unwrap_or(false),
-            event_type,
-        });
     }
+
     Ok(map)
 }
 
@@ -428,30 +561,185 @@ async fn fetch_a015_for_srids(srids: &[String]) -> Result<HashMap<String, A015Ro
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Шаг 5: p912 fallback dealer price
+// Детектор: a012 sale_date ≠ p903 rr_dt (обратное направление)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async fn fetch_p912_dealer_price(
-    nomenclature_ref: &str,
-    business_date: &str,
-) -> Result<Option<f64>> {
-    let sql = r#"
-        SELECT cost
-        FROM p912_nomenclature_costs
-        WHERE nomenclature_ref = ?
-          AND effective_from <= ?
-        ORDER BY effective_from DESC
-        LIMIT 1
-    "#;
+struct A012FinDateMismatch {
+    id: String,
+    srid: String,
+    sale_date: String,
+    fin_report_date: String,
+}
 
+/// a012 с sale_date = business_date, но без p903 на эту дату (fin report на другой rr_dt).
+async fn fetch_a012_sale_on_close_without_fin_report(
+    connection_id: &str,
+    business_date: &str,
+) -> Result<Vec<A012FinDateMismatch>> {
+    let sql = r#"
+        SELECT
+            a.id,
+            a.document_no AS srid,
+            SUBSTR(COALESCE(a.sale_date, ''), 1, 10) AS sale_date,
+            (
+                SELECT MIN(p.rr_dt)
+                FROM p903_wb_finance_report p
+                WHERE p.srid = a.document_no
+                  AND p.connection_mp_ref = a.connection_id
+                  AND p.rr_dt != ?
+            ) AS fin_report_date
+        FROM a012_wb_sales a
+        WHERE a.connection_id = ?
+          AND SUBSTR(COALESCE(a.sale_date, ''), 1, 10) = ?
+          AND a.is_deleted = 0
+          AND a.is_posted = 1
+          AND NOT EXISTS (
+              SELECT 1
+              FROM p903_wb_finance_report p2
+              WHERE p2.srid = a.document_no
+                AND p2.connection_mp_ref = a.connection_id
+                AND p2.rr_dt = ?
+          )
+          AND EXISTS (
+              SELECT 1
+              FROM p903_wb_finance_report p3
+              WHERE p3.srid = a.document_no
+                AND p3.connection_mp_ref = a.connection_id
+          )
+    "#;
     let stmt = Statement::from_sql_and_values(
         conn().get_database_backend(),
         sql,
-        vec![sv(nomenclature_ref), sv(business_date)],
+        vec![
+            sv(business_date),
+            sv(connection_id),
+            sv(business_date),
+            sv(business_date),
+        ],
     );
+    let rows = conn().query_all(stmt).await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let id: String = row.try_get("", "id").ok()?;
+            let srid: String = row.try_get("", "srid").ok()?;
+            let sale_date: String = row.try_get("", "sale_date").unwrap_or_default();
+            let fin_report_date: String = row.try_get("", "fin_report_date").unwrap_or_default();
+            if id.is_empty() || srid.is_empty() || fin_report_date.is_empty() {
+                return None;
+            }
+            Some(A012FinDateMismatch {
+                id,
+                srid,
+                sale_date,
+                fin_report_date,
+            })
+        })
+        .collect())
+}
 
-    let row = conn().query_one(stmt).await?;
-    Ok(row.and_then(|r| r.try_get::<f64>("", "cost").ok()))
+fn dedupe_fin_date_mismatch_problems(problems: Vec<WbDayCloseProblem>) -> Vec<WbDayCloseProblem> {
+    let mut seen: HashSet<(String, String)> = HashSet::new();
+    problems
+        .into_iter()
+        .filter(|p| {
+            if p.code != "a012_sale_date_mismatch_fin_report" {
+                return true;
+            }
+            let key = (
+                p.code.clone(),
+                p.a012_ids
+                    .first()
+                    .cloned()
+                    .or_else(|| p.srid.clone())
+                    .unwrap_or_default(),
+            );
+            if key.1.is_empty() {
+                return true;
+            }
+            seen.insert(key)
+        })
+        .collect()
+}
+
+fn append_reverse_fin_date_mismatch_problems(
+    mut problems: Vec<WbDayCloseProblem>,
+    rows: Vec<A012FinDateMismatch>,
+    business_date: &str,
+    expense_by_a012: &HashMap<String, f64>,
+) -> Vec<WbDayCloseProblem> {
+    let mut seen: HashSet<String> = problems
+        .iter()
+        .filter(|p| p.code == "a012_sale_date_mismatch_fin_report")
+        .flat_map(|p| p.a012_ids.iter().cloned())
+        .collect();
+
+    for row in rows {
+        if !seen.insert(row.id.clone()) {
+            continue;
+        }
+        problems.push(WbDayCloseProblem {
+            code: "a012_sale_date_mismatch_fin_report".to_string(),
+            severity: ProblemSeverity::Warn,
+            srid: Some(row.srid.clone()),
+            nomenclature_ref: None,
+            a012_ids: vec![row.id.clone()],
+            a012_advert_expense: expense_by_a012.get(&row.id).copied(),
+            message: format!(
+                "srid={}: sale_date={}, fin_report(rr_dt)={} — нет p903 на дату закрытия {}",
+                row.srid, row.sale_date, row.fin_report_date, business_date
+            ),
+        });
+    }
+
+    dedupe_fin_date_mismatch_problems(problems)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Шаг 5: p912 dealer prices — пакетная загрузка
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Пакетная загрузка актуальных цен p912 для нескольких nomenclature_ref за одним SQL.
+/// Возвращает map: nomenclature_ref → cost (последняя цена с period <= business_date).
+async fn fetch_p912_dealer_prices_batch(
+    nrefs: &[String],
+    business_date: &str,
+) -> Result<HashMap<String, f64>> {
+    if nrefs.is_empty() {
+        return Ok(HashMap::new());
+    }
+    const CHUNK: usize = 400;
+    let mut map: HashMap<String, f64> = HashMap::new();
+    for chunk in nrefs.chunks(CHUNK) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            r#"
+            WITH ranked AS (
+                SELECT nomenclature_ref, cost,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY nomenclature_ref
+                           ORDER BY period DESC
+                       ) AS rn
+                FROM p912_nomenclature_costs
+                WHERE nomenclature_ref IN ({placeholders})
+                  AND period <= ?
+            )
+            SELECT nomenclature_ref, cost FROM ranked WHERE rn = 1
+            "#,
+        );
+        let mut params: Vec<Value> = chunk.iter().map(|s| sv(s)).collect();
+        params.push(sv(business_date));
+        let stmt = Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+        let rows = conn().query_all(stmt).await?;
+        for row in rows {
+            let nref: String = row.try_get("", "nomenclature_ref").unwrap_or_default();
+            let cost: f64 = row.try_get("", "cost").unwrap_or(0.0);
+            if !nref.is_empty() {
+                map.insert(nref, cost);
+            }
+        }
+    }
+    Ok(map)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -468,20 +756,26 @@ pub(crate) struct LineComputeInput<'a> {
     pub detail: LineDetail,
     /// true если классификация неоднозначна (разные supplier_oper_name в группе).
     pub kind_ambiguous: bool,
-    /// Фактически списанная реклама из p913 (turnover_code='advert_clicks_order_expense').
+    /// Фактически списанная реклама для колонки: advert_clicks_order_expense matched a012.
     pub advert_expense: f64,
+    /// Списанная реклама по order_key=srid (для детекторов резерва без expense).
+    pub advert_order_expense: f64,
     /// Зарезервированная реклама из p913 (turnover_code='advert_clicks_order_accrual').
     pub advert_reserve: f64,
+    /// p913 advert_clicks_order_expense по id a012 (для проблем и колонки).
+    pub expense_by_a012: &'a HashMap<String, f64>,
     /// Суммарная дилерская стоимость (dealer_price_ut × qty) из a012 или p912.
     pub dealer_total: f64,
     /// Документ a012, соответствующий типу строки (sale или return).
     pub matched_a012: Option<A012Row>,
     /// Лишние a012 того же типа для этого srid (должен быть 0, иначе проблема).
     pub extra_a012_ids: Vec<String>,
-    /// Все a012 для srid независимо от event_type (для детектора unposted).
+    /// a012 того же типа, что и строка p903 (по знаку суммы; для детектора unposted).
     pub all_a012_for_srid: Vec<A012Row>,
     /// Данные заказа из a015.
     pub order: Option<A015Row>,
+    /// Дата закрытия дня (= p903.rr_dt для строк документа).
+    pub business_date: &'a str,
 }
 
 /// Вычисляет строку документа и список проблем для одного srid.
@@ -493,16 +787,73 @@ pub(crate) fn compute_line_and_problems(
     let srid = &p903.srid;
 
     // ── 10 колонок (доход +, расход −) ───────────────────────────────────────
-    let revenue = p903.retail_amount - p903.return_amount;
+    //
+    // Возврат (LineKind::Return) — особые правила знаков:
+    //   WB хранит суммы возврата в retail_amount (return_amount = 0), а не в return_amount.
+    //   acquiring_fee и ppvz-поля содержат суммы, которые WB ВОЗВРАЩАЕТ продавцу (или берёт
+    //   обратно при отрицательном значении ppvz — случай сторно соинвеста).
+    //   Поэтому для возвратов знак колонок «revenue», «acquiring» и «commission» инвертируется
+    //   относительно формулы для продаж — это согласовано с логикой GL-строителя (p903 → GL).
+    let is_return = matches!(input.kind, LineKind::Return);
+
+    // 1. Реализация.
+    //    Продажа:  retail_amount − return_amount  (обычно return_amount = 0)
+    //    Возврат:  WB кладёт сумму в retail_amount (return_amount = 0), знак инвертируем.
+    //              Если return_amount > 0 (стандартный формат) — тоже инвертируем.
+    let revenue = if is_return {
+        if p903.return_amount.abs() > f64::EPSILON {
+            -p903.return_amount
+        } else {
+            -p903.retail_amount
+        }
+    } else {
+        p903.retail_amount - p903.return_amount
+    };
+
     let advertising = -input.advert_expense;
     let logistics = -(p903.delivery_rub + p903.rebill_logistic_cost + p903.storage_fee);
-    let acquiring = -p903.acquiring_fee;
-    let commission = -(p903.ppvz_vw + p903.ppvz_vw_nds + p903.ppvz_sales_commission);
+
+    // 4. Эквайринг.
+    //    Продажа:  −acquiring_fee  (расход)
+    //    Возврат:  +acquiring_fee  (WB возвращает комиссию эквайрера → доход/сторно)
+    //    Знак ppvz не влияет на acquiring — он всегда неотрицателен в WB-данных.
+    let acquiring = if is_return {
+        p903.acquiring_fee
+    } else {
+        -p903.acquiring_fee
+    };
+
+    // 5. Комиссия.
+    //    Sale/Return:  ±(ppvz_vw + ppvz_vw_nds)
+    //      — ppvz_sales_commission НЕ входит: GL-строитель для sale/return использует только
+    //        ppvz_vw + ppvz_vw_nds в turnover mp_commission; ppvz_sales_commission идёт только
+    //        в mp_commission_adjustment для прочих операций (CommissionAdjustment и др.).
+    //    Прочие:  −(ppvz_vw + ppvz_vw_nds + ppvz_sales_commission)
+    //    • ppvz > 0 в строке возврата → WB возвращает комиссию → колонка положительная (доход).
+    //    • ppvz < 0 в строке возврата → WB берёт обратно соинвест → колонка отрицательная (расход).
+    let is_sale_or_return = matches!(input.kind, LineKind::Sale | LineKind::Return);
+    let commission_sales_adj = if is_sale_or_return {
+        0.0
+    } else {
+        p903.ppvz_sales_commission
+    };
+    let commission = if is_return {
+        p903.ppvz_vw + p903.ppvz_vw_nds + commission_sales_adj
+    } else {
+        -(p903.ppvz_vw + p903.ppvz_vw_nds + commission_sales_adj)
+    };
     let penalty = -p903.penalty;
     let other = p903.additional_payment + p903.cashback_amount;
     let result = revenue + advertising + logistics + acquiring + commission + penalty + other;
+    // 9. ЦенаДилер.
+    //    Продажа:  −dealer_total (расход — себестоимость отгруженного товара).
+    //    Возврат:  +dealer_total (доход — себестоимость возвращённого товара приходит обратно).
     let dealer_price = if input.dealer_total > 0.0 {
-        -input.dealer_total
+        if is_return {
+            input.dealer_total
+        } else {
+            -input.dealer_total
+        }
     } else {
         0.0
     };
@@ -527,15 +878,17 @@ pub(crate) fn compute_line_and_problems(
         None => (None, None, false),
     };
 
-    let (sales_doc_id, sales_doc_no, sales_event_type, sales_sale_id) = match &input.matched_a012 {
-        Some(a) => (
-            Some(a.id.clone()),
-            Some(a.document_no.clone()),
-            Some(a.event_type.clone()),
-            a.sale_id.clone(),
-        ),
-        None => (None, None, None, None),
-    };
+    let (sales_doc_id, sales_doc_no, sales_event_type, sales_sale_id, sales_doc_date) =
+        match &input.matched_a012 {
+            Some(a) => (
+                Some(a.id.clone()),
+                Some(a.document_no.clone()),
+                Some(a.event_type.clone()),
+                a.sale_id.clone(),
+                Some(a.sale_date.clone()).filter(|s| !s.is_empty()),
+            ),
+            None => (None, None, None, None, None),
+        };
 
     // ── Рeclassify Other→Info если все финансовые колонки нулевые ────────────
     let kind = if input.kind == LineKind::Other {
@@ -555,9 +908,46 @@ pub(crate) fn compute_line_and_problems(
         input.kind
     };
 
-    // ── Проблемы ─────────────────────────────────────────────────────────────
+    // ── Проблемы (информационные строки не проверяются) ───────────────────────
     let mut line_problem_codes: Vec<String> = Vec::new();
     let mut problems: Vec<WbDayCloseProblem> = Vec::new();
+
+    if kind.is_info() {
+        let line = WbDayCloseLine {
+            srid: srid.clone(),
+            nomenclature_ref: p903.nomenclature_ref.clone(),
+            nm_id: p903.nm_id,
+            sa_name: p903.sa_name.clone(),
+            event,
+            kind,
+            detail: input.detail,
+            qty_sold: p903.qty_sold,
+            qty_returned: p903.qty_returned,
+            order_id,
+            order_date,
+            order_is_cancelled,
+            sales_doc_id,
+            sales_doc_no,
+            sales_doc_date,
+            sales_event_type,
+            sales_sale_id,
+            sales_extra_ids: input.extra_a012_ids,
+            p903_ref_id: p903.p903_ref_id.clone(),
+            p903_rrd_id: p903.rrd_id,
+            revenue,
+            advertising,
+            logistics,
+            acquiring,
+            commission,
+            penalty,
+            other,
+            result,
+            dealer_price,
+            margin_diff,
+            problem_codes: line_problem_codes,
+        };
+        return (line, problems);
+    }
 
     let make_problem = |code: &'static str, msg: String, a012_ids: Vec<String>| {
         let severity = match code {
@@ -576,7 +966,8 @@ pub(crate) fn compute_line_and_problems(
                 Some(srid.clone())
             },
             nomenclature_ref: p903.nomenclature_ref.clone(),
-            a012_ids,
+            a012_ids: a012_ids.clone(),
+            a012_advert_expense: sum_a012_advert_expense(&a012_ids, input.expense_by_a012),
             message: msg,
         }
     };
@@ -617,8 +1008,8 @@ pub(crate) fn compute_line_and_problems(
         ));
     }
 
-    // 3. Резерв без expense
-    if input.advert_reserve > 0.0 && input.advert_expense == 0.0 {
+    // 3. Резерв без expense (по order_key, не по GL-aligned колонке)
+    if input.advert_reserve > 0.0 && input.advert_order_expense == 0.0 {
         line_problem_codes.push("advert_clicks_order_accrual_without_expense".to_string());
         problems.push(make_problem(
             "advert_clicks_order_accrual_without_expense",
@@ -682,7 +1073,10 @@ pub(crate) fn compute_line_and_problems(
         line_problem_codes.push("a012_sale_missing".to_string());
         problems.push(make_problem(
             "a012_sale_missing",
-            format!("srid={}: не найден a012 с event_type=sale", srid),
+            format!(
+                "srid={}: не найден a012-реализация (сумма>0, sale_date<=даты закрытия+{}д)",
+                srid, A012_SALE_DATE_LAG_DAYS
+            ),
             vec![],
         ));
     }
@@ -690,7 +1084,10 @@ pub(crate) fn compute_line_and_problems(
         line_problem_codes.push("a012_return_missing".to_string());
         problems.push(make_problem(
             "a012_return_missing",
-            format!("srid={}: не найден a012 с event_type=return", srid),
+            format!(
+                "srid={}: не найден a012-возврат (сумма<0, sale_date<=даты закрытия+{}д)",
+                srid, A012_SALE_DATE_LAG_DAYS
+            ),
             vec![],
         ));
     }
@@ -711,9 +1108,23 @@ pub(crate) fn compute_line_and_problems(
         ));
     }
 
-    // 9. Отсутствует дилерская цена (только для Sale/Return)
-    if kind.requires_sales_doc() && input.dealer_total == 0.0 && input.all_a012_for_srid.is_empty()
-    {
+    // 9. sale_date a012 ≠ rr_dt fin report (одна из дат = дата закрытия)
+    if let Some(a012) = &input.matched_a012 {
+        if !a012.sale_date.is_empty() && a012.sale_date != input.business_date {
+            line_problem_codes.push("a012_sale_date_mismatch_fin_report".to_string());
+            problems.push(make_problem(
+                "a012_sale_date_mismatch_fin_report",
+                format!(
+                    "srid={}: sale_date={}, fin_report(rr_dt)={} — GL advert_clicks_order_expense по sale_date",
+                    srid, a012.sale_date, input.business_date
+                ),
+                vec![a012.id.clone()],
+            ));
+        }
+    }
+
+    // 10. Отсутствует дилерская цена (только для Sale/Return)
+    if kind.requires_sales_doc() && input.dealer_total < 0.001 && !srid.is_empty() {
         line_problem_codes.push("dealer_price_missing".to_string());
         problems.push(make_problem(
             "dealer_price_missing",
@@ -722,7 +1133,7 @@ pub(crate) fn compute_line_and_problems(
         ));
     }
 
-    // 10. Инвариант колонок
+    // 11. Инвариант колонок
     let invariant_expected =
         revenue + advertising + logistics + acquiring + commission + penalty + other;
     if (invariant_expected - result).abs() > 0.001 {
@@ -752,6 +1163,7 @@ pub(crate) fn compute_line_and_problems(
         order_is_cancelled,
         sales_doc_id,
         sales_doc_no,
+        sales_doc_date,
         sales_event_type,
         sales_sale_id,
         sales_extra_ids: input.extra_a012_ids,
@@ -777,30 +1189,54 @@ pub(crate) fn compute_line_and_problems(
 // Основная точка входа
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Собирает строки и проблемы для документа a033.
+/// Собирает строки и проблемы для документа a033 (загружает p903).
 pub async fn build(
     connection_id: &str,
     business_date: &str,
 ) -> Result<(Vec<WbDayCloseLine>, Vec<WbDayCloseProblem>)> {
-    // Шаг 1: p903 агрегация (включает строки без srid)
-    let p903_rows = fetch_p903_rows(connection_id, business_date).await?;
+    let p903_rows = load_p903_day(connection_id, business_date).await?;
+    build_with_p903_rows(connection_id, business_date, p903_rows).await
+}
+
+/// Собирает строки и проблемы по уже загруженным строкам p903 (без повторного SQL p903).
+pub(crate) async fn build_with_p903_rows(
+    connection_id: &str,
+    business_date: &str,
+    p903_rows: Vec<P903Row>,
+) -> Result<(Vec<WbDayCloseLine>, Vec<WbDayCloseProblem>)> {
+    tracing::debug!(
+        target: "a033_wb_day_close",
+        connection_id,
+        business_date,
+        p903_line_groups = p903_rows.len(),
+        "p903 aggregated line groups for day close"
+    );
     if p903_rows.is_empty() {
         return Ok((vec![], vec![]));
     }
 
-    // Собираем непустые srids для последующих запросов
-    let srids: Vec<String> = p903_rows
-        .iter()
-        .map(|r| r.srid.clone())
-        .filter(|s| !s.is_empty())
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
+    let srids = p903_srids_from_rows(&p903_rows);
 
     // Шаги 2-4 параллельно
     let p913_map = fetch_p913_advert(&srids).await?;
     let a012_map = fetch_a012_for_srids(connection_id, business_date, &srids).await?;
     let a015_map = fetch_a015_for_srids(&srids).await?;
+
+    let a012_ids: Vec<String> = a012_map
+        .values()
+        .flat_map(|rows| rows.iter().map(|r| r.id.clone()))
+        .collect();
+    let expense_by_a012 = fetch_p913_expense_by_a012_ids(&a012_ids).await?;
+
+    // Пакетная загрузка p912 для всех nomenclature_ref (fallback дилерской цены).
+    // Это устраняет N+1 запросов внутри цикла обработки строк p903.
+    let all_nrefs: Vec<String> = p903_rows
+        .iter()
+        .filter_map(|r| r.nomenclature_ref.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    let p912_price_map = fetch_p912_dealer_prices_batch(&all_nrefs, business_date).await?;
 
     let mut lines: Vec<WbDayCloseLine> = Vec::with_capacity(p903_rows.len());
     let mut problems: Vec<WbDayCloseProblem> = Vec::new();
@@ -813,30 +1249,15 @@ pub async fn build(
         let detail = classify_detail(p903);
         let kind_ambiguous = p903.kind_ambiguous || unknown_flag;
 
-        // ── Реклама ───────────────────────────────────────────────────────────
-        let advert_info = p913_map.get(srid.as_str());
-        let advert_expense = advert_info.map(|a| a.advert_expense).unwrap_or(0.0);
-        let advert_reserve = advert_info.map(|a| a.advert_reserve).unwrap_or(0.0);
+        // ── a012: реализация (сумма>0) / возврат (сумма<0), sale_date <= business_date ──
+        let all_a012_raw = a012_map.get(srid.as_str()).cloned().unwrap_or_default();
+        let relevant_a012: Vec<A012Row> = a012_rows_for_kind(&all_a012_raw, &kind)
+            .into_iter()
+            .cloned()
+            .collect();
 
-        // ── a012 по типу строки ───────────────────────────────────────────────
-        let all_a012 = a012_map.get(srid.as_str()).cloned().unwrap_or_default();
-
-        let expected_event_type = match kind {
-            LineKind::Sale => "sale",
-            LineKind::Return => "return",
-            _ => "",
-        };
-
-        let mut matched_a012_docs: Vec<A012Row> = if expected_event_type.is_empty() {
-            vec![]
-        } else {
-            all_a012
-                .iter()
-                .filter(|r| r.event_type.eq_ignore_ascii_case(expected_event_type))
-                .cloned()
-                .collect()
-        };
-
+        let mut matched_a012_docs = relevant_a012.clone();
+        sort_a012_for_pick(&mut matched_a012_docs, business_date);
         let matched_a012 = if !matched_a012_docs.is_empty() {
             Some(matched_a012_docs.remove(0))
         } else {
@@ -844,16 +1265,19 @@ pub async fn build(
         };
         let extra_a012_ids: Vec<String> = matched_a012_docs.iter().map(|r| r.id.clone()).collect();
 
+        // ── Реклама ───────────────────────────────────────────────────────────
+        let advert_info = p913_map.get(srid.as_str());
+        let advert_order_expense = advert_info.map(|a| a.advert_expense).unwrap_or(0.0);
+        let advert_reserve = advert_info.map(|a| a.advert_reserve).unwrap_or(0.0);
+        let advert_expense = advert_expense_from_matched_a012(&matched_a012, &expense_by_a012);
+
         // ── Dealer price ──────────────────────────────────────────────────────
-        let dealer_total = if !all_a012.is_empty() {
-            all_a012.iter().map(|r| r.dealer_total).sum()
+        let dealer_total = if !relevant_a012.is_empty() {
+            relevant_a012.iter().map(|r| r.dealer_total).sum()
         } else {
-            // Fallback: p912
+            // Fallback: p912 (цена из заранее загруженного пакетного запроса)
             if let Some(nr) = &p903.nomenclature_ref {
-                fetch_p912_dealer_price(nr, business_date)
-                    .await
-                    .unwrap_or(None)
-                    .unwrap_or(0.0)
+                p912_price_map.get(nr.as_str()).copied().unwrap_or(0.0)
                     * (p903.qty_sold.saturating_sub(p903.qty_returned).max(0) as f64)
             } else {
                 0.0
@@ -869,18 +1293,31 @@ pub async fn build(
             detail,
             kind_ambiguous,
             advert_expense,
+            advert_order_expense,
             advert_reserve,
+            expense_by_a012: &expense_by_a012,
             dealer_total,
             matched_a012,
             extra_a012_ids,
-            all_a012_for_srid: all_a012,
+            all_a012_for_srid: relevant_a012,
             order,
+            business_date,
         };
 
         let (line, line_problems) = compute_line_and_problems(input);
         problems.extend(line_problems);
         lines.push(line);
     }
+
+    let reverse_mismatches =
+        fetch_a012_sale_on_close_without_fin_report(connection_id, business_date).await?;
+    problems = append_reverse_fin_date_mismatch_problems(
+        problems,
+        reverse_mismatches,
+        business_date,
+        &expense_by_a012,
+    );
+    problems = dedupe_fin_date_mismatch_problems(problems);
 
     // Сортируем: сначала строки с srid (по srid), затем строки без srid
     lines.sort_by(|a, b| {
@@ -949,6 +1386,8 @@ mod tests {
     }
 
     fn default_input(row: &P903Row) -> LineComputeInput<'_> {
+        static EMPTY_EXPENSE: std::sync::OnceLock<HashMap<String, f64>> =
+            std::sync::OnceLock::new();
         let (kind, unknown) = classify_kind(row);
         let detail = classify_detail(row);
         LineComputeInput {
@@ -957,12 +1396,15 @@ mod tests {
             detail,
             kind_ambiguous: unknown,
             advert_expense: 0.0,
+            advert_order_expense: 0.0,
             advert_reserve: 0.0,
+            expense_by_a012: EMPTY_EXPENSE.get_or_init(HashMap::new),
             dealer_total: 0.0,
             matched_a012: None,
             extra_a012_ids: vec![],
             all_a012_for_srid: vec![],
             order: None,
+            business_date: "2026-05-17",
         }
     }
 
@@ -1097,6 +1539,8 @@ mod tests {
                 id: "a012-1".to_string(),
                 document_no: "S001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: 600.0,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1105,6 +1549,8 @@ mod tests {
                 id: "a012-1".to_string(),
                 document_no: "S001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: 600.0,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1122,7 +1568,8 @@ mod tests {
         assert_eq!(line.kind, LineKind::Sale);
         assert_eq!(line.revenue, 1000.0);
         assert_eq!(line.acquiring, -20.0);
-        assert_eq!(line.commission, -115.0);
+        // ppvz_sales_commission исключается для Sale — только ppvz_vw + ppvz_vw_nds
+        assert_eq!(line.commission, -110.0);
         assert_eq!(line.logistics, -65.0);
         assert_eq!(line.advertising, 0.0);
         assert!(line.check_invariant(), "invariant must hold");
@@ -1135,6 +1582,7 @@ mod tests {
 
     #[test]
     fn return_event_type() {
+        // Стандартный формат: return_amount > 0, retail_amount = 0.
         let row = p903_return("R001", 500.0);
         let input = LineComputeInput {
             order: Some(A015Row {
@@ -1146,6 +1594,8 @@ mod tests {
                 id: "a012-r".to_string(),
                 document_no: "R001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: -400.0,
                 dealer_total: 400.0,
                 is_posted: true,
                 event_type: "return".to_string(),
@@ -1154,6 +1604,8 @@ mod tests {
                 id: "a012-r".to_string(),
                 document_no: "R001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: -400.0,
                 dealer_total: 400.0,
                 is_posted: true,
                 event_type: "return".to_string(),
@@ -1164,8 +1616,230 @@ mod tests {
         let (line, _) = compute_line_and_problems(input);
         assert_eq!(line.kind, LineKind::Return);
         assert_eq!(line.event, SaleEvent::Return);
+        // revenue должна быть отрицательной (возврат денег покупателю)
         assert_eq!(line.revenue, -500.0);
         assert!(line.check_invariant());
+    }
+
+    /// WB-стиль возврата: retail_amount > 0, return_amount = 0, supplier_oper_name = 'Возврат'.
+    /// Пример — строки ebF и eF из финансового отчёта 26.05.2026.
+    ///
+    /// Ожидаемые знаки:
+    ///   revenue   < 0  (возврат выручки покупателю)
+    ///   acquiring > 0  (WB возвращает продавцу комиссию эквайрера)
+    ///   commission > 0 если ppvz > 0  (WB возвращает комиссию)
+    ///   commission < 0 если ppvz < 0  (WB берёт обратно соинвест)
+    #[test]
+    fn wb_style_return_retail_amount_positive_ppvz() {
+        // Аналог строки ebF.rebb9e... (ppvz > 0 — WB возвращает комиссию).
+        let row = P903Row {
+            srid: "ebF-test".to_string(),
+            supplier_oper_name: Some(OP_RETURN.to_string()),
+            retail_amount: 4658.0,
+            return_amount: 0.0,
+            acquiring_fee: 186.32,
+            ppvz_vw: 128.99,
+            ppvz_vw_nds: 28.38,
+            ppvz_sales_commission: 137.43,
+            qty_returned: 1,
+            ..P903Row::default()
+        };
+        let input = LineComputeInput {
+            order: Some(A015Row {
+                id: "a015-ebF".to_string(),
+                order_date: "2026-05-20".to_string(),
+                is_cancel: false,
+            }),
+            matched_a012: Some(A012Row {
+                id: "a012-ebF".to_string(),
+                document_no: "ebF-test".to_string(),
+                sale_id: None,
+                sale_date: "2026-05-26".to_string(),
+                line_amount: -4658.0,
+                dealer_total: 800.0,
+                is_posted: true,
+                event_type: "return".to_string(),
+            }),
+            all_a012_for_srid: vec![A012Row {
+                id: "a012-ebF".to_string(),
+                document_no: "ebF-test".to_string(),
+                sale_id: None,
+                sale_date: "2026-05-26".to_string(),
+                line_amount: -4658.0,
+                dealer_total: 800.0,
+                is_posted: true,
+                event_type: "return".to_string(),
+            }],
+            dealer_total: 800.0,
+            ..default_input(&row)
+        };
+        let (line, problems) = compute_line_and_problems(input);
+
+        assert_eq!(line.kind, LineKind::Return);
+        // revenue отрицательная (WB хранит сумму в retail_amount, знак инвертируем)
+        assert_eq!(line.revenue, -4658.0);
+        // acquiring положительный (WB возвращает комиссию эквайрера)
+        assert!(
+            line.acquiring > 0.0,
+            "acquiring должна быть > 0 для возврата"
+        );
+        assert!((line.acquiring - 186.32).abs() < 0.01);
+        // commission положительная (ppvz > 0 → WB возвращает комиссию продавцу)
+        // ppvz_sales_commission исключается для Return — только ppvz_vw + ppvz_vw_nds
+        assert!(
+            line.commission > 0.0,
+            "commission должна быть > 0 когда ppvz > 0 в возврате"
+        );
+        assert!((line.commission - (128.99 + 28.38)).abs() < 0.01);
+        // dealer_price положительная (товар возвращается продавцу → себестоимость обратно)
+        assert!(
+            line.dealer_price > 0.0,
+            "dealer_price должна быть > 0 для возврата"
+        );
+        assert!((line.dealer_price - 800.0).abs() < 0.01);
+        // инвариант сохраняется
+        assert!(line.check_invariant(), "инвариант должен сохраняться");
+        assert!(!problems
+            .iter()
+            .any(|p| p.code == "column_invariant_mismatch"));
+    }
+
+    /// WB-стиль возврата: retail_amount > 0, return_amount = 0, ppvz < 0 (сторно соинвеста).
+    /// Пример — строка eF.r8f3f83... из финансового отчёта 26.05.2026.
+    ///
+    /// Отрицательный ppvz означает, что WB берёт обратно соинвест (premium-commission),
+    /// поэтому commission остаётся отрицательной — дополнительный расход продавца.
+    #[test]
+    fn wb_style_return_retail_amount_negative_ppvz() {
+        // Аналог строки eF.r8f3f83... (ppvz < 0 — WB берёт обратно соинвест).
+        let row = P903Row {
+            srid: "eF-test".to_string(),
+            supplier_oper_name: Some(OP_RETURN.to_string()),
+            retail_amount: 17623.0,
+            return_amount: 0.0,
+            acquiring_fee: 860.0,
+            ppvz_vw: -807.85,
+            ppvz_vw_nds: -177.73,
+            ppvz_sales_commission: -807.85,
+            qty_returned: 1,
+            ..P903Row::default()
+        };
+        let input = LineComputeInput {
+            order: Some(A015Row {
+                id: "a015-eF".to_string(),
+                order_date: "2026-05-10".to_string(),
+                is_cancel: false,
+            }),
+            matched_a012: Some(A012Row {
+                id: "a012-eF".to_string(),
+                document_no: "eF-test".to_string(),
+                sale_id: None,
+                sale_date: "2026-05-26".to_string(),
+                line_amount: -17623.0,
+                dealer_total: 3000.0,
+                is_posted: true,
+                event_type: "return".to_string(),
+            }),
+            all_a012_for_srid: vec![A012Row {
+                id: "a012-eF".to_string(),
+                document_no: "eF-test".to_string(),
+                sale_id: None,
+                sale_date: "2026-05-26".to_string(),
+                line_amount: -17623.0,
+                dealer_total: 3000.0,
+                is_posted: true,
+                event_type: "return".to_string(),
+            }],
+            dealer_total: 3000.0,
+            ..default_input(&row)
+        };
+        let (line, _) = compute_line_and_problems(input);
+
+        assert_eq!(line.kind, LineKind::Return);
+        // revenue отрицательная
+        assert_eq!(line.revenue, -17623.0);
+        // acquiring положительный (WB всегда возвращает комиссию эквайрера при возврате)
+        assert!(
+            line.acquiring > 0.0,
+            "acquiring должна быть > 0 для возврата"
+        );
+        assert!((line.acquiring - 860.0).abs() < 0.01);
+        // commission отрицательная (ppvz < 0 → WB берёт обратно соинвест → расход)
+        // ppvz_sales_commission исключается для Return — только ppvz_vw + ppvz_vw_nds
+        let expected_commission = -807.85 + (-177.73);
+        assert!(
+            line.commission < 0.0,
+            "commission должна быть < 0 когда ppvz < 0 в возврате (сторно соинвеста)"
+        );
+        assert!((line.commission - expected_commission).abs() < 0.01);
+        // dealer_price положительная (товар возвращается продавцу)
+        assert!(
+            line.dealer_price > 0.0,
+            "dealer_price должна быть > 0 для возврата"
+        );
+        assert!((line.dealer_price - 3000.0).abs() < 0.01);
+        // инвариант сохраняется
+        assert!(line.check_invariant(), "инвариант должен сохраняться");
+    }
+
+    /// Суммарная проверка за день 26.05.2026:
+    /// acquiring двух возвратных строк должен быть положительным (сторно расхода),
+    /// что приведёт суммарный эквайринг дня к значению ≈ −45 963 вместо −48 055.
+    #[test]
+    fn return_acquiring_reduces_day_total() {
+        // Возврат 1: acquiring_fee = 186.32, ppvz > 0
+        let row1 = P903Row {
+            srid: "R1".to_string(),
+            supplier_oper_name: Some(OP_RETURN.to_string()),
+            retail_amount: 4658.0,
+            acquiring_fee: 186.32,
+            ppvz_vw: 128.99,
+            ppvz_vw_nds: 28.38,
+            ppvz_sales_commission: 137.43,
+            qty_returned: 1,
+            ..P903Row::default()
+        };
+        // Возврат 2: acquiring_fee = 860.0, ppvz < 0
+        let row2 = P903Row {
+            srid: "R2".to_string(),
+            supplier_oper_name: Some(OP_RETURN.to_string()),
+            retail_amount: 17623.0,
+            acquiring_fee: 860.0,
+            ppvz_vw: -807.85,
+            ppvz_vw_nds: -177.73,
+            ppvz_sales_commission: -807.85,
+            qty_returned: 1,
+            ..P903Row::default()
+        };
+        let (line1, _) = compute_line_and_problems(LineComputeInput {
+            order: Some(A015Row {
+                id: "o1".to_string(),
+                order_date: "2026-05-20".to_string(),
+                is_cancel: false,
+            }),
+            ..default_input(&row1)
+        });
+        let (line2, _) = compute_line_and_problems(LineComputeInput {
+            order: Some(A015Row {
+                id: "o2".to_string(),
+                order_date: "2026-05-10".to_string(),
+                is_cancel: false,
+            }),
+            ..default_input(&row2)
+        });
+
+        // Оба возврата дают положительный acquiring (сторно расхода)
+        assert!(
+            line1.acquiring > 0.0,
+            "acquiring возврата 1 должен быть > 0"
+        );
+        assert!(
+            line2.acquiring > 0.0,
+            "acquiring возврата 2 должен быть > 0"
+        );
+        // Суммарный acquiring по двум строкам = +(186.32 + 860.0) = +1046.32
+        let total_return_acquiring = line1.acquiring + line2.acquiring;
+        assert!((total_return_acquiring - 1046.32).abs() < 0.01);
     }
 
     #[test]
@@ -1229,12 +1903,84 @@ mod tests {
     }
 
     #[test]
+    fn a012_sale_date_mismatch_fin_report_when_sale_date_differs() {
+        let row = p903_sale("S-DATE-MISMATCH", 1000.0);
+        let input = LineComputeInput {
+            matched_a012: Some(A012Row {
+                id: "a012-dm".to_string(),
+                document_no: "S-DATE-MISMATCH".to_string(),
+                sale_id: None,
+                sale_date: "2026-05-16".to_string(),
+                line_amount: 600.0,
+                dealer_total: 600.0,
+                is_posted: true,
+                event_type: "sale".to_string(),
+            }),
+            dealer_total: 600.0,
+            ..default_input(&row)
+        };
+        let (_, problems) = compute_line_and_problems(input);
+        let prob = problems
+            .iter()
+            .find(|p| p.code == "a012_sale_date_mismatch_fin_report")
+            .expect("должна быть проблема a012_sale_date_mismatch_fin_report");
+        assert_eq!(prob.severity, ProblemSeverity::Warn);
+        assert_eq!(prob.a012_ids, vec!["a012-dm".to_string()]);
+        assert!(prob.message.contains("2026-05-16"));
+        assert!(prob.message.contains("2026-05-17"));
+    }
+
+    #[test]
+    fn dedupe_fin_date_mismatch_by_a012_id() {
+        let problems = vec![
+            WbDayCloseProblem {
+                code: "a012_sale_date_mismatch_fin_report".to_string(),
+                severity: ProblemSeverity::Warn,
+                srid: Some("S1".to_string()),
+                nomenclature_ref: None,
+                a012_ids: vec!["a012-1".to_string()],
+                a012_advert_expense: Some(100.0),
+                message: "first".to_string(),
+            },
+            WbDayCloseProblem {
+                code: "a012_sale_date_mismatch_fin_report".to_string(),
+                severity: ProblemSeverity::Warn,
+                srid: Some("S1".to_string()),
+                nomenclature_ref: None,
+                a012_ids: vec!["a012-1".to_string()],
+                a012_advert_expense: Some(100.0),
+                message: "duplicate".to_string(),
+            },
+            WbDayCloseProblem {
+                code: "a015_order_missing".to_string(),
+                severity: ProblemSeverity::Warn,
+                srid: Some("S2".to_string()),
+                nomenclature_ref: None,
+                a012_ids: vec![],
+                a012_advert_expense: None,
+                message: "other".to_string(),
+            },
+        ];
+        let deduped = dedupe_fin_date_mismatch_problems(problems);
+        assert_eq!(deduped.len(), 2);
+        assert_eq!(
+            deduped
+                .iter()
+                .filter(|p| p.code == "a012_sale_date_mismatch_fin_report")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn multiple_a012_generates_block() {
         let row = p903_sale("S-MULTI", 1000.0);
         let a012_1 = A012Row {
             id: "a012-1".to_string(),
             document_no: "S-MULTI".to_string(),
             sale_id: None,
+            sale_date: "2026-05-15".to_string(),
+            line_amount: 600.0,
             dealer_total: 600.0,
             is_posted: true,
             event_type: "sale".to_string(),
@@ -1243,6 +1989,8 @@ mod tests {
             id: "a012-2".to_string(),
             document_no: "S-MULTI".to_string(),
             sale_id: None,
+            sale_date: "2026-05-15".to_string(),
+            line_amount: 600.0,
             dealer_total: 600.0,
             is_posted: true,
             event_type: "sale".to_string(),
@@ -1296,6 +2044,33 @@ mod tests {
         );
     }
 
+    #[test]
+    fn advert_expense_from_matched_a012_uses_registrator() {
+        let mut expense_map = HashMap::new();
+        expense_map.insert("a012-1".to_string(), 1722.82);
+        let a012 = A012Row {
+            id: "a012-1".to_string(),
+            document_no: "SRID-1".to_string(),
+            sale_id: None,
+            sale_date: "2026-05-16".to_string(),
+            line_amount: 1000.0,
+            dealer_total: 500.0,
+            is_posted: true,
+            event_type: "sale".to_string(),
+        };
+        assert_eq!(
+            advert_expense_from_matched_a012(&Some(a012), &expense_map),
+            1722.82
+        );
+        assert_eq!(advert_expense_from_matched_a012(&None, &expense_map), 0.0);
+    }
+
+    #[test]
+    fn advert_expense_zero_without_matched_a012() {
+        let expense_map = HashMap::new();
+        assert_eq!(advert_expense_from_matched_a012(&None, &expense_map), 0.0);
+    }
+
     // ── Реклама ───────────────────────────────────────────────────────────────
 
     #[test]
@@ -1303,11 +2078,14 @@ mod tests {
         let row = p903_sale("SA001", 1000.0);
         let input = LineComputeInput {
             advert_expense: 50.0,
+            advert_order_expense: 50.0,
             advert_reserve: 50.0,
             matched_a012: Some(A012Row {
                 id: "a012-sa".to_string(),
                 document_no: "SA001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: 600.0,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1316,6 +2094,8 @@ mod tests {
                 id: "a012-sa".to_string(),
                 document_no: "SA001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: 600.0,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1341,11 +2121,14 @@ mod tests {
         let row = p903_sale("SB001", 1000.0);
         let input = LineComputeInput {
             advert_expense: 0.0,
+            advert_order_expense: 0.0,
             advert_reserve: 75.0,
             matched_a012: Some(A012Row {
                 id: "a012-uuid-1".to_string(),
                 document_no: "SB001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: 600.0,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1354,6 +2137,8 @@ mod tests {
                 id: "a012-uuid-1".to_string(),
                 document_no: "SB001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: 600.0,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1407,6 +2192,8 @@ mod tests {
                 id: "a012-d".to_string(),
                 document_no: "D001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: 600.0,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1415,6 +2202,8 @@ mod tests {
                 id: "a012-d".to_string(),
                 document_no: "D001".to_string(),
                 sale_id: None,
+                sale_date: "2026-05-15".to_string(),
+                line_amount: 600.0,
                 dealer_total: 600.0,
                 is_posted: true,
                 event_type: "sale".to_string(),
@@ -1447,6 +2236,52 @@ mod tests {
     }
 
     #[test]
+    fn dealer_price_missing_when_a012_present_but_no_dealer() {
+        let row = p903_sale("D003", 1000.0);
+        let a012 = A012Row {
+            id: "a012-d3".to_string(),
+            document_no: "D003".to_string(),
+            sale_id: None,
+            sale_date: "2026-05-15".to_string(),
+            line_amount: 600.0,
+            dealer_total: 0.0,
+            is_posted: true,
+            event_type: "sale".to_string(),
+        };
+        let input = LineComputeInput {
+            matched_a012: Some(a012.clone()),
+            all_a012_for_srid: vec![a012],
+            order: Some(A015Row {
+                id: "a015-d3".to_string(),
+                order_date: "2026-05-15".to_string(),
+                is_cancel: false,
+            }),
+            ..default_input(&row)
+        };
+        let (_, problems) = compute_line_and_problems(input);
+        assert!(
+            problems.iter().any(|p| p.code == "dealer_price_missing"),
+            "должна быть проблема dealer_price_missing даже при наличии a012"
+        );
+    }
+
+    #[test]
+    fn info_row_generates_no_problems() {
+        let row = P903Row {
+            srid: "INFO001".to_string(),
+            supplier_oper_name: Some("Неизвестная операция".to_string()),
+            ..P903Row::default()
+        };
+        let (line, problems) = compute_line_and_problems(default_input(&row));
+        assert_eq!(line.kind, LineKind::Info);
+        assert!(
+            problems.is_empty(),
+            "информационные строки не должны генерировать проблемы"
+        );
+        assert!(line.problem_codes.is_empty());
+    }
+
+    #[test]
     fn dealer_price_missing_not_generated_for_storage() {
         let row = p903_storage();
         let (_, problems) = compute_line_and_problems(default_input(&row));
@@ -1465,6 +2300,8 @@ mod tests {
             id: "a012-unposted-1".to_string(),
             document_no: "U001".to_string(),
             sale_id: None,
+            sale_date: "2026-05-15".to_string(),
+            line_amount: 400.0,
             dealer_total: 400.0,
             is_posted: false,
             event_type: "sale".to_string(),
@@ -1524,6 +2361,7 @@ mod tests {
         for row in &cases {
             let input = LineComputeInput {
                 advert_expense: 15.0,
+                advert_order_expense: 15.0,
                 dealer_total: 200.0,
                 ..default_input(row)
             };

@@ -54,6 +54,7 @@ pub async fn process_order_row(
         spp: order_row.spp,
         finished_price: order_row.finished_price,
         price_with_disc: order_row.price_with_disc,
+        price: order_row.total_price,
         dealer_price_ut: None,
         margin_pro: None,
     };

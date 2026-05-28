@@ -735,16 +735,14 @@ pub async fn compute_drilldown_multi(
     for (group_key, label, values) in rows1 {
         let key = day_key(&group_key);
         let label = day_key(&label);
-        let entry = merged
-            .entry(key.clone())
-            .or_insert_with(|| DrilldownRow {
-                group_key: key,
-                label,
-                value1: 0.0,
-                value2: 0.0,
-                delta_pct: None,
-                metric_values: std::collections::HashMap::new(),
-            });
+        let entry = merged.entry(key.clone()).or_insert_with(|| DrilldownRow {
+            group_key: key,
+            label,
+            value1: 0.0,
+            value2: 0.0,
+            delta_pct: None,
+            metric_values: std::collections::HashMap::new(),
+        });
         for (i, (id, _)) in metric_resolved.iter().enumerate() {
             let mv = entry.metric_values.entry(id.clone()).or_default();
             mv.value1 += values.get(i).copied().unwrap_or(0.0);
@@ -754,16 +752,14 @@ pub async fn compute_drilldown_multi(
     for (group_key, label, values) in rows2 {
         let key = day_key(&group_key);
         let label = day_key(&label);
-        let entry = merged
-            .entry(key.clone())
-            .or_insert_with(|| DrilldownRow {
-                group_key: key,
-                label,
-                value1: 0.0,
-                value2: 0.0,
-                delta_pct: None,
-                metric_values: std::collections::HashMap::new(),
-            });
+        let entry = merged.entry(key.clone()).or_insert_with(|| DrilldownRow {
+            group_key: key,
+            label,
+            value1: 0.0,
+            value2: 0.0,
+            delta_pct: None,
+            metric_values: std::collections::HashMap::new(),
+        });
         for (i, (id, _)) in metric_resolved.iter().enumerate() {
             let mv = entry.metric_values.entry(id.clone()).or_default();
             mv.value2 += values.get(i).copied().unwrap_or(0.0);

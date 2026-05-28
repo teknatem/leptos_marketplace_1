@@ -432,15 +432,24 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
                                             on:change=move |ev| set_aggregate_date_to.set(event_target_value(&ev))
                                         />
                                     </div>
-                                    <div class="doc-filter" style="align-items:flex-start;">
-                                        <label class="doc-filter__label">"Кабинеты:"</label>
-                                        <div style="display:flex;flex-direction:column;gap:6px;">
-                                            <ConnectionMpMultiSelect selected=aggregate_connection_mp_refs />
-                                            <span style="font-size:var(--font-size-xs);color:var(--color-text-secondary);">
-                                                "Если ничего не выбрано, будут обработаны все кабинеты"
-                                            </span>
-                                        </div>
-                                    </div>
+                                    {move || {
+                                        if selected_aggregate.get() == "a012_wb_sales" {
+                                            view! {
+                                                <div class="doc-filter" style="align-items:flex-start;">
+                                                    <label class="doc-filter__label">"Кабинеты:"</label>
+                                                    <div style="display:flex;flex-direction:column;gap:6px;">
+                                                        <ConnectionMpMultiSelect selected=aggregate_connection_mp_refs />
+                                                        <span style="font-size:var(--font-size-xs);color:var(--color-text-secondary);">
+                                                            "Если ничего не выбрано, будут обработаны все кабинеты"
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            }
+                                            .into_any()
+                                        } else {
+                                            view! { <></> }.into_any()
+                                        }
+                                    }}
                                     <Checkbox
                                         checked=aggregate_only_posted
                                         label="Только проведенные"

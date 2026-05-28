@@ -635,6 +635,43 @@ pub async fn search_by_document_no(document_no: &str) -> Result<Vec<WbSales>> {
     Ok(items)
 }
 
+/// ID неудалённых a012 кабинета: document_no из списка, sale_date не позже `sale_date_to` (YYYY-MM-DD).
+pub async fn list_ids_by_connection_and_document_nos(
+    connection_id: &str,
+    sale_date_to: &str,
+    document_nos: &[String],
+) -> Result<Vec<String>> {
+    if document_nos.is_empty() {
+        return Ok(vec![]);
+    }
+
+    const CHUNK: usize = 400;
+    let mut ids = Vec::new();
+    for chunk in document_nos.chunks(CHUNK) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT id FROM a012_wb_sales \
+             WHERE is_deleted = 0 \
+               AND connection_id = ? \
+               AND substr(COALESCE(sale_date, ''), 1, 10) <= ? \
+               AND document_no IN ({placeholders})"
+        );
+        let mut params: Vec<sea_orm::Value> = vec![connection_id.into(), sale_date_to.into()];
+        params.extend(chunk.iter().map(|s| s.as_str().into()));
+        let stmt =
+            sea_orm::Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+        let rows = conn().query_all(stmt).await?;
+        for row in rows {
+            if let Ok(id) = row.try_get::<String>("", "id") {
+                ids.push(id);
+            }
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
 /// DTO for list view - uses denormalized columns, no JSON parsing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesListRow {

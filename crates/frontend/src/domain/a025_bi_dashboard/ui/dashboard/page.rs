@@ -529,12 +529,17 @@ async fn fetch_indicator_drill_dimensions(
             mode: "safe".to_string(),
             coverage_pct: dim.coverage_pct.unwrap_or(100.0),
         })
-        .chain(capabilities.partial_dimensions.into_iter().map(|dim| DrillDim {
-            id: dim.id,
-            label: dim.label,
-            mode: "partial".to_string(),
-            coverage_pct: dim.coverage_pct.unwrap_or(0.0),
-        }))
+        .chain(
+            capabilities
+                .partial_dimensions
+                .into_iter()
+                .map(|dim| DrillDim {
+                    id: dim.id,
+                    label: dim.label,
+                    mode: "partial".to_string(),
+                    coverage_pct: dim.coverage_pct.unwrap_or(0.0),
+                }),
+        )
         .collect())
 }
 
@@ -2857,9 +2862,7 @@ fn IndicatorDetailModal(
         build_indicator_details(def.as_ref(), computed.as_ref(), &effective_indicator_params);
     // Drilldown ("Детализация") is the primary tab; when an indicator has no
     // DataView we open straight on the technical "Подробности" tab.
-    let active_tab = RwSignal::new(
-        if has_drilldown { "drill" } else { "details" }.to_string(),
-    );
+    let active_tab = RwSignal::new(if has_drilldown { "drill" } else { "details" }.to_string());
     let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let about_description = user_description.clone();
     let about_details = computation_details.clone();

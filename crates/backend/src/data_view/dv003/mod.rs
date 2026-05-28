@@ -830,16 +830,14 @@ pub async fn compute_drilldown_multi(
     for (group_key, label, values) in rows1 {
         let key = day_key(&group_key);
         let label = day_key(&label);
-        let entry = merged
-            .entry(key.clone())
-            .or_insert_with(|| DrilldownRow {
-                group_key: key,
-                label,
-                value1: 0.0,
-                value2: 0.0,
-                delta_pct: None,
-                metric_values: std::collections::HashMap::new(),
-            });
+        let entry = merged.entry(key.clone()).or_insert_with(|| DrilldownRow {
+            group_key: key,
+            label,
+            value1: 0.0,
+            value2: 0.0,
+            delta_pct: None,
+            metric_values: std::collections::HashMap::new(),
+        });
         for (index, (id, _)) in metric_resolved.iter().enumerate() {
             let metric_value = entry.metric_values.entry(id.clone()).or_default();
             metric_value.value1 += values.get(index).copied().unwrap_or(0.0);
@@ -849,16 +847,14 @@ pub async fn compute_drilldown_multi(
     for (group_key, label, values) in rows2 {
         let key = day_key(&group_key);
         let label = day_key(&label);
-        let entry = merged
-            .entry(key.clone())
-            .or_insert_with(|| DrilldownRow {
-                group_key: key,
-                label,
-                value1: 0.0,
-                value2: 0.0,
-                delta_pct: None,
-                metric_values: std::collections::HashMap::new(),
-            });
+        let entry = merged.entry(key.clone()).or_insert_with(|| DrilldownRow {
+            group_key: key,
+            label,
+            value1: 0.0,
+            value2: 0.0,
+            delta_pct: None,
+            metric_values: std::collections::HashMap::new(),
+        });
         for (index, (id, _)) in metric_resolved.iter().enumerate() {
             let metric_value = entry.metric_values.entry(id.clone()).or_default();
             metric_value.value2 += values.get(index).copied().unwrap_or(0.0);

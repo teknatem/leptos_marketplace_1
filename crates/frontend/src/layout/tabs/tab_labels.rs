@@ -60,7 +60,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "u505_match_nomenclature" => "Сопоставление",
         "u506_import_from_lemanapro" => "Импорт из ЛеманаПро",
         "u507_import_from_erp" => "Импорт из ERP",
-        "u508_repost_documents" => "Перепроведение по проекции",
+        "u508_repost_documents" => "Перепроведение документов",
         "general_ledger" => "Главная книга",
         "general_ledger_turnovers" => "Обороты GL",
         "general_ledger_dimensions" => "Измерения GL",

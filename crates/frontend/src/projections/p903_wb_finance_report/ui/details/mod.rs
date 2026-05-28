@@ -1,3 +1,6 @@
+mod api;
+
+use api::{fetch_detail, fetch_linked_sales, post_detail, WbSalesLink};
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::general_ledger::ui::{
     document_general_ledger_entries_nav_id, DocumentGeneralLedgerEntries,
@@ -7,17 +10,13 @@ use crate::shared::json_viewer::widget::JsonViewer;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
 use crate::shared::page_frame::PageFrame;
 use contracts::general_ledger::GeneralLedgerEntryDto;
-use contracts::projections::p903_wb_finance_report::dto::{
-    WbFinanceReportDetailResponse, WbFinanceReportDto,
-};
+use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thaw::*;
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::JsFuture;
 
 #[derive(Debug, Clone)]
 struct FieldRow {
@@ -226,17 +225,11 @@ fn gl_role_badge_label(role: GlFieldRole) -> &'static str {
     }
 }
 
-fn gl_role_badge_style(role: GlFieldRole) -> &'static str {
+fn gl_role_badge_class(role: GlFieldRole) -> &'static str {
     match role {
-        GlFieldRole::Condition => {
-            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #0f766e; color: #f0fdfa; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
-        }
-        GlFieldRole::Resource => {
-            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #9a3412; color: #fff7ed; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
-        }
-        GlFieldRole::ResourceAndCondition => {
-            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #1d4ed8; color: #eff6ff; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
-        }
+        GlFieldRole::Condition => "p903-gl-badge p903-gl-badge--condition",
+        GlFieldRole::Resource => "p903-gl-badge p903-gl-badge--resource",
+        GlFieldRole::ResourceAndCondition => "p903-gl-badge p903-gl-badge--resource-and-cond",
     }
 }
 
@@ -263,17 +256,11 @@ fn financial_result_sort_order(role: FinancialResultRole) -> u8 {
     }
 }
 
-fn financial_result_badge_style(role: FinancialResultRole) -> &'static str {
+fn financial_result_badge_class(role: FinancialResultRole) -> &'static str {
     match role {
-        FinancialResultRole::Income => {
-            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #166534; color: #f0fdf4; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
-        }
-        FinancialResultRole::Expense => {
-            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: #b91c1c; color: #fef2f2; border: 1px solid rgba(255,255,255,0.14); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
-        }
-        FinancialResultRole::Info => {
-            "display: inline-flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 999px; background: var(--color-bg-secondary); color: var(--color-text-secondary); border: 1px solid var(--color-border); font-size: var(--font-size-sm); font-weight: 700; line-height: 1.2;"
-        }
+        FinancialResultRole::Income => "p903-fin-badge p903-fin-badge--income",
+        FinancialResultRole::Expense => "p903-fin-badge p903-fin-badge--expense",
+        FinancialResultRole::Info => "p903-fin-badge p903-fin-badge--info",
     }
 }
 
@@ -338,51 +325,14 @@ fn field_financial_result_role(
     }
 }
 
-fn gl_role_row_style(role: GlFieldRole) -> &'static str {
+fn gl_role_row_class(role: GlFieldRole) -> &'static str {
     match role {
-        GlFieldRole::Condition => {
-            "background: rgba(15, 118, 110, 0.08); box-shadow: inset 3px 0 0 #0f766e;"
-        }
-        GlFieldRole::Resource => {
-            "background: rgba(154, 52, 18, 0.08); box-shadow: inset 3px 0 0 #9a3412;"
-        }
-        GlFieldRole::ResourceAndCondition => {
-            "background: rgba(29, 78, 216, 0.08); box-shadow: inset 3px 0 0 #1d4ed8;"
-        }
+        GlFieldRole::Condition => "p903-fields-row--condition",
+        GlFieldRole::Resource => "p903-fields-row--resource",
+        GlFieldRole::ResourceAndCondition => "p903-fields-row--resource-and-cond",
     }
 }
 
-// Simplified WbSales structure for links display
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbSalesLink {
-    pub id: String,
-    pub header: WbSalesHeaderLink,
-    pub line: WbSalesLineLink,
-    pub state: WbSalesStateLink,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbSalesHeaderLink {
-    pub document_no: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbSalesLineLink {
-    pub nm_id: i64,
-    pub supplier_article: String,
-    pub name: String,
-    pub qty: f64,
-    pub total_price: Option<f64>,
-    pub payment_sale_amount: Option<f64>,
-    pub price_effective: Option<f64>,
-    pub amount_line: Option<f64>,
-    pub finished_price: Option<f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WbSalesStateLink {
-    pub sale_dt: String,
-}
 
 #[component]
 pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
@@ -401,6 +351,7 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
     let (linked_sales, set_linked_sales) = signal::<Vec<WbSalesLink>>(Vec::new());
     let (links_loading, set_links_loading) = signal(false);
     let (links_error, set_links_error) = signal(None::<String>);
+    let (links_fetched, set_links_fetched) = signal(false);
     let (selected_sale_id, set_selected_sale_id) = signal::<Option<String>>(None);
 
     // Загрузка данных
@@ -425,13 +376,15 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
         });
     });
 
-    // Загрузка связанных документов продаж при активации вкладки Links
+    // Загрузка связанных документов продаж при активации вкладки Links (однократно)
     Effect::new(move || {
         let tab = active_tab.get();
-        if tab == "links" {
-            if let Some(item) = data.get() {
+        let item = data.get();
+        if tab == "links" && !links_fetched.get_untracked() {
+            if let Some(item) = item {
                 if let Some(srid_val) = item.srid {
                     if !srid_val.is_empty() {
+                        set_links_fetched.set(true);
                         set_links_loading.set(true);
                         set_links_error.set(None);
 
@@ -897,8 +850,7 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                 } else if data.get().is_some() {
                     view! {
                         <div>
-                            // Tabs and Export button
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+                            <div class="p903-detail__tabs-bar">
                                 <div class="detail-tabs">
                                     <button
                                         class=move || if active_tab.get() == "fields" {
@@ -962,7 +914,7 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                     let field_rows = get_field_rows();
                                     let gl_entries = general_ledger_entries.get();
                                     view! {
-                                        <div style="width: 100%; overflow-x: auto;">
+                                        <div class="table-wrapper">
                                             <Table attr:style="width: 100%; table-layout: fixed;">
                                                 <TableHeader>
                                                     <TableRow>
@@ -1024,33 +976,27 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                             let emphasized_value =
                                                                 is_emphasized_string_field(&row.field_id);
                                                             view! {
-                                                                <TableRow attr:style={gl_role.map(gl_role_row_style).unwrap_or("")}>
+                                                                <TableRow class={gl_role.map(gl_role_row_class).unwrap_or("")}>
                                                                     <TableCell>
                                                                         <TableCellLayout>
-                                                                            <div style="color: var(--color-text-primary); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;">
-                                                                                {description}
-                                                                            </div>
+                                                                            <div class="p903-field-desc">{description}</div>
                                                                             {note.clone().map(|note_text| view! {
-                                                                                <div style="margin-top: 6px; font-size: var(--font-size-sm); color: var(--color-text-secondary); line-height: 1.4; overflow-wrap: anywhere;">
-                                                                                    {note_text}
-                                                                                </div>
+                                                                                <div class="p903-field-note">{note_text}</div>
                                                                             })}
                                                                         </TableCellLayout>
                                                                     </TableCell>
                                                                     <TableCell>
                                                                         <TableCellLayout>
-                                                                            <div style="display: flex; justify-content: center; align-items: center; min-height: 100%;">
+                                                                            <div class="p903-badge-center">
                                                                                 {if let Some(role) = gl_role {
                                                                                     view! {
-                                                                                        <span style={gl_role_badge_style(role)}>
+                                                                                        <span class={gl_role_badge_class(role)}>
                                                                                             {gl_role_badge_label(role)}
                                                                                         </span>
                                                                                     }.into_any()
                                                                                 } else {
                                                                                     view! {
-                                                                                        <span style="font-size: var(--font-size-sm); color: var(--color-text-secondary); font-weight: 600;">
-                                                                                            "—"
-                                                                                        </span>
+                                                                                        <span class="p903-badge-dash">"—"</span>
                                                                                     }.into_any()
                                                                                 }}
                                                                             </div>
@@ -1058,8 +1004,8 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                                     </TableCell>
                                                                     <TableCell>
                                                                         <TableCellLayout>
-                                                                            <div style="display: flex; justify-content: center; align-items: center; min-height: 100%;">
-                                                                                <span style={financial_result_badge_style(result_role)}>
+                                                                            <div class="p903-badge-center">
+                                                                                <span class={financial_result_badge_class(result_role)}>
                                                                                     {financial_result_badge_label(result_role)}
                                                                                 </span>
                                                                             </div>
@@ -1067,24 +1013,18 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                                     </TableCell>
                                                                     <TableCell>
                                                                         <TableCellLayout>
-                                                                            <span style="font-size: var(--font-size-sm); color: var(--color-text-primary); font-weight: 600; overflow-wrap: anywhere; word-break: break-word;">
-                                                                                {row.field_id.clone()}
-                                                                            </span>
+                                                                            <span class="p903-field-id">{row.field_id.clone()}</span>
                                                                         </TableCellLayout>
                                                                     </TableCell>
                                                                     <TableCell>
                                                                         <TableCellLayout>
                                                                             {if emphasized_value {
                                                                                 view! {
-                                                                                    <code style="display: inline-block; padding: 2px 6px; border-radius: 6px; background: var(--color-bg-secondary); color: var(--color-text-primary); border: 1px solid var(--color-border); font-size: var(--font-size-sm); white-space: normal; overflow-wrap: anywhere; word-break: break-word;">
-                                                                                        {row.value.clone()}
-                                                                                    </code>
+                                                                                    <code class="p903-field-value--code">{row.value.clone()}</code>
                                                                                 }.into_any()
                                                                             } else {
                                                                                 view! {
-                                                                                    <span style="color: var(--color-text-primary); font-weight: 600; white-space: normal; overflow-wrap: anywhere; word-break: break-word;">
-                                                                                        {row.value.clone()}
-                                                                                    </span>
+                                                                                    <span class="p903-field-value">{row.value.clone()}</span>
                                                                                 }.into_any()
                                                                             }}
                                                                         </TableCellLayout>
@@ -1148,7 +1088,7 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
 
                                             view! {
                                                 <div>
-                                                    <div style="padding: 10px; margin-bottom: 10px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; gap: 20px; flex-wrap: wrap; font-size: var(--font-size-sm); font-weight: 600;">
+                                                    <div class="list-summary-bar">
                                                         <span>"Найдено: " {sales.len()} " документов"</span>
                                                         <span>"Total Qty: " {format_number(total_qty)}</span>
                                                         <span>"Total Price: " {format_number(total_total_price)}</span>
@@ -1205,7 +1145,7 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                         }
                                     }
                                 } else {
-                                    view! { <div></div> }.into_any()
+                                    view! { <></> }.into_any()
                                 }
                             }}
 
@@ -1213,7 +1153,7 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                     }
                         .into_any()
                 } else {
-                    view! { <p>"No data"</p> }.into_any()
+                    view! { <p>"Нет данных"</p> }.into_any()
                 }
             }}
             </div>
@@ -1232,90 +1172,10 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                         </div>
                     }.into_any()
                 } else {
-                    view! { <div></div> }.into_any()
+                    view! { <></> }.into_any()
                 }
             }}
         </PageFrame>
     }
 }
 
-async fn fetch_detail(id: &str) -> Result<WbFinanceReportDetailResponse, String> {
-    let window = web_sys::window().ok_or("No window object")?;
-    let url = format!("/api/p903/finance-report/by-id/{}", urlencoding::encode(id));
-
-    let resp_value = JsFuture::from(window.fetch_with_str(&url))
-        .await
-        .map_err(|e| format!("Fetch failed: {:?}", e))?;
-
-    let resp: web_sys::Response = resp_value
-        .dyn_into()
-        .map_err(|_| "Failed to cast to Response")?;
-
-    if !resp.ok() {
-        return Err(format!("HTTP error: {}", resp.status()));
-    }
-
-    let json = JsFuture::from(resp.json().map_err(|_| "Failed to get JSON")?)
-        .await
-        .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
-
-    serde_wasm_bindgen::from_value(json).map_err(|e| format!("Failed to deserialize: {:?}", e))
-}
-
-async fn post_detail(id: &str) -> Result<WbFinanceReportDetailResponse, String> {
-    use web_sys::{Request, RequestInit, RequestMode};
-
-    let window = web_sys::window().ok_or("No window object")?;
-    let url = format!(
-        "/api/p903/finance-report/by-id/{}/post",
-        urlencoding::encode(id)
-    );
-
-    let opts = RequestInit::new();
-    opts.set_method("POST");
-    opts.set_mode(RequestMode::Cors);
-
-    let request = Request::new_with_str_and_init(&url, &opts)
-        .map_err(|e| format!("Request init failed: {:?}", e))?;
-
-    let resp_value = JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("Fetch failed: {:?}", e))?;
-
-    let resp: web_sys::Response = resp_value
-        .dyn_into()
-        .map_err(|_| "Failed to cast to Response")?;
-
-    if !resp.ok() {
-        return Err(format!("HTTP error: {}", resp.status()));
-    }
-
-    let json = JsFuture::from(resp.json().map_err(|_| "Failed to get JSON")?)
-        .await
-        .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
-
-    serde_wasm_bindgen::from_value(json).map_err(|e| format!("Failed to deserialize: {:?}", e))
-}
-
-async fn fetch_linked_sales(srid: &str) -> Result<Vec<WbSalesLink>, String> {
-    let window = web_sys::window().ok_or("No window object")?;
-    let url = format!("/api/a012/wb-sales/search-by-srid?srid={}", srid);
-
-    let resp_value = JsFuture::from(window.fetch_with_str(&url))
-        .await
-        .map_err(|e| format!("Fetch failed: {:?}", e))?;
-
-    let resp: web_sys::Response = resp_value
-        .dyn_into()
-        .map_err(|_| "Failed to cast to Response")?;
-
-    if !resp.ok() {
-        return Err(format!("HTTP error: {}", resp.status()));
-    }
-
-    let json = JsFuture::from(resp.json().map_err(|_| "Failed to get JSON")?)
-        .await
-        .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
-
-    serde_wasm_bindgen::from_value(json).map_err(|e| format!("Failed to deserialize: {:?}", e))
-}

@@ -275,7 +275,10 @@ impl MarketplaceProductDetailsViewModel {
 
     /// Является ли товар товаром Wildberries (для блока «Быстрый доступ»).
     pub fn is_wildberries(&self) -> bool {
-        matches!(self.marketplace_type.get(), Some(MarketplaceType::Wildberries))
+        matches!(
+            self.marketplace_type.get(),
+            Some(MarketplaceType::Wildberries)
+        )
     }
 
     pub fn marketplace_product_url(&self) -> Option<String> {

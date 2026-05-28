@@ -76,12 +76,8 @@ pub async fn run_check(id: &str) -> anyhow::Result<CheckResult> {
         checks::marketplace_product_ref_required::CHECK_ID => {
             checks::marketplace_product_ref_required::run().await
         }
-        checks::gl_projection_integrity::CHECK_ID => {
-            checks::gl_projection_integrity::run().await
-        }
-        checks::p903_gl_integrity::CHECK_ID => {
-            checks::p903_gl_integrity::run().await
-        }
+        checks::gl_projection_integrity::CHECK_ID => checks::gl_projection_integrity::run().await,
+        checks::p903_gl_integrity::CHECK_ID => checks::p903_gl_integrity::run().await,
         other => Err(anyhow::anyhow!("NOT_FOUND: Unknown check id: {}", other)),
     }
 }

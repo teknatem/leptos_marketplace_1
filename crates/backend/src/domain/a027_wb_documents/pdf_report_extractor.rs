@@ -27,8 +27,7 @@ static REPORT_DATE_ISO_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\bот\s+(\d{4})-(\d{2})-(\d{2})\b").expect("valid ISO report date regex")
 });
 static REPORT_DATE_DMY_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\bот\s+(\d{2})\.(\d{2})\.(\d{4})\b")
-        .expect("valid DMY report date regex")
+    Regex::new(r"(?i)\bот\s+(\d{2})\.(\d{2})\.(\d{4})\b").expect("valid DMY report date regex")
 });
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,8 +93,7 @@ pub fn extract_weekly_report_from_text(
     // ("Отчет № … от DD.MM.YYYY") — это самый надёжный якорь начала недельного
     // периода. Тело PDF используем только как запасной вариант: там встречаются
     // посторонние даты (дата формирования отчёта и т.п.), которые сбивают период.
-    let report_date =
-        report_date_from_file_name(file_name).or_else(|| extract_report_date(text));
+    let report_date = report_date_from_file_name(file_name).or_else(|| extract_report_date(text));
     // Недельный отчёт WB всегда покрывает понедельник–воскресенье, поэтому от
     // даты отчёта восстанавливаем полную неделю. Скан периода из тела PDF — тоже
     // запасной вариант.
@@ -141,7 +139,10 @@ fn extract_pdf_bytes(bytes: &[u8], extension: &str) -> Result<Vec<u8>> {
     }
 
     if !extension.eq_ignore_ascii_case("zip") {
-        anyhow::bail!("document extension '{}' is not supported for PDF extraction", extension);
+        anyhow::bail!(
+            "document extension '{}' is not supported for PDF extraction",
+            extension
+        );
     }
 
     let cursor = Cursor::new(bytes);
@@ -188,8 +189,7 @@ fn extract_rows(text: &str) -> Vec<WbWeeklyReportRow> {
         rows.push(build_row(code, &parts.join(" ")));
     }
 
-    rows
-        .into_iter()
+    rows.into_iter()
         .filter(|row| row.amount.is_some() || is_expected_code(&row.code))
         .collect()
 }
@@ -466,11 +466,9 @@ mod tests {
             Отчет Вайлдберриз № 685740510 от 2026-04-13
             1.1 Итого стоимость реализованного товара — — 1 234,56 0,00";
 
-        let extracted = extract_weekly_report_from_text(
-            text,
-            Some("Отчет №685740510 от 2026-04-06.pdf"),
-        )
-        .unwrap();
+        let extracted =
+            extract_weekly_report_from_text(text, Some("Отчет №685740510 от 2026-04-06.pdf"))
+                .unwrap();
 
         assert_eq!(extracted.report_period_from.as_deref(), Some("2026-04-06"));
         assert_eq!(extracted.report_period_to.as_deref(), Some("2026-04-12"));
@@ -505,7 +503,10 @@ mod tests {
             Подпись 12 345,00";
 
         let extracted = extract_weekly_report_from_text(text, None).unwrap();
-        assert_eq!(extracted.manual_data.seller_transfer_total, Some(4_802_355.80));
+        assert_eq!(
+            extracted.manual_data.seller_transfer_total,
+            Some(4_802_355.80)
+        );
     }
 
     #[test]

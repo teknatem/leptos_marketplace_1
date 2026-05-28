@@ -3,7 +3,82 @@ use contracts::domain::a033_wb_day_close::{CompareResponse, RepostResult, SridDi
 use contracts::domain::common::AggregateId;
 use uuid::Uuid;
 
-use super::{lines_builder, repository};
+use super::{advert_builder, lines_builder, repository};
+
+/// Дозаполняет a012 по srid из p903 (sale_date <= даты закрытия); перепроводит только при изменениях.
+async fn backfill_a012_for_p903_srids(
+    connection_id: &str,
+    business_date: &str,
+    srids: &[String],
+) -> Result<()> {
+    if srids.is_empty() {
+        return Ok(());
+    }
+
+    let sale_date_to = lines_builder::a012_sale_date_upper_bound(business_date);
+    let ids = crate::domain::a012_wb_sales::repository::list_ids_by_connection_and_document_nos(
+        connection_id,
+        &sale_date_to,
+        srids,
+    )
+    .await?;
+
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let mut cache = crate::domain::a012_wb_sales::service::PostingPreparationCache::default();
+    for id_str in ids {
+        let id = match Uuid::parse_str(&id_str) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::warn!("a033 backfill: skip invalid a012 id '{}': {}", id_str, e);
+                continue;
+            }
+        };
+
+        let mut document = match crate::domain::a012_wb_sales::repository::get_by_id(id).await? {
+            Some(doc) => doc,
+            None => continue,
+        };
+
+        let prepare_changed =
+            crate::domain::a012_wb_sales::service::prepare_document_for_posting_cached(
+                &mut document,
+                &mut cache,
+            )
+            .await?;
+
+        let prod_cost_resolution =
+            crate::domain::a012_wb_sales::service::resolve_prod_cost_cached(&document, &mut cache)
+                .await?;
+        let mut should_persist = prepare_changed;
+        should_persist |= crate::domain::a012_wb_sales::service::apply_prod_cost_diagnostics(
+            &mut document,
+            &prod_cost_resolution,
+        );
+
+        if should_persist {
+            document.before_write();
+            if let Err(e) =
+                crate::domain::a012_wb_sales::repository::upsert_document(&document).await
+            {
+                tracing::warn!("a033 backfill: failed to upsert a012 {}: {}", id, e);
+            }
+        }
+
+        if document.is_posted && should_persist {
+            if let Err(e) =
+                crate::domain::a012_wb_sales::posting::post_document_with_cache(id, &mut cache)
+                    .await
+            {
+                tracing::warn!("a033 backfill: failed to repost a012 {}: {}", id, e);
+            }
+        }
+    }
+
+    Ok(())
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // create_active
@@ -27,12 +102,30 @@ pub async fn create_active(connection_id: &str, business_date: &str) -> Result<U
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Пересчитывает строки, проблемы и итоги документа.
+/// Перед пересчётом дозаполняет связанные a012 (srid из p903, sale_date <= даты закрытия).
 /// Идемпотентен при неизменных данных в p903/p913/a012.
 pub async fn recalculate(id: Uuid) -> Result<()> {
     let mut doc = load(id).await?;
 
-    let (lines, problems) = lines_builder::build(&doc.connection_id, &doc.business_date).await?;
+    let p903_rows = lines_builder::load_p903_day(&doc.connection_id, &doc.business_date).await?;
+    let srids = lines_builder::p903_srids_from_rows(&p903_rows);
+    backfill_a012_for_p903_srids(&doc.connection_id, &doc.business_date, &srids).await?;
+
+    let (lines, problems) =
+        lines_builder::build_with_p903_rows(&doc.connection_id, &doc.business_date, p903_rows)
+            .await?;
     doc.set_lines_and_problems(lines, problems);
+
+    let advert = advert_builder::build(&doc.connection_id, &doc.business_date).await?;
+    doc.set_advert_lines(
+        advert.no_order_lines,
+        advert.order_accrual_lines,
+        advert.gl_no_order,
+        advert.gl_order_accrual,
+        advert.gl_order_expense,
+        advert.snap_order_expense,
+    );
+
     doc.before_write();
 
     repository::update(&doc).await?;

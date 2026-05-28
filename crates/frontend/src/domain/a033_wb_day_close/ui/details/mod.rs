@@ -3,8 +3,10 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::clipboard::copy_to_clipboard_with_callback;
 use crate::shared::components::card_animated::CardAnimated;
+use crate::shared::components::more_actions_menu::{use_more_actions_close, MoreActionsMenu};
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use crate::system::favorites::ui::FavoriteButton;
 use chrono::{Datelike, Duration, Utc};
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
@@ -47,6 +49,8 @@ pub struct WbDayCloseLineDto {
     #[serde(default)]
     pub sales_doc_no: Option<String>,
     #[serde(default)]
+    pub sales_doc_date: Option<String>,
+    #[serde(default)]
     pub sales_event_type: Option<String>,
     #[serde(default)]
     pub sales_extra_ids: Vec<String>,
@@ -81,6 +85,8 @@ pub struct WbDayCloseProblemDto {
     pub nomenclature_ref: Option<String>,
     #[serde(default)]
     pub a012_ids: Vec<String>,
+    #[serde(default)]
+    pub a012_advert_expense: Option<f64>,
     pub message: String,
 }
 
@@ -107,6 +113,32 @@ pub struct WbDayCloseTotalsDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct WbDayCloseAdvertNoOrderLineDto {
+    pub projection_ref_id: String,
+    pub nomenclature_ref: Option<String>,
+    pub sa_name: Option<String>,
+    pub amount: f64,
+    pub general_ledger_ref: Option<String>,
+    pub campaign_code: String,
+    pub campaign_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WbDayCloseAdvertOrderAccrualLineDto {
+    pub projection_ref_id: String,
+    pub nomenclature_ref: Option<String>,
+    pub sa_name: Option<String>,
+    pub amount: f64,
+    pub order_key: String,
+    pub order_id: Option<String>,
+    pub order_date: Option<String>,
+    pub campaign_code: String,
+    pub campaign_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct WbDayCloseDetailDto {
     pub id: String,
     pub connection_id: String,
@@ -122,6 +154,55 @@ pub struct WbDayCloseDetailDto {
     #[serde(default)]
     pub problems: Vec<WbDayCloseProblemDto>,
     pub totals: WbDayCloseTotalsDto,
+    #[serde(default)]
+    pub advert_clicks_no_order_lines: Vec<WbDayCloseAdvertNoOrderLineDto>,
+    #[serde(default)]
+    pub advert_clicks_order_accrual_lines: Vec<WbDayCloseAdvertOrderAccrualLineDto>,
+    #[serde(default)]
+    pub gl_advert_no_order: f64,
+    #[serde(default)]
+    pub gl_advert_order_accrual: f64,
+    #[serde(default)]
+    pub gl_advert_order_expense: f64,
+    #[serde(default)]
+    pub snap_advert_order_expense: f64,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live advert totals DTO
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+struct RegistratorRowDto {
+    pub registrator_ref: String,
+    pub p913_sum: f64,
+    pub p913_rows: u64,
+    pub gl_sum: f64,
+    pub delta: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+struct AdvertLiveTotalsDto {
+    pub p913_no_order: f64,
+    pub p913_order_accrual: f64,
+    pub p913_order_expense: f64,
+    pub gl_no_order: f64,
+    pub gl_order_accrual: f64,
+    pub gl_order_expense: f64,
+    pub p913_accrual_rows: u64,
+    pub gl_accrual_entries: u64,
+    pub accrual_by_registrator: Vec<RegistratorRowDto>,
+}
+
+async fn fetch_advert_live(id: &str) -> Result<AdvertLiveTotalsDto, String> {
+    let url = format!("{}/api/a033/wb-day-close/{}/advert-live", api_base(), id);
+    let resp = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Network: {}", e))?;
+    resp.json::<AdvertLiveTotalsDto>()
+        .await
+        .map_err(|e| format!("Parse: {}", e))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,6 +318,36 @@ struct RepostResultDto {
     pub errors: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct EntityIdDto {
+    id: String,
+}
+
+async fn resolve_wb_order_id_by_srid(srid: &str) -> Option<String> {
+    let url = format!(
+        "{}/api/a015/wb-orders/search-by-srid?srid={}",
+        api_base(),
+        urlencoding::encode(srid)
+    );
+    let response = Request::get(&url).send().await.ok()?;
+    if !response.ok() {
+        return None;
+    }
+    let rows: Vec<EntityIdDto> = response.json().await.ok()?;
+    rows.into_iter().next().map(|r| r.id)
+}
+
+fn open_wb_order_by_srid(srid: String, tabs: AppGlobalContext) {
+    if srid.is_empty() {
+        return;
+    }
+    spawn_local(async move {
+        if let Some(id) = resolve_wb_order_id_by_srid(&srid).await {
+            tabs.open_tab(&format!("a015_wb_orders_details_{}", id), "Заказ WB");
+        }
+    });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -256,9 +367,29 @@ pub fn WbDayCloseDetails(id: String, #[prop(into)] on_close: Callback<()>) -> im
     let (archived_versions, set_archived_versions) = signal::<Vec<WbDayCloseListDto>>(vec![]);
     let selected_tab = RwSignal::new("result".to_string());
     let problems_filter = RwSignal::new("all".to_string()); // "all", "block", "warn"
-    let lines_sort = RwSignal::new(SortState::new("srid")); // persists across tab switches
+    let lines_sort = RwSignal::new(SortState::new("sa_name")); // persists across tab switches
 
     let stored_id = StoredValue::new(id.clone());
+    let cabinets: RwSignal<Vec<(String, String)>> = RwSignal::new(vec![]);
+
+    Effect::new(move |_| {
+        spawn_local(async move {
+            if let Ok(conns) = fetch_connections().await {
+                let opts: Vec<(String, String)> = conns
+                    .into_iter()
+                    .map(|c| {
+                        let label = if c.base.description.trim().is_empty() {
+                            c.base.code.clone()
+                        } else {
+                            c.base.description.clone()
+                        };
+                        (c.base.id.as_string(), label)
+                    })
+                    .collect();
+                cabinets.set(opts);
+            }
+        });
+    });
 
     let load_doc = {
         let stored_id = stored_id;
@@ -337,7 +468,6 @@ pub fn WbDayCloseDetails(id: String, #[prop(into)] on_close: Callback<()>) -> im
         }
     });
     // Two independent closures sharing do_repost_all via Copy (StoredValue is Copy)
-    let on_repost_all_header = move |_: leptos::ev::MouseEvent| do_repost_all.get_value()();
     let on_repost_all_tab = move |_: leptos::ev::MouseEvent| do_repost_all.get_value()();
 
     // Archive and recreate
@@ -383,75 +513,121 @@ pub fn WbDayCloseDetails(id: String, #[prop(into)] on_close: Callback<()>) -> im
         }
     };
 
+    let favorite_tab_key = format!("a033_wb_day_close_details_{}", stored_id.get_value());
+    let favorite_title = Signal::derive(move || {
+        doc.get()
+            .map(|d| format!("Закрытие дня WB — {}", format_date(&d.business_date)))
+            .unwrap_or_else(|| "Закрытие дня WB".to_string())
+    });
+
     view! {
         <PageFrame page_id="a033_wb_day_close_details" category="detail">
             // Header
             <div class="page__header">
                 <div class="page__header-left">
-                    <h1 class="page__title">
-                        {move || doc.get()
-                            .map(|d| format!("Закрытие дня WB — {}", format_date(&d.business_date)))
-                            .unwrap_or_else(|| "Закрытие дня WB".to_string())}
-                    </h1>
-                    {move || doc.get().map(|d| view! {
-                        <span style="margin-left: var(--spacing-sm);">
-                            {if d.is_archived {
-                                view! {
-                                    <Badge appearance=BadgeAppearance::Outline color=BadgeColor::Subtle>
-                                        "Архивный"
-                                    </Badge>
-                                }.into_any()
-                            } else {
-                                view! {
-                                    <Badge appearance=BadgeAppearance::Filled color=BadgeColor::Success>
-                                        "Активный"
-                                    </Badge>
-                                }.into_any()
-                            }}
-                        </span>
-                    })}
+                    <FavoriteButton
+                        target_kind="a033_wb_day_close_details".to_string()
+                        target_id=favorite_tab_key.clone()
+                        target_title=favorite_title
+                        tab_key=favorite_tab_key
+                    />
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                            <h1 class="page__title">
+                                {move || favorite_title.get()}
+                            </h1>
+                            {move || doc.get().map(|d| {
+                                if d.is_archived {
+                                    view! {
+                                        <Badge appearance=BadgeAppearance::Outline color=BadgeColor::Subtle>
+                                            "Архивный"
+                                        </Badge>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <Badge appearance=BadgeAppearance::Filled color=BadgeColor::Success>
+                                            "Активный"
+                                        </Badge>
+                                    }.into_any()
+                                }
+                            })}
+                        </div>
+                    </div>
                 </div>
-                <div class="page__header-right" style="display: flex; gap: var(--spacing-xs);">
+                <div class="page__header-right">
+                    // ── Провести ──────────────────────────────────────────────────────
                     <Button
-                        size=ButtonSize::Small
+                        appearance=ButtonAppearance::Subtle
+                        size=ButtonSize::Medium
                         disabled=Signal::derive(move || action_loading.get() || loading.get())
                         on_click=on_recalculate
                     >
-                        {icon("zap")} " Провести"
+                        <span class="page-action-button__content">
+                            <span class="page-action-button__icon">{icon("zap")}</span>
+                            <span class="page-action-button__text">"Провести"</span>
+                        </span>
                     </Button>
+
+                    // ── Ещё... (dropdown) ─────────────────────────────────────────────
+                    <MoreActionsMenu>
+                        // Перепровести проблемные
+                        <button
+                            class="theme-dropdown__item"
+                            disabled=move || action_loading.get() || loading.get()
+                            on:click=move |_| {
+                                use_more_actions_close();
+                                do_repost_all.get_value()();
+                            }
+                        >
+                            <span style="display: flex; align-items: center; gap: 8px;">
+                                {icon("zap")} "Перепровести проблемные"
+                            </span>
+                        </button>
+                        // Архив + новый (только для активного документа)
+                        {move || {
+                            if doc.get().map(|d| !d.is_archived).unwrap_or(false) {
+                                view! {
+                                    <button
+                                        class="theme-dropdown__item"
+                                        disabled=move || action_loading.get()
+                                        on:click=move |_| {
+                                            use_more_actions_close();
+                                            set_show_archive_form.update(|v| *v = !*v);
+                                        }
+                                    >
+                                        <span style="display: flex; align-items: center; gap: 8px;">
+                                            {icon("archive")} "Архив + новый"
+                                        </span>
+                                    </button>
+                                }.into_any()
+                            } else {
+                                view! { <span /> }.into_any()
+                            }
+                        }}
+                        // Версии
+                        <button
+                            class="theme-dropdown__item"
+                            on:click=move |e| {
+                                use_more_actions_close();
+                                on_load_versions(e);
+                            }
+                        >
+                            <span style="display: flex; align-items: center; gap: 8px;">
+                                {icon("git-compare")} "Версии"
+                            </span>
+                        </button>
+                    </MoreActionsMenu>
+
+                    // ── Закрыть ───────────────────────────────────────────────────────
                     <Button
-                        size=ButtonSize::Small
-                        disabled=Signal::derive(move || action_loading.get() || loading.get())
-                        on_click=on_repost_all_header
-                    >
-                        {icon("zap")} " Перепровести проблемные"
-                    </Button>
-                    {move || {
-                        if doc.get().map(|d| !d.is_archived).unwrap_or(false) {
-                            view! {
-                                <Button
-                                    size=ButtonSize::Small
-                                    disabled=Signal::derive(move || action_loading.get())
-                                    on_click=move |_| set_show_archive_form.update(|v| *v = !*v)
-                                >
-                                    {icon("archive")} " Архив + новый"
-                                </Button>
-                            }.into_any()
-                        } else {
-                            view! { <span /> }.into_any()
-                        }
-                    }}
-                    <Button
-                        size=ButtonSize::Small
-                        on_click=on_load_versions
-                    >
-                        {icon("git-compare")} " Версии"
-                    </Button>
-                    <Button
-                        size=ButtonSize::Small
+                        appearance=ButtonAppearance::Subtle
+                        size=ButtonSize::Medium
                         on_click=move |_| on_close.run(())
                     >
-                        "Закрыть"
+                        <span class="page-action-button__content">
+                            <span class="page-action-button__icon page-action-button__icon--close">{icon("x")}</span>
+                            <span class="page-action-button__text">"Закрыть"</span>
+                        </span>
                     </Button>
                 </div>
             </div>
@@ -510,19 +686,26 @@ pub fn WbDayCloseDetails(id: String, #[prop(into)] on_close: Callback<()>) -> im
                     };
 
                     let lines_count = d.totals.lines_count;
-                    let problem_lines = d.totals.problem_lines;
-                    let problems_block = d.totals.problems_block;
-                    let total_probs = d.problems.len() as i64;
+                    let visible_probs_list = visible_problems(&d.problems, &d.lines);
+                    let total_probs = visible_probs_list.len() as i64;
                     let tabs_store_inner = tabs_store.clone();
                     let lines = d.lines.clone();
-                    let problems = d.problems.clone();
+                    let problems = visible_probs_list;
+                    let advert_no_order = d.advert_clicks_no_order_lines.clone();
+                    let advert_order_accrual = d.advert_clicks_order_accrual_lines.clone();
+                    let total_advert = advert_no_order.len() + advert_order_accrual.len();
                     let d_for_result = d.clone();
 
+                    let cabinet = cabinets.with(|cabs| {
+                        cabs.iter()
+                            .find(|(cid, _)| cid == &d.connection_id)
+                            .map(|(_, label)| label.clone())
+                            .unwrap_or_else(|| {
+                                d.connection_id[..d.connection_id.len().min(8)].to_string()
+                            })
+                    });
                     view! {
                         <div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-                            <DocHeaderInfo doc=d.clone() />
-                            <TotalsRow totals=d.totals.clone() />
-
                             // Tabs navigation
                             <div style="border-bottom: 1px solid var(--color-border);">
                                 <TabList selected_value=selected_tab>
@@ -531,31 +714,19 @@ pub fn WbDayCloseDetails(id: String, #[prop(into)] on_close: Callback<()>) -> im
                                 </Tab>
                                 <Tab value="lines".to_string()>
                                     {format!("Строки ({})", lines_count)}
-                                    {if problem_lines > 0 {
-                                        view! {
-                                            <span style="margin-left: 4px;">
-                                                <Badge appearance=BadgeAppearance::Filled color=BadgeColor::Warning>
-                                                    {format!("{} с пробл.", problem_lines)}
-                                                </Badge>
-                                            </span>
-                                        }.into_any()
-                                    } else { view! { <span /> }.into_any() }}
                                 </Tab>
                                 <Tab value="problems".to_string()>
                                     {if total_probs > 0 {
-                                        let badge_color = if problems_block > 0 { BadgeColor::Danger } else { BadgeColor::Warning };
-                                        view! {
-                                            <span>
-                                                "Проблемы "
-                                                <span style="margin-left: 4px;">
-                                                    <Badge appearance=BadgeAppearance::Filled color=badge_color>
-                                                        {total_probs}
-                                                    </Badge>
-                                                </span>
-                                            </span>
-                                        }.into_any()
+                                        format!("Проблемы ({})", total_probs)
                                     } else {
-                                        view! { <span>"Проблемы (нет)"</span> }.into_any()
+                                        "Проблемы".to_string()
+                                    }}
+                                </Tab>
+                                <Tab value="advert".to_string()>
+                                    {if total_advert > 0 {
+                                        format!("Реклама ({})", total_advert)
+                                    } else {
+                                        "Реклама".to_string()
                                     }}
                                 </Tab>
                                 </TabList>
@@ -606,7 +777,7 @@ pub fn WbDayCloseDetails(id: String, #[prop(into)] on_close: Callback<()>) -> im
                                         return view! { <span /> }.into_any();
                                     }
                                     view! {
-                                        <ResultTab doc=d_for_result.clone() />
+                                        <ResultTab doc=d_for_result.clone() cabinet=cabinet.clone() doc_id=d_for_result.id.clone() />
                                     }.into_any()
                                 }}
 
@@ -626,78 +797,194 @@ pub fn WbDayCloseDetails(id: String, #[prop(into)] on_close: Callback<()>) -> im
                                         return view! { <span /> }.into_any();
                                     }
                                     let probs_for_tab = problems.clone();
+                                    let fin_date_probs = fin_date_mismatch_problems(&probs_for_tab);
+                                    let business_date_for_probs = d.business_date.clone();
+                                    let tabs_for_fin_date = tabs_store.clone();
+                                    let tabs_for_probs = tabs_store.clone();
                                     view! {
-                                        <div style="padding: var(--spacing-md);">
-                                            // Toolbar
-                                            <div style="display: flex; gap: var(--spacing-sm); align-items: center; margin-bottom: var(--spacing-sm); flex-wrap: wrap;">
-                                                <span style="font-weight: 600;">"Фильтр:"</span>
-                                                <Button size=ButtonSize::Small
-                                                    appearance=Signal::derive(move || if problems_filter.get() == "all" { ButtonAppearance::Primary } else { ButtonAppearance::Secondary })
-                                                    on_click=move |_| problems_filter.set("all".to_string())
-                                                >"Все"</Button>
-                                                <Button size=ButtonSize::Small
-                                                    appearance=Signal::derive(move || if problems_filter.get() == "block" { ButtonAppearance::Primary } else { ButtonAppearance::Secondary })
-                                                    on_click=move |_| problems_filter.set("block".to_string())
-                                                >"Только Block"</Button>
-                                                <Button size=ButtonSize::Small
-                                                    appearance=Signal::derive(move || if problems_filter.get() == "warn" { ButtonAppearance::Primary } else { ButtonAppearance::Secondary })
-                                                    on_click=move |_| problems_filter.set("warn".to_string())
-                                                >"Только Warn"</Button>
-                                                <Button appearance=ButtonAppearance::Primary size=ButtonSize::Small
-                                                    disabled=Signal::derive(move || action_loading.get())
-                                                    on_click=on_repost_all_tab
-                                                >
-                                                    {icon("zap")} " Перепровести проблемные"
-                                                </Button>
-                                            </div>
-                                            // Table
-                                            <div style="overflow-x: auto;">
-                                                <table class="data-table" style="font-size: 0.84em; width: 100%;">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>"Серьёзность"</th>
-                                                            <th>"Код"</th>
-                                                            <th>"srid"</th>
-                                                            <th>"Сообщение"</th>
-                                                            <th>"a012"</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {move || {
-                                                            let f = problems_filter.get();
-                                                            probs_for_tab.iter().filter(|p| {
-                                                                match f.as_str() {
-                                                                    "block" => p.severity == "block",
-                                                                    "warn" => p.severity == "warn",
-                                                                    _ => true,
-                                                                }
-                                                            }).map(|p| {
-                                                                let (badge_color, severity_label) = match p.severity.as_str() {
-                                                                    "block" => (BadgeColor::Danger, "Блок"),
-                                                                    "warn" => (BadgeColor::Warning, "Пред."),
-                                                                    _ => (BadgeColor::Informative, "Инфо"),
-                                                                };
-                                                                let srid_display = p.srid.as_deref().unwrap_or("—");
-                                                                let srid_short = srid_display.chars().take(20).collect::<String>();
-                                                                view! {
+                                        <div style="padding: var(--spacing-md); display: flex; flex-direction: column; gap: var(--spacing-md);">
+
+                                            // ── Блок 1: расхождение дат a012 / fin report ────────────────────
+                                            {if !fin_date_probs.is_empty() {
+                                                view! {
+                                                    <CardAnimated delay_ms=0 nav_id="a033_wb_day_close_problems_fin_date">
+                                                        <h4 class="details-section__title">
+                                                            {format!(
+                                                                "Расхождение дат a012 / fin report ({})",
+                                                                fin_date_probs.len()
+                                                            )}
+                                                        </h4>
+                                                        <p style="margin: 0 0 var(--spacing-sm); color: var(--color-text-secondary);">
+                                                            "Дата реализации a012 ("
+                                                            <code>"sale_date"</code>
+                                                            ") не совпадает с датой фин. отчёта WB ("
+                                                            <code>"rr_dt"</code>
+                                                            "). Дата документа — "
+                                                            {format_date(&business_date_for_probs)}
+                                                            ". GL "
+                                                            <code>"advert_clicks_order_expense"</code>
+                                                            " проводится по "
+                                                            <code>"sale_date"</code>
+                                                            "."
+                                                        </p>
+                                                        <div style="overflow-x: auto;">
+                                                            <table class="data-table" style="width: 100%;">
+                                                                <thead>
                                                                     <tr>
-                                                                        <td>
-                                                                            <Badge appearance=BadgeAppearance::Filled color=badge_color>{severity_label}</Badge>
-                                                                        </td>
-                                                                        <td><code style="font-size: 0.85em;">{p.code.clone()}</code></td>
-                                                                        <td><code style="font-size: 0.85em;">{srid_short}</code></td>
-                                                                        <td style="max-width: 400px;">{p.message.clone()}</td>
-                                                                        <td style="text-align: right;">
-                                                                            {if p.a012_ids.is_empty() { "—".to_string() } else { p.a012_ids.len().to_string() }}
-                                                                        </td>
+                                                                        <th>"Документ a012"</th>
+                                                                        <th>"srid"</th>
+                                                                        <th>"sale_date"</th>
+                                                                        <th>"fin report (rr_dt)"</th>
+                                                                        <th style="text-align: right;">"Реклама GL"</th>
                                                                     </tr>
-                                                                }
-                                                            }).collect_view()
-                                                        }}
-                                                    </tbody>
-                                                </table>
-                                            </div>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {fin_date_probs.into_iter().map(|p| {
+                                                                        let a012_id = p.a012_ids.first().cloned();
+                                                                        let srid_opt = p.srid.clone();
+                                                                        let srid_display = p.srid.as_deref().unwrap_or("—");
+                                                                        let srid_label = srid_display.chars().take(24).collect::<String>();
+                                                                        let sale_date = fin_date_mismatch_sale_date(&p.message);
+                                                                        let fin_report = fin_date_mismatch_fin_report(&p.message);
+                                                                        let tabs = tabs_for_fin_date.clone();
+                                                                        let tabs_srid = tabs.clone();
+                                                                        view! {
+                                                                            <tr>
+                                                                                <td>
+                                                                                    {match a012_id {
+                                                                                        Some(id) => view! {
+                                                                                            <button
+                                                                                                style=LINK_BTN
+                                                                                                on:click=move |_| {
+                                                                                                    let key = format!("a012_wb_sales_details_{}", id);
+                                                                                                    tabs.open_tab(&key, "Реализация WB");
+                                                                                                }
+                                                                                            >{format_date(&sale_date)}</button>
+                                                                                        }.into_any(),
+                                                                                        None => view! { <span>"—"</span> }.into_any(),
+                                                                                    }}
+                                                                                </td>
+                                                                                <td>
+                                                                                    {problem_srid_cell(srid_opt, srid_label, tabs_srid)}
+                                                                                </td>
+                                                                                <td>{format_date(&sale_date)}</td>
+                                                                                <td style="color: var(--color-warning);">{format_date(&fin_report)}</td>
+                                                                                <td style="text-align: right; font-variant-numeric: tabular-nums;">
+                                                                                    {p.a012_advert_expense.map(format_money).unwrap_or_else(|| "—".to_string())}
+                                                                                </td>
+                                                                            </tr>
+                                                                        }
+                                                                    }).collect_view()}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </CardAnimated>
+                                                }.into_any()
+                                            } else {
+                                                view! { <span /> }.into_any()
+                                            }}
+
+                                            // ── Блок 2: все проблемы ────────────────────────────────────────
+                                            <CardAnimated delay_ms=30 nav_id="a033_wb_day_close_problems_list">
+                                                <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-sm); flex-wrap: wrap; margin-bottom: var(--spacing-sm);">
+                                                    <h4 class="details-section__title" style="margin: 0;">
+                                                        {format!("Список проблем ({})", probs_for_tab.len())}
+                                                    </h4>
+                                                    <div style="display: flex; gap: var(--spacing-xs); align-items: center; flex-wrap: wrap;">
+                                                        <Button size=ButtonSize::Small
+                                                            appearance=Signal::derive(move || if problems_filter.get() == "all" { ButtonAppearance::Primary } else { ButtonAppearance::Secondary })
+                                                            on_click=move |_| problems_filter.set("all".to_string())
+                                                        >"Все"</Button>
+                                                        <Button size=ButtonSize::Small
+                                                            appearance=Signal::derive(move || if problems_filter.get() == "block" { ButtonAppearance::Primary } else { ButtonAppearance::Secondary })
+                                                            on_click=move |_| problems_filter.set("block".to_string())
+                                                        >"Block"</Button>
+                                                        <Button size=ButtonSize::Small
+                                                            appearance=Signal::derive(move || if problems_filter.get() == "warn" { ButtonAppearance::Primary } else { ButtonAppearance::Secondary })
+                                                            on_click=move |_| problems_filter.set("warn".to_string())
+                                                        >"Warn"</Button>
+                                                        <Button appearance=ButtonAppearance::Primary size=ButtonSize::Small
+                                                            disabled=Signal::derive(move || action_loading.get())
+                                                            on_click=on_repost_all_tab
+                                                        >
+                                                            {icon("zap")} " Перепровести"
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                                <div style="overflow-x: auto;">
+                                                    <table class="data-table" style="width: 100%;">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="width: 80px;">"Серьёзность"</th>
+                                                                <th>"Описание проблемы"</th>
+                                                                <th style="width: 140px;">"srid"</th>
+                                                                <th style="text-align: right; width: 90px;">"Реклама"</th>
+                                                                <th style="text-align: center; width: 60px;">"a012"</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {move || {
+                                                                let f = problems_filter.get();
+                                                                probs_for_tab.iter().filter(|p| {
+                                                                    match f.as_str() {
+                                                                        "block" => p.severity == "block",
+                                                                        "warn"  => p.severity == "warn",
+                                                                        _       => true,
+                                                                    }
+                                                                }).map(|p| {
+                                                                    let (badge_color, severity_label) = match p.severity.as_str() {
+                                                                        "block" => (BadgeColor::Danger, "Block"),
+                                                                        "warn"  => (BadgeColor::Warning, "Warn"),
+                                                                        _       => (BadgeColor::Informative, "Info"),
+                                                                    };
+                                                                    let srid_opt = p.srid.clone();
+                                                                    let srid_display = p.srid.as_deref().unwrap_or("—");
+                                                                    let srid_short = srid_display.chars().take(22).collect::<String>();
+                                                                    let a012_count = p.a012_ids.len();
+                                                                    let tabs_prob = tabs_for_probs.clone();
+                                                                    view! {
+                                                                        <tr>
+                                                                            <td style="white-space: nowrap;">
+                                                                                <Badge appearance=BadgeAppearance::Filled color=badge_color>{severity_label}</Badge>
+                                                                            </td>
+                                                                            <td>
+                                                                                <div>{p.message.clone()}</div>
+                                                                                <div style="margin-top: 2px;">
+                                                                                    <code style="font-size: 0.78em; color: var(--color-text-secondary);">{p.code.clone()}</code>
+                                                                                </div>
+                                                                            </td>
+                                                                            <td>
+                                                                                {problem_srid_cell(srid_opt, srid_short, tabs_prob)}
+                                                                            </td>
+                                                                            <td style="text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;">
+                                                                                {p.a012_advert_expense.map(format_money).unwrap_or_else(|| "—".to_string())}
+                                                                            </td>
+                                                                            <td style="text-align: center; color: var(--color-text-secondary);">
+                                                                                {if a012_count == 0 { "—".to_string() } else { a012_count.to_string() }}
+                                                                            </td>
+                                                                        </tr>
+                                                                    }
+                                                                }).collect_view()
+                                                            }}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </CardAnimated>
+
                                         </div>
+                                    }.into_any()
+                                }}
+                                // Tab panel: Реклама
+                                {move || {
+                                    if selected_tab.get() != "advert" {
+                                        return view! { <span /> }.into_any();
+                                    }
+                                    view! {
+                                        <AdvertTab
+                                            no_order=advert_no_order.clone()
+                                            order_accrual=advert_order_accrual.clone()
+                                            tabs_store=tabs_store.clone()
+                                        />
                                     }.into_any()
                                 }}
                             </div>
@@ -967,7 +1254,7 @@ pub fn WbDayCloseNewPage(#[prop(into)] on_close: Callback<()>) -> impl IntoView 
                             <h4 class="details-section__title">"Что произойдёт при проведении"</h4>
                             <ol style="margin: 0; padding-left: var(--spacing-lg); display: flex; flex-direction: column; gap: var(--spacing-xs); line-height: 1.55;">
                                 <li>"Создаётся активный документ закрытия дня для выбранного кабинета и даты."</li>
-                                <li>"Документ сразу пересчитывается: подгружаются продажи, возвраты, реклама, логистика и комиссии."</li>
+                                <li>"Дозаполняются реализации a012 по заказам из финотчёта (sale_date не позже даты закрытия; продажи — сумма>0, возвраты — сумма<0), затем пересчитываются строки p903, реклама, логистика и комиссии."</li>
                                 <li>"Выявляются проблемные строки (блок./пред./инфо) — они будут показаны в боковой панели документа."</li>
                                 <li>"После завершения этот таб закроется и откроется детальная карточка нового документа."</li>
                             </ol>
@@ -1024,25 +1311,6 @@ fn FieldDisplaySummary(
 // Subcomponents
 // ─────────────────────────────────────────────────────────────────────────────
 
-#[component]
-fn DocHeaderInfo(doc: WbDayCloseDetailDto) -> impl IntoView {
-    view! {
-        <div style="padding: var(--spacing-sm) var(--spacing-md); display: flex; gap: var(--spacing-lg); flex-wrap: wrap; border-bottom: 1px solid var(--color-border); font-size: 0.9em; align-items: center;">
-            <span>"Кабинет: " <code style="font-size: 0.85em;">{doc.connection_id[..doc.connection_id.len().min(24)].to_string()}</code></span>
-            <span>"Дата: " <strong>{format_date(&doc.business_date)}</strong></span>
-            <span>"Строк: " <strong>{doc.totals.lines_count}</strong></span>
-            {doc.last_recalculated_at.as_ref().map(|at| view! {
-                <span style="color: var(--color-text-secondary);">
-                    "Пересчитан: " <strong style="color: var(--color-text-base);">{format_datetime_msk(at)}</strong>
-                </span>
-            })}
-            <span style="color: var(--color-text-secondary); font-size: 0.8em;">
-                "Хэш: " <code>{doc.snapshot_hash[..doc.snapshot_hash.len().min(16)].to_string()}</code>
-            </span>
-        </div>
-    }
-}
-
 /// Format an ISO datetime string (RFC3339/UTC) to "DD.MM.YYYY HH:MM МСК" (UTC+3).
 fn format_datetime_msk(iso: &str) -> String {
     // Parse "2026-05-15T04:57:20..." — add 3h offset manually
@@ -1072,7 +1340,16 @@ fn format_datetime_msk(iso: &str) -> String {
     format!("{}.{}.{} {:02}:{} МСК", day, month, year, hour_msk, minute)
 }
 
+fn normalize_money(value: f64) -> f64 {
+    if value.abs() < 0.005 {
+        0.0
+    } else {
+        value
+    }
+}
+
 fn signed_style(value: f64) -> String {
+    let value = normalize_money(value);
     if value > 0.0 {
         "text-align: right; color: var(--color-success);".to_string()
     } else if value < 0.0 {
@@ -1083,7 +1360,7 @@ fn signed_style(value: f64) -> String {
 }
 
 fn format_money_excel(value: f64) -> String {
-    format!("{:.2}", value).replace('.', ",")
+    format!("{:.2}", normalize_money(value)).replace('.', ",")
 }
 
 fn build_totals_excel_tsv(totals: &WbDayCloseTotalsDto) -> String {
@@ -1107,8 +1384,6 @@ fn build_totals_excel_tsv(totals: &WbDayCloseTotalsDto) -> String {
     lines.join("\n")
 }
 
-/// Возвращает "виртуальный" тип строки: возвраты в типе Продажа (srid начинается с R)
-/// выделяются в отдельный тип "sale_return".
 fn effective_kind(line: &WbDayCloseLineDto) -> &'static str {
     if line.kind == "sale" && line.srid.starts_with('R') {
         "sale_return"
@@ -1128,6 +1403,73 @@ fn effective_kind(line: &WbDayCloseLineDto) -> &'static str {
             _ => "other",
         }
     }
+}
+
+fn is_info_line(line: &WbDayCloseLineDto) -> bool {
+    effective_kind(line) == "info"
+}
+
+fn line_has_visible_problems(line: &WbDayCloseLineDto) -> bool {
+    !is_info_line(line) && !line.problem_codes.is_empty()
+}
+
+fn info_line_srids(lines: &[WbDayCloseLineDto]) -> HashSet<String> {
+    lines
+        .iter()
+        .filter(|l| is_info_line(l))
+        .filter(|l| !l.srid.is_empty())
+        .map(|l| l.srid.clone())
+        .collect()
+}
+
+fn visible_problems(
+    problems: &[WbDayCloseProblemDto],
+    lines: &[WbDayCloseLineDto],
+) -> Vec<WbDayCloseProblemDto> {
+    let info_srids = info_line_srids(lines);
+    problems
+        .iter()
+        .filter(|p| {
+            p.srid
+                .as_ref()
+                .map(|s| !info_srids.contains(s))
+                .unwrap_or(true)
+        })
+        .cloned()
+        .collect()
+}
+
+fn count_visible_problem_lines(lines: &[WbDayCloseLineDto]) -> i64 {
+    lines
+        .iter()
+        .filter(|l| line_has_visible_problems(l))
+        .count() as i64
+}
+
+fn fin_date_mismatch_problems(problems: &[WbDayCloseProblemDto]) -> Vec<WbDayCloseProblemDto> {
+    problems
+        .iter()
+        .filter(|p| p.code == "a012_sale_date_mismatch_fin_report")
+        .cloned()
+        .collect()
+}
+
+fn parse_fin_date_mismatch_field(message: &str, prefix: &str) -> Option<String> {
+    let start = message.find(prefix)? + prefix.len();
+    let rest = &message[start..];
+    if rest.len() >= 10 && rest.as_bytes()[4] == b'-' && rest.as_bytes()[7] == b'-' {
+        Some(rest[..10].to_string())
+    } else {
+        None
+    }
+}
+
+fn fin_date_mismatch_sale_date(message: &str) -> String {
+    parse_fin_date_mismatch_field(message, "sale_date=").unwrap_or_else(|| "—".to_string())
+}
+
+fn fin_date_mismatch_fin_report(message: &str) -> String {
+    parse_fin_date_mismatch_field(message, "fin_report(rr_dt)=").unwrap_or_else(|| "—".to_string())
 }
 
 fn kind_label(kind: &str) -> &'static str {
@@ -1205,7 +1547,6 @@ impl SortState {
 fn sort_lines(lines: &mut Vec<WbDayCloseLineDto>, s: &SortState) {
     lines.sort_by(|a, b| {
         let ord = match s.col.as_str() {
-            "srid" => a.srid.cmp(&b.srid),
             "sa_name" => a.sa_name.cmp(&b.sa_name),
             "kind" => a.kind.cmp(&b.kind),
             "order_date" => a.order_date.cmp(&b.order_date),
@@ -1265,6 +1606,12 @@ fn sort_lines(lines: &mut Vec<WbDayCloseLineDto>, s: &SortState) {
                     .unwrap_or(std::cmp::Ordering::Equal)
             }
             "rrd_id" => a.p903_rrd_id.cmp(&b.p903_rrd_id),
+            "sales_doc" => a.sales_doc_date.cmp(&b.sales_doc_date),
+            "problems" => {
+                let a_has = line_has_visible_problems(a);
+                let b_has = line_has_visible_problems(b);
+                b_has.cmp(&a_has)
+            }
             _ => std::cmp::Ordering::Equal,
         };
         if s.asc {
@@ -1276,7 +1623,23 @@ fn sort_lines(lines: &mut Vec<WbDayCloseLineDto>, s: &SortState) {
 }
 
 const TH_LINK: &str = "cursor: pointer; user-select: none; white-space: nowrap;";
-const CELL: &str = "white-space: nowrap;";
+const KIND_COL: &str = "white-space: nowrap; min-width: 80px; width: 80px; max-width: 80px; text-align: left; padding: 0 4px;";
+const LINK_BTN: &str = "cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-size: inherit; color: var(--color-link);";
+
+fn problem_srid_cell(srid: Option<String>, label: String, tabs: AppGlobalContext) -> AnyView {
+    let Some(srid) = srid.filter(|s| !s.is_empty()) else {
+        return view! { <span>{label}</span> }.into_any();
+    };
+    view! {
+        <button
+            style=LINK_BTN
+            on:click=move |_| open_wb_order_by_srid(srid.clone(), tabs.clone())
+        >{label}</button>
+    }
+    .into_any()
+}
+const REF_CELL: &str = "text-align: right;";
+const DATE_COL: &str = "text-align: right; min-width: 80px; width: 80px; max-width: 80px; white-space: nowrap; padding: 0 4px;";
 
 #[component]
 fn LinesTable(
@@ -1333,7 +1696,7 @@ fn LinesTable(
     view! {
         <div>
             // ── Строка фильтров по типу ───────────────────────────────
-            <div style="display: flex; gap: var(--spacing-xs); flex-wrap: wrap; padding: var(--spacing-xs) var(--spacing-md); background: var(--color-bg-elevated); border-bottom: 1px solid var(--color-border); align-items: center;">
+            <div style="display: flex; gap: var(--spacing-xl); flex-wrap: wrap; padding: var(--spacing-xs) var(--spacing-md); background: var(--color-bg-elevated); border-bottom: 1px solid var(--color-border); align-items: center;">
                 <span style="font-size: 0.84em; font-weight: 600; color: var(--color-text-secondary); white-space: nowrap; margin-right: 4px;">"Тип:"</span>
                 {kind_toggles.get_value().into_iter().map(|(kind, sig)| {
                     let label = kind_label(&kind);
@@ -1358,71 +1721,76 @@ fn LinesTable(
 
             // ── Таблица ───────────────────────────────────────────────
             <div style="overflow-x: auto;">
-                <table class="data-table" style="min-width: 1600px; font-size: 0.82em;">
+                <table class="data-table" style="min-width: 1200px; font-size: 11px;">
                     <thead>
                         <tr>
                             <th
-                                style=format!("{TH_LINK} min-width: 110px; position: sticky; left: 0; z-index: 2; background: var(--color-bg-base);")
-                                on:click=move |_| sort.update(|s| *s = s.toggle("sa_name"))
+                                style=format!("{TH_LINK} width: 28px; min-width: 28px; text-align: center; padding: 0 4px;")
+                                on:click=move |_| sort.update(|s| *s = s.toggle("problems"))
                             >
-                                "Артикул" {move || sort.with(|s| s.indicator("sa_name"))}
+                                "⚠" {move || sort.with(|s| s.indicator("problems"))}
                             </th>
                             <th
-                                style=format!("{TH_LINK} min-width: 130px;")
-                                on:click=move |_| sort.update(|s| *s = s.toggle("srid"))
-                            >
-                                "srid" {move || sort.with(|s| s.indicator("srid"))}
-                            </th>
-                            <th
-                                style=format!("{TH_LINK} min-width: 110px; text-align: center;")
+                                style=format!("{TH_LINK} min-width: 80px; width: 80px; max-width: 80px; text-align: center; padding: 0 4px;")
                                 on:click=move |_| sort.update(|s| *s = s.toggle("kind"))
                             >
                                 "Тип" {move || sort.with(|s| s.indicator("kind"))}
                             </th>
                             <th
-                                style=format!("{TH_LINK} min-width: 80px; text-align: center;")
+                                style=format!("{TH_LINK} min-width: 80px; width: 80px; max-width: 80px; text-align: center; padding: 0 4px;")
+                                on:click=move |_| sort.update(|s| *s = s.toggle("sa_name"))
+                            >
+                                "Артикул" {move || sort.with(|s| s.indicator("sa_name"))}
+                            </th>
+                            <th
+                                style=format!("{TH_LINK} min-width: 80px; width: 80px; max-width: 80px; text-align: center; padding: 0 4px;")
                                 on:click=move |_| sort.update(|s| *s = s.toggle("order_date"))
                             >
                                 "Заказ (a015)" {move || sort.with(|s| s.indicator("order_date"))}
                             </th>
-                            <th style="min-width: 120px; text-align: center;">"Реализация (a012)"</th>
                             <th
-                                style=format!("{TH_LINK} text-align: right;")
+                                style=format!("{TH_LINK} min-width: 80px; width: 80px; max-width: 80px; text-align: center; padding: 0 4px;")
+                                on:click=move |_| sort.update(|s| *s = s.toggle("sales_doc"))
+                            >
+                                "Реализация (a012)" {move || sort.with(|s| s.indicator("sales_doc"))}
+                            </th>
+                            <th
+                                style=format!("{TH_LINK} text-align: center;")
                                 on:click=move |_| sort.update(|s| *s = s.toggle("rrd_id"))
                             >
                                 "RRD" {move || sort.with(|s| s.indicator("rrd_id"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("revenue"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("revenue"))>
                                 "1. Реализация" {move || sort.with(|s| s.indicator("revenue"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("advertising"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("advertising"))>
                                 "2. Реклама" {move || sort.with(|s| s.indicator("advertising"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("logistics"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("logistics"))>
                                 "3. Логист." {move || sort.with(|s| s.indicator("logistics"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("acquiring"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("acquiring"))>
                                 "4. Эквайр." {move || sort.with(|s| s.indicator("acquiring"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("commission"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("commission"))>
                                 "5. Комиссия" {move || sort.with(|s| s.indicator("commission"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("penalty"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("penalty"))>
                                 "6. Штрафы" {move || sort.with(|s| s.indicator("penalty"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("other"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("other"))>
                                 "7. Прочее" {move || sort.with(|s| s.indicator("other"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right; font-weight: 700;") on:click=move |_| sort.update(|s| *s = s.toggle("result"))>
+                            <th style=format!("{TH_LINK} text-align: center; font-weight: 700;") on:click=move |_| sort.update(|s| *s = s.toggle("result"))>
                                 "8. Результат" {move || sort.with(|s| s.indicator("result"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("dealer_price"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("dealer_price"))>
                                 "9. ЦенаДилер" {move || sort.with(|s| s.indicator("dealer_price"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right; font-weight: 700;") on:click=move |_| sort.update(|s| *s = s.toggle("margin_diff"))>
+                            <th style=format!("{TH_LINK} text-align: center; font-weight: 700;") on:click=move |_| sort.update(|s| *s = s.toggle("margin_diff"))>
                                 "10. Маржа" {move || sort.with(|s| s.indicator("margin_diff"))}
                             </th>
-                            <th style=format!("{TH_LINK} text-align: right;") on:click=move |_| sort.update(|s| *s = s.toggle("margin_pct"))>
+                            <th style=format!("{TH_LINK} text-align: center;") on:click=move |_| sort.update(|s| *s = s.toggle("margin_pct"))>
                                 "11. Маржа%" {move || sort.with(|s| s.indicator("margin_pct"))}
                             </th>
                         </tr>
@@ -1441,10 +1809,9 @@ fn LinesTable(
                                 .filter(|l| active_kinds.contains(effective_kind(l)))
                                 .map(|line| {
                                     let eff_kind = effective_kind(&line);
-                                    let has_problems = !line.problem_codes.is_empty();
+                                    let has_problems = line_has_visible_problems(&line);
                                     let row_class = if has_problems { "data-table__row--problem" } else { "" };
                                     let label = kind_label(eff_kind);
-                                    let color = kind_badge_color(eff_kind);
                                     let is_info = eff_kind == "info";
 
                                     // Реклама — только для Продажи (не для Возврата и остальных)
@@ -1459,8 +1826,8 @@ fn LinesTable(
                                     let order_is_cancelled = line.order_is_cancelled;
 
                                     let sales_doc_id = line.sales_doc_id.clone();
-                                    let sales_doc_no = line.sales_doc_no.clone();
-                                    let sales_sale_id = line.sales_sale_id.clone();
+                                    let sales_doc_date_display =
+                                        line.sales_doc_date.clone().map(|d| format_date(&d));
                                     let extra_count = line.sales_extra_ids.len();
 
                                     let margin_pct_display = if !is_info && line.revenue.abs() > 0.01 {
@@ -1479,16 +1846,24 @@ fn LinesTable(
                                     let tabs_for_nom = tabs_store.clone();
                                     let tabs_for_p903 = tabs_store.clone();
 
-                                    let srid_display = if line.srid.is_empty() { "—".to_string() } else { line.srid.clone() };
                                     let is_sale_or_return = eff_kind == "sale" || eff_kind == "sale_return" || eff_kind == "return";
 
                                     view! {
                                         <tr class=row_class>
-                                            // Артикул (sticky)
-                                            <td style=format!("{CELL} position: sticky; left: 0; z-index: 1; background: inherit;")>
+                                            // ⚠
+                                            <td style="text-align: center; padding: 0 4px; width: 28px;">
                                                 {if has_problems {
-                                                    view! { <span style="color: var(--color-warning); margin-right: 2px;">"⚠"</span> }.into_any()
-                                                } else { view! { <span /> }.into_any() }}
+                                                    view! { <span style="color: var(--color-warning);">"⚠"</span> }.into_any()
+                                                } else {
+                                                    view! { <span /> }.into_any()
+                                                }}
+                                            </td>
+                                            // Тип
+                                            <td style=KIND_COL>
+                                                {label}
+                                            </td>
+                                            // Артикул
+                                            <td style=KIND_COL>
                                                 {match nomenclature_ref {
                                                     Some(nref) => {
                                                         let sa = sa_name_str.clone();
@@ -1505,24 +1880,14 @@ fn LinesTable(
                                                     None => view! { <span style="color: var(--color-text-secondary);">{sa_name_str}</span> }.into_any(),
                                                 }}
                                             </td>
-                                            // srid
-                                            <td style=format!("{CELL} font-size: 0.82em; color: var(--color-text-secondary);")>
-                                                {srid_display}
-                                            </td>
-                                            // Тип
-                                            <td style=format!("{CELL} text-align: center;")>
-                                                <span style="font-size: 0.78em;">
-                                                    <Badge appearance=BadgeAppearance::Filled color=color>{label}</Badge>
-                                                </span>
-                                            </td>
                                             // Заказ a015
-                                            <td style=format!("{CELL} text-align: center;")>
+                                            <td style=DATE_COL>
                                                 {match (order_id.clone(), order_date_display.clone()) {
                                                     (Some(oid), Some(odate)) => {
                                                         let style = if order_is_cancelled {
-                                                            "text-decoration: line-through; color: var(--color-text-secondary); cursor: pointer; background: none; border: none; padding: 0; font-size: inherit;"
+                                                            format!("{LINK_BTN} text-decoration: line-through underline;")
                                                         } else {
-                                                            "cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-size: inherit;"
+                                                            LINK_BTN.to_string()
                                                         };
                                                         view! {
                                                             <button style=style
@@ -1535,7 +1900,7 @@ fn LinesTable(
                                                     }
                                                     _ => {
                                                         if is_sale_or_return {
-                                                            view! { <span style="color: var(--color-danger); font-size: 0.85em;">"нет заказа"</span> }.into_any()
+                                                            view! { <span style="color: var(--color-danger);">"нет заказа"</span> }.into_any()
                                                         } else {
                                                             view! { <span style="color: var(--color-text-secondary);">"—"</span> }.into_any()
                                                         }
@@ -1543,19 +1908,18 @@ fn LinesTable(
                                                 }}
                                             </td>
                                             // Реализация a012
-                                            <td style=format!("{CELL} text-align: center;")>
-                                                {match sales_doc_id.clone() {
-                                                    Some(did) => {
-                                                        let col = if extra_count > 0 { "color: var(--color-warning);" } else { "" };
-                                                        let dup_suffix = if extra_count > 0 { format!(" +{}", extra_count) } else { String::new() };
-                                                        let display = format!(
-                                                            "{}{}",
-                                                            sales_sale_id.as_deref().or(sales_doc_no.as_deref()).unwrap_or("—"),
-                                                            dup_suffix
-                                                        );
+                                            <td style=DATE_COL>
+                                                {match (sales_doc_id.clone(), sales_doc_date_display.clone()) {
+                                                    (Some(did), Some(sdate)) => {
+                                                        let dup_suffix = if extra_count > 0 {
+                                                            format!(" +{}", extra_count)
+                                                        } else {
+                                                            String::new()
+                                                        };
+                                                        let display = format!("{}{}", sdate, dup_suffix);
                                                         view! {
                                                             <button
-                                                                style=format!("{col} cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-size: 0.82em;")
+                                                                style=LINK_BTN
                                                                 on:click=move |_| {
                                                                     let key = format!("a012_wb_sales_details_{}", did);
                                                                     tabs_for_sales.open_tab(&key, "Реализация WB");
@@ -1563,9 +1927,9 @@ fn LinesTable(
                                                             >{display}</button>
                                                         }.into_any()
                                                     }
-                                                    None => {
+                                                    _ => {
                                                         if is_sale_or_return {
-                                                            view! { <span style="color: var(--color-danger); font-size: 0.85em;">"нет реализации"</span> }.into_any()
+                                                            view! { <span style="color: var(--color-danger);">"нет реализации"</span> }.into_any()
                                                         } else {
                                                             view! { <span style="color: var(--color-text-secondary);">"—"</span> }.into_any()
                                                         }
@@ -1573,13 +1937,13 @@ fn LinesTable(
                                                 }}
                                             </td>
                                             // RRD (p903)
-                                            <td style=format!("{CELL} text-align: right;")>
+                                            <td style=REF_CELL>
                                                 {match p903_ref_id {
                                                     Some(pid) => {
                                                         let rrd_label = rrd_id_display.clone();
                                                         view! {
                                                             <button
-                                                                style="cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-size: inherit; color: var(--color-link);"
+                                                                style=LINK_BTN
                                                                 on:click=move |_| {
                                                                     let key = format!("p903_wb_finance_report_details_id_{}", pid);
                                                                     tabs_for_p903.open_tab(&key, &format!("p903 {}", rrd_label));
@@ -1590,7 +1954,7 @@ fn LinesTable(
                                                     None => view! { <span style="color: var(--color-text-secondary);">"—"</span> }.into_any(),
                                                 }}
                                             </td>
-                                            // 10 финансовых колонок
+                                            // Финансовые колонки
                                             <td style=signed_style(line.revenue)>{format_money(line.revenue)}</td>
                                             <td style=adv_style>{adv_display}</td>
                                             <td style=signed_style(line.logistics)>{format_money(line.logistics)}</td>
@@ -1598,22 +1962,22 @@ fn LinesTable(
                                             <td style=signed_style(line.commission)>{format_money(line.commission)}</td>
                                             <td style=signed_style(line.penalty)>{format_money(line.penalty)}</td>
                                             <td style=signed_style(line.other)>{format_money(line.other)}</td>
-                                            <td style={format!("{}; font-weight: 700;", signed_style(line.result))}>{format_money(line.result)}</td>
-                                            <td style=format!("{} text-align: right;", CELL)>
+                                            <td style=format!("{}; font-weight: 700;", signed_style(line.result))>{format_money(line.result)}</td>
+                                            <td style="text-align: right;">
                                                 {if is_info {
                                                     view! { <span style="color: var(--color-text-secondary);">"—"</span> }.into_any()
                                                 } else {
                                                     view! { <span style=signed_style(line.dealer_price)>{format_money(line.dealer_price)}</span> }.into_any()
                                                 }}
                                             </td>
-                                            <td style=format!("{} text-align: right; font-weight: 700;", CELL)>
+                                            <td style="text-align: right; font-weight: 700;">
                                                 {if is_info {
                                                     view! { <span style="color: var(--color-text-secondary);">"—"</span> }.into_any()
                                                 } else {
                                                     view! { <span style=signed_style(line.margin_diff)>{format_money(line.margin_diff)}</span> }.into_any()
                                                 }}
                                             </td>
-                                            <td style=format!("{} text-align: right;", CELL)>
+                                            <td style="text-align: right;">
                                                 {if is_info {
                                                     view! { <span style="color: var(--color-text-secondary);">"—"</span> }.into_any()
                                                 } else {
@@ -1632,9 +1996,43 @@ fn LinesTable(
 }
 
 #[component]
-fn ResultTab(doc: WbDayCloseDetailDto) -> impl IntoView {
+fn ResultTab(doc: WbDayCloseDetailDto, cabinet: String, doc_id: String) -> impl IntoView {
     let lines = doc.lines;
     let totals = doc.totals.clone();
+
+    // GL-итоги из sys_general_ledger (layer=oper, по дате документа)
+    let gl_no_order = doc.gl_advert_no_order;
+    let gl_order_accrual = doc.gl_advert_order_accrual;
+    let gl_order_expense = doc.gl_advert_order_expense;
+
+    // Снапшот-итоги из документа (из проекций, отфильтрованных по дате)
+    let snap_no_order: f64 = doc
+        .advert_clicks_no_order_lines
+        .iter()
+        .map(|r| r.amount)
+        .sum();
+    let snap_order_accrual: f64 = doc
+        .advert_clicks_order_accrual_lines
+        .iter()
+        .map(|r| r.amount)
+        .sum();
+    // Документ: фактические расходы на рекламу из строк a033 (через matched a012 → p913).
+    // snap_advert_order_expense ≈ gl_order_expense (p913 INNER JOIN GL по дате), поэтому
+    // его Δ всегда ≈ 0 и он не раскрывает расхождение документ/GL.
+    // Используем -totals.advertising — реальную сумму из строк документа.
+    let doc_advert_expense: f64 = -totals.advertising;
+
+    // Живые p913/GL итоги — загружаются асинхронно для диагностики стагнации снапшота
+    let live: RwSignal<Option<AdvertLiveTotalsDto>> = RwSignal::new(None);
+    {
+        let id = doc_id.clone();
+        spawn_local(async move {
+            if let Ok(data) = fetch_advert_live(&id).await {
+                live.set(Some(data));
+            }
+        });
+    }
+    let visible_problem_lines = count_visible_problem_lines(&lines);
 
     // Продажи: kind=sale, srid НЕ начинается с R
     let sales_count = lines.iter().filter(|l| effective_kind(l) == "sale").count();
@@ -1748,6 +2146,10 @@ fn ResultTab(doc: WbDayCloseDetailDto) -> impl IntoView {
                     <Table>
                         <TableBody>
                             <TableRow>
+                                <TableCell><TableCellLayout>"Кабинет"</TableCellLayout></TableCell>
+                                <TableCell><TableCellLayout><strong>{cabinet.clone()}</strong></TableCellLayout></TableCell>
+                            </TableRow>
+                            <TableRow>
                                 <TableCell><TableCellLayout>"Всего строк"</TableCellLayout></TableCell>
                                 <TableCell><TableCellLayout><strong>{totals.lines_count}</strong></TableCellLayout></TableCell>
                             </TableRow>
@@ -1755,12 +2157,12 @@ fn ResultTab(doc: WbDayCloseDetailDto) -> impl IntoView {
                                 <TableCell><TableCellLayout>"Дата обновления"</TableCellLayout></TableCell>
                                 <TableCell><TableCellLayout>{last_recalc}</TableCellLayout></TableCell>
                             </TableRow>
-                            {if totals.problem_lines > 0 {
+                            {if visible_problem_lines > 0 {
                                 view! {
                                     <TableRow>
                                         <TableCell><TableCellLayout>"Проблемных строк"</TableCellLayout></TableCell>
                                         <TableCell attr:style="color: var(--color-warning);"><TableCellLayout>
-                                            <strong>{format!("{} из {}", totals.problem_lines, totals.lines_count)}</strong>
+                                            <strong>{format!("{} из {}", visible_problem_lines, totals.lines_count)}</strong>
                                         </TableCellLayout></TableCell>
                                     </TableRow>
                                 }.into_any()
@@ -1774,6 +2176,147 @@ fn ResultTab(doc: WbDayCloseDetailDto) -> impl IntoView {
                             }}
                         </TableBody>
                     </Table>
+                </CardAnimated>
+                <CardAnimated delay_ms=60 nav_id="a033_wb_day_close_result_advert">
+                    <h4 class="details-section__title">"Реклама (сверка)"</h4>
+                    {move || {
+                        let live_data = live.get();
+                        view! {
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                            <thead>
+                                <tr style="background: var(--color-bg-elevated);">
+                                    <th style="padding: 5px 8px; text-align: left; border-bottom: 2px solid var(--color-border); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary);">"Оборот"</th>
+                                    <th style="padding: 5px 8px; text-align: right; border-bottom: 2px solid var(--color-border); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); min-width: 90px;" title="no_order/order_accrual — снапшот проекции из документа; order_expense — расходы из строк документа (-totals.advertising)">"Документ"</th>
+                                    <th style="padding: 5px 8px; text-align: right; border-bottom: 2px solid var(--color-border); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-info, #0ea5e9); min-width: 90px;" title="Живые данные из проекций: no_order — p911, order_accrual — p913 accrual, order_expense — p913 expense">"Проекция live"</th>
+                                    <th style="padding: 5px 8px; text-align: right; border-bottom: 2px solid var(--color-border); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); min-width: 90px;">"GL (oper)"</th>
+                                    <th style="padding: 5px 8px; text-align: right; border-bottom: 2px solid var(--color-border); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); min-width: 80px;" title="Δ между колонкой «Документ» и GL">"Δ doc-GL"</th>
+                                    <th style="padding: 5px 8px; text-align: right; border-bottom: 2px solid var(--color-border); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-info, #0ea5e9); min-width: 80px;">"Δ live-GL"</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {
+                                    // order_expense: используем -totals.advertising (из строк документа),
+                                    // а НЕ snap_order_expense (= p913 INNER JOIN GL ≈ GL → Δ всегда ≈ 0).
+                                    // is_doc_snap=true: первая колонка = итог строк документа, не снапшот проекции.
+                                    // (description, gl_code, doc_snap, is_doc_snap, proj_live, gl, d_doc_gl, d_live_gl)
+                                    let rows: Vec<(&str, &str, f64, bool, f64, f64, f64, f64)> = vec![
+                                        (
+                                            "Реклама без заказа",
+                                            "advert_clicks_no_order",
+                                            snap_no_order, false,
+                                            live_data.as_ref().map(|l| l.p913_no_order).unwrap_or(f64::NAN),
+                                            gl_no_order,
+                                            snap_no_order - gl_no_order,
+                                            live_data.as_ref().map(|l| l.p913_no_order - l.gl_no_order).unwrap_or(f64::NAN),
+                                        ),
+                                        (
+                                            "Реклама по заказам (резерв)",
+                                            "advert_clicks_order_accrual",
+                                            snap_order_accrual, false,
+                                            live_data.as_ref().map(|l| l.p913_order_accrual).unwrap_or(f64::NAN),
+                                            gl_order_accrual,
+                                            snap_order_accrual - gl_order_accrual,
+                                            live_data.as_ref().map(|l| l.p913_order_accrual - l.gl_order_accrual).unwrap_or(f64::NAN),
+                                        ),
+                                        (
+                                            "Реклама по заказам (списание)",
+                                            "advert_clicks_order_expense",
+                                            doc_advert_expense, true,
+                                            live_data.as_ref().map(|l| l.p913_order_expense).unwrap_or(f64::NAN),
+                                            gl_order_expense,
+                                            doc_advert_expense - gl_order_expense,
+                                            live_data.as_ref().map(|l| l.p913_order_expense - l.gl_order_expense).unwrap_or(f64::NAN),
+                                        ),
+                                    ];
+                                    rows.into_iter().map(|(desc, gl_code, snap, is_doc_snap, proj_live, gl, d_doc_gl, d_live_gl)| {
+                                        // Для снапшота проекции: расхождение snap vs live = снапшот устарел.
+                                        // Для документа (order_expense): snap = doc total, snap_stale неприменим.
+                                        let snap_stale = !is_doc_snap && !proj_live.is_nan() && (snap - proj_live).abs() > 0.005;
+                                        let doc_gl_diff = d_doc_gl.abs() > 0.005;
+                                        let live_gl_diff = !d_live_gl.is_nan() && d_live_gl.abs() > 0.005;
+                                        let td = "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border));";
+                                        let td_r = "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; font-variant-numeric: tabular-nums;";
+                                        view! {
+                                            <tr>
+                                                <td style=td>
+                                                    <div style="font-size: 0.88em; color: var(--color-text-primary);">{desc}</div>
+                                                    <div style="font-family: monospace; font-size: 0.78em; color: var(--color-text-secondary); margin-top: 1px;">
+                                                        {gl_code}
+                                                        {if snap_stale { view! { <span style="margin-left: 6px; font-size: 0.9em; color: var(--color-warning); font-weight: 600;" title="Снапшот устарел — нужен recalculate">"⚠ устарел"</span> }.into_any() } else { view! { <span /> }.into_any() }}
+                                                    </div>
+                                                </td>
+                                                <td style=if is_doc_snap { "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;" } else { td_r }>
+                                                    {format_money(snap)}
+                                                </td>
+                                                <td style=if snap_stale { "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; font-variant-numeric: tabular-nums; color: var(--color-warning);" } else { "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; font-variant-numeric: tabular-nums; color: var(--color-info, #0ea5e9);" }>
+                                                    {if proj_live.is_nan() { "…".to_string() } else { format_money(proj_live) }}
+                                                </td>
+                                                <td style=td_r>{format_money(gl)}</td>
+                                                <td style=if doc_gl_diff { "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; color: var(--color-warning); font-weight: 600;" } else { "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; color: var(--color-success);" }>
+                                                    {format_money(d_doc_gl)}
+                                                </td>
+                                                <td style=if live_gl_diff { "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; color: var(--color-warning); font-weight: 600;" } else { "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; color: var(--color-success);" }>
+                                                    {if d_live_gl.is_nan() { "…".to_string() } else { format_money(d_live_gl) }}
+                                                </td>
+                                            </tr>
+                                        }
+                                    }).collect_view()
+                                }
+                            </tbody>
+                        </table>
+                        }
+                    }}
+                    // Детализация по a026-регистраторам (показываем когда есть расхождение)
+                    {move || {
+                        let live_data = live.get();
+                        let show = live_data.as_ref().map(|l| (l.p913_order_accrual - l.gl_order_accrual).abs() > 0.005).unwrap_or(false);
+                        if !show { return view! { <span /> }.into_any(); }
+                        let d = live_data.unwrap();
+                        view! {
+                        <div style="margin-top: var(--spacing-md);">
+                            <div style="font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); margin-bottom: var(--spacing-xs); font-weight: 600;">
+                                {format!("Детализация по документам a026 — p913 строк: {}, GL записей: {}", d.p913_accrual_rows, d.gl_accrual_entries)}
+                            </div>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.82em;">
+                                <thead>
+                                    <tr style="background: var(--color-bg-elevated);">
+                                        <th style="padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 0.85em; text-transform: uppercase;">"a026 UUID"</th>
+                                        <th style="padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 0.85em; text-transform: uppercase; min-width: 90px;">"p913"</th>
+                                        <th style="padding: 4px 6px; text-align: center; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 0.85em; text-transform: uppercase;">"строк"</th>
+                                        <th style="padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 0.85em; text-transform: uppercase; min-width: 90px;">"GL"</th>
+                                        <th style="padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 0.85em; text-transform: uppercase; min-width: 70px;">"Δ"</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {d.accrual_by_registrator.into_iter().map(|r| {
+                                        let has_delta = r.delta.abs() > 0.005;
+                                        let td = "padding: 4px 6px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border));";
+                                        let td_r = "padding: 4px 6px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; font-variant-numeric: tabular-nums;";
+                                        let delta_style = if has_delta {
+                                            "padding: 4px 6px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; color: var(--color-warning); font-weight: 600;"
+                                        } else {
+                                            "padding: 4px 6px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; color: var(--color-success);"
+                                        };
+                                        view! {
+                                            <tr>
+                                                <td style=td>
+                                                    <span style="font-family: monospace; font-size: 0.9em; color: var(--color-text-secondary);">
+                                                        {r.registrator_ref[..r.registrator_ref.len().min(8)].to_string()}
+                                                        "…"
+                                                    </span>
+                                                </td>
+                                                <td style=td_r>{format_money(r.p913_sum)}</td>
+                                                <td style="padding: 4px 6px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: center; color: var(--color-text-secondary);">{r.p913_rows}</td>
+                                                <td style=td_r>{format_money(r.gl_sum)}</td>
+                                                <td style=delta_style>{format_money(r.delta)}</td>
+                                            </tr>
+                                        }
+                                    }).collect_view()}
+                                </tbody>
+                            </table>
+                        </div>
+                        }.into_any()
+                    }}
                 </CardAnimated>
             </div>
 
@@ -1871,27 +2414,420 @@ fn ResultTab(doc: WbDayCloseDetailDto) -> impl IntoView {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AdvertTab — Реклама (два снапшота, группировка по номенклатуре)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Сгруппированная строка для таблицы «Клики (без заказов)».
+#[derive(Clone)]
+struct NoOrderGrouped {
+    nomenclature_ref: Option<String>,
+    sa_name: String,
+    amount: f64,
+    /// (campaign_code, campaign_ref, сумма)
+    campaigns: Vec<(String, Option<String>, f64)>,
+}
+
+/// Сгруппированная строка для таблицы «Клики (с заказами)».
+#[derive(Clone)]
+struct OrderAccrualGrouped {
+    nomenclature_ref: Option<String>,
+    sa_name: String,
+    amount: f64,
+    campaigns: Vec<(String, Option<String>, f64)>,
+    /// Заказы: (order_key, order_id, order_date)
+    orders: Vec<(String, Option<String>, Option<String>)>,
+}
+
+fn group_no_order(rows: &[WbDayCloseAdvertNoOrderLineDto]) -> Vec<NoOrderGrouped> {
+    let mut map: std::collections::HashMap<Option<String>, NoOrderGrouped> =
+        std::collections::HashMap::new();
+    for r in rows {
+        let key = r.nomenclature_ref.clone();
+        let entry = map.entry(key.clone()).or_insert_with(|| NoOrderGrouped {
+            nomenclature_ref: key,
+            sa_name: r.sa_name.clone().unwrap_or_else(|| "—".to_string()),
+            amount: 0.0,
+            campaigns: Vec::new(),
+        });
+        entry.amount += r.amount;
+        if let Some(c) = entry
+            .campaigns
+            .iter_mut()
+            .find(|(c, _, _)| c == &r.campaign_code)
+        {
+            c.2 += r.amount;
+        } else {
+            entry
+                .campaigns
+                .push((r.campaign_code.clone(), r.campaign_ref.clone(), r.amount));
+        }
+    }
+    let mut result: Vec<NoOrderGrouped> = map.into_values().collect();
+    result.sort_by(|a, b| {
+        b.amount
+            .partial_cmp(&a.amount)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    result
+}
+
+fn group_order_accrual(rows: &[WbDayCloseAdvertOrderAccrualLineDto]) -> Vec<OrderAccrualGrouped> {
+    let mut map: std::collections::HashMap<Option<String>, OrderAccrualGrouped> =
+        std::collections::HashMap::new();
+    for r in rows {
+        let key = r.nomenclature_ref.clone();
+        let entry = map
+            .entry(key.clone())
+            .or_insert_with(|| OrderAccrualGrouped {
+                nomenclature_ref: key,
+                sa_name: r.sa_name.clone().unwrap_or_else(|| "—".to_string()),
+                amount: 0.0,
+                campaigns: Vec::new(),
+                orders: Vec::new(),
+            });
+        entry.amount += r.amount;
+        if let Some(c) = entry
+            .campaigns
+            .iter_mut()
+            .find(|(c, _, _)| c == &r.campaign_code)
+        {
+            c.2 += r.amount;
+        } else {
+            entry
+                .campaigns
+                .push((r.campaign_code.clone(), r.campaign_ref.clone(), r.amount));
+        }
+        if !r.order_key.is_empty() && !entry.orders.iter().any(|(ok, _, _)| ok == &r.order_key) {
+            entry.orders.push((
+                r.order_key.clone(),
+                r.order_id.clone(),
+                r.order_date.clone(),
+            ));
+        }
+    }
+    let mut result: Vec<OrderAccrualGrouped> = map.into_values().collect();
+    result.sort_by(|a, b| {
+        b.amount
+            .partial_cmp(&a.amount)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    result
+}
+
+const ADVERT_TH: &str = "padding: 6px 8px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); border-bottom: 2px solid var(--color-border); white-space: nowrap; cursor: pointer; user-select: none;";
+const ADVERT_TH_R: &str = "padding: 6px 8px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); border-bottom: 2px solid var(--color-border); white-space: nowrap; cursor: pointer; user-select: none; text-align: right;";
+const ADVERT_TD: &str = "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: top;";
+const ADVERT_TD_R: &str = "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: top; text-align: right; font-variant-numeric: tabular-nums;";
+const ADVERT_LINK: &str = "cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-size: inherit; color: var(--color-link);";
+
 #[component]
-fn TotalsRow(totals: WbDayCloseTotalsDto) -> impl IntoView {
+fn AdvertTab(
+    no_order: Vec<WbDayCloseAdvertNoOrderLineDto>,
+    order_accrual: Vec<WbDayCloseAdvertOrderAccrualLineDto>,
+    tabs_store: AppGlobalContext,
+) -> impl IntoView {
+    let advert_sub_tab = RwSignal::new("no_order".to_string());
+
+    // Группировка один раз
+    let no_order_grouped = group_no_order(&no_order);
+    let order_accrual_grouped = group_order_accrual(&order_accrual);
+
+    let no_order_total: f64 = no_order_grouped.iter().map(|r| r.amount).sum();
+    let order_accrual_total: f64 = order_accrual_grouped.iter().map(|r| r.amount).sum();
+    let no_order_count = no_order_grouped.len();
+    let order_accrual_count = order_accrual_grouped.len();
+
+    // Состояние сортировки: (поле, asc)
+    let no_order_sort = RwSignal::new(("amount".to_string(), false));
+    let order_accrual_sort = RwSignal::new(("amount".to_string(), false));
+
     view! {
-        <div style="padding: var(--spacing-sm) var(--spacing-md); background: var(--color-bg-elevated); border-top: 2px solid var(--color-border); display: flex; gap: var(--spacing-lg); flex-wrap: wrap; font-size: 0.88em; align-items: center;">
-            <strong>"Итого:"</strong>
-            <span>"Строк: " <strong>{totals.lines_count}</strong></span>
-            <span>"Реализация: " <strong>{format_money(totals.revenue)}</strong></span>
-            <span>"Реклама: " <strong>{format_money(totals.advertising)}</strong></span>
-            <span>"Логистика: " {format_money(totals.logistics)}</span>
-            <span>"Комиссия: " {format_money(totals.commission)}</span>
-            <span>"Результат: " <strong>{format_money(totals.result)}</strong></span>
-            <span>"Маржа: " <strong>{format_money(totals.margin_diff)}</strong></span>
-            {if totals.problem_lines > 0 {
+        <div style="padding: var(--spacing-md); display: flex; flex-direction: column; gap: var(--spacing-md);">
+            <div style="border-bottom: 1px solid var(--color-border);">
+                <TabList selected_value=advert_sub_tab>
+                    <Tab value="no_order".to_string()>
+                        {format!("Клики (без заказов) ({})", no_order_count)}
+                    </Tab>
+                    <Tab value="with_order".to_string()>
+                        {format!("Клики (с заказами) ({})", order_accrual_count)}
+                    </Tab>
+                </TabList>
+            </div>
+
+            // ── Клики (без заказов) — p911 ──────────────────────────────────
+            {move || {
+                if advert_sub_tab.get() != "no_order" {
+                    return view! { <span /> }.into_any();
+                }
+                let rows = no_order_grouped.clone();
+                if rows.is_empty() {
+                    return view! {
+                        <div style="color: var(--color-text-secondary); padding: var(--spacing-md);">
+                            "Нет данных по рекламным кликам без заказов"
+                        </div>
+                    }.into_any();
+                }
+
+                let toggle_sort = move |field: &'static str| {
+                    no_order_sort.update(|(f, asc)| {
+                        if f == field { *asc = !*asc; } else { *f = field.to_string(); *asc = false; }
+                    });
+                };
+
                 view! {
-                    <span style="color: var(--color-warning); font-weight: 600;">
-                        "Проблемных строк: " {totals.problem_lines} " из " {totals.lines_count}
-                    </span>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                            <thead>
+                                <tr style="background: var(--color-bg-elevated);">
+                                    <th style=ADVERT_TH on:click=move |_| toggle_sort("sa_name")>
+                                        "Номенклатура"
+                                        <span class=move || {
+                                            let (f, _) = no_order_sort.get();
+                                            if f == "sa_name" { " sort-icon active" } else { " sort-icon" }
+                                        }>
+                                            {move || {
+                                                let (f, asc) = no_order_sort.get();
+                                                if f == "sa_name" { if asc { " ▲" } else { " ▼" } } else { "" }
+                                            }}
+                                        </span>
+                                    </th>
+                                    <th style=ADVERT_TH_R on:click=move |_| toggle_sort("amount")>
+                                        "Сумма"
+                                        <span class=move || {
+                                            let (f, _) = no_order_sort.get();
+                                            if f == "amount" { " sort-icon active" } else { " sort-icon" }
+                                        }>
+                                            {move || {
+                                                let (f, asc) = no_order_sort.get();
+                                                if f == "amount" { if asc { " ▲" } else { " ▼" } } else { " ▼" }
+                                            }}
+                                        </span>
+                                    </th>
+                                    <th style=ADVERT_TH>"Кампании"</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {move || {
+                                    let mut sorted = rows.clone();
+                                    let (f, asc) = no_order_sort.get();
+                                    match f.as_str() {
+                                        "sa_name" => sorted.sort_by(|a, b| if asc { a.sa_name.cmp(&b.sa_name) } else { b.sa_name.cmp(&a.sa_name) }),
+                                        _ => sorted.sort_by(|a, b| if asc { a.amount.partial_cmp(&b.amount).unwrap_or(std::cmp::Ordering::Equal) } else { b.amount.partial_cmp(&a.amount).unwrap_or(std::cmp::Ordering::Equal) }),
+                                    }
+                                    sorted.into_iter().map(|row| {
+                                        let sa = row.sa_name.clone();
+                                        let nref = row.nomenclature_ref.clone();
+                                        let tabs2 = tabs_store.clone();
+                                        let sa2 = sa.clone();
+                                        let campaigns = row.campaigns.clone();
+                                        view! {
+                                            <tr style="transition: background 0.1s;" class="data-table__row">
+                                                <td style=ADVERT_TD>
+                                                    {match nref {
+                                                        Some(id) => view! {
+                                                            <button style=ADVERT_LINK
+                                                                on:click=move |_| {
+                                                                    let key = format!("a004_nomenclature_details_{}", id);
+                                                                    tabs2.open_tab(&key, &sa2);
+                                                                }
+                                                            >{sa}</button>
+                                                        }.into_any(),
+                                                        None => view! { <span style="color: var(--color-text-secondary);">{sa}</span> }.into_any(),
+                                                    }}
+                                                </td>
+                                                <td style=ADVERT_TD_R>
+                                                    <strong>{format_money(row.amount)}</strong>
+                                                </td>
+                                                <td style=ADVERT_TD>
+                                                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                                        {campaigns.into_iter().map(|(code, cref, amt)| {
+                                                            let tabs3 = tabs_store.clone();
+                                                            let code_label = code.clone();
+                                                            let code_display = code.clone();
+                                                            let title = format!("{} — {}", code, format_money(amt));
+                                                            let tab_key = cref
+                                                                .map(|r| format!("a030_wb_advert_campaign_details_{}", r))
+                                                                .unwrap_or_else(|| format!("a030_wb_advert_campaign_details_{}", code));
+                                                            view! {
+                                                                <button
+                                                                    style="cursor: pointer; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 6px; font-size: 0.85em; color: var(--color-link); white-space: nowrap;"
+                                                                    title=title
+                                                                    on:click=move |_| {
+                                                                        tabs3.open_tab(&tab_key, &code_label);
+                                                                    }
+                                                                >{code_display}</button>
+                                                            }
+                                                        }).collect_view()}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }).collect_view()
+                                }}
+                            </tbody>
+                            <tfoot>
+                                <tr style="font-weight: 700; border-top: 2px solid var(--color-border); background: var(--color-bg-elevated);">
+                                    <td style=ADVERT_TD>"Итого"</td>
+                                    <td style=ADVERT_TD_R>{format_money(no_order_total)}</td>
+                                    <td style=ADVERT_TD></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
                 }.into_any()
-            } else {
+            }}
+
+            // ── Клики (с заказами) — p913 ────────────────────────────────────
+            {move || {
+                if advert_sub_tab.get() != "with_order" {
+                    return view! { <span /> }.into_any();
+                }
+                let rows = order_accrual_grouped.clone();
+                if rows.is_empty() {
+                    return view! {
+                        <div style="color: var(--color-text-secondary); padding: var(--spacing-md);">
+                            "Нет данных по рекламным кликам с заказами"
+                        </div>
+                    }.into_any();
+                }
+
+                let toggle_sort = move |field: &'static str| {
+                    order_accrual_sort.update(|(f, asc)| {
+                        if f == field { *asc = !*asc; } else { *f = field.to_string(); *asc = false; }
+                    });
+                };
+
                 view! {
-                    <span style="color: var(--color-success);">{icon("check-circle")} " Строки без проблем"</span>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                            <thead>
+                                <tr style="background: var(--color-bg-elevated);">
+                                    <th style=ADVERT_TH on:click=move |_| toggle_sort("sa_name")>
+                                        "Номенклатура"
+                                        <span class=move || {
+                                            let (f, _) = order_accrual_sort.get();
+                                            if f == "sa_name" { " sort-icon active" } else { " sort-icon" }
+                                        }>
+                                            {move || {
+                                                let (f, asc) = order_accrual_sort.get();
+                                                if f == "sa_name" { if asc { " ▲" } else { " ▼" } } else { "" }
+                                            }}
+                                        </span>
+                                    </th>
+                                    <th style=ADVERT_TH_R on:click=move |_| toggle_sort("amount")>
+                                        "Сумма"
+                                        <span class=move || {
+                                            let (f, _) = order_accrual_sort.get();
+                                            if f == "amount" { " sort-icon active" } else { " sort-icon" }
+                                        }>
+                                            {move || {
+                                                let (f, asc) = order_accrual_sort.get();
+                                                if f == "amount" { if asc { " ▲" } else { " ▼" } } else { " ▼" }
+                                            }}
+                                        </span>
+                                    </th>
+                                    <th style=ADVERT_TH>"Кампании"</th>
+                                    <th style=ADVERT_TH>"Заказы"</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {move || {
+                                    let mut sorted = rows.clone();
+                                    let (f, asc) = order_accrual_sort.get();
+                                    match f.as_str() {
+                                        "sa_name" => sorted.sort_by(|a, b| if asc { a.sa_name.cmp(&b.sa_name) } else { b.sa_name.cmp(&a.sa_name) }),
+                                        _ => sorted.sort_by(|a, b| if asc { a.amount.partial_cmp(&b.amount).unwrap_or(std::cmp::Ordering::Equal) } else { b.amount.partial_cmp(&a.amount).unwrap_or(std::cmp::Ordering::Equal) }),
+                                    }
+                                    sorted.into_iter().map(|row| {
+                                        let sa = row.sa_name.clone();
+                                        let nref = row.nomenclature_ref.clone();
+                                        let campaigns = row.campaigns.clone();
+                                        let orders = row.orders.clone();
+                                        let tabs_nom = tabs_store.clone();
+                                        let tabs_cam = tabs_store.clone();
+                                        let tabs_ord = tabs_store.clone();
+                                        let sa2 = sa.clone();
+                                        view! {
+                                            <tr class="data-table__row">
+                                                <td style=ADVERT_TD>
+                                                    {match nref {
+                                                        Some(id) => view! {
+                                                            <button style=ADVERT_LINK
+                                                                on:click=move |_| {
+                                                                    let key = format!("a004_nomenclature_details_{}", id);
+                                                                    tabs_nom.open_tab(&key, &sa2);
+                                                                }
+                                                            >{sa}</button>
+                                                        }.into_any(),
+                                                        None => view! { <span style="color: var(--color-text-secondary);">{sa}</span> }.into_any(),
+                                                    }}
+                                                </td>
+                                                <td style=ADVERT_TD_R>
+                                                    <strong>{format_money(row.amount)}</strong>
+                                                </td>
+                                                <td style=ADVERT_TD>
+                                                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                                        {campaigns.into_iter().map(|(code, cref, amt)| {
+                                                            let tabs_c = tabs_cam.clone();
+                                                            let code_label = code.clone();
+                                                            let code_display = code.clone();
+                                                            let title = format!("{} — {}", code, format_money(amt));
+                                                            let tab_key = cref
+                                                                .map(|r| format!("a030_wb_advert_campaign_details_{}", r))
+                                                                .unwrap_or_else(|| format!("a030_wb_advert_campaign_details_{}", code));
+                                                            view! {
+                                                                <button
+                                                                    style="cursor: pointer; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 6px; font-size: 0.85em; color: var(--color-link); white-space: nowrap;"
+                                                                    title=title
+                                                                    on:click=move |_| {
+                                                                        tabs_c.open_tab(&tab_key, &code_label);
+                                                                    }
+                                                                >{code_display}</button>
+                                                            }
+                                                        }).collect_view()}
+                                                    </div>
+                                                </td>
+                                                <td style=ADVERT_TD>
+                                                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                                        {orders.into_iter().map(|(order_key, order_id, order_date)| {
+                                                            let tabs_o = tabs_ord.clone();
+                                                            let label = order_date
+                                                                .as_deref()
+                                                                .map(format_date)
+                                                                .unwrap_or_else(|| order_key.chars().take(12).collect());
+                                                            match order_id {
+                                                                Some(oid) => view! {
+                                                                    <button
+                                                                        style="cursor: pointer; background: var(--color-bg-elevated); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 6px; font-size: 0.85em; color: var(--color-link); white-space: nowrap;"
+                                                                        on:click=move |_| {
+                                                                            let key = format!("a015_wb_orders_details_{}", oid);
+                                                                            tabs_o.open_tab(&key, "Заказ WB");
+                                                                        }
+                                                                    >{label}</button>
+                                                                }.into_any(),
+                                                                None => view! {
+                                                                    <span style="font-size: 0.85em; color: var(--color-text-secondary);">{label}</span>
+                                                                }.into_any(),
+                                                            }
+                                                        }).collect_view()}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }).collect_view()
+                                }}
+                            </tbody>
+                            <tfoot>
+                                <tr style="font-weight: 700; border-top: 2px solid var(--color-border); background: var(--color-bg-elevated);">
+                                    <td style=ADVERT_TD>"Итого"</td>
+                                    <td style=ADVERT_TD_R>{format_money(order_accrual_total)}</td>
+                                    <td style=ADVERT_TD></td>
+                                    <td style=ADVERT_TD></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
                 }.into_any()
             }}
         </div>

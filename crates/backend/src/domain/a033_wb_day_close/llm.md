@@ -21,8 +21,10 @@
 | `lines`       | `Vec<WbDayCloseLine>`    | Строки документа (по p903-группам)                |
 | `problems`    | `Vec<WbDayCloseProblem>` | Список обнаруженных проблем                       |
 | `totals`      | `WbDayCloseTotals`       | Агрегированные итоги по документу                 |
+| `advert_clicks_no_order_lines` | `Vec<WbDayCloseAdvertNoOrderLine>` | Снапшот p911 (advert_clicks_no_order), заполняется при recalculate |
+| `advert_clicks_order_accrual_lines` | `Vec<WbDayCloseAdvertOrderAccrualLine>` | Снапшот p913 (advert_clicks_order_accrual), заполняется при recalculate |
 | `is_archived` | `bool`                   | Флаг архивной версии                              |
-| `snapshot_hash` | `String`               | SHA256-хэш строк для обнаружения изменений        |
+| `snapshot_hash` | `String`               | SHA256-хэш строк + рекламных снапшотов для обнаружения изменений |
 
 ### Строка документа (`WbDayCloseLine`)
 
@@ -34,7 +36,7 @@
 | №  | Поле           | Формула                                                                       |
 |----|----------------|-------------------------------------------------------------------------------|
 | 1  | `revenue`      | `SUM(retail_amount) − SUM(return_amount)`                                     |
-| 2  | `advertising`  | `−SUM(p913.amount WHERE turnover_code='advert_clicks_order_expense' AND order_key=srid)`   |
+| 2  | `advertising`  | `−advert_clicks_order_expense` matched a012 (`p913` по `registrator_ref`) |
 | 3  | `logistics`    | `−(delivery_rub + rebill_logistic_cost + storage_fee)`                        |
 | 4  | `acquiring`    | `−SUM(acquiring_fee)`                                                         |
 | 5  | `commission`   | `−(ppvz_vw + ppvz_vw_nds + ppvz_sales_commission)`                           |
@@ -108,8 +110,12 @@
 
 ### Как строится связь a012
 
-`a012_wb_sales.document_no` = `srid`. Фильтрация по `event_type` (`sale`/`return`) и дате (`sale_date LIKE '{business_date}%'`).
-Поля: `id`, `document_no`, `dealer_price_ut * ABS(qty)` как `dealer_total`, `is_posted`, `event_type`.
+`a012_wb_sales.document_no` = `srid`. Выборка: `sale_date` **≤** `business_date + 1 день` (лаг WB: в p903 `rr_dt` может быть на сутки раньше `sale_date` в a012).
+Сопоставление с p903-строкой:
+- **Продажа** (`LineKind::Sale`) — a012 с `COALESCE(amount_line, finished_price, total_price) > 0`
+- **Возврат** (`LineKind::Return`) — a012 с той же суммой **< 0**
+
+При `recalculate` дозаполняются a012 из этой выборки; перепроведение — только если поля изменились.
 
 ---
 
@@ -147,7 +153,7 @@
 ## Жизненный цикл
 
 1. `POST /api/a033/wb-day-close/find-or-create` → создаёт документ и запускает пересчёт.
-2. `POST /api/a033/wb-day-close/{id}/recalculate` → пересчитывает строки, проблемы, totals.
+2. `POST /api/a033/wb-day-close/{id}/recalculate` → дозаполняет a012 по srid из p903, пересчитывает строки, проблемы, totals.
 3. `POST /api/a033/wb-day-close/{id}/repost-all` → перепроводит a012 для проблемных строк.
 4. `POST /api/a033/wb-day-close/{id}/archive-and-recreate` → архивирует и создаёт новую версию.
 5. `GET /api/a033/wb-day-close/{id}/compare/{archived_id}` → сравнение версий.
@@ -159,6 +165,7 @@
 ```
 crates/backend/src/domain/a033_wb_day_close/
 ├── mod.rs               — объявление модулей
+├── advert_builder.rs    — рекламные снапшоты: fetch p911/p913, обогащение a004/a015
 ├── lines_builder.rs     — построение строк: классификатор LineKind, fetch p903/a012/a015/p913
 ├── problem_detectors.rs — реестр PROBLEM_DETECTORS (коды, серьёзность, пояснение)
 ├── repository.rs        — ORM-модель, ser/deserialization из JSON-колонок
@@ -167,12 +174,13 @@ crates/backend/src/domain/a033_wb_day_close/
 
 crates/contracts/src/domain/a033_wb_day_close/
 ├── mod.rs
-└── aggregate.rs         — LineKind, LineDetail, WbDayCloseLine, WbDayCloseTotals, DTOs
+└── aggregate.rs         — LineKind, LineDetail, WbDayCloseLine, WbDayCloseTotals, DTOs,
+                           WbDayCloseAdvertNoOrderLine, WbDayCloseAdvertOrderAccrualLine
 
 crates/frontend/src/domain/a033_wb_day_close/
 └── ui/
     ├── list/mod.rs      — список документов
-    └── details/mod.rs   — детали: TabList (Строки / Проблемы), TotalsRow с problem_lines
+    └── details/mod.rs   — детали: TabList (Результат / Строки / Проблемы / Реклама)
 ```
 
 ---

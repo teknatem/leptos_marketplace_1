@@ -242,21 +242,19 @@ pub fn MegaMenuBar() -> impl IntoView {
             title: tab_label_for_key("u507_import_from_erp"),
             icon_name: "import",
         },
-    ];
-
-    // Операции
-    let operations = vec![
-        MegaMenuItem {
-            key: "u505_match_nomenclature",
-            title: tab_label_for_key("u505_match_nomenclature"),
-            icon_name: "layers",
-        },
         MegaMenuItem {
             key: "u508_repost_documents",
             title: tab_label_for_key("u508_repost_documents"),
             icon_name: "refresh-cw",
         },
     ];
+
+    // Операции
+    let operations = vec![MegaMenuItem {
+        key: "u505_match_nomenclature",
+        title: tab_label_for_key("u505_match_nomenclature"),
+        icon_name: "layers",
+    }];
 
     // Регистры
     let registers = vec![

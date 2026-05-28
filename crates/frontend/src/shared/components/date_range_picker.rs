@@ -2,7 +2,19 @@ use chrono::{Datelike, Duration, NaiveDate, Utc};
 use leptos::prelude::*;
 use thaw::*;
 
-fn month_range(year: i32, month: u32) -> (String, String) {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DateRangePickerFormat {
+    Iso,
+    Dmy,
+}
+
+impl Default for DateRangePickerFormat {
+    fn default() -> Self {
+        Self::Iso
+    }
+}
+
+fn month_range_dates(year: i32, month: u32) -> (NaiveDate, NaiveDate) {
     let start = NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid date");
     let end = if month == 12 {
         NaiveDate::from_ymd_opt(year + 1, 1, 1)
@@ -13,10 +25,28 @@ fn month_range(year: i32, month: u32) -> (String, String) {
             .map(|d| d - Duration::days(1))
             .expect("Invalid date")
     };
+    (start, end)
+}
+
+fn format_date(date: NaiveDate, display_format: DateRangePickerFormat) -> String {
+    match display_format {
+        DateRangePickerFormat::Iso => date.format("%Y-%m-%d").to_string(),
+        DateRangePickerFormat::Dmy => date.format("%d.%m.%Y").to_string(),
+    }
+}
+
+fn month_range(year: i32, month: u32, display_format: DateRangePickerFormat) -> (String, String) {
+    let (start, end) = month_range_dates(year, month);
     (
-        start.format("%Y-%m-%d").to_string(),
-        end.format("%Y-%m-%d").to_string(),
+        format_date(start, display_format),
+        format_date(end, display_format),
     )
+}
+
+fn parse_date_value(value: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .ok()
+        .or_else(|| NaiveDate::parse_from_str(value, "%d.%m.%Y").ok())
 }
 
 /// DateRangePicker — переиспользуемый компонент выбора периода дат.
@@ -37,6 +67,10 @@ pub fn DateRangePicker(
     /// Опциональная метка
     #[prop(optional)]
     label: Option<String>,
+
+    /// Формат отображения/возврата значений. По умолчанию yyyy-mm-dd.
+    #[prop(optional, default = DateRangePickerFormat::Iso)]
+    display_format: DateRangePickerFormat,
 ) -> impl IntoView {
     let show_picker = RwSignal::new(false);
     let selected_month = RwSignal::new(Utc::now().date_naive().month().to_string());
@@ -47,7 +81,7 @@ pub fn DateRangePicker(
     Effect::new(move |_| {
         if date_from.get().is_empty() && date_to.get().is_empty() {
             let now = Utc::now().date_naive();
-            let (start, end) = month_range(now.year(), now.month());
+            let (start, end) = month_range(now.year(), now.month(), display_format);
             on_change_init.run((start, end));
         }
     });
@@ -69,7 +103,7 @@ pub fn DateRangePicker(
         let on_change = on_change.clone();
         move |_| {
             let now = Utc::now().date_naive();
-            let (start, end) = month_range(now.year(), now.month());
+            let (start, end) = month_range(now.year(), now.month(), display_format);
             on_change.run((start, end));
         }
     };
@@ -78,13 +112,13 @@ pub fn DateRangePicker(
         let on_change = on_change.clone();
         move |_| {
             let current_from = date_from.get_untracked();
-            if let Ok(d) = NaiveDate::parse_from_str(&current_from, "%Y-%m-%d") {
+            if let Some(d) = parse_date_value(&current_from) {
                 let (year, month) = if d.month() == 1 {
                     (d.year() - 1, 12)
                 } else {
                     (d.year(), d.month() - 1)
                 };
-                let (start, end) = month_range(year, month);
+                let (start, end) = month_range(year, month, display_format);
                 on_change.run((start, end));
             }
         }
@@ -94,13 +128,13 @@ pub fn DateRangePicker(
         let on_change = on_change.clone();
         move |_| {
             let current_from = date_from.get_untracked();
-            if let Ok(d) = NaiveDate::parse_from_str(&current_from, "%Y-%m-%d") {
+            if let Some(d) = parse_date_value(&current_from) {
                 let (year, month) = if d.month() == 12 {
                     (d.year() + 1, 1)
                 } else {
                     (d.year(), d.month() + 1)
                 };
-                let (start, end) = month_range(year, month);
+                let (start, end) = month_range(year, month, display_format);
                 on_change.run((start, end));
             }
         }
@@ -116,7 +150,7 @@ pub fn DateRangePicker(
             let year_str = selected_year.get();
             let month_str = selected_month.get();
             if let (Ok(year), Ok(month)) = (year_str.parse::<i32>(), month_str.parse::<u32>()) {
-                let (start, end) = month_range(year, month);
+                let (start, end) = month_range(year, month, display_format);
                 on_change.run((start, end));
             }
             show_picker.set(false);
@@ -141,19 +175,39 @@ pub fn DateRangePicker(
 
             <Flex class="date-range-picker" align=FlexAlign::Center gap=FlexGap::Small>
                 <input
-                    type="date"
+                    type=move || if display_format == DateRangePickerFormat::Dmy { "text" } else { "date" }
                     class="date-range-picker__input"
+                    placeholder=move || if display_format == DateRangePickerFormat::Dmy { "дд.мм.гггг" } else { "" }
                     prop:value=date_from
-                    on:input=move |ev| on_from_change(event_target_value(&ev))
+                    on:input=move |ev| {
+                        if display_format != DateRangePickerFormat::Dmy {
+                            on_from_change(event_target_value(&ev));
+                        }
+                    }
+                    on:change=move |ev| {
+                        if display_format == DateRangePickerFormat::Dmy {
+                            on_from_change(event_target_value(&ev));
+                        }
+                    }
                 />
 
                 <div>"—"</div>
 
                 <input
-                    type="date"
+                    type=move || if display_format == DateRangePickerFormat::Dmy { "text" } else { "date" }
                     class="date-range-picker__input"
+                    placeholder=move || if display_format == DateRangePickerFormat::Dmy { "дд.мм.гггг" } else { "" }
                     prop:value=date_to
-                    on:input=move |ev| on_to_change(event_target_value(&ev))
+                    on:input=move |ev| {
+                        if display_format != DateRangePickerFormat::Dmy {
+                            on_to_change(event_target_value(&ev));
+                        }
+                    }
+                    on:change=move |ev| {
+                        if display_format == DateRangePickerFormat::Dmy {
+                            on_to_change(event_target_value(&ev));
+                        }
+                    }
                 />
 
                 <div class="drp-nav-buttons">

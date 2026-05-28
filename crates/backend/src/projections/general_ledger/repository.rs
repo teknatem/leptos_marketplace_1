@@ -136,6 +136,23 @@ pub async fn delete_by_registrator_with_conn<C: ConnectionTrait>(
     Ok(result.rows_affected)
 }
 
+/// Удаляет GL-проводки a026 за период по кабинету.
+pub async fn delete_a026_by_connection_and_date_range_with_conn<C: ConnectionTrait>(
+    db: &C,
+    connection_mp_ref: &str,
+    date_from: &str,
+    date_to: &str,
+) -> Result<u64> {
+    let result = Entity::delete_many()
+        .filter(Column::RegistratorType.eq("a026_wb_advert_daily"))
+        .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
+        .filter(Column::EntryDate.gte(date_from))
+        .filter(Column::EntryDate.lte(date_to))
+        .exec(db)
+        .await?;
+    Ok(result.rows_affected)
+}
+
 pub async fn delete_by_posting_id(posting_id: &str) -> Result<u64> {
     let _ = posting_id;
     Ok(0)

@@ -2,8 +2,9 @@ use anyhow::Result;
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 use crate::shared::data::db::get_connection;
 
@@ -11,11 +12,14 @@ use crate::shared::data::db::get_connection;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "p907_ym_payment_report")]
 pub struct Model {
-    /// Internal stable primary key:
-    /// - real `transaction_id` from YM when available
-    /// - `SYNTH_{...}` synthetic key when YM leaves transaction_id empty
+    /// Business deduplication key (ymid_ format, previously SYNTH_...).
+    /// Used only during import for idempotent upsert.
     #[sea_orm(primary_key, auto_increment = false)]
     pub record_key: String,
+
+    /// Internal stable UUID for UI navigation and internal links.
+    /// Assigned once on first insert; never changes on upsert.
+    pub id: String,
 
     // Metadata
     pub connection_mp_ref: String,
@@ -100,8 +104,11 @@ impl ActiveModelBehavior for ActiveModel {}
 /// Entry struct for upsert operations
 #[derive(Debug, Clone)]
 pub struct YmPaymentReportEntry {
-    /// Internal stable primary key (real transaction_id or synthetic SYNTH_...)
+    /// Business deduplication key (ymid_ format).
     pub record_key: String,
+    /// Internal stable UUID for navigation.
+    /// Generated once on first insert; preserved on conflict.
+    pub id: String,
     pub connection_mp_ref: String,
     pub organization_ref: String,
     pub business_id: Option<i64>,
@@ -136,13 +143,15 @@ pub struct YmPaymentReportEntry {
 }
 
 /// Upsert entry using INSERT ... ON CONFLICT(record_key) DO UPDATE SET ...
-/// No pre-SELECT needed; conflict resolution is handled atomically by SQLite.
+/// `id` (UUID) is intentionally excluded from the UPDATE SET list so it is
+/// preserved for the lifetime of the record even across re-imports.
 pub async fn upsert_entry(entry: &YmPaymentReportEntry) -> Result<()> {
     let db = get_connection();
     let loaded_at_utc = Utc::now().to_rfc3339();
 
     let model = ActiveModel {
         record_key: Set(entry.record_key.clone()),
+        id: Set(entry.id.clone()),
         connection_mp_ref: Set(entry.connection_mp_ref.clone()),
         organization_ref: Set(entry.organization_ref.clone()),
         business_id: Set(entry.business_id),
@@ -178,6 +187,7 @@ pub async fn upsert_entry(entry: &YmPaymentReportEntry) -> Result<()> {
 
     Entity::insert(model)
         .on_conflict(
+            // `id` is NOT in this list — it stays fixed once assigned.
             OnConflict::column(Column::RecordKey)
                 .update_columns([
                     Column::ConnectionMpRef,
@@ -226,6 +236,7 @@ pub async fn list_with_filters(
     date_to: &str,
     transaction_type: Option<String>,
     payment_status: Option<String>,
+    transaction_source: Option<String>,
     shop_sku: Option<String>,
     order_id: Option<i64>,
     connection_mp_ref: Option<String>,
@@ -242,13 +253,15 @@ pub async fn list_with_filters(
 
     let safe_limit = limit.max(1).min(MAX_LIMIT);
     let safe_offset = offset.max(0);
+    let date_from_bound = normalize_date_filter(date_from);
+    let date_to_bound = inclusive_date_to_bound(date_to);
 
     let apply_filters = |mut q: sea_orm::Select<Entity>| -> sea_orm::Select<Entity> {
-        if !date_from.is_empty() {
-            q = q.filter(Column::TransactionDate.gte(date_from));
+        if let Some(ref bound) = date_from_bound {
+            q = q.filter(Column::TransactionDate.gte(bound));
         }
-        if !date_to.is_empty() {
-            q = q.filter(Column::TransactionDate.lte(date_to));
+        if let Some(ref bound) = date_to_bound {
+            q = q.filter(Column::TransactionDate.lte(bound));
         }
         if let Some(ref tt) = transaction_type {
             if !tt.is_empty() {
@@ -258,6 +271,11 @@ pub async fn list_with_filters(
         if let Some(ref ps) = payment_status {
             if !ps.is_empty() {
                 q = q.filter(Column::PaymentStatus.eq(ps));
+            }
+        }
+        if let Some(ref source) = transaction_source {
+            if !source.is_empty() {
+                q = q.filter(Column::TransactionSource.eq(source));
             }
         }
         if let Some(ref sku) = shop_sku {
@@ -343,12 +361,262 @@ pub async fn list_with_filters(
     Ok((items, total_count))
 }
 
-/// Get a single entry by record_key
-pub async fn get_by_id(record_key: &str) -> Result<Option<Model>> {
+pub async fn list_filter_options(
+    date_from: &str,
+    date_to: &str,
+    connection_mp_ref: Option<String>,
+    organization_ref: Option<String>,
+) -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
+    let db = get_connection();
+    let date_from_bound = normalize_date_filter(date_from);
+    let date_to_bound = inclusive_date_to_bound(date_to);
+
+    let apply_scope = |mut q: sea_orm::Select<Entity>| -> sea_orm::Select<Entity> {
+        if let Some(ref bound) = date_from_bound {
+            q = q.filter(Column::TransactionDate.gte(bound));
+        }
+        if let Some(ref bound) = date_to_bound {
+            q = q.filter(Column::TransactionDate.lte(bound));
+        }
+        if let Some(ref conn) = connection_mp_ref {
+            if !conn.is_empty() {
+                q = q.filter(Column::ConnectionMpRef.eq(conn));
+            }
+        }
+        if let Some(ref org) = organization_ref {
+            if !org.is_empty() {
+                q = q.filter(Column::OrganizationRef.eq(org));
+            }
+        }
+        q
+    };
+
+    let transaction_types = collect_non_empty(
+        apply_scope(
+            Entity::find()
+                .select_only()
+                .column(Column::TransactionType)
+                .order_by_asc(Column::TransactionType),
+        )
+        .into_tuple::<Option<String>>()
+        .all(db)
+        .await?,
+    );
+
+    let payment_statuses = collect_non_empty(
+        apply_scope(
+            Entity::find()
+                .select_only()
+                .column(Column::PaymentStatus)
+                .order_by_asc(Column::PaymentStatus),
+        )
+        .into_tuple::<Option<String>>()
+        .all(db)
+        .await?,
+    );
+
+    let transaction_sources = collect_non_empty(
+        apply_scope(
+            Entity::find()
+                .select_only()
+                .column(Column::TransactionSource)
+                .order_by_asc(Column::TransactionSource),
+        )
+        .into_tuple::<Option<String>>()
+        .all(db)
+        .await?,
+    );
+
+    Ok((transaction_types, payment_statuses, transaction_sources))
+}
+
+fn collect_non_empty(values: Vec<Option<String>>) -> Vec<String> {
+    values
+        .into_iter()
+        .flatten()
+        .filter_map(|value| {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn normalize_date_filter(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    parse_display_date(trimmed).or_else(|| Some(trimmed.to_string()))
+}
+
+fn inclusive_date_to_bound(date_to: &str) -> Option<String> {
+    let trimmed = date_to.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let normalized = parse_display_date(trimmed).unwrap_or_else(|| trimmed.to_string());
+    if normalized.len() == 10 && normalized.as_bytes().get(4) == Some(&b'-') {
+        Some(format!("{normalized} 23:59:59"))
+    } else {
+        Some(normalized)
+    }
+}
+
+fn parse_display_date(value: &str) -> Option<String> {
+    let mut parts = value.split('.');
+    let day = parts.next()?;
+    let month = parts.next()?;
+    let year = parts.next()?;
+    if parts.next().is_some() || day.len() != 2 || month.len() != 2 || year.len() != 4 {
+        return None;
+    }
+    Some(format!("{year}-{month}-{day}"))
+}
+
+/// Get a single entry by internal UUID (`id` column).
+pub async fn get_by_uuid(id: &str) -> Result<Option<Model>> {
+    let db = get_connection();
+    let item = Entity::find()
+        .filter(Column::Id.eq(id))
+        .one(db)
+        .await?;
+    Ok(item)
+}
+
+/// Get a single entry by record_key (legacy/internal use).
+pub async fn get_by_record_key(record_key: &str) -> Result<Option<Model>> {
     let db = get_connection();
     let item = Entity::find_by_id(record_key).one(db).await?;
     Ok(item)
 }
+
+/// Migrate all SYNTH_... record_keys to ymid_... format.
+///
+/// For each SYNTH_ record, computes the new ymid_ key from the stored data fields
+/// and re-inserts the row under the new key (preserving `id`), then deletes the
+/// old SYNTH_ row.  Records that would produce a ymid_ key that already exists are
+/// left untouched (the canonical ymid_ entry wins).
+///
+/// Returns `(migrated, already_ymid, errors)`.
+pub async fn migrate_synth_keys(
+    build_ymid: impl Fn(&Model) -> String,
+) -> Result<(usize, usize, usize)> {
+    let db = get_connection();
+
+    let records: Vec<Model> = Entity::find()
+        .filter(Column::RecordKey.starts_with("SYNTH_"))
+        .all(db)
+        .await?;
+
+    let total = records.len();
+    tracing::info!("migrate_synth_keys: found {} SYNTH_ records", total);
+
+    let mut migrated = 0usize;
+    let mut errors = 0usize;
+
+    for record in records {
+        let new_key = build_ymid(&record);
+
+        // Root cause of the original bug: the SELECT-based INSERT copied the `id`
+        // from the source row while it was still present in the table, causing a
+        // silent conflict on idx_p907_id (UNIQUE on id). OR IGNORE skipped the
+        // insert, then the SYNTH_ row was deleted — row gone entirely.
+        //
+        // Fix: wrap DELETE + INSERT in a SeaORM transaction so that:
+        //  1. The SYNTH_ row is removed first (freeing the id for reuse).
+        //  2. The ymid_ row is inserted with the preserved id.
+        //  3. If the ymid_ key already exists (record_key conflict), INSERT OR IGNORE
+        //     skips it and the SYNTH_ row is still removed — ymid_ entry wins.
+        //  4. On any error the transaction rolls back and both rows are preserved.
+        let old_key = record.record_key.clone();
+        let new_model = ActiveModel {
+            record_key: Set(new_key.clone()),
+            id: Set(record.id.clone()),
+            connection_mp_ref: Set(record.connection_mp_ref.clone()),
+            organization_ref: Set(record.organization_ref.clone()),
+            business_id: Set(record.business_id),
+            partner_id: Set(record.partner_id),
+            shop_name: Set(record.shop_name.clone()),
+            inn: Set(record.inn.clone()),
+            model: Set(record.model.clone()),
+            transaction_id: Set(record.transaction_id.clone()),
+            transaction_date: Set(record.transaction_date.clone()),
+            transaction_type: Set(record.transaction_type.clone()),
+            transaction_source: Set(record.transaction_source.clone()),
+            transaction_sum: Set(record.transaction_sum),
+            payment_status: Set(record.payment_status.clone()),
+            order_id: Set(record.order_id),
+            shop_order_id: Set(record.shop_order_id.clone()),
+            order_creation_date: Set(record.order_creation_date.clone()),
+            order_delivery_date: Set(record.order_delivery_date.clone()),
+            order_type: Set(record.order_type.clone()),
+            shop_sku: Set(record.shop_sku.clone()),
+            offer_or_service_name: Set(record.offer_or_service_name.clone()),
+            count: Set(record.count),
+            act_id: Set(record.act_id),
+            act_date: Set(record.act_date.clone()),
+            bank_order_id: Set(record.bank_order_id),
+            bank_order_date: Set(record.bank_order_date.clone()),
+            bank_sum: Set(record.bank_sum),
+            claim_number: Set(record.claim_number.clone()),
+            bonus_account_year_month: Set(record.bonus_account_year_month.clone()),
+            comments: Set(record.comments.clone()),
+            loaded_at_utc: Set(record.loaded_at_utc.clone()),
+            payload_version: Set(record.payload_version),
+        };
+
+        let result = db
+            .transaction::<_, (), sea_orm::DbErr>(|txn| {
+                Box::pin(async move {
+                    // 1. Remove the SYNTH_ row — this frees the `id` value.
+                    Entity::delete_by_id(old_key).exec(txn).await?;
+
+                    // 2. Insert under the new ymid_ key, preserving `id`.
+                    //    ON CONFLICT(record_key) DO NOTHING: if a ymid_ row already
+                    //    exists the SYNTH_ row is still gone (ymid_ entry wins).
+                    Entity::insert(new_model)
+                        .on_conflict(
+                            OnConflict::column(Column::RecordKey)
+                                .do_nothing()
+                                .to_owned(),
+                        )
+                        .exec_without_returning(txn)
+                        .await?;
+
+                    Ok(())
+                })
+            })
+            .await;
+
+        match result {
+            Ok(()) => {
+                migrated += 1;
+            }
+            Err(e) => {
+                tracing::error!(
+                    "migrate_synth_keys: transaction failed for {} → {}: {}",
+                    record.record_key,
+                    new_key,
+                    e
+                );
+                errors += 1;
+            }
+        }
+    }
+
+    tracing::info!(
+        "migrate_synth_keys: done. migrated={}, errors={}",
+        migrated,
+        errors
+    );
+
+    Ok((migrated, 0, errors))
+}
+
 
 /// Delete all entries for a connection in a date range (for re-import)
 pub async fn delete_by_connection_and_date_range(

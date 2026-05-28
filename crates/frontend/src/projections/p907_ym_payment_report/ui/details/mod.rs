@@ -11,6 +11,7 @@ use wasm_bindgen_futures::JsFuture;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmPaymentReportDetailDto {
+    pub id: String,
     pub record_key: String,
     pub connection_mp_ref: String,
     pub organization_ref: String,
@@ -54,7 +55,8 @@ struct FieldRow {
 
 #[component]
 pub fn YmPaymentReportDetail(
-    record_key: String,
+    /// Internal UUID of the record (used for API lookup and navigation).
+    id: String,
     #[prop(into)] on_close: Callback<()>,
 ) -> impl IntoView {
     let (data, set_data) = signal::<Option<YmPaymentReportDetailDto>>(None);
@@ -63,11 +65,11 @@ pub fn YmPaymentReportDetail(
     let (sort_by, set_sort_by) = signal("description".to_string());
     let (sort_desc, set_sort_desc) = signal(false);
 
-    let record_key_clone = record_key.clone();
+    let id_clone = id.clone();
     Effect::new(move || {
-        let rk = record_key_clone.clone();
+        let id_val = id_clone.clone();
         spawn_local(async move {
-            match fetch_detail(&rk).await {
+            match fetch_detail(&id_val).await {
                 Ok(dto) => {
                     set_data.set(Some(dto));
                     set_loading.set(false);
@@ -88,89 +90,64 @@ pub fn YmPaymentReportDetail(
 
         let mut rows = vec![
             FieldRow {
-                description: "Ключ записи".to_string(),
+                description: "UUID (внутренний ID)".to_string(),
+                field_id: "id".to_string(),
+                value: item.id.clone(),
+            },
+            FieldRow {
+                description: "Ключ дедупликации".to_string(),
                 field_id: "record_key".to_string(),
                 value: item.record_key.clone(),
             },
             FieldRow {
-                description: "ID транзакции (ЯМ)".to_string(),
+                description: "ID транзакции (YM)".to_string(),
                 field_id: "transaction_id".to_string(),
-                value: item
-                    .transaction_id
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.transaction_id.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Дата транзакции".to_string(),
                 field_id: "transaction_date".to_string(),
-                value: item
-                    .transaction_date
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.transaction_date.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Тип транзакции".to_string(),
                 field_id: "transaction_type".to_string(),
-                value: item
-                    .transaction_type
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.transaction_type.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Источник транзакции".to_string(),
                 field_id: "transaction_source".to_string(),
-                value: item
-                    .transaction_source
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.transaction_source.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Сумма транзакции".to_string(),
                 field_id: "transaction_sum".to_string(),
-                value: item
-                    .transaction_sum
-                    .map(|v| format!("{:.2}", v))
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.transaction_sum.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Статус платежа".to_string(),
                 field_id: "payment_status".to_string(),
-                value: item
-                    .payment_status
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.payment_status.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "ID заказа".to_string(),
                 field_id: "order_id".to_string(),
-                value: item
-                    .order_id
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.order_id.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "ID заказа магазина".to_string(),
                 field_id: "shop_order_id".to_string(),
-                value: item
-                    .shop_order_id
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.shop_order_id.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Дата создания заказа".to_string(),
                 field_id: "order_creation_date".to_string(),
-                value: item
-                    .order_creation_date
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.order_creation_date.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Дата доставки заказа".to_string(),
                 field_id: "order_delivery_date".to_string(),
-                value: item
-                    .order_delivery_date
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.order_delivery_date.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Тип заказа".to_string(),
@@ -185,26 +162,17 @@ pub fn YmPaymentReportDetail(
             FieldRow {
                 description: "Наименование товара / услуги".to_string(),
                 field_id: "offer_or_service_name".to_string(),
-                value: item
-                    .offer_or_service_name
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.offer_or_service_name.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Количество".to_string(),
                 field_id: "count".to_string(),
-                value: item
-                    .count
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.count.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "ID акта".to_string(),
                 field_id: "act_id".to_string(),
-                value: item
-                    .act_id
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.act_id.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Дата акта".to_string(),
@@ -214,26 +182,17 @@ pub fn YmPaymentReportDetail(
             FieldRow {
                 description: "ID банковского ордера".to_string(),
                 field_id: "bank_order_id".to_string(),
-                value: item
-                    .bank_order_id
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.bank_order_id.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Дата банковского ордера".to_string(),
                 field_id: "bank_order_date".to_string(),
-                value: item
-                    .bank_order_date
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.bank_order_date.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Сумма ПП (банковский перевод)".to_string(),
                 field_id: "bank_sum".to_string(),
-                value: item
-                    .bank_sum
-                    .map(|v| format!("{:.2}", v))
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.bank_sum.map(|v| format!("{:.2}", v)).unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Номер претензии".to_string(),
@@ -243,10 +202,7 @@ pub fn YmPaymentReportDetail(
             FieldRow {
                 description: "Год-месяц бонусного счёта".to_string(),
                 field_id: "bonus_account_year_month".to_string(),
-                value: item
-                    .bonus_account_year_month
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.bonus_account_year_month.clone().unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Комментарий".to_string(),
@@ -256,18 +212,12 @@ pub fn YmPaymentReportDetail(
             FieldRow {
                 description: "ID бизнеса".to_string(),
                 field_id: "business_id".to_string(),
-                value: item
-                    .business_id
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.business_id.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "ID партнёра".to_string(),
                 field_id: "partner_id".to_string(),
-                value: item
-                    .partner_id
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
+                value: item.partner_id.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
             },
             FieldRow {
                 description: "Название магазина".to_string(),
@@ -315,19 +265,14 @@ pub fn YmPaymentReportDetail(
                 "value" => a.value.cmp(&b.value),
                 _ => a.description.cmp(&b.description),
             };
-            if is_desc {
-                cmp.reverse()
-            } else {
-                cmp
-            }
+            if is_desc { cmp.reverse() } else { cmp }
         });
 
         rows
     };
 
     let handle_column_sort = move |column: &'static str| {
-        let current_sort = sort_by.get();
-        if current_sort == column {
+        if sort_by.get() == column {
             set_sort_desc.set(!sort_desc.get());
         } else {
             set_sort_by.set(column.to_string());
@@ -343,7 +288,6 @@ pub fn YmPaymentReportDetail(
 
         let mut csv = String::from("\u{FEFF}");
         csv.push_str("Описание;Идентификатор;Значение\n");
-
         for row in field_rows {
             csv.push_str(&format!(
                 "\"{}\";\"{}\";\"{}\"\n",
@@ -358,10 +302,8 @@ pub fn YmPaymentReportDetail(
 
         let array = Array::new();
         array.push(&JsValue::from_str(&csv));
-
         let blob_props = web_sys::BlobPropertyBag::new();
         blob_props.set_type("text/csv;charset=utf-8;");
-
         if let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&array, &blob_props) {
             if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
                 if let Some(window) = web_sys::window() {
@@ -369,11 +311,10 @@ pub fn YmPaymentReportDetail(
                         if let Ok(a) = document.create_element("a") {
                             let a: web_sys::HtmlAnchorElement = a.unchecked_into();
                             a.set_href(&url);
-                            let filename = format!(
+                            a.set_download(&format!(
                                 "ym_payment_report_detail_{}.csv",
                                 chrono::Utc::now().format("%Y%m%d_%H%M%S")
-                            );
-                            a.set_download(&filename);
+                            ));
                             let _ = a.click();
                             let _ = web_sys::Url::revoke_object_url(&url);
                         }
@@ -383,19 +324,29 @@ pub fn YmPaymentReportDetail(
         }
     };
 
-    let title = record_key.clone();
-
     view! {
         <PageFrame page_id="p907_ym_payment_report--detail" category="detail">
             <div class="modal-header">
-                <h3 class="modal-title">"ЯМ Платёж: " {title}</h3>
-                <Button
-                    appearance=ButtonAppearance::Secondary
-                    on_click=move |_| on_close.run(())
-                >
-                    <span>{vec![icon("x").into_view()]}</span>
-                    <span>" Закрыть"</span>
-                </Button>
+                <h3 class="modal-title">"YM Платёж"</h3>
+                <div class="modal-header-actions">
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        size=ButtonSize::Small
+                        on_click=move |_| export_to_excel()
+                        disabled=Signal::derive(move || loading.get() || data.get().is_none())
+                    >
+                        {icon("download")}
+                        " Excel (csv)"
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Secondary
+                        size=ButtonSize::Small
+                        on_click=move |_| on_close.run(())
+                    >
+                        {icon("x")}
+                        " Закрыть"
+                    </Button>
+                </div>
             </div>
 
             <div class="page__content">
@@ -410,80 +361,71 @@ pub fn YmPaymentReportDetail(
                             </div>
                         }.into_any()
                     } else if data.get().is_some() {
-                        let export_excel = export_to_excel.clone();
                         view! {
-                            <div>
-                                <div style="display: flex; justify-content: flex-end; margin-bottom: var(--spacing-md);">
-                                    <Button
-                                        appearance=ButtonAppearance::Primary
-                                        on_click=move |_| export_excel()
-                                    >
-                                        {icon("download")}
-                                        "Excel (csv)"
-                                    </Button>
-                                </div>
-
-                                <div style="width: 100%; overflow-x: auto;">
-                                    <Table attr:style="width: 100%;">
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHeaderCell resizable=true min_width=300.0>
-                                                    "Описание"
-                                                    <span
-                                                        class={move || get_sort_class("description", &sort_by.get())}
-                                                        on:click=move |_| handle_column_sort("description")
-                                                    >
-                                                        {move || get_sort_indicator("description", &sort_by.get(), !sort_desc.get())}
-                                                    </span>
-                                                </TableHeaderCell>
-                                                <TableHeaderCell resizable=true min_width=200.0>
-                                                    "Идентификатор"
-                                                    <span
-                                                        class={move || get_sort_class("field_id", &sort_by.get())}
-                                                        on:click=move |_| handle_column_sort("field_id")
-                                                    >
-                                                        {move || get_sort_indicator("field_id", &sort_by.get(), !sort_desc.get())}
-                                                    </span>
-                                                </TableHeaderCell>
-                                                <TableHeaderCell resizable=true min_width=200.0>
-                                                    "Значение"
-                                                    <span
-                                                        class={move || get_sort_class("value", &sort_by.get())}
-                                                        on:click=move |_| handle_column_sort("value")
-                                                    >
-                                                        {move || get_sort_indicator("value", &sort_by.get(), !sort_desc.get())}
-                                                    </span>
-                                                </TableHeaderCell>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {get_field_rows()
-                                                .into_iter()
-                                                .map(|row| {
-                                                    view! {
-                                                        <TableRow>
-                                                            <TableCell>
-                                                                <TableCellLayout>{row.description}</TableCellLayout>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <TableCellLayout>
-                                                                    <span style="font-family: monospace; font-size: 0.85em;">{row.field_id}</span>
-                                                                </TableCellLayout>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <TableCellLayout>{row.value}</TableCellLayout>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    }.into_view()
-                                                })
-                                                .collect_view()}
-                                        </TableBody>
-                                    </Table>
-                                </div>
+                            <div class="table-wrapper">
+                                <Table attr:style="width: 100%;">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHeaderCell resizable=true min_width=300.0>
+                                                "Описание"
+                                                <span
+                                                    class={move || get_sort_class("description", &sort_by.get())}
+                                                    on:click=move |_| handle_column_sort("description")
+                                                >
+                                                    {move || get_sort_indicator("description", &sort_by.get(), !sort_desc.get())}
+                                                </span>
+                                            </TableHeaderCell>
+                                            <TableHeaderCell resizable=true min_width=200.0>
+                                                "Идентификатор"
+                                                <span
+                                                    class={move || get_sort_class("field_id", &sort_by.get())}
+                                                    on:click=move |_| handle_column_sort("field_id")
+                                                >
+                                                    {move || get_sort_indicator("field_id", &sort_by.get(), !sort_desc.get())}
+                                                </span>
+                                            </TableHeaderCell>
+                                            <TableHeaderCell resizable=true min_width=200.0>
+                                                "Значение"
+                                                <span
+                                                    class={move || get_sort_class("value", &sort_by.get())}
+                                                    on:click=move |_| handle_column_sort("value")
+                                                >
+                                                    {move || get_sort_indicator("value", &sort_by.get(), !sort_desc.get())}
+                                                </span>
+                                            </TableHeaderCell>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {get_field_rows()
+                                            .into_iter()
+                                            .map(|row| {
+                                                view! {
+                                                    <TableRow>
+                                                        <TableCell>
+                                                            <TableCellLayout>
+                                                                <span class="p903-field-desc">{row.description}</span>
+                                                            </TableCellLayout>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <TableCellLayout>
+                                                                <span class="p903-field-id">{row.field_id}</span>
+                                                            </TableCellLayout>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <TableCellLayout>
+                                                                <span class="p903-field-value">{row.value}</span>
+                                                            </TableCellLayout>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                }.into_view()
+                                            })
+                                            .collect_view()}
+                                    </TableBody>
+                                </Table>
                             </div>
                         }.into_any()
                     } else {
-                        view! { <p>"Нет данных"</p> }.into_any()
+                        view! { <p class="text-muted">"Нет данных"</p> }.into_any()
                     }
                 }}
             </div>
@@ -491,14 +433,10 @@ pub fn YmPaymentReportDetail(
     }
 }
 
-async fn fetch_detail(record_key: &str) -> Result<YmPaymentReportDetailDto, String> {
+async fn fetch_detail(id: &str) -> Result<YmPaymentReportDetailDto, String> {
     let window = web_sys::window().ok_or("No window object")?;
-    let url = format!(
-        "/api/p907/payment-report/{}",
-        js_sys::encode_uri_component(record_key)
-            .as_string()
-            .unwrap_or_default()
-    );
+    // UUID contains only hex digits and hyphens — URL-safe, no encoding needed.
+    let url = format!("/api/p907/payment-report/{}", id);
 
     let resp_value = JsFuture::from(window.fetch_with_str(&url))
         .await

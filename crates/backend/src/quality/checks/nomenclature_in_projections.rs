@@ -378,10 +378,12 @@ pub async fn list_groups(
         let max_entry_date: Option<String> = row.try_get("", "max_entry_date").ok();
 
         let meta = super::registrator_registry::get_meta(&registrator_type);
-        let source_exists =
-            super::registrator_registry::source_document_exists(&registrator_type, &registrator_ref)
-                .await
-                .unwrap_or(false);
+        let source_exists = super::registrator_registry::source_document_exists(
+            &registrator_type,
+            &registrator_ref,
+        )
+        .await
+        .unwrap_or(false);
         let source_columns = if source_exists {
             super::registrator_registry::source_columns(&registrator_type, &registrator_ref).await
         } else {

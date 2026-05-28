@@ -1078,19 +1078,18 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             view! { <WbAdvertOrderAttrList /> }.into_any()
         }
         k if k.starts_with("p907_ym_payment_report_details_") => {
-            let encoded = k
+            // Tab key stores UUID directly (no URL encoding needed for UUID format).
+            let id = k
                 .strip_prefix("p907_ym_payment_report_details_")
-                .unwrap_or_default();
-            let record_key = urlencoding::decode(encoded)
-                .map(|s| s.into_owned())
-                .unwrap_or_else(|_| encoded.to_string());
+                .unwrap_or_default()
+                .to_string();
             log!(
-                "✅ Creating YmPaymentReportDetail for record_key: {}",
-                record_key
+                "✅ Creating YmPaymentReportDetail for id: {}",
+                id
             );
             view! {
                 <YmPaymentReportDetail
-                    record_key=record_key
+                    id=id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();
                         move |_| {
@@ -1166,7 +1165,17 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
         "d402_wb_order_flow" => {
             log!("✅ Creating WbOrderFlowDashboard");
-            view! { <WbOrderFlowDashboard /> }.into_any()
+            view! {
+                <WbOrderFlowDashboard
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
         }
         "d404_wb_advert_report" => {
             log!("✅ Creating WbAdvertReportDashboard");
@@ -1181,7 +1190,18 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 .map(|s| s.into_owned())
                 .unwrap_or(srid);
             log!("✅ Creating WbOrderFlowDashboard for srid={}", srid);
-            view! { <WbOrderFlowDashboard initial_srid=srid /> }.into_any()
+            view! {
+                <WbOrderFlowDashboard
+                    initial_srid=srid
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
         }
 
         // ═══════════════════════════════════════════════════════════════════

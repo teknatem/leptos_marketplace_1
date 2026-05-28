@@ -1,7 +1,8 @@
 use anyhow::Result;
 use chrono::Utc;
 use contracts::domain::a033_wb_day_close::{
-    WbDayClose, WbDayCloseId, WbDayCloseLine, WbDayCloseProblem, WbDayCloseTotals,
+    WbDayClose, WbDayCloseAdvertNoOrderLine, WbDayCloseAdvertOrderAccrualLine, WbDayCloseId,
+    WbDayCloseLine, WbDayCloseProblem, WbDayCloseTotals,
 };
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
@@ -40,6 +41,18 @@ pub struct Model {
     pub lines_json: String,
     pub problems_json: String,
     pub totals_json: String,
+    #[sea_orm(default_value = "[]")]
+    pub advert_no_order_json: String,
+    #[sea_orm(default_value = "[]")]
+    pub advert_order_accrual_json: String,
+    #[sea_orm(default_value = "0")]
+    pub gl_advert_no_order: f64,
+    #[sea_orm(default_value = "0")]
+    pub gl_advert_order_accrual: f64,
+    #[sea_orm(default_value = "0")]
+    pub gl_advert_order_expense: f64,
+    #[sea_orm(default_value = "0")]
+    pub snap_advert_order_expense: f64,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -71,6 +84,10 @@ impl From<Model> for WbDayClose {
         let problems: Vec<WbDayCloseProblem> =
             serde_json::from_str(&m.problems_json).unwrap_or_default();
         let totals: WbDayCloseTotals = serde_json::from_str(&m.totals_json).unwrap_or_default();
+        let advert_clicks_no_order_lines: Vec<WbDayCloseAdvertNoOrderLine> =
+            serde_json::from_str(&m.advert_no_order_json).unwrap_or_default();
+        let advert_clicks_order_accrual_lines: Vec<WbDayCloseAdvertOrderAccrualLine> =
+            serde_json::from_str(&m.advert_order_accrual_json).unwrap_or_default();
 
         WbDayClose {
             base: BaseAggregate::with_metadata(
@@ -91,6 +108,12 @@ impl From<Model> for WbDayClose {
             lines,
             problems,
             totals,
+            advert_clicks_no_order_lines,
+            advert_clicks_order_accrual_lines,
+            gl_advert_no_order: m.gl_advert_no_order,
+            gl_advert_order_accrual: m.gl_advert_order_accrual,
+            gl_advert_order_expense: m.gl_advert_order_expense,
+            snap_advert_order_expense: m.snap_advert_order_expense,
         }
     }
 }
@@ -103,6 +126,10 @@ fn to_active_model(doc: &WbDayClose) -> ActiveModel {
     let lines_json = serde_json::to_string(&doc.lines).unwrap_or_else(|_| "[]".to_string());
     let problems_json = serde_json::to_string(&doc.problems).unwrap_or_else(|_| "[]".to_string());
     let totals_json = serde_json::to_string(&doc.totals).unwrap_or_else(|_| "{}".to_string());
+    let advert_no_order_json = serde_json::to_string(&doc.advert_clicks_no_order_lines)
+        .unwrap_or_else(|_| "[]".to_string());
+    let advert_order_accrual_json = serde_json::to_string(&doc.advert_clicks_order_accrual_lines)
+        .unwrap_or_else(|_| "[]".to_string());
 
     ActiveModel {
         id: Set(doc.base.id.as_string()),
@@ -120,6 +147,12 @@ fn to_active_model(doc: &WbDayClose) -> ActiveModel {
         lines_json: Set(lines_json),
         problems_json: Set(problems_json),
         totals_json: Set(totals_json),
+        advert_no_order_json: Set(advert_no_order_json),
+        advert_order_accrual_json: Set(advert_order_accrual_json),
+        gl_advert_no_order: Set(doc.gl_advert_no_order),
+        gl_advert_order_accrual: Set(doc.gl_advert_order_accrual),
+        gl_advert_order_expense: Set(doc.gl_advert_order_expense),
+        snap_advert_order_expense: Set(doc.snap_advert_order_expense),
         is_deleted: Set(doc.base.metadata.is_deleted),
         is_posted: Set(doc.base.metadata.is_posted),
         created_at: Set(Some(doc.base.metadata.created_at)),

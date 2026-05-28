@@ -205,8 +205,10 @@ impl AppGlobalContext {
     /// 4. The last remaining open tab.
     fn resolve_return_target(&self, key: &str) -> Option<String> {
         let is_open = |candidate: &str| {
-            self.opened
-                .with_untracked(|tabs| tabs.iter().any(|tab| tab.key == candidate && tab.key != key))
+            self.opened.with_untracked(|tabs| {
+                tabs.iter()
+                    .any(|tab| tab.key == candidate && tab.key != key)
+            })
         };
 
         // 1 + 2: follow the opener chain to the nearest live ancestor.

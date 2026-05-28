@@ -40,10 +40,7 @@ pub async fn run() -> anyhow::Result<CheckResult> {
     let mut total_violations: i64 = 0;
     let mut total_population: i64 = 0;
 
-    async fn scalar_count(
-        conn: &sea_orm::DatabaseConnection,
-        sql: &str,
-    ) -> anyhow::Result<i64> {
+    async fn scalar_count(conn: &sea_orm::DatabaseConnection, sql: &str) -> anyhow::Result<i64> {
         let rows = conn
             .query_all(Statement::from_string(
                 sea_orm::DatabaseBackend::Sqlite,

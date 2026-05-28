@@ -63,6 +63,11 @@ pub fn wb_business_date(dt: &DateTime<Utc>) -> NaiveDate {
     dt.with_timezone(&wb_timezone()).date_naive()
 }
 
+/// YYYY-MM-DD business date in WB timezone (MSK) for GL and projection `entry_date`.
+pub fn wb_business_date_str(dt: &DateTime<Utc>) -> String {
+    wb_business_date(dt).format("%Y-%m-%d").to_string()
+}
+
 pub fn format_wb_local_datetime_seconds(dt: &DateTime<Utc>) -> String {
     dt.with_timezone(&wb_timezone())
         .format("%Y-%m-%dT%H:%M:%S")
@@ -73,4 +78,17 @@ pub fn format_wb_cursor_datetime(dt: &DateTime<Utc>) -> String {
     dt.with_timezone(&wb_timezone())
         .format("%Y-%m-%dT%H:%M:%S%.3f")
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn wb_business_date_str_uses_msk_not_utc() {
+        // 23:10 UTC = 02:10 MSK next calendar day
+        let dt = Utc.with_ymd_and_hms(2026, 5, 25, 23, 10, 28).unwrap();
+        assert_eq!(wb_business_date_str(&dt), "2026-05-26");
+    }
 }

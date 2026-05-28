@@ -87,17 +87,21 @@ const FACT_REALIZED_GOODS_TURNOVERS: &[&str] = &["customer_revenue", "customer_r
 const FACT_WB_REWARD_TURNOVERS: &[&str] = &["mp_commission", "mp_commission_storno"];
 // 2.10 — прочие удержания по факту: платная приёмка, хранение, штрафы и их
 // сторно. Рекламы на fact нет, поэтому здесь её не будет.
-const FACT_OTHER_DEDUCTIONS_TURNOVERS: &[&str] =
-    &["acceptance", "mp_storage", "mp_penalty", "mp_penalty_storno"];
+const FACT_OTHER_DEDUCTIONS_TURNOVERS: &[&str] = &[
+    "acceptance",
+    "mp_storage",
+    "mp_penalty",
+    "mp_penalty_storno",
+];
 // 2.7+2.8 — логистика по факту (тот же состав, что и в старой таблице).
 const FACT_LOGISTICS_TURNOVERS: &[&str] = LOGISTICS_TURNOVERS;
 // 2.6 — эквайринг по факту (тот же состав, что и в старой таблице).
 const FACT_ACQUIRING_TURNOVERS: &[&str] = ACQUIRING_TURNOVERS;
 
-const FACT_REALIZED_GOODS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('customer_revenue', 'customer_return') AND layer = 'fact'";
+const FACT_REALIZED_GOODS_FORMULA: &str =
+    "SUM(amount) WHERE turnover_code IN ('customer_revenue', 'customer_return') AND layer = 'fact'";
 const FACT_WB_REWARD_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_commission', 'mp_commission_storno') AND layer = 'fact'";
-const FACT_SELLER_TRANSFER_FORMULA: &str =
-    "SUM over account 7609 (Dt − Cr) WHERE layer = 'fact'";
+const FACT_SELLER_TRANSFER_FORMULA: &str = "SUM over account 7609 (Dt − Cr) WHERE layer = 'fact'";
 const FACT_OTHER_DEDUCTIONS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('acceptance', 'mp_storage', 'mp_penalty', 'mp_penalty_storno') AND layer = 'fact'";
 const FACT_LOGISTICS_FORMULA: &str = LOGISTICS_FORMULA;
 const FACT_ACQUIRING_FORMULA: &str = ACQUIRING_FORMULA;
@@ -411,7 +415,11 @@ pub async fn extract_weekly_report(
         .download_document(&connection, &document.header.service_name, &extension)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to download WB document {} for extraction: {}", id, e);
+            tracing::error!(
+                "Failed to download WB document {} for extraction: {}",
+                id,
+                e
+            );
             StatusCode::BAD_GATEWAY
         })?;
 
@@ -457,8 +465,12 @@ pub async fn extract_weekly_report(
     let current = document.weekly_report_data.clone();
     let extracted_data = extracted.manual_data;
     let updated_data = WbWeeklyReportManualData {
-        realized_goods_total: extracted_data.realized_goods_total.or(current.realized_goods_total),
-        wb_reward_with_vat: extracted_data.wb_reward_with_vat.or(current.wb_reward_with_vat),
+        realized_goods_total: extracted_data
+            .realized_goods_total
+            .or(current.realized_goods_total),
+        wb_reward_with_vat: extracted_data
+            .wb_reward_with_vat
+            .or(current.wb_reward_with_vat),
         seller_transfer_total: extracted_data
             .seller_transfer_total
             .or(current.seller_transfer_total),
@@ -473,7 +485,9 @@ pub async fn extract_weekly_report(
         extracted
             .report_period_from
             .or(document.report_period_from.clone()),
-        extracted.report_period_to.or(document.report_period_to.clone()),
+        extracted
+            .report_period_to
+            .or(document.report_period_to.clone()),
         updated_data,
         None,
     )
@@ -537,7 +551,11 @@ pub async fn post_document(
     };
 
     let reconciliation = build_reconciliation_dto(&doc).await.map_err(|e| {
-        tracing::error!("Failed to build reconciliation for WB document {}: {}", id, e);
+        tracing::error!(
+            "Failed to build reconciliation for WB document {}: {}",
+            id,
+            e
+        );
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     let max_deviation = compute_max_deviation(&reconciliation);
@@ -545,7 +563,11 @@ pub async fn post_document(
     let doc = a027_wb_documents::service::store_max_deviation(uuid, max_deviation)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to store max deviation for WB document {}: {}", id, e);
+            tracing::error!(
+                "Failed to store max deviation for WB document {}: {}",
+                id,
+                e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
