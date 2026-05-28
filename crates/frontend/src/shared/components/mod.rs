@@ -5,6 +5,7 @@ pub mod date_range_picker;
 pub mod date_range_picker_smart;
 pub mod filter_panel;
 pub mod month_selector;
+pub mod more_actions_menu;
 pub mod page_header;
 pub mod pagination_controls;
 pub mod popover;

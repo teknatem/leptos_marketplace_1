@@ -112,10 +112,8 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // Идемпотентное перепроведение: удаляем старые строки p909 и GL, затем
     // создаём заново, чтобы повторный Post всегда давал актуальный результат.
     let p909_ref = registrator_ref(id);
-    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
-        &p909_ref,
-    )
-    .await?;
+    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(&p909_ref)
+        .await?;
     crate::general_ledger::service::remove_by_registrator(REGISTRATOR_TYPE, &id.to_string())
         .await?;
 
@@ -139,10 +137,8 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
     // Убираем все связанные результаты при отмене проведения.
     let p909_ref = registrator_ref(id);
-    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
-        &p909_ref,
-    )
-    .await?;
+    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(&p909_ref)
+        .await?;
     crate::general_ledger::service::remove_by_registrator(REGISTRATOR_TYPE, &id.to_string())
         .await?;
 

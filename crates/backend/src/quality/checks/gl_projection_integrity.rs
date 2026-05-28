@@ -72,10 +72,7 @@ pub async fn run() -> anyhow::Result<CheckResult> {
     let mut total_population: i64 = 0;
 
     // Маленький помощник: вернуть COUNT(*) первого столбца `cnt`.
-    async fn scalar_count(
-        conn: &sea_orm::DatabaseConnection,
-        sql: String,
-    ) -> anyhow::Result<i64> {
+    async fn scalar_count(conn: &sea_orm::DatabaseConnection, sql: String) -> anyhow::Result<i64> {
         let rows = conn
             .query_all(Statement::from_string(
                 sea_orm::DatabaseBackend::Sqlite,

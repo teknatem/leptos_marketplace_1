@@ -15,9 +15,7 @@ use crate::data_view::ui::FilterBar;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use contracts::shared::data_view::ViewContext;
-use contracts::shared::drilldown::{
-    DrilldownResponse, DrilldownRow, ExtraColumnDef, MetricValues,
-};
+use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow, ExtraColumnDef, MetricValues};
 use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -1243,7 +1241,12 @@ fn export_drilldown_csv(resp: &DrilldownResponse, base_title: &str) {
     let extra_row = |group_key: &str| -> String {
         resp.extra_columns
             .iter()
-            .map(|col| format!(";{}", csv_escape(&extra_value(&resp.extra_values, group_key, &col.id))))
+            .map(|col| {
+                format!(
+                    ";{}",
+                    csv_escape(&extra_value(&resp.extra_values, group_key, &col.id))
+                )
+            })
             .collect()
     };
 

@@ -50,6 +50,31 @@ fn fmt_ratio(v: f64) -> String {
     format!("{:.2}", v)
 }
 
+/// Минимальный расход для отображения строки в таблице атрибуции (1 коп.).
+const MIN_ALLOCATED_COST_DISPLAY: f64 = 0.01;
+
+fn fmt_expense_share(expense: f64, total_expense: f64) -> String {
+    if total_expense.abs() <= f64::EPSILON {
+        "—".to_string()
+    } else {
+        fmt_ratio(expense / total_expense * 100.0)
+    }
+}
+
+fn should_show_linked_order(order: &FoundOrderDto) -> bool {
+    !order.is_allocated || order.allocated_cost.abs() >= MIN_ALLOCATED_COST_DISPLAY
+}
+
+fn should_show_linked_group(group: &LinkedOrdersByNmDto) -> bool {
+    if group.wb_reported_orders > 0 && group.found_orders.is_empty() {
+        return true;
+    }
+    if group.wb_advert_sum.abs() >= MIN_ALLOCATED_COST_DISPLAY {
+        return true;
+    }
+    group.found_orders.iter().any(should_show_linked_order)
+}
+
 fn fmt_csv_decimal(v: f64) -> String {
     format!("{:.2}", v).replace('.', ",")
 }
@@ -179,6 +204,7 @@ struct FoundOrderDto {
     #[serde(default)]
     is_allocated: bool,
     #[serde(default)]
+    #[allow(dead_code)]
     allocation_ratio: f64,
     #[serde(default)]
     allocated_cost: f64,
@@ -324,6 +350,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
     let (lines_sort_ascending, set_lines_sort_ascending) = signal(true);
     let lines_resize_initialized = StoredValue::new(false);
     let linked_orders_resize_initialized = StoredValue::new(false);
+    let (linked_orders_tree_expanded, set_linked_orders_tree_expanded) = signal(true);
 
     let load_doc = {
         let tabs = tabs.clone();
@@ -725,7 +752,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                             <ReadField label="Создано" value=fmt_dt(&d.created_at) />
                                             <ReadField label="Обновлено" value=fmt_dt(&d.updated_at) />
                                         </div>
-                                    
+
                                     </CardAnimated>
                                 </div>
                                 </div>
@@ -836,7 +863,13 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                             let has_linked = d.has_linked_orders;
                             let count = d.linked_orders_count;
                             let wb_orders_total: i64 = d.linked_orders.iter().map(|g| g.wb_reported_orders).sum();
-                            let groups = d.linked_orders.clone();
+                            let groups: Vec<_> = d
+                                .linked_orders
+                                .iter()
+                                .filter(|group| should_show_linked_group(group))
+                                .cloned()
+                                .collect();
+                            let total_expense = d.totals.sum;
                             let posted = d.is_posted;
                             let open_order_for_table = open_order.clone();
                             let open_nom_for_table = open_nomenclature.clone();
@@ -872,12 +905,49 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                         </Show>
                                         <Show when=move || posted && !has_linked>
                                             <div class="form__hint">
-                                                "За дату документа в выбранном кабинете нет проведённых заказов a015 по соответствующим nm_id."
+                                                "По строкам отчёта WB с заказами (orders > 0) нет данных для отображения."
+                                            </div>
+                                        </Show>
+                                        <Show when=move || posted && has_linked && count < wb_orders_total>
+                                            <div class="form__hint">
+                                                "Часть заказов WB не сопоставлена с a015 за дату документа — см. позиции со статусом «Нет в a015»."
                                             </div>
                                         </Show>
                                     </CardAnimated>
                                     <CardAnimated delay_ms=40 nav_id="a026_wb_advert_daily_details_linked_orders_table">
-                                        <h4 class="details-section__title">"Найденные заказы по позициям"</h4>
+                                        <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--spacing-sm);flex-wrap:wrap;margin-bottom:var(--spacing-xs);">
+                                            <h4 class="details-section__title" style="margin:0;">"Найденные заказы по позициям"</h4>
+                                            <div style="display:flex;gap:var(--spacing-xs);align-items:center;">
+                                                <Button
+                                                    size=ButtonSize::Small
+                                                    appearance=Signal::derive(move || {
+                                                        if linked_orders_tree_expanded.get() {
+                                                            ButtonAppearance::Primary
+                                                        } else {
+                                                            ButtonAppearance::Subtle
+                                                        }
+                                                    })
+                                                    attr:title="Развернуть все уровни"
+                                                    on_click=move |_| set_linked_orders_tree_expanded.set(true)
+                                                >
+                                                    {icon("chevron-down")}
+                                                </Button>
+                                                <Button
+                                                    size=ButtonSize::Small
+                                                    appearance=Signal::derive(move || {
+                                                        if linked_orders_tree_expanded.get() {
+                                                            ButtonAppearance::Subtle
+                                                        } else {
+                                                            ButtonAppearance::Primary
+                                                        }
+                                                    })
+                                                    attr:title="Только 1 уровень"
+                                                    on_click=move |_| set_linked_orders_tree_expanded.set(false)
+                                                >
+                                                    {icon("chevron-right")}
+                                                </Button>
+                                            </div>
+                                        </div>
                                         {
                                             if groups.is_empty() {
                                                 view! {
@@ -911,12 +981,23 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                         let found_count = group.found_orders.len() as i64;
                                                                         let allocated_count = group.found_orders.iter().filter(|o| o.is_allocated).count() as i64;
                                                                         let extra_count = found_count - allocated_count;
-                                                                        let header_summary = if extra_count > 0 {
+                                                                        let missing_a015 = wb_reported > 0 && found_count == 0;
+                                                                        let header_summary = if missing_a015 {
+                                                                            format!("0 / {wb_reported}")
+                                                                        } else if extra_count > 0 {
                                                                             format!("{} (+{})", allocated_count, extra_count)
                                                                         } else {
                                                                             allocated_count.to_string()
                                                                         };
-                                                                        let orders_for_each = group.found_orders.clone();
+                                                                        let orders_for_each: Vec<_> = group
+                                                                            .found_orders
+                                                                            .iter()
+                                                                            .filter(|order| should_show_linked_order(order))
+                                                                            .cloned()
+                                                                            .collect();
+                                                                        let orders_stored = StoredValue::new(orders_for_each);
+                                                                        let group_share =
+                                                                            fmt_expense_share(wb_advert_sum, total_expense);
                                                                         let open_order_inner = open_order_for_table.clone();
                                                                         let open_nom_inner = open_nom_for_table.clone();
                                                                         let nom_ref_val = group.nomenclature_ref.clone().unwrap_or_default();
@@ -943,14 +1024,44 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                                 </TableCellLayout></TableCell>
                                                                                 <TableCell class="text-right"><TableCellLayout>{wb_reported}</TableCellLayout></TableCell>
                                                                                 <TableCell class="text-right"><TableCellLayout>{header_summary}</TableCellLayout></TableCell>
-                                                                                <TableCell><TableCellLayout truncate=true>""</TableCellLayout></TableCell>
+                                                                                <TableCell>
+                                                                                    <TableCellLayout truncate=true>
+                                                                                        {if missing_a015 {
+                                                                                            view! {
+                                                                                                <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Warning>
+                                                                                                    "Нет в a015"
+                                                                                                </Badge>
+                                                                                            }.into_any()
+                                                                                        } else {
+                                                                                            view! { <span>""</span> }.into_any()
+                                                                                        }}
+                                                                                    </TableCellLayout>
+                                                                                </TableCell>
                                                                                 <TableCell class="text-right"><TableCellLayout>"—"</TableCellLayout></TableCell>
                                                                                 <TableCell class="text-right"><TableCellLayout><strong>{fmt_money(wb_advert_sum)}</strong></TableCellLayout></TableCell>
-                                                                                <TableCell class="text-right"><TableCellLayout>"100,00"</TableCellLayout></TableCell>
+                                                                                <TableCell class="text-right"><TableCellLayout><strong>{group_share}</strong></TableCellLayout></TableCell>
                                                                             </TableRow>
                                                                             // ── per-order rows ───────────────────────────────────────────────
+                                                                            <Show when=move || linked_orders_tree_expanded.get()>
+                                                                            <Show when=move || missing_a015>
+                                                                                <TableRow>
+                                                                                    <TableCell><TableCellLayout truncate=true>
+                                                                                        <span class="table__tree-child-marker" aria-hidden="true">"└─ "</span>
+                                                                                        "Нет проведённых заказов a015"
+                                                                                    </TableCellLayout></TableCell>
+                                                                                    <TableCell><TableCellLayout truncate=true>
+                                                                                        <span class="text-muted">"за дату документа"</span>
+                                                                                    </TableCellLayout></TableCell>
+                                                                                    <TableCell class="text-right"><TableCellLayout>""</TableCellLayout></TableCell>
+                                                                                    <TableCell class="text-right"><TableCellLayout>""</TableCellLayout></TableCell>
+                                                                                    <TableCell><TableCellLayout truncate=true>""</TableCellLayout></TableCell>
+                                                                                    <TableCell class="text-right"><TableCellLayout>"—"</TableCellLayout></TableCell>
+                                                                                    <TableCell class="text-right"><TableCellLayout>"—"</TableCellLayout></TableCell>
+                                                                                    <TableCell class="text-right"><TableCellLayout>"—"</TableCellLayout></TableCell>
+                                                                                </TableRow>
+                                                                            </Show>
                                                                             <For
-                                                                                each=move || orders_for_each.clone()
+                                                                                each=move || orders_stored.get_value()
                                                                                 key=|order| order.order_key.clone()
                                                                                 children=move |order| {
                                                                                     let price = order.finished_price.map(fmt_money).unwrap_or_else(|| "—".to_string());
@@ -965,7 +1076,10 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                                         "—".to_string()
                                                                                     };
                                                                                     let ratio_str = if order.is_allocated {
-                                                                                        fmt_ratio(order.allocation_ratio * 100.0)
+                                                                                        fmt_expense_share(
+                                                                                            order.allocated_cost,
+                                                                                            total_expense,
+                                                                                        )
                                                                                     } else {
                                                                                         "—".to_string()
                                                                                     };
@@ -984,7 +1098,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                                         <TableRow>
                                                                                             // Наименование → "Заказ dd.mm.yyyy"
                                                                                             <TableCell><TableCellLayout truncate=true>
-                                                                                                <span class="text-muted">"↳ "</span>
+                                                                                                <span class="table__tree-child-marker" aria-hidden="true">"└─ "</span>
                                                                                                 {format!("Заказ {}", order_date_display)}
                                                                                             </TableCellLayout></TableCell>
                                                                                             // Артикул/Заказ → srid as link to a015
@@ -1014,6 +1128,7 @@ pub fn WbAdvertDailyDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
                                                                                     }
                                                                                 }
                                                                             />
+                                                                            </Show>
                                                                         }
                                                                     }
                                                                 />

@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-const STORAGE_KEY: &str = "p907_ym_payment_report_list_state_v1";
+const STORAGE_KEY: &str = "p907_ym_payment_report_list_state_v2";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PersistedState {
@@ -9,7 +9,11 @@ struct PersistedState {
     pub date_to: String,
     pub transaction_type_filter: String,
     pub payment_status_filter: String,
+    #[serde(default)]
+    pub transaction_source_filter: String,
     pub shop_sku_filter: String,
+    #[serde(default)]
+    pub order_id_filter: String,
     pub connection_filter: String,
     pub sort_by: String,
     pub sort_ascending: bool,
@@ -24,7 +28,9 @@ pub struct P907ListState {
     pub date_to: String,
     pub transaction_type_filter: String,
     pub payment_status_filter: String,
+    pub transaction_source_filter: String,
     pub shop_sku_filter: String,
+    pub order_id_filter: String,
     pub connection_filter: String,
 
     // Sorting
@@ -48,11 +54,13 @@ impl Default for P907ListState {
         let default_end = now;
 
         Self {
-            date_from: default_start.format("%Y-%m-%d").to_string(),
-            date_to: default_end.format("%Y-%m-%d").to_string(),
+            date_from: default_start.format("%d.%m.%Y").to_string(),
+            date_to: default_end.format("%d.%m.%Y").to_string(),
             transaction_type_filter: String::new(),
             payment_status_filter: String::new(),
+            transaction_source_filter: String::new(),
             shop_sku_filter: String::new(),
+            order_id_filter: String::new(),
             connection_filter: String::new(),
             sort_by: "transaction_date".to_string(),
             sort_ascending: false,
@@ -89,7 +97,9 @@ pub fn persist_state(signal: RwSignal<P907ListState>) {
         date_to: st.date_to,
         transaction_type_filter: st.transaction_type_filter,
         payment_status_filter: st.payment_status_filter,
+        transaction_source_filter: st.transaction_source_filter,
         shop_sku_filter: st.shop_sku_filter,
+        order_id_filter: st.order_id_filter,
         connection_filter: st.connection_filter,
         sort_by: st.sort_by,
         sort_ascending: st.sort_ascending,
@@ -102,11 +112,13 @@ pub fn persist_state(signal: RwSignal<P907ListState>) {
 pub fn create_state() -> RwSignal<P907ListState> {
     let mut st = P907ListState::default();
     if let Some(p) = load_persisted() {
-        st.date_from = p.date_from;
-        st.date_to = p.date_to;
+        st.date_from = normalize_display_date(&p.date_from);
+        st.date_to = normalize_display_date(&p.date_to);
         st.transaction_type_filter = p.transaction_type_filter;
         st.payment_status_filter = p.payment_status_filter;
+        st.transaction_source_filter = p.transaction_source_filter;
         st.shop_sku_filter = p.shop_sku_filter;
+        st.order_id_filter = p.order_id_filter;
         st.connection_filter = p.connection_filter;
         st.sort_by = p.sort_by;
         st.sort_ascending = p.sort_ascending;
@@ -114,4 +126,13 @@ pub fn create_state() -> RwSignal<P907ListState> {
         st.page_size = p.page_size;
     }
     RwSignal::new(st)
+}
+
+fn normalize_display_date(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.len() == 10 && trimmed.as_bytes().get(4) == Some(&b'-') {
+        format!("{}.{}.{}", &trimmed[8..10], &trimmed[5..7], &trimmed[0..4])
+    } else {
+        trimmed.to_string()
+    }
 }

@@ -3,10 +3,13 @@ use axum::{
     Json,
 };
 use contracts::projections::p907_ym_payment_report::dto::{
-    YmPaymentReportDto, YmPaymentReportListRequest, YmPaymentReportListResponse,
+    YmPaymentReportDto, YmPaymentReportFilterOptionsResponse, YmPaymentReportListRequest,
+    YmPaymentReportListResponse,
 };
+use serde::Deserialize;
 
 use crate::projections::p907_ym_payment_report::repository;
+use crate::usecases::u503_import_from_yandex::processors::payment_report as payment_report_processor;
 
 /// Handler для получения списка записей отчёта по платежам YM
 pub async fn list_reports(
@@ -17,6 +20,7 @@ pub async fn list_reports(
         &req.date_to,
         req.transaction_type,
         req.payment_status,
+        req.transaction_source,
         req.shop_sku,
         req.order_id,
         req.connection_mp_ref,
@@ -42,11 +46,44 @@ pub async fn list_reports(
     }))
 }
 
-/// Handler для получения одной записи отчёта по платежам YM по record_key
+#[derive(Debug, Deserialize)]
+pub struct FilterOptionsQuery {
+    #[serde(default)]
+    pub date_from: String,
+    #[serde(default)]
+    pub date_to: String,
+    pub connection_mp_ref: Option<String>,
+    pub organization_ref: Option<String>,
+}
+
+pub async fn filter_options(
+    Query(req): Query<FilterOptionsQuery>,
+) -> Result<Json<YmPaymentReportFilterOptionsResponse>, axum::http::StatusCode> {
+    let (transaction_types, payment_statuses, transaction_sources) =
+        repository::list_filter_options(
+            &req.date_from,
+            &req.date_to,
+            req.connection_mp_ref,
+            req.organization_ref,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list YM payment report filter options: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(YmPaymentReportFilterOptionsResponse {
+        transaction_types,
+        payment_statuses,
+        transaction_sources,
+    }))
+}
+
+/// Handler для получения одной записи отчёта по платежам YM по UUID (`id` поле).
 pub async fn get_report(
-    Path(record_key): Path<String>,
+    Path(id): Path<String>,
 ) -> Result<Json<YmPaymentReportDto>, axum::http::StatusCode> {
-    let item = repository::get_by_id(&record_key).await.map_err(|e| {
+    let item = repository::get_by_uuid(&id).await.map_err(|e| {
         tracing::error!("Failed to get YM payment report: {}", e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -57,8 +94,35 @@ pub async fn get_report(
     }
 }
 
+/// Migrate all SYNTH_... record keys to ymid_... format.
+/// Safe to call multiple times — already-migrated rows are skipped.
+pub async fn migrate_keys() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let (migrated, _already_ymid, errors) = repository::migrate_synth_keys(|record| {
+        payment_report_processor::build_ymid_key(
+            record.order_id,
+            record.transaction_date.as_deref().unwrap_or(""),
+            record.transaction_type.as_deref().unwrap_or(""),
+            record.shop_sku.as_deref().unwrap_or(""),
+            record.transaction_sum,
+        )
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("migrate_keys: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "migrated": migrated,
+        "errors": errors,
+        "message": format!("Migration complete: {} rows migrated, {} errors", migrated, errors)
+    })))
+}
+
 fn model_to_dto(model: repository::Model) -> YmPaymentReportDto {
     YmPaymentReportDto {
+        id: model.id,
         record_key: model.record_key,
         transaction_id: model.transaction_id,
         connection_mp_ref: model.connection_mp_ref,

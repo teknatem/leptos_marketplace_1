@@ -14,6 +14,12 @@
   gap: var(--spacing-sm);
 }
 
+/* Tab — компактнее по вертикали (Thaw default: --spacingVerticalM ≈ 12px).
+   !important нужен: CSS Thaw инжектится из WASM после index.css и перебивает layer(thaw-patches). */
+.thaw-tab {
+  padding: var(--spacingVerticalS) var(--spacingHorizontalMNudge) !important;
+}
+
 /* Универсальный класс для фиксации ширины 40px */
 .width-40px,
 .thaw-table-cell.width-40px,

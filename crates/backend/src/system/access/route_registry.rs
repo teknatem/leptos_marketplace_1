@@ -923,8 +923,20 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         mode: PolicyMode::ReadOnly,
     },
     RoutePolicy {
-        method: "*",
-        path: "/api/p907/payment-report/:record_key",
+        method: "GET",
+        path: "/api/p907/payment-report/filter-options",
+        scope_id: Some("p907_ym_payment_report"),
+        mode: PolicyMode::ReadOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/p907/payment-report/migrate-keys",
+        scope_id: Some("p907_ym_payment_report"),
+        mode: PolicyMode::ReadOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/p907/payment-report/:id",
         scope_id: Some("p907_ym_payment_report"),
         mode: PolicyMode::ReadOnly,
     },

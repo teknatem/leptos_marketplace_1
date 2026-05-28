@@ -3,10 +3,10 @@ use contracts::domain::a033_wb_day_close::{
     ArchiveAndRecreateRequest, CompareRequest, CompareResponse, CreateActiveRequest,
     RepostProblematicRequest, RepostResult, WbDayClose, WbDayCloseListDto,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::a033_wb_day_close::{repository::ListQuery, service};
+use crate::domain::a033_wb_day_close::{advert_builder, repository::ListQuery, service};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query params
@@ -50,6 +50,89 @@ pub async fn list_paginated(
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/a033/wb-day-close/:id
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/a033/wb-day-close/:id/advert-live
+// Живые итоги p913/GL для диагностики стагнации снапшота
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct AdvertLiveTotals {
+    pub p913_no_order: f64,
+    pub p913_order_accrual: f64,
+    pub p913_order_expense: f64,
+    pub gl_no_order: f64,
+    pub gl_order_accrual: f64,
+    pub gl_order_expense: f64,
+    /// Диагностика: количество строк p913 для order_accrual
+    pub p913_accrual_rows: u64,
+    /// Диагностика: количество GL-записей для order_accrual
+    pub gl_accrual_entries: u64,
+    /// Диагностика: поразрядный breakdown по a026 registrator_ref
+    pub accrual_by_registrator: Vec<RegistratorRow>,
+}
+
+#[derive(Serialize)]
+pub struct RegistratorRow {
+    pub registrator_ref: String,
+    pub p913_sum: f64,
+    pub p913_rows: u64,
+    pub gl_sum: f64,
+    pub delta: f64,
+}
+
+pub async fn advert_live(
+    Path(id): Path<String>,
+) -> Result<Json<AdvertLiveTotals>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let doc = service::get_by_id(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("advert_live get a033 {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    let (build_result, diag) = tokio::try_join!(
+        advert_builder::build(&doc.connection_id, &doc.business_date),
+        advert_builder::fetch_accrual_diagnostic(&doc.connection_id, &doc.business_date),
+    )
+    .map_err(|e| {
+        tracing::error!("advert_live build {}: {}", id, e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let p913_no_order: f64 = build_result.no_order_lines.iter().map(|r| r.amount).sum();
+    let p913_order_accrual: f64 = build_result
+        .order_accrual_lines
+        .iter()
+        .map(|r| r.amount)
+        .sum();
+
+    let accrual_by_registrator = diag
+        .per_registrator
+        .into_iter()
+        .map(|r| RegistratorRow {
+            delta: r.p913_sum - r.gl_sum,
+            registrator_ref: r.registrator_ref,
+            p913_sum: r.p913_sum,
+            p913_rows: r.p913_rows,
+            gl_sum: r.gl_sum,
+        })
+        .collect();
+
+    Ok(Json(AdvertLiveTotals {
+        p913_no_order,
+        p913_order_accrual,
+        p913_order_expense: build_result.snap_order_expense,
+        gl_no_order: build_result.gl_no_order,
+        gl_order_accrual: build_result.gl_order_accrual,
+        gl_order_expense: build_result.gl_order_expense,
+        p913_accrual_rows: diag.total_rows,
+        gl_accrual_entries: diag.gl_entries,
+        accrual_by_registrator,
+    }))
+}
 
 pub async fn get_by_id(Path(id): Path<String>) -> Result<Json<WbDayClose>, axum::http::StatusCode> {
     let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;

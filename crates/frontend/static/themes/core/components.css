@@ -884,6 +884,7 @@
   opacity: 0.3;
   color: var(--color-text-tertiary);
   transition: opacity 0.2s ease;
+  cursor: pointer;
 }
 
 .sort-icon.active {
@@ -1042,6 +1043,16 @@ th.resizable {
 .table__tree-placeholder {
   display: inline-block;
   width: 16px;
+}
+
+.table__tree-child-marker {
+  display: inline-block;
+  width: 1.1em;
+  margin-right: 2px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-family-monospace, monospace);
+  text-align: center;
+  user-select: none;
 }
 
 /* Cell utilities */

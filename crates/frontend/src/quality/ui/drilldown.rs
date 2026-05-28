@@ -163,7 +163,11 @@ pub fn RegistratorGroupsPanel(
                     r.items
                         .iter()
                         .filter(|g| {
-                            let can_act = if cleanup_mode { g.can_cleanup } else { g.can_post };
+                            let can_act = if cleanup_mode {
+                                g.can_cleanup
+                            } else {
+                                g.can_post
+                            };
                             can_act && checked_list.contains(&g.registrator_ref)
                         })
                         .map(|g| (g.registrator_type.clone(), g.registrator_ref.clone()))
@@ -182,7 +186,11 @@ pub fn RegistratorGroupsPanel(
             set_repost_loading.set(true);
             set_repost_msg.set(Some(format!(
                 "{}: 0/{}",
-                if cleanup_mode { "Очистка" } else { "Перепроведение" },
+                if cleanup_mode {
+                    "Очистка"
+                } else {
+                    "Перепроведение"
+                },
                 total_requested
             )));
 
@@ -246,10 +254,18 @@ pub fn RegistratorGroupsPanel(
                     completed += 1;
                     set_repost_msg.set(Some(format!(
                         "{}: {}/{}, {}: {}, ошибок: {}",
-                        if cleanup_mode { "Очистка" } else { "Перепроведение" },
+                        if cleanup_mode {
+                            "Очистка"
+                        } else {
+                            "Перепроведение"
+                        },
                         completed,
                         total_requested,
-                        if cleanup_mode { "строк удалено" } else { "успешно" },
+                        if cleanup_mode {
+                            "строк удалено"
+                        } else {
+                            "успешно"
+                        },
                         affected,
                         errors.len()
                     )));

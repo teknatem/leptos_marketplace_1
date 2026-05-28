@@ -301,6 +301,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     tab_label_for_key("u507_import_from_erp"),
                     "import",
                 ),
+                SidebarItem::new(
+                    "u508_repost_documents",
+                    tab_label_for_key("u508_repost_documents"),
+                    "refresh-cw",
+                ),
             ],
             admin_only: false,
         },
@@ -328,11 +333,6 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "u505_match_nomenclature",
                     tab_label_for_key("u505_match_nomenclature"),
                     "layers",
-                ),
-                SidebarItem::new(
-                    "u508_repost_documents",
-                    tab_label_for_key("u508_repost_documents"),
-                    "refresh-cw",
                 ),
                 SidebarItem::with_scope(
                     "a018_llm_chat",

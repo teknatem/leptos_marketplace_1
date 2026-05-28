@@ -63,6 +63,7 @@ pub fn format_date(iso_date: &str) -> String {
 }
 
 pub fn format_money(value: f64) -> String {
+    let value = if value.abs() < 0.005 { 0.0 } else { value };
     if value == 0.0 {
         return "—".to_string();
     }
@@ -329,8 +330,8 @@ pub fn WbDayCloseList() -> impl IntoView {
                         <TableHeaderCell>"Строк"</TableHeaderCell>
                         <TableHeaderCell>"Блок."</TableHeaderCell>
                         <TableHeaderCell>"Пред."</TableHeaderCell>
-                        <TableHeaderCell>"Результат"</TableHeaderCell>
-                        <TableHeaderCell>"Маржа"</TableHeaderCell>
+                        <TableHeaderCell attr:style="text-align: right;">"Результат"</TableHeaderCell>
+                        <TableHeaderCell attr:style="text-align: right;">"Маржа"</TableHeaderCell>
                         <TableHeaderCell>"Статус"</TableHeaderCell>
                         <TableHeaderCell>"Пересчитан"</TableHeaderCell>
                     </TableRow>
@@ -351,11 +352,21 @@ pub fn WbDayCloseList() -> impl IntoView {
                                 .get(&item.connection_id)
                                 .cloned()
                                 .unwrap_or_else(|| item.connection_id[..item.connection_id.len().min(16)].to_string());
+                            let date_display = format_date(&item.business_date);
                             view! {
-                                <TableRow on:click=move |_| open(id.clone(), date.clone())>
+                                <TableRow>
                                     <TableCell>
                                         <TableCellLayout>
-                                            <strong>{format_date(&item.business_date)}</strong>
+                                            <a
+                                                href="#"
+                                                class="table__link"
+                                                on:click=move |e| {
+                                                    e.prevent_default();
+                                                    open(id.clone(), date.clone());
+                                                }
+                                            >
+                                                {date_display}
+                                            </a>
                                         </TableCellLayout>
                                     </TableCell>
                                     <TableCell>
@@ -395,12 +406,12 @@ pub fn WbDayCloseList() -> impl IntoView {
                                         </TableCellLayout>
                                     </TableCell>
                                     <TableCell>
-                                        <TableCellLayout>
+                                        <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                             {format_money(item.result)}
                                         </TableCellLayout>
                                     </TableCell>
                                     <TableCell>
-                                        <TableCellLayout>
+                                        <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                             {format_money(item.margin_diff)}
                                         </TableCellLayout>
                                     </TableCell>

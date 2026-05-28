@@ -215,6 +215,7 @@ pub async fn fetch_marketplace_product(id: &str) -> Result<MarketplaceProductInf
 /// DTO for p907 payment report records linked to this order
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmPaymentReportLinkDto {
+    pub id: String,
     pub record_key: String,
     pub transaction_date: Option<String>,
     pub transaction_type: Option<String>,

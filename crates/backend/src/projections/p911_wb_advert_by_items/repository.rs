@@ -41,6 +41,27 @@ fn conn() -> &'static DatabaseConnection {
     get_connection()
 }
 
+/// Извлекает id документа a026 из p911.registrator_ref (legacy: `a026:{uuid}`).
+pub fn a026_document_id_from_registrator_ref(registrator_ref: &str) -> &str {
+    registrator_ref
+        .strip_prefix("a026:")
+        .unwrap_or(registrator_ref)
+}
+
+/// SQL-фрагмент: p911-строка привязана к существующему a026-документу.
+pub fn sql_a026_document_exists(p_alias: &str) -> String {
+    format!(
+        "EXISTS (
+            SELECT 1 FROM a026_wb_advert_daily a
+            WHERE a.id = CASE
+                WHEN {p_alias}.registrator_ref LIKE 'a026:%'
+                THEN substr({p_alias}.registrator_ref, 6)
+                ELSE {p_alias}.registrator_ref
+            END
+        )"
+    )
+}
+
 pub async fn get_by_id(id: &str) -> Result<Option<Model>> {
     Ok(Entity::find_by_id(id.to_string()).one(conn()).await?)
 }
@@ -97,6 +118,51 @@ pub async fn delete_by_registrator_ref_with_conn<C: ConnectionTrait>(
         .exec(db)
         .await?;
     Ok(result.rows_affected)
+}
+
+/// Удаляет p911-строки a026 за период по кабинету.
+/// Удаляет и legacy-строки с registrator_ref = `a026:{uuid}`.
+pub async fn delete_a026_by_connection_and_date_range_with_conn<C: ConnectionTrait>(
+    db: &C,
+    connection_mp_ref: &str,
+    date_from: &str,
+    date_to: &str,
+    advert_ids: Option<&[i64]>,
+) -> Result<u64> {
+    use sea_orm::Statement;
+
+    let campaign_filter = if let Some(ids) = advert_ids {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let codes: String = ids
+            .iter()
+            .map(|id| format!("'{}'", id))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(" AND wb_advert_campaign_code IN ({codes})")
+    } else {
+        String::new()
+    };
+
+    let sql = format!(
+        "DELETE FROM p911_wb_advert_by_items \
+         WHERE registrator_type = 'a026_wb_advert_daily' \
+           AND connection_mp_ref = ? \
+           AND entry_date >= ? \
+           AND entry_date <= ?{campaign_filter}"
+    );
+    let stmt = Statement::from_sql_and_values(
+        db.get_database_backend(),
+        &sql,
+        vec![
+            sea_orm::Value::String(Some(Box::new(connection_mp_ref.to_string()))),
+            sea_orm::Value::String(Some(Box::new(date_from.to_string()))),
+            sea_orm::Value::String(Some(Box::new(date_to.to_string()))),
+        ],
+    );
+    let result = db.execute(stmt).await?;
+    Ok(result.rows_affected())
 }
 
 pub async fn list_by_registrator_ref(registrator_ref: &str) -> Result<Vec<Model>> {

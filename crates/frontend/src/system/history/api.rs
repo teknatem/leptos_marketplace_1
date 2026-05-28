@@ -23,7 +23,10 @@ pub async fn list_history(limit: Option<u64>) -> Result<Vec<PageHistoryDto>, Str
         .map_err(|e| format!("Failed to fetch page history: {}", e))?;
 
     if !response.ok() {
-        return Err(format!("Failed to fetch page history: {}", response.status()));
+        return Err(format!(
+            "Failed to fetch page history: {}",
+            response.status()
+        ));
     }
 
     response
@@ -46,7 +49,10 @@ pub async fn record(tab_key: &str, title: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to record page history: {}", e))?;
 
     if !response.ok() {
-        return Err(format!("Failed to record page history: {}", response.status()));
+        return Err(format!(
+            "Failed to record page history: {}",
+            response.status()
+        ));
     }
     Ok(())
 }
@@ -59,7 +65,10 @@ pub async fn clear_history() -> Result<(), String> {
         .map_err(|e| format!("Failed to clear page history: {}", e))?;
 
     if !response.ok() {
-        return Err(format!("Failed to clear page history: {}", response.status()));
+        return Err(format!(
+            "Failed to clear page history: {}",
+            response.status()
+        ));
     }
     Ok(())
 }

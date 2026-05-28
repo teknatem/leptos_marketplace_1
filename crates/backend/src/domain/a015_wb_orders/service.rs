@@ -291,23 +291,51 @@ pub async fn fill_dealer_price_with_known_base_ref(document: &mut WbOrders) -> R
     Ok(())
 }
 
-/// Цена продажи из Marketplace API (/api/v3/orders), приведённая к рублям.
-///
-/// WB отдаёт `salePrice` в копейках в сыром payload (`marketplace_raw_payload_ref`).
-/// Для FBS-заказов это аналог `price_with_disc` из Statistics API, но доступный
-/// оперативно (Statistics API отстаёт на 1-3 дня). Возвращает None, если
-/// marketplace-payload отсутствует или в нём нет валидного salePrice.
-async fn marketplace_sale_price_rubles(document: &WbOrders) -> Option<f64> {
-    let raw_ref = document.source_meta.marketplace_raw_payload_ref.as_deref()?;
+/// Дополняет `line.price` из marketplace raw, если в строке ещё нет цены для allocation_basis.
+pub async fn fill_line_price_from_marketplace_raw(order: &mut WbOrders) {
+    if order.line.allocation_basis() > f64::EPSILON {
+        return;
+    }
+    if let Some(price) = marketplace_price_rubles(order).await {
+        order.line.price = Some(price);
+    }
+}
+
+pub async fn update_line_price_if_missing(document_no: &str, price_rub: f64) -> Result<bool> {
+    repository::update_line_price_if_missing(document_no, price_rub).await
+}
+
+async fn marketplace_raw_json(document: &WbOrders) -> Option<serde_json::Value> {
+    let raw_ref = document
+        .source_meta
+        .marketplace_raw_payload_ref
+        .as_deref()?;
     let raw_json = crate::shared::data::raw_storage::get_by_ref(raw_ref)
         .await
         .unwrap_or_else(|e| {
             tracing::warn!("Failed to load marketplace raw payload {}: {}", raw_ref, e);
             None
         })?;
-    let value: serde_json::Value = serde_json::from_str(&raw_json).ok()?;
-    let sale_price_kopecks = value.get("salePrice").and_then(|v| v.as_f64())?;
-    Some(sale_price_kopecks / 100.0)
+    serde_json::from_str(&raw_json).ok()
+}
+
+fn marketplace_field_rubles(value: &serde_json::Value, field: &str) -> Option<f64> {
+    let kopecks = value.get(field).and_then(|v| v.as_f64())?;
+    if kopecks <= 0.0 {
+        return None;
+    }
+    Some(kopecks / 100.0)
+}
+
+async fn marketplace_price_rubles(document: &WbOrders) -> Option<f64> {
+    let value = marketplace_raw_json(document).await?;
+    marketplace_field_rubles(&value, "price")
+}
+
+/// Цена продажи из Marketplace API (`salePrice` в копейках), рубли.
+async fn marketplace_sale_price_rubles(document: &WbOrders) -> Option<f64> {
+    let value = marketplace_raw_json(document).await?;
+    marketplace_field_rubles(&value, "salePrice")
 }
 
 /// Расчёт плановой маржи margin_pro в процентах.

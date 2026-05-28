@@ -198,9 +198,9 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                         <TableHeaderCell>"Наименование"</TableHeaderCell>
                                         <TableHeaderCell>"Формула (План)"</TableHeaderCell>
                                         <TableHeaderCell>"Формула (Факт)"</TableHeaderCell>
-                                        <TableHeaderCell>"План"</TableHeaderCell>
-                                        <TableHeaderCell>"Факт"</TableHeaderCell>
-                                        <TableHeaderCell>"Разница"</TableHeaderCell>
+                                        <TableHeaderCell attr:style="text-align: right;">"План"</TableHeaderCell>
+                                        <TableHeaderCell attr:style="text-align: right;">"Факт"</TableHeaderCell>
+                                        <TableHeaderCell attr:style="text-align: right;">"Разница"</TableHeaderCell>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -213,9 +213,9 @@ pub fn PlanFactTab(vm: WbSalesDetailsVm) -> impl IntoView {
                                                     <TableCell><TableCellLayout><strong>{name}</strong></TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout><code>{formula_plan}</code></TableCellLayout></TableCell>
                                                     <TableCell><TableCellLayout><code>{formula_fact}</code></TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{plan}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{fact}</TableCellLayout></TableCell>
-                                                    <TableCell><TableCellLayout>{diff}</TableCellLayout></TableCell>
+                                                    <TableCell attr:style="text-align: right;"><TableCellLayout>{plan}</TableCellLayout></TableCell>
+                                                    <TableCell attr:style="text-align: right;"><TableCellLayout>{fact}</TableCellLayout></TableCell>
+                                                    <TableCell attr:style="text-align: right;"><TableCellLayout>{diff}</TableCellLayout></TableCell>
                                                 </TableRow>
                                             }
                                         }

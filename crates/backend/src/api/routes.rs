@@ -1005,6 +1005,10 @@ fn a033_routes() -> Router {
             get(handlers::a033_wb_day_close::get_by_id),
         )
         .route(
+            "/api/a033/wb-day-close/:id/advert-live",
+            get(handlers::a033_wb_day_close::advert_live),
+        )
+        .route(
             "/api/a033/wb-day-close/:id/recalculate",
             post(handlers::a033_wb_day_close::recalculate),
         )
@@ -1482,7 +1486,17 @@ fn p907_routes() -> Router {
             get(handlers::p907_ym_payment_report::list_reports),
         )
         .route(
-            "/api/p907/payment-report/:record_key",
+            "/api/p907/payment-report/filter-options",
+            get(handlers::p907_ym_payment_report::filter_options),
+        )
+        // Migrate SYNTH_... record_keys to ymid_... format (idempotent).
+        .route(
+            "/api/p907/payment-report/migrate-keys",
+            post(handlers::p907_ym_payment_report::migrate_keys),
+        )
+        // Get single record by internal UUID (id column).
+        .route(
+            "/api/p907/payment-report/:id",
             get(handlers::p907_ym_payment_report::get_report),
         )
         .layer(middleware::from_fn(

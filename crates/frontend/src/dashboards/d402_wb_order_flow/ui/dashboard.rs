@@ -768,7 +768,10 @@ fn render_timeline(events: Vec<TimelineEvent>, ctx: AppGlobalContext) -> AnyView
 // ─────────────────────────────────────────────────────────────────────
 
 #[component]
-pub fn WbOrderFlowDashboard(#[prop(optional, into)] initial_srid: Option<String>) -> impl IntoView {
+pub fn WbOrderFlowDashboard(
+    #[prop(optional, into)] initial_srid: Option<String>,
+    #[prop(optional)] on_close: Option<Callback<()>>,
+) -> impl IntoView {
     let (srid_input, set_srid_input) = signal(initial_srid.clone().unwrap_or_default());
     let (flow_data, set_flow_data) = signal(None::<WbOrderFlowResponse>);
     let (loading, set_loading) = signal(false);
@@ -812,28 +815,17 @@ pub fn WbOrderFlowDashboard(#[prop(optional, into)] initial_srid: Option<String>
         }
     };
 
-    // Заголовок: имя товара + srid (если загружены данные)
-    let dyn_subtitle = move || {
-        flow_data.get().map(|d| {
-            let s = d.srid.clone();
-            let chunk: String = s.chars().take(40).collect();
-            format!("· srid {chunk}")
-        })
-    };
-
     view! {
         <PageFrame page_id="d402_wb_order_flow" category="dashboard">
             // Полноценный заголовок страницы
-            <div class="page__header">
+            <div class="page__header"
+                 style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;">
                 <div class="page__header-left">
                     <span class="page__icon">{icon("activity")}</span>
                     <h1 class="page__title">{"Схема заказа WB"}</h1>
-                    {move || dyn_subtitle().map(|s| view! {
-                        <span class="page__subtitle"
-                              style="font-family: ui-monospace, monospace;">{s}</span>
-                    })}
                 </div>
-                <div class="page__header-right">
+                // Центр: поле srid + кнопка Обновить
+                <div style="display: flex; align-items: center; gap: 8px;">
                     <input
                         type="text"
                         placeholder="srid / document_no"
@@ -841,7 +833,8 @@ pub fn WbOrderFlowDashboard(#[prop(optional, into)] initial_srid: Option<String>
                             padding: 6px 12px;
                             background: {SURFACE}; border: 1px solid {BORDER_STRONG};
                             border-radius: 6px; color: {T_PRIMARY}; font-size: 13px;
-                            outline: none; min-width: 280px;
+                            outline: none; width: 60ch;
+                            font-family: ui-monospace, monospace;
                         ")
                         prop:value=srid_input
                         on:input=move |ev| set_srid_input.set(event_target_value(&ev))
@@ -853,8 +846,23 @@ pub fn WbOrderFlowDashboard(#[prop(optional, into)] initial_srid: Option<String>
                         on_click=move |_| on_search.run(())
                         disabled=Signal::derive(move || loading.get())
                     >
-                        {move || if loading.get() { "Загрузка…" } else { "Показать" }}
+                        {move || if loading.get() { "Загрузка…" } else { "Обновить" }}
                     </Button>
+                </div>
+                // Справа: кнопка Закрыть
+                <div class="page__header-right" style="justify-content: flex-end;">
+                    {on_close.map(|cb| view! {
+                        <Button
+                            appearance=ButtonAppearance::Subtle
+                            size=ButtonSize::Medium
+                            on_click=move |_| cb.run(())
+                        >
+                            <span class="page-action-button__content">
+                                <span class="page-action-button__icon page-action-button__icon--close">{icon("x")}</span>
+                                <span class="page-action-button__text">"Закрыть"</span>
+                            </span>
+                        </Button>
+                    })}
                 </div>
             </div>
 

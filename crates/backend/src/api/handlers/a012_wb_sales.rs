@@ -703,10 +703,27 @@ pub async fn get_projections(
             tracing::error!("Failed to get p904 projections: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
+
+    let p913_items =
+        crate::projections::p913_wb_advert_order_attr::repository::list_by_registrator(
+            "a012_wb_sales",
+            &id,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p913 projections for a012 {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let p913_expense: Vec<_> = p913_items
+        .into_iter()
+        .filter(|row| row.turnover_code == "advert_clicks_order_expense")
+        .collect();
+
     // Объединяем результаты
     let result = serde_json::json!({
         "p900_sales_register": p900_items,
         "p904_sales_data": p904_items,
+        "p913_wb_advert_order_attr": p913_expense,
     });
 
     Ok(Json(result))

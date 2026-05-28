@@ -194,26 +194,47 @@ async fn replace_for_period_scoped(
     for id in &existing_ids {
         let registrator_ref = id.clone();
         let projection_ref = projection_registrator_ref(id);
-        crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
-            &txn,
-            "a026_wb_advert_daily",
-            &registrator_ref,
-        )
-        .await?;
+        // Legacy p911 rows could use `a026:{id}` registrator_ref outside date-scoped bulk delete.
         crate::projections::p911_wb_advert_by_items::repository::delete_by_registrator_ref_with_conn(
             &txn,
             &projection_ref,
         )
         .await?;
-        crate::projections::p911_wb_advert_by_items::repository::delete_by_registrator_ref_with_conn(
+        let _ = registrator_ref;
+    }
+
+    let advert_scope_slice = advert_ids;
+    crate::projections::p913_wb_advert_order_attr::repository::delete_a026_by_connection_and_date_range_with_conn(
+        &txn,
+        connection_id,
+        date_from,
+        date_to,
+        advert_scope_slice,
+    )
+    .await?;
+    crate::projections::p911_wb_advert_by_items::repository::delete_a026_by_connection_and_date_range_with_conn(
+        &txn,
+        connection_id,
+        date_from,
+        date_to,
+        advert_scope_slice,
+    )
+    .await?;
+    if advert_scope.is_some() {
+        for id in &existing_ids {
+            crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
+                &txn,
+                "a026_wb_advert_daily",
+                id,
+            )
+            .await?;
+        }
+    } else {
+        crate::projections::general_ledger::repository::delete_a026_by_connection_and_date_range_with_conn(
             &txn,
-            id,
-        )
-        .await?;
-        crate::projections::p913_wb_advert_order_attr::repository::delete_by_registrator_with_conn(
-            &txn,
-            "a026_wb_advert_daily",
-            &registrator_ref,
+            connection_id,
+            date_from,
+            date_to,
         )
         .await?;
     }
@@ -299,7 +320,13 @@ async fn insert_with_conn<C: ConnectionTrait>(db: &C, document: &WbAdvertDaily) 
 }
 
 pub async fn upsert_document(document: &WbAdvertDaily) -> Result<()> {
-    let db = get_connection();
+    upsert_document_with_conn(get_connection(), document).await
+}
+
+pub async fn upsert_document_with_conn<C: ConnectionTrait>(
+    db: &C,
+    document: &WbAdvertDaily,
+) -> Result<()> {
     let existing = Entity::find_by_id(document.base.id.value().to_string())
         .one(db)
         .await?;
@@ -358,10 +385,69 @@ pub async fn upsert_document(document: &WbAdvertDaily) -> Result<()> {
     Ok(())
 }
 
+/// Обновляет существующий документ; не создаёт новый (защита от гонки с replace_for_period).
+pub async fn update_document_with_conn<C: ConnectionTrait>(
+    db: &C,
+    document: &WbAdvertDaily,
+) -> Result<()> {
+    let id = document.base.id.value().to_string();
+    let existing = Entity::find_by_id(id.clone())
+        .one(db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Document not found for update: {}", id))?;
+
+    let header_json = serde_json::to_string(&document.header)?;
+    let totals_json = serde_json::to_string(&document.totals)?;
+    let unattributed_totals_json = serde_json::to_string(&document.unattributed_totals)?;
+    let lines_json = serde_json::to_string(&document.lines)?;
+    let source_meta_json = serde_json::to_string(&document.source_meta)?;
+    let linked_orders_json = serde_json::to_string(&document.linked_orders)?;
+
+    let active_model = ActiveModel {
+        id: Set(id),
+        code: Set(document.base.code.clone()),
+        description: Set(document.base.description.clone()),
+        comment: Set(document.base.comment.clone()),
+        advert_id: Set(document.header.advert_id),
+        document_no: Set(document.header.document_no.clone()),
+        document_date: Set(document.header.document_date.clone()),
+        connection_id: Set(document.header.connection_id.clone()),
+        organization_id: Set(document.header.organization_id.clone()),
+        marketplace_id: Set(document.header.marketplace_id.clone()),
+        lines_count: Set(document.lines.len() as i32),
+        total_views: Set(document.totals.views),
+        total_clicks: Set(document.totals.clicks),
+        total_orders: Set(document.totals.orders),
+        total_sum: Set(document.totals.sum),
+        total_sum_price: Set(document.totals.sum_price),
+        header_json: Set(header_json),
+        totals_json: Set(totals_json),
+        unattributed_totals_json: Set(unattributed_totals_json),
+        lines_json: Set(lines_json),
+        source_meta_json: Set(source_meta_json),
+        fetched_at: Set(document.source_meta.fetched_at.clone()),
+        is_deleted: Set(document.base.metadata.is_deleted),
+        is_posted: Set(document.base.metadata.is_posted || document.is_posted),
+        has_linked_orders: Set(document.has_linked_orders),
+        linked_orders_count: Set(document.linked_orders_count),
+        linked_orders_json: Set(linked_orders_json),
+        created_at: Set(existing.created_at),
+        updated_at: Set(Some(Utc::now())),
+        version: Set(document.base.metadata.version),
+    };
+
+    active_model.update(db).await?;
+    Ok(())
+}
+
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbAdvertDaily>> {
     let db = get_connection();
     let model = Entity::find_by_id(id.to_string()).one(db).await?;
     Ok(model.map(Into::into))
+}
+
+pub async fn exists_with_conn<C: ConnectionTrait>(db: &C, id: &str) -> Result<bool> {
+    Ok(Entity::find_by_id(id.to_string()).one(db).await?.is_some())
 }
 
 pub async fn list_ids_by_period(

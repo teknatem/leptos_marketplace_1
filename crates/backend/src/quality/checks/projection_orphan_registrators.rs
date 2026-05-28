@@ -97,10 +97,12 @@ async fn load_orphan_groups(table: &str) -> anyhow::Result<Vec<NipRegistratorGro
         let registrator_type: String = row.try_get("", "registrator_type").unwrap_or_default();
         let registrator_ref: String = row.try_get("", "registrator_ref").unwrap_or_default();
 
-        let source_exists =
-            super::registrator_registry::source_document_exists(&registrator_type, &registrator_ref)
-                .await
-                .unwrap_or(false);
+        let source_exists = super::registrator_registry::source_document_exists(
+            &registrator_type,
+            &registrator_ref,
+        )
+        .await
+        .unwrap_or(false);
         if source_exists {
             continue;
         }

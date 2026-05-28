@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::repository::Model;
 use crate::projections::p906_nomenclature_prices;
+use crate::shared::marketplaces::wildberries::datetime::wb_business_date_str;
 
 /// Константа эквайринга ПРОДАЖИ (1.9%)
 const WB_ACQUIRING_RATE: f64 = 0.019;
@@ -120,7 +121,7 @@ pub async fn from_wb_sales_lines(document: &WbSales, document_id: &str) -> Resul
         id,
         registrator_ref: document_id.to_string(),
         registrator_type: "WB_Sales".to_string(),
-        date: document.state.sale_dt.to_rfc3339(),
+        date: wb_business_date_str(&document.state.sale_dt),
         connection_mp_ref: document.header.connection_id.clone(),
         nomenclature_ref: document.nomenclature_ref.clone().unwrap_or_default(),
         marketplace_product_ref: document.marketplace_product_ref.clone().unwrap_or_default(),

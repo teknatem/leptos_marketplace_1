@@ -9,6 +9,7 @@ use super::repository::Model;
 use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::shared::analytics::normalization::opt_nonzero;
 use crate::shared::analytics::turnover_registry::get_turnover_class;
+use crate::shared::marketplaces::wildberries::datetime::wb_business_date_str;
 
 const ORDER_REGISTRATOR_TYPE: &str = "a015_wb_orders";
 const OPER_REGISTRATOR_TYPE: &str = "a012_wb_sales";
@@ -24,7 +25,7 @@ fn now_str() -> String {
 }
 
 fn business_date_from_datetime(value: chrono::DateTime<Utc>) -> String {
-    value.format("%Y-%m-%d").to_string()
+    wb_business_date_str(&value)
 }
 
 fn normalize_business_date_str(value: &str) -> String {

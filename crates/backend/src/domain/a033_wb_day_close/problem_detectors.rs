@@ -97,6 +97,15 @@ pub const PROBLEM_DETECTORS: &[ProblemDetectorDef] = &[
                       и суммам. Строка помечена как «Прочее». \
                       Возможно, WB добавил новый тип операции.",
     },
+    ProblemDetectorDef {
+        code: "a012_sale_date_mismatch_fin_report",
+        name: "Дата a012 ≠ дата fin report",
+        severity: ProblemSeverity::Warn,
+        explanation: "Дата реализации a012_wb_sales (sale_date) не совпадает с датой строки \
+                      fin report (p903.rr_dt), при этом одна из дат равна дате закрытия. \
+                      Реклама advert_clicks_order_expense проводится в GL по MSK business date (wb_business_date от sale_dt), \
+                      а строки закрытия дня берут p903 по rr_dt — возможна рассинхронизация с GL.",
+    },
 ];
 
 /// Найти описание детектора по коду.
@@ -126,6 +135,7 @@ pub fn make_problem(
         srid,
         nomenclature_ref,
         a012_ids,
+        a012_advert_expense: None,
         message,
     }
 }

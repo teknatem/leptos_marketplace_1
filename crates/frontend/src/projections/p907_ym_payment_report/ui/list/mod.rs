@@ -1,14 +1,15 @@
 mod state;
 
 use crate::layout::global_context::AppGlobalContext;
-use crate::shared::components::date_range_picker::DateRangePicker;
+use crate::shared::components::date_range_picker::{DateRangePicker, DateRangePickerFormat};
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::TableCellMoney;
 use crate::shared::components::ui::badge::Badge as UiBadge;
+use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator};
 use crate::shared::page_frame::PageFrame;
 use contracts::projections::p907_ym_payment_report::dto::{
-    YmPaymentReportDto, YmPaymentReportListResponse,
+    YmPaymentReportDto, YmPaymentReportFilterOptionsResponse, YmPaymentReportListResponse,
 };
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -59,6 +60,51 @@ async fn fetch_connections() -> Result<Vec<(String, String)>, String> {
     Ok(result)
 }
 
+async fn fetch_filter_options(
+    date_from: &str,
+    date_to: &str,
+    connection_mp_ref: &str,
+) -> Result<YmPaymentReportFilterOptionsResponse, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let mut params = format!(
+        "date_from={}&date_to={}",
+        urlencoding::encode(date_from),
+        urlencoding::encode(date_to)
+    );
+    if !connection_mp_ref.is_empty() {
+        params += &format!(
+            "&connection_mp_ref={}",
+            urlencoding::encode(connection_mp_ref)
+        );
+    }
+
+    let url = format!("/api/p907/payment-report/filter-options?{}", params);
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Accept", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let text = JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+
+    serde_json::from_str::<YmPaymentReportFilterOptionsResponse>(&text).map_err(|e| format!("{e}"))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn fetch_payment_report(
     limit: usize,
@@ -67,7 +113,9 @@ async fn fetch_payment_report(
     date_to: &str,
     transaction_type: &str,
     payment_status: &str,
+    transaction_source: &str,
     shop_sku: &str,
+    order_id: &str,
     connection_mp_ref: &str,
     sort_by: &str,
     sort_desc: bool,
@@ -92,8 +140,17 @@ async fn fetch_payment_report(
     if !payment_status.is_empty() {
         params += &format!("&payment_status={}", urlencoding::encode(payment_status));
     }
+    if !transaction_source.is_empty() {
+        params += &format!(
+            "&transaction_source={}",
+            urlencoding::encode(transaction_source)
+        );
+    }
     if !shop_sku.is_empty() {
         params += &format!("&shop_sku={}", urlencoding::encode(shop_sku));
+    }
+    if !order_id.is_empty() {
+        params += &format!("&order_id={}", urlencoding::encode(order_id));
     }
     if !connection_mp_ref.is_empty() {
         params += &format!(
@@ -142,6 +199,41 @@ fn fmt_date(s: &str) -> String {
     s.to_string()
 }
 
+async fn call_migrate_keys() -> Result<String, String> {
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let request =
+        Request::new_with_str_and_init("/api/p907/payment-report/migrate-keys", &opts)
+            .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+
+    let text = JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}: {}", resp.status(), text));
+    }
+
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("parse error: {e}"))?;
+    Ok(json
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("OK")
+        .to_string())
+}
+
 #[component]
 pub fn YmPaymentReportList() -> impl IntoView {
     let state = create_state();
@@ -152,14 +244,26 @@ pub fn YmPaymentReportList() -> impl IntoView {
     let (items, set_items) = signal(Vec::<YmPaymentReportDto>::new());
     let (is_loading, set_is_loading) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let (migrate_msg, set_migrate_msg) = signal(Option::<String>::None);
     let (connections, set_connections) = signal(Vec::<(String, String)>::new());
+    let (filter_options, set_filter_options) = signal(YmPaymentReportFilterOptionsResponse {
+        transaction_types: Vec::new(),
+        payment_statuses: Vec::new(),
+        transaction_sources: Vec::new(),
+    });
     let (is_filter_expanded, set_is_filter_expanded) = signal(true);
+    let (filter_options_revision, set_filter_options_revision) = signal(0u32);
 
     // RwSignals bound to controls
+    let date_from = RwSignal::new(state.get_untracked().date_from.clone());
+    let date_to = RwSignal::new(state.get_untracked().date_to.clone());
     let transaction_type_filter =
         RwSignal::new(state.get_untracked().transaction_type_filter.clone());
     let payment_status_filter = RwSignal::new(state.get_untracked().payment_status_filter.clone());
+    let transaction_source_filter =
+        RwSignal::new(state.get_untracked().transaction_source_filter.clone());
     let shop_sku_filter = RwSignal::new(state.get_untracked().shop_sku_filter.clone());
+    let order_id_filter = RwSignal::new(state.get_untracked().order_id_filter.clone());
     let connection_filter = RwSignal::new(state.get_untracked().connection_filter.clone());
 
     let active_filters_count = Signal::derive(move || {
@@ -174,7 +278,13 @@ pub fn YmPaymentReportList() -> impl IntoView {
         if !s.payment_status_filter.is_empty() {
             count += 1;
         }
+        if !s.transaction_source_filter.is_empty() {
+            count += 1;
+        }
         if !s.shop_sku_filter.is_empty() {
+            count += 1;
+        }
+        if !s.order_id_filter.is_empty() {
             count += 1;
         }
         if !s.connection_filter.is_empty() {
@@ -192,28 +302,6 @@ pub fn YmPaymentReportList() -> impl IntoView {
         });
     });
 
-    // Sync RwSignals → state
-    Effect::new(move |_| {
-        let v = transaction_type_filter.get();
-        state.update(|s| s.transaction_type_filter = v);
-        persist_state(state);
-    });
-    Effect::new(move |_| {
-        let v = payment_status_filter.get();
-        state.update(|s| s.payment_status_filter = v);
-        persist_state(state);
-    });
-    Effect::new(move |_| {
-        let v = shop_sku_filter.get();
-        state.update(|s| s.shop_sku_filter = v);
-        persist_state(state);
-    });
-    Effect::new(move |_| {
-        let v = connection_filter.get();
-        state.update(|s| s.connection_filter = v);
-        persist_state(state);
-    });
-
     let load = move || {
         set_is_loading.set(true);
         set_error.set(None);
@@ -225,7 +313,9 @@ pub fn YmPaymentReportList() -> impl IntoView {
         let date_to_val = st.date_to;
         let tt_val = st.transaction_type_filter;
         let ps_val = st.payment_status_filter;
+        let source_val = st.transaction_source_filter;
         let sku_val = st.shop_sku_filter;
+        let order_id_val = st.order_id_filter;
         let conn_val = st.connection_filter;
         let sort_by_val = st.sort_by;
         let sort_desc = !st.sort_ascending;
@@ -238,7 +328,9 @@ pub fn YmPaymentReportList() -> impl IntoView {
                 &date_to_val,
                 &tt_val,
                 &ps_val,
+                &source_val,
                 &sku_val,
+                &order_id_val,
                 &conn_val,
                 &sort_by_val,
                 sort_desc,
@@ -270,12 +362,100 @@ pub fn YmPaymentReportList() -> impl IntoView {
         });
     };
 
-    // Initial load
+    Effect::new(move |_| {
+        let from = date_from.get();
+        let to = date_to.get();
+        let connection = connection_filter.get();
+        let _revision = filter_options_revision.get();
+
+        leptos::task::spawn_local(async move {
+            let mut filters_changed = false;
+
+            match fetch_filter_options(&from, &to, &connection).await {
+                Ok(options) => {
+                    let selected_type = transaction_type_filter.get_untracked();
+                    let selected_status = payment_status_filter.get_untracked();
+                    let selected_source = transaction_source_filter.get_untracked();
+
+                    if !selected_type.is_empty()
+                        && !options
+                            .transaction_types
+                            .iter()
+                            .any(|value| value == &selected_type)
+                    {
+                        transaction_type_filter.set(String::new());
+                        filters_changed = true;
+                    }
+                    if !selected_status.is_empty()
+                        && !options
+                            .payment_statuses
+                            .iter()
+                            .any(|value| value == &selected_status)
+                    {
+                        payment_status_filter.set(String::new());
+                        filters_changed = true;
+                    }
+                    if !selected_source.is_empty()
+                        && !options
+                            .transaction_sources
+                            .iter()
+                            .any(|value| value == &selected_source)
+                    {
+                        transaction_source_filter.set(String::new());
+                        filters_changed = true;
+                    }
+
+                    set_filter_options.set(options);
+                }
+                Err(e) => {
+                    log!("Failed to fetch YM payment report filter options: {}", e);
+                    set_filter_options.set(YmPaymentReportFilterOptionsResponse {
+                        transaction_types: Vec::new(),
+                        payment_statuses: Vec::new(),
+                        transaction_sources: Vec::new(),
+                    });
+                }
+            }
+
+            if filters_changed {
+                state.update(|s| {
+                    s.transaction_type_filter = transaction_type_filter.get_untracked();
+                    s.payment_status_filter = payment_status_filter.get_untracked();
+                    s.transaction_source_filter = transaction_source_filter.get_untracked();
+                    s.page = 0;
+                });
+                persist_state(state);
+                load();
+            }
+        });
+    });
+
+    // Sync RwSignals → state
+    Effect::new(move |_| {
+        state.update(|s| {
+            s.date_from = date_from.get();
+            s.date_to = date_to.get();
+            s.transaction_type_filter = transaction_type_filter.get();
+            s.payment_status_filter = payment_status_filter.get();
+            s.transaction_source_filter = transaction_source_filter.get();
+            s.shop_sku_filter = shop_sku_filter.get();
+            s.order_id_filter = order_id_filter.get();
+            s.connection_filter = connection_filter.get();
+        });
+        persist_state(state);
+    });
+
+    // Initial load (once per mount)
     Effect::new(move |_| {
         if !state.with_untracked(|s| s.is_loaded) {
             load();
         }
     });
+
+    let refresh = move || {
+        set_filter_options_revision.update(|v| *v = v.wrapping_add(1));
+        load();
+    };
 
     let go_to_page = move |page: usize| {
         state.update(|s| s.page = page);
@@ -306,14 +486,10 @@ pub fn YmPaymentReportList() -> impl IntoView {
         load();
     };
 
-    let open_detail = move |record_key: String, date_str: String| {
-        let tab_key = format!(
-            "p907_ym_payment_report_details_{}",
-            js_sys::encode_uri_component(&record_key)
-                .as_string()
-                .unwrap_or_else(|| record_key.clone())
-        );
-        let tab_title = format!("ЯМ Платёж {}", date_str);
+    let open_detail = move |row_id: String, date_str: String| {
+        // UUID contains only hex digits and hyphens — no URL encoding needed.
+        let tab_key = format!("p907_ym_payment_report_details_{}", row_id);
+        let tab_title = format!("YM Платёж {}", date_str);
         tabs_store.open_tab(&tab_key, &tab_title);
     };
 
@@ -328,12 +504,23 @@ pub fn YmPaymentReportList() -> impl IntoView {
                 </div>
                 <div class="page__header-right">
                     <Button
-                        appearance=ButtonAppearance::Primary
-                        on_click=move |_| load()
-                        disabled=Signal::derive(move || is_loading.get())
+                        appearance=ButtonAppearance::Secondary
+                        on_click=move |_| {
+                            let set_migrate_msg = set_migrate_msg.clone();
+                            leptos::task::spawn_local(async move {
+                                set_migrate_msg.set(Some("Конвертация...".to_string()));
+                                match call_migrate_keys().await {
+                                    Ok(msg) => set_migrate_msg.set(Some(msg)),
+                                    Err(e) => set_migrate_msg.set(Some(format!("Ошибка: {}", e))),
+                                }
+                            });
+                        }
                     >
-                        {move || if is_loading.get() { "Загрузка..." } else { "Обновить" }}
+                        "Конвертировать ключи"
                     </Button>
+                    {move || migrate_msg.get().map(|msg| view! {
+                        <span class="text-muted">{msg}</span>
+                    })}
                 </div>
             </div>
 
@@ -389,17 +576,29 @@ pub fn YmPaymentReportList() -> impl IntoView {
                             />
                         </div>
 
-                        <div class="filter-panel-header__right"></div>
+                        <div class="filter-panel-header__right">
+                            <Button
+                                appearance=ButtonAppearance::Subtle
+                                on_click=move |_| refresh()
+                                disabled=is_loading
+                            >
+                                {icon("refresh")}
+                                {move || if is_loading.get() { "Загрузка..." } else { "Обновить" }}
+                            </Button>
+                        </div>
                     </div>
 
                     <Show when=move || is_filter_expanded.get()>
                         <div class="filter-panel-content">
-                            <Flex gap=FlexGap::Small align=FlexAlign::End>
-                                <div style="min-width: 420px;">
+                            <div class="filter-grid">
+                                <div class="filter-grid__period">
                                     <DateRangePicker
-                                        date_from=Signal::derive(move || state.with(|s| s.date_from.clone()))
-                                        date_to=Signal::derive(move || state.with(|s| s.date_to.clone()))
-                                        on_change=Callback::new(move |(from, to)| {
+                                        date_from=date_from
+                                        date_to=date_to
+                                        display_format=DateRangePickerFormat::Dmy
+                                        on_change=Callback::new(move |(from, to): (String, String)| {
+                                            date_from.set(from.clone());
+                                            date_to.set(to.clone());
                                             state.update(|s| {
                                                 s.date_from = from;
                                                 s.date_to = to;
@@ -408,69 +607,71 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                             persist_state(state);
                                             load();
                                         })
-                                        label="Период (дата транзакции):".to_string()
+                                        label="Период:".to_string()
                                     />
                                 </div>
 
-                                <div style="width: 220px;">
-                                    <Flex vertical=true gap=FlexGap::Small>
-                                        <Label>"Тип транзакции:"</Label>
-                                        <Input
-                                            value=transaction_type_filter
-                                            placeholder="Тип транзакции..."
-                                        />
-                                    </Flex>
-                                </div>
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Тип транзакции:"</Label>
+                                    <Select value=transaction_type_filter>
+                                        <option value="">"— все —"</option>
+                                        {move || filter_options.get().transaction_types.into_iter().map(|value| {
+                                            let label = value.clone();
+                                            view! { <option value={value}>{label}</option> }
+                                        }).collect_view()}
+                                    </Select>
+                                </Flex>
 
-                                <div style="width: 220px;">
-                                    <Flex vertical=true gap=FlexGap::Small>
-                                        <Label>"Статус платежа:"</Label>
-                                        <Input
-                                            value=payment_status_filter
-                                            placeholder="Статус..."
-                                        />
-                                    </Flex>
-                                </div>
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Статус платежа:"</Label>
+                                    <Select value=payment_status_filter>
+                                        <option value="">"— все —"</option>
+                                        {move || filter_options.get().payment_statuses.into_iter().map(|value| {
+                                            let label = value.clone();
+                                            view! { <option value={value}>{label}</option> }
+                                        }).collect_view()}
+                                    </Select>
+                                </Flex>
 
-                                <div style="width: 180px;">
-                                    <Flex vertical=true gap=FlexGap::Small>
-                                        <Label>"SKU:"</Label>
-                                        <Input
-                                            value=shop_sku_filter
-                                            placeholder="Артикул SKU..."
-                                        />
-                                    </Flex>
-                                </div>
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Источник:"</Label>
+                                    <Select value=transaction_source_filter>
+                                        <option value="">"— все —"</option>
+                                        {move || filter_options.get().transaction_sources.into_iter().map(|value| {
+                                            let label = value.clone();
+                                            view! { <option value={value}>{label}</option> }
+                                        }).collect_view()}
+                                    </Select>
+                                </Flex>
 
-                                <div style="width: 220px;">
-                                    <Flex vertical=true gap=FlexGap::Small>
-                                        <Label>"Подключение:"</Label>
-                                        <Select value=connection_filter>
-                                            <option value="">"— все —"</option>
-                                            {move || connections.get().into_iter().map(|(id, name)| {
-                                                view! { <option value={id}>{name}</option> }
-                                            }).collect_view()}
-                                        </Select>
-                                    </Flex>
-                                </div>
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"SKU:"</Label>
+                                    <Input value=shop_sku_filter placeholder="Артикул SKU..." />
+                                </Flex>
 
-                                <div style="width: 120px;">
-                                    <Flex vertical=true gap=FlexGap::Small>
-                                        <Label>" "</Label>
-                                        <Button
-                                            appearance=ButtonAppearance::Primary
-                                            on_click=move |_| {
-                                                state.update(|s| s.page = 0);
-                                                persist_state(state);
-                                                load();
-                                            }
-                                            disabled=Signal::derive(move || is_loading.get())
-                                        >
-                                            {move || if is_loading.get() { "Загрузка..." } else { "Применить" }}
-                                        </Button>
-                                    </Flex>
-                                </div>
-                            </Flex>
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Номер заказа:"</Label>
+                                    <input
+                                        type="number"
+                                        class="form__input"
+                                        placeholder="Order ID..."
+                                        prop:value=move || order_id_filter.get()
+                                        on:input=move |ev| {
+                                            order_id_filter.set(event_target_value(&ev));
+                                        }
+                                    />
+                                </Flex>
+
+                                <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Подключение:"</Label>
+                                    <Select value=connection_filter>
+                                        <option value="">"— все —"</option>
+                                        {move || connections.get().into_iter().map(|(id, name)| {
+                                            view! { <option value={id}>{name}</option> }
+                                        }).collect_view()}
+                                    </Select>
+                                </Flex>
+                            </div>
                         </div>
                     </Show>
                 </div>
@@ -493,7 +694,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     "Дата"
                                     <span class=move || get_sort_class("transaction_date", &state.get().sort_by)
                                         on:click=move |_| toggle_sort("transaction_date")
-                                        style="cursor: pointer;"
+
                                     >
                                         {move || get_sort_indicator("transaction_date", &state.get().sort_by, state.get().sort_ascending)}
                                     </span>
@@ -503,19 +704,17 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     "Тип транзакции"
                                     <span class=move || get_sort_class("transaction_type", &state.get().sort_by)
                                         on:click=move |_| toggle_sort("transaction_type")
-                                        style="cursor: pointer;"
+
                                     >
                                         {move || get_sort_indicator("transaction_type", &state.get().sort_by, state.get().sort_ascending)}
                                     </span>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=true min_width=160.0>"ID транзакции"</TableHeaderCell>
-
                                 <TableHeaderCell resizable=true min_width=100.0>
                                     "Заказ"
                                     <span class=move || get_sort_class("order_id", &state.get().sort_by)
                                         on:click=move |_| toggle_sort("order_id")
-                                        style="cursor: pointer;"
+
                                     >
                                         {move || get_sort_indicator("order_id", &state.get().sort_by, state.get().sort_ascending)}
                                     </span>
@@ -530,7 +729,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     "Сумма"
                                     <span class=move || get_sort_class("transaction_sum", &state.get().sort_by)
                                         on:click=move |_| toggle_sort("transaction_sum")
-                                        style="cursor: pointer;"
+
                                     >
                                         {move || get_sort_indicator("transaction_sum", &state.get().sort_by, state.get().sort_ascending)}
                                     </span>
@@ -540,7 +739,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     "Сумма ПП"
                                     <span class=move || get_sort_class("bank_sum", &state.get().sort_by)
                                         on:click=move |_| toggle_sort("bank_sum")
-                                        style="cursor: pointer;"
+
                                     >
                                         {move || get_sort_indicator("bank_sum", &state.get().sort_by, state.get().sort_ascending)}
                                     </span>
@@ -557,7 +756,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                 if is_loading.get() {
                                     return view! {
                                         <TableRow>
-                                            <TableCell attr:colspan="13">
+                                            <TableCell attr:colspan="12">
                                                 <TableCellLayout>
                                                     "Загрузка..."
                                                 </TableCellLayout>
@@ -569,7 +768,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                 if data.is_empty() {
                                     return view! {
                                         <TableRow>
-                                            <TableCell attr:colspan="13">
+                                            <TableCell attr:colspan="12">
                                                 <TableCellLayout>
                                                     "Нет данных. Выполните импорт через u503 или проверьте фильтры."
                                                 </TableCellLayout>
@@ -583,7 +782,6 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                         .map(fmt_date)
                                         .unwrap_or_default();
                                     let tt = row.transaction_type.clone().unwrap_or_default();
-                                    let tid = row.transaction_id.clone().unwrap_or_default();
                                     let oid = row.order_id.map(|v| v.to_string()).unwrap_or_default();
                                     let order_type = row.order_type.clone().unwrap_or_default();
                                     let sku = row.shop_sku.clone().unwrap_or_default();
@@ -594,7 +792,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     let comments = row.comments.clone().unwrap_or_default();
                                     let ts = row.transaction_sum;
                                     let bs = row.bank_sum;
-                                    let record_key = row.record_key.clone();
+                                    let row_id = row.id.clone();
                                     let date_for_link = date_str.clone();
 
                                     view! {
@@ -603,10 +801,10 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                                 <TableCellLayout truncate=true>
                                                     <a
                                                         href="#"
-                                                        style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
+                                                        class="table__link"
                                                         on:click=move |e| {
                                                             e.prevent_default();
-                                                            open_detail(record_key.clone(), date_for_link.clone());
+                                                            open_detail(row_id.clone(), date_for_link.clone());
                                                         }
                                                     >
                                                         {date_str}
@@ -616,11 +814,6 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                             <TableCell>
                                                 <TableCellLayout truncate=true>
                                                     {tt}
-                                                </TableCellLayout>
-                                            </TableCell>
-                                            <TableCell>
-                                                <TableCellLayout truncate=true>
-                                                    <span style="font-family: monospace; font-size: 0.85em;">{tid}</span>
                                                 </TableCellLayout>
                                             </TableCell>
                                             <TableCell>

@@ -72,8 +72,9 @@ pub fn info() -> QualityCheckInfo {
         code: String::new(),
         id: CHECK_ID.to_string(),
         name: "Заполненность товара маркетплейса".to_string(),
-        description: "Проверяет, что marketplace_product_ref заполнен в активных таблицах маркетплейсов."
-            .to_string(),
+        description:
+            "Проверяет, что marketplace_product_ref заполнен в активных таблицах маркетплейсов."
+                .to_string(),
         category: "Маркетплейсы".to_string(),
     }
 }

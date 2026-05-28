@@ -93,7 +93,11 @@ pub async fn list_all() -> anyhow::Result<Vec<Nomenclature>> {
 /// загружаются соответствующие карточки номенклатуры. Возвращает 0/1/N позиций —
 /// фронтенд обрабатывает их так же, как автоподбор по артикулу.
 pub async fn find_by_barcode(barcode: &str) -> anyhow::Result<Vec<Nomenclature>> {
-    let refs = crate::projections::p901_nomenclature_barcodes::service::find_nomenclature_refs_by_barcode(barcode).await?;
+    let refs =
+        crate::projections::p901_nomenclature_barcodes::service::find_nomenclature_refs_by_barcode(
+            barcode,
+        )
+        .await?;
 
     let mut result = Vec::new();
     for nom_ref in refs {

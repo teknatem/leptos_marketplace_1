@@ -10,6 +10,8 @@ use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
 use uuid::Uuid;
 
+use crate::shared::marketplaces::wildberries::datetime::wb_business_date;
+
 /// Helper функция для получения nomenclature_ref из marketplace_product
 async fn get_nomenclature_ref(marketplace_product_id: Uuid) -> anyhow::Result<Option<String>> {
     if let Some(mp_product) = get_by_id(marketplace_product_id).await? {
@@ -210,7 +212,7 @@ pub async fn from_wb_sales(
     document_id: &str,
 ) -> anyhow::Result<SalesRegisterEntry> {
     let event_time = document.state.sale_dt;
-    let sale_date = event_time.date_naive();
+    let sale_date = wb_business_date(&event_time);
     let marketplace_product_ref = document.marketplace_product_ref.clone();
     let nomenclature_ref = document.nomenclature_ref.clone();
 

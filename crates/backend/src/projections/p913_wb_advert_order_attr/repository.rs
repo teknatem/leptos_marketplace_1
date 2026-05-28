@@ -28,7 +28,7 @@ pub struct Model {
     pub is_problem: bool,
     pub created_at: String,
     pub updated_at: String,
-    /// Сумма заказа (price_with_disc или finished_price), к которой привязан расход на рекламу.
+    /// Сумма заказа (price_with_disc / finished_price / price), к которой привязан расход на рекламу.
     /// Используется для отображения связанной "Реализации" в отчётах.
     #[sea_orm(default_value = 0.0)]
     pub sale_amount: f64,
@@ -93,6 +93,34 @@ pub async fn delete_by_registrator_with_conn<C: ConnectionTrait>(
         .filter(Column::RegistratorRef.eq(registrator_ref))
         .exec(db)
         .await?;
+    Ok(result.rows_affected)
+}
+
+/// Удаляет все p913-строки a026 за период по кабинету.
+/// При `advert_ids = Some` — только кампании из списка (scoped replace).
+/// Удаляет в т.ч. «осиротевшие» строки, чей registrator_ref уже отсутствует в a026.
+pub async fn delete_a026_by_connection_and_date_range_with_conn<C: ConnectionTrait>(
+    db: &C,
+    connection_mp_ref: &str,
+    date_from: &str,
+    date_to: &str,
+    advert_ids: Option<&[i64]>,
+) -> Result<u64> {
+    let mut query = Entity::delete_many()
+        .filter(Column::RegistratorType.eq("a026_wb_advert_daily"))
+        .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
+        .filter(Column::EntryDate.gte(date_from))
+        .filter(Column::EntryDate.lte(date_to));
+
+    if let Some(ids) = advert_ids {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let codes: Vec<String> = ids.iter().map(|id| id.to_string()).collect();
+        query = query.filter(Column::WbAdvertCampaignCode.is_in(codes));
+    }
+
+    let result = query.exec(db).await?;
     Ok(result.rows_affected)
 }
 

@@ -204,7 +204,7 @@ pub async fn fetch_raw_json(raw_payload_ref: &str) -> Result<String, String> {
     serde_json::to_string_pretty(&json_value).map_err(|e| format!("Failed to format JSON: {}", e))
 }
 
-/// Fetch projections for a WB Sales document
+/// Fetch projections for a WB Sales document (p900, p904, p913 expense)
 pub async fn fetch_projections(id: &str) -> Result<serde_json::Value, String> {
     let url = format!("{}/api/a012/wb-sales/{}/projections", api_base(), id);
 
@@ -488,6 +488,25 @@ pub struct AdvertAttributionResponse {
     pub is_customer_return: bool,
     pub totals: AdvertAttributionTotals,
     pub rows: Vec<AdvertAttributionRow>,
+}
+
+#[derive(Deserialize)]
+struct OrderIdDto {
+    pub id: String,
+}
+
+pub async fn resolve_order_uuid_by_srid(srid: &str) -> Option<String> {
+    let url = format!(
+        "{}/api/a015/wb-orders/search-by-srid?srid={}",
+        api_base(),
+        urlencoding::encode(srid)
+    );
+    let response = Request::get(&url).send().await.ok()?;
+    if !response.ok() {
+        return None;
+    }
+    let orders: Vec<OrderIdDto> = response.json().await.ok()?;
+    orders.into_iter().next().map(|o| o.id)
 }
 
 /// Fetch advert attribution for a WB Sales document (расшифровка advert_clicks_order_expense)

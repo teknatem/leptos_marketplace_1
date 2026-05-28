@@ -136,8 +136,8 @@ pub async fn resolve_price_for_nomenclature_with_known_base(
         }));
     }
 
-    let effective_base_ref = known_base_ref
-        .filter(|r| !r.is_empty() && *r != ZERO_UUID && *r != nomenclature_ref);
+    let effective_base_ref =
+        known_base_ref.filter(|r| !r.is_empty() && *r != ZERO_UUID && *r != nomenclature_ref);
 
     if let Some(base_ref) = effective_base_ref {
         if let Some(price) = get_positive_price_for_date(base_ref, target_date).await? {

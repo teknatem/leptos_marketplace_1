@@ -61,17 +61,18 @@ pub fn QualityCheckList() -> impl IntoView {
         spawn_local(async move {
             let url = format!("{}/api/quality/checks", api_base());
             match Request::get(&url).send().await {
-                Ok(resp) if resp.status() == 200 => match resp.json::<Vec<QualityCheckInfo>>().await
-                {
-                    Ok(data) => {
-                        set_checks.set(data);
-                        set_loading.set(false);
+                Ok(resp) if resp.status() == 200 => {
+                    match resp.json::<Vec<QualityCheckInfo>>().await {
+                        Ok(data) => {
+                            set_checks.set(data);
+                            set_loading.set(false);
+                        }
+                        Err(e) => {
+                            set_load_error.set(Some(format!("Ошибка разбора: {e}")));
+                            set_loading.set(false);
+                        }
                     }
-                    Err(e) => {
-                        set_load_error.set(Some(format!("Ошибка разбора: {e}")));
-                        set_loading.set(false);
-                    }
-                },
+                }
                 Ok(resp) => {
                     set_load_error.set(Some(format!("HTTP {}", resp.status())));
                     set_loading.set(false);
@@ -97,7 +98,9 @@ pub fn QualityCheckList() -> impl IntoView {
         spawn_local(async move {
             let url = format!("{}/api/quality/checks/{}/run", api_base(), check_id);
             let res: Result<CheckResult, String> = match Request::post(&url).send().await {
-                Ok(r) if r.status() == 200 => r.json::<CheckResult>().await.map_err(|e| e.to_string()),
+                Ok(r) if r.status() == 200 => {
+                    r.json::<CheckResult>().await.map_err(|e| e.to_string())
+                }
                 Ok(r) => Err(format!("HTTP {}", r.status())),
                 Err(e) => Err(e.to_string()),
             };

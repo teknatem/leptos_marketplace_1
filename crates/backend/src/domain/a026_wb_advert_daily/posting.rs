@@ -14,6 +14,7 @@ use super::repository;
 use crate::domain::a015_wb_orders;
 use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::general_ledger::turnover_registry::get_turnover_class;
+use crate::shared::analytics::normalization::is_significant_amount;
 use crate::shared::data::db::get_connection;
 
 const REGISTRATOR_TYPE: &str = "a026_wb_advert_daily";
@@ -89,14 +90,6 @@ fn to_general_ledger_entry_direct(
 /// Округление до копейки (2 знака после запятой).
 fn round_kopeyka(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
-}
-
-fn order_allocation_basis(order: &WbOrders) -> f64 {
-    allocation_basis(order.line.price_with_disc, order.line.finished_price)
-}
-
-fn allocation_basis(price_with_disc: Option<f64>, finished_price: Option<f64>) -> f64 {
-    price_with_disc.or(finished_price).unwrap_or(0.0)
 }
 
 fn allocate_costs(total_cost: f64, basis_flat: &[f64]) -> (Vec<f64>, f64, usize) {
@@ -257,6 +250,12 @@ async fn build_linked_orders(
         ));
     }
 
+    for (_, _, _, _, raw) in &mut raw_per_nm {
+        for order in raw.iter_mut() {
+            a015_wb_orders::service::fill_line_price_from_marketplace_raw(order).await;
+        }
+    }
+
     // ── Phase 3: sort candidates by existing attribution (excluding self) ─────
     // Записи текущего документа исключаем — они будут удалены при перепроведении
     // и не должны искусственно повышать «накопленную нагрузку» его заказов.
@@ -315,7 +314,8 @@ async fn build_linked_orders(
     // allocation would leave part of the reported orders without reserve.
     let basis_flat: Vec<f64> = per_line
         .iter()
-        .flat_map(|(_, _, _, _, selected, _)| selected.iter().map(order_allocation_basis))
+        .flat_map(|(_, _, _, _, selected, _)| selected.iter())
+        .map(|order| order.line.allocation_basis())
         .collect();
     let (alloc_flat, total_basis, n_with_price) = allocate_costs(document.totals.sum, &basis_flat);
 
@@ -325,43 +325,24 @@ async fn build_linked_orders(
 
     for (nm_id, nm_name, line_nomenclature_ref, wb_reported_orders, selected, extras) in per_line {
         let n = selected.len();
+        let mut found_orders: Vec<WbAdvertFoundOrder> = Vec::new();
 
-        let mut found_orders: Vec<WbAdvertFoundOrder> = selected
-            .iter()
-            .enumerate()
-            .map(|(i, order)| {
-                let current_index = flat_index + i;
-                let basis = basis_flat[current_index];
-                let allocated_cost = alloc_flat[current_index];
-                let is_allocated = allocated_cost.abs() > f64::EPSILON;
-                // allocation_ratio — доля цены этого заказа в ГЛОБАЛЬНОМ basis.
-                let allocation_ratio = if is_allocated && total_basis > f64::EPSILON {
-                    basis / total_basis
-                } else if is_allocated && n_with_price > 0 {
-                    1.0 / n_with_price as f64
-                } else {
-                    0.0
-                };
-                WbAdvertFoundOrder {
-                    order_key: order.header.document_no.clone(),
-                    order_id: Some(order.base.id.as_string()),
-                    order_date: Some(order.state.order_dt.format("%Y-%m-%d").to_string()),
-                    nomenclature_ref: order
-                        .nomenclature_ref
-                        .clone()
-                        .or_else(|| line_nomenclature_ref.clone()),
-                    finished_price: order.line.finished_price,
-                    is_cancel: order.state.is_cancel,
-                    allocation_basis: basis,
-                    is_allocated,
-                    allocation_ratio,
-                    allocated_cost,
-                }
-            })
-            .collect();
-
-        // Лишние (за пределами N): видны в UI, расход не выделяется.
-        for order in &extras {
+        for (i, order) in selected.iter().enumerate() {
+            let current_index = flat_index + i;
+            let basis = basis_flat[current_index];
+            let allocated_cost = alloc_flat[current_index];
+            if !is_significant_amount(allocated_cost) {
+                continue;
+            }
+            let is_allocated = true;
+            // allocation_ratio — доля цены этого заказа в ГЛОБАЛЬНОМ basis.
+            let allocation_ratio = if total_basis > f64::EPSILON {
+                basis / total_basis
+            } else if n_with_price > 0 {
+                1.0 / n_with_price as f64
+            } else {
+                0.0
+            };
             found_orders.push(WbAdvertFoundOrder {
                 order_key: order.header.document_no.clone(),
                 order_id: Some(order.base.id.as_string()),
@@ -372,16 +353,56 @@ async fn build_linked_orders(
                     .or_else(|| line_nomenclature_ref.clone()),
                 finished_price: order.line.finished_price,
                 is_cancel: order.state.is_cancel,
-                allocation_basis: order_allocation_basis(order),
+                allocation_basis: basis,
+                is_allocated,
+                allocation_ratio,
+                allocated_cost,
+            });
+        }
+
+        // Лишние (за пределами N): видны в UI, расход не выделяется.
+        for order in &extras {
+            let basis = order.line.allocation_basis();
+            found_orders.push(WbAdvertFoundOrder {
+                order_key: order.header.document_no.clone(),
+                order_id: Some(order.base.id.as_string()),
+                order_date: Some(order.state.order_dt.format("%Y-%m-%d").to_string()),
+                nomenclature_ref: order
+                    .nomenclature_ref
+                    .clone()
+                    .or_else(|| line_nomenclature_ref.clone()),
+                finished_price: order.line.finished_price,
+                is_cancel: order.state.is_cancel,
+                allocation_basis: basis,
                 is_allocated: false,
                 allocation_ratio: 0.0,
                 allocated_cost: 0.0,
             });
         }
 
-        let wb_advert_sum: f64 = alloc_flat[flat_index..flat_index + n].iter().copied().sum();
+        let wb_advert_sum: f64 = found_orders
+            .iter()
+            .filter(|order| order.is_allocated)
+            .map(|order| order.allocated_cost)
+            .sum();
         flat_index += n;
-        total_found += n as i64;
+
+        // Строки без заказов по WB не показываем. Позиции с orders>0 сохраняем даже без
+        // кандидатов a015 — в UI видна «дыра» между метрикой WB и фактом в a015.
+        if wb_reported_orders <= 0 {
+            continue;
+        }
+
+        total_found += found_orders
+            .iter()
+            .filter(|order| order.is_allocated)
+            .count() as i64;
+
+        let wb_advert_sum = if is_significant_amount(wb_advert_sum) {
+            round_kopeyka(wb_advert_sum)
+        } else {
+            0.0
+        };
 
         groups.push(WbAdvertLinkedOrdersByNm {
             nm_id,
@@ -439,18 +460,19 @@ async fn ensure_marketplace_products(
             continue;
         }
 
-        let product_ref = crate::domain::a007_marketplace_product::service::find_or_create_for_advert(
-            crate::domain::a007_marketplace_product::service::AdvertProductParams {
-                connection_mp_ref: document.header.connection_id.clone(),
-                marketplace_ref: document.header.marketplace_id.clone(),
-                nm_id: line.nm_id,
-                nm_name: line.nm_name.clone(),
-                document_no: document.header.document_no.clone(),
-                document_id: document_id.to_string(),
-                document_date: document.header.document_date.clone(),
-            },
-        )
-        .await?;
+        let product_ref =
+            crate::domain::a007_marketplace_product::service::find_or_create_for_advert(
+                crate::domain::a007_marketplace_product::service::AdvertProductParams {
+                    connection_mp_ref: document.header.connection_id.clone(),
+                    marketplace_ref: document.header.marketplace_id.clone(),
+                    nm_id: line.nm_id,
+                    nm_name: line.nm_name.clone(),
+                    document_no: document.header.document_no.clone(),
+                    document_id: document_id.to_string(),
+                    document_date: document.header.document_date.clone(),
+                },
+            )
+            .await?;
 
         refs.insert(line.nm_id, product_ref);
     }
@@ -467,13 +489,12 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     let product_refs = ensure_marketplace_products(&document, id).await?;
     let (total_found, linked_orders) = build_linked_orders(&document, id).await?;
     document.linked_orders_count = total_found;
-    document.has_linked_orders = total_found > 0;
+    document.has_linked_orders = linked_orders.iter().any(|g| g.wb_reported_orders > 0);
     document.linked_orders = linked_orders;
 
     document.is_posted = true;
     document.base.metadata.is_posted = true;
     document.before_write();
-    repository::upsert_document(&document).await?;
 
     tracing::info!(
         "a026 post_document: linked orders found={} refreshed_lines={} for document_id={}",
@@ -535,6 +556,17 @@ pub async fn post_document(id: Uuid) -> Result<()> {
 
     let db = get_connection();
     let txn = db.begin().await?;
+
+    // Документ мог быть удалён replace_for_period, пока считалась атрибуция.
+    if !repository::exists_with_conn(&txn, &registrator_ref).await? {
+        txn.rollback().await?;
+        anyhow::bail!(
+            "Document {} was removed during posting preparation; projections were not written",
+            id
+        );
+    }
+
+    repository::update_document_with_conn(&txn, &document).await?;
 
     crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
         &txn,
@@ -629,13 +661,43 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{allocate_costs, allocation_basis};
+    use super::allocate_costs;
+    use contracts::domain::a015_wb_orders::aggregate::WbOrdersLine;
 
     #[test]
-    fn allocation_basis_prefers_price_with_disc() {
-        assert_eq!(allocation_basis(Some(80.0), Some(100.0)), 80.0);
-        assert_eq!(allocation_basis(None, Some(100.0)), 100.0);
-        assert_eq!(allocation_basis(None, None), 0.0);
+    fn allocation_basis_chain_price_with_disc_finished_price_price() {
+        let line = |pwd, fp, p, tp| WbOrdersLine {
+            line_id: "1".into(),
+            supplier_article: String::new(),
+            nm_id: 0,
+            barcode: String::new(),
+            category: None,
+            subject: None,
+            brand: None,
+            tech_size: None,
+            qty: 1.0,
+            total_price: tp,
+            discount_percent: None,
+            spp: None,
+            finished_price: fp,
+            price_with_disc: pwd,
+            price: p,
+            dealer_price_ut: None,
+            margin_pro: None,
+        };
+        assert_eq!(
+            line(Some(80.0), Some(100.0), Some(70.0), Some(90.0)).allocation_basis(),
+            80.0
+        );
+        assert_eq!(
+            line(None, Some(100.0), Some(70.0), Some(90.0)).allocation_basis(),
+            100.0
+        );
+        assert_eq!(
+            line(None, None, Some(70.0), Some(90.0)).allocation_basis(),
+            70.0
+        );
+        assert_eq!(line(None, None, None, Some(90.0)).allocation_basis(), 90.0);
     }
 
     #[test]
@@ -663,5 +725,28 @@ mod tests {
         assert_eq!(total_basis, 55639.0);
         assert_eq!(count, 2);
         assert_eq!(allocated, vec![359.2, 1102.25]);
+    }
+}
+
+#[cfg(test)]
+mod stable_id_tests {
+    use super::*;
+    use contracts::domain::a026_wb_advert_daily::aggregate::{
+        WbAdvertDailyHeader, WbAdvertDailyId,
+    };
+
+    #[test]
+    fn stable_document_id_is_deterministic() {
+        let header = WbAdvertDailyHeader {
+            document_no: "WB-ADV-123-2026-05-17".to_string(),
+            document_date: "2026-05-17".to_string(),
+            advert_id: 123,
+            connection_id: "conn-1".to_string(),
+            organization_id: "org-1".to_string(),
+            marketplace_id: "mp-1".to_string(),
+        };
+        let a = WbAdvertDailyId::stable_for_header(&header);
+        let b = WbAdvertDailyId::stable_for_header(&header);
+        assert_eq!(a.value(), b.value());
     }
 }

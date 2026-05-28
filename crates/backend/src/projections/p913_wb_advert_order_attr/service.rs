@@ -3,6 +3,7 @@ use contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDaily;
 use uuid::Uuid;
 
 use super::repository::Model;
+use crate::shared::analytics::normalization::is_significant_amount;
 
 const REGISTRATOR_TYPE_A026: &str = "a026_wb_advert_daily";
 const REGISTRATOR_TYPE_A012: &str = "a012_wb_sales";
@@ -34,12 +35,12 @@ pub fn build_reserve_entries(
         let allocated_orders: Vec<_> = group
             .found_orders
             .iter()
-            .filter(|o| o.is_allocated && o.allocated_cost > f64::EPSILON)
+            .filter(|o| o.is_allocated && is_significant_amount(o.allocated_cost))
             .collect();
 
         if allocated_orders.is_empty() {
             // Нет атрибутированных заказов, но расход есть → строка-проблема.
-            if group.wb_advert_sum > f64::EPSILON {
+            if is_significant_amount(group.wb_advert_sum) {
                 let timestamp = now_str();
                 result.push(Model {
                     id: Uuid::new_v4().to_string(),
@@ -62,13 +63,8 @@ pub fn build_reserve_entries(
         } else {
             for order in allocated_orders {
                 let timestamp = now_str();
-                // Сумма заказа: allocation_basis (price_with_disc или finished_price).
-                // Если allocation_basis = 0 (редкий случай WB без цен), пробуем finished_price напрямую.
-                let order_sale_amount = if order.allocation_basis > f64::EPSILON {
-                    order.allocation_basis
-                } else {
-                    order.finished_price.unwrap_or(0.0)
-                };
+                // Сумма заказа: allocation_basis (price_with_disc / finished_price / price).
+                let order_sale_amount = order.allocation_basis;
                 result.push(Model {
                     id: Uuid::new_v4().to_string(),
                     connection_mp_ref: document.header.connection_id.clone(),
@@ -100,11 +96,13 @@ pub fn build_reserve_entries(
 /// `reserve_rows` — соответствующие reserve-строки из p913.
 /// `sale_finished_price` — finished_price из a012 (сумма реализации, к которой привязан расход).
 /// `general_ledger_ref` — id GL-проводки advert_clicks_order_expense, к которой привязываются все expense-строки.
+/// `sale_entry_date` — MSK business date реализации (wb_business_date из sale_dt a012); совпадает с GL entry_date.
 pub fn build_expense_entries(
     sale_doc_id: Uuid,
     order_key: &str,
     reserve_rows: &[Model],
     sale_finished_price: f64,
+    sale_entry_date: &str,
     general_ledger_ref: &str,
 ) -> Vec<Model> {
     let mut result = Vec::new();
@@ -139,7 +137,7 @@ pub fn build_expense_entries(
         result.push(Model {
             id: Uuid::new_v4().to_string(),
             connection_mp_ref: reserve.connection_mp_ref.clone(),
-            entry_date: reserve.entry_date.clone(),
+            entry_date: sale_entry_date.to_string(),
             turnover_code: TURNOVER_EXPENSE.to_string(),
             amount: reserve.amount,
             nomenclature_ref: reserve.nomenclature_ref.clone(),

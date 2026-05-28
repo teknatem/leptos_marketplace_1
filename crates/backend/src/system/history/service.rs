@@ -8,7 +8,9 @@ use uuid::Uuid;
 use super::repository;
 
 pub async fn list_recent(user_id: &str, limit: Option<u64>) -> Result<Vec<PageHistoryDto>> {
-    let limit = limit.unwrap_or(PAGE_HISTORY_DEFAULT_LIMIT).clamp(1, PAGE_HISTORY_MAX_ROWS);
+    let limit = limit
+        .unwrap_or(PAGE_HISTORY_DEFAULT_LIMIT)
+        .clamp(1, PAGE_HISTORY_MAX_ROWS);
     Ok(repository::list_recent(user_id, limit).await?)
 }
 
