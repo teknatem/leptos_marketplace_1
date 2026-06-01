@@ -19,6 +19,15 @@ pub struct RepostProgress {
     pub chunks_processed: i32,
     pub chunks_total: Option<i32>,
     pub error_messages: Vec<String>,
+    /// Суммарное время проведения документов за сессию, мс (для динамики/средней скорости:
+    /// avg = total_post_ms / processed). Заполняется в u508; БД на документ не пишется.
+    #[serde(default)]
+    pub total_post_ms: i64,
+    /// Время самого долгого проведения за сессию, мс, и id этого документа.
+    #[serde(default)]
+    pub max_doc_ms: i64,
+    #[serde(default)]
+    pub max_doc_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -49,6 +58,9 @@ impl RepostProgress {
             chunks_processed: 0,
             chunks_total: None,
             error_messages: Vec::new(),
+            total_post_ms: 0,
+            max_doc_ms: 0,
+            max_doc_id: None,
         }
     }
 }

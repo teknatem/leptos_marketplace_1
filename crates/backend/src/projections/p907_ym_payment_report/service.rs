@@ -5,12 +5,20 @@ use sea_orm::{EntityTrait, Set, TransactionTrait};
 use crate::shared::data::db::get_connection;
 
 pub async fn rebuild_entry_from_existing(id: &str) -> Result<usize> {
-    let Some(mut row) =
+    let Some(row) =
         crate::projections::p907_ym_payment_report::repository::get_by_uuid(id).await?
     else {
         return Ok(0);
     };
+    rebuild_from_row(row).await
+}
 
+/// Перепровести уже загруженную строку p907: дозаполнить производные ссылки и
+/// перестроить GL/p914. Принимает строку напрямую, избегая повторного SELECT
+/// (вызывается и по `id`, и по `record_key`).
+async fn rebuild_from_row(
+    mut row: crate::projections::p907_ym_payment_report::repository::Model,
+) -> Result<usize> {
     // Первый этап проведения: дозаполнить производные ссылки (если пусто) и
     // сохранить в строке p907 — далее они просто копируются в p914.
     resolve_and_persist_marketplace_refs(&mut row).await?;
@@ -155,5 +163,6 @@ pub async fn rebuild_record_key_from_existing(record_key: &str) -> Result<usize>
         return Ok(0);
     };
 
-    rebuild_entry_from_existing(&row.id).await
+    // Строка уже загружена — перестраиваем напрямую, без повторного SELECT по id.
+    rebuild_from_row(row).await
 }

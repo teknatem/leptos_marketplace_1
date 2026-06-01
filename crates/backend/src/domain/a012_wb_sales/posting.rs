@@ -2,10 +2,13 @@ use super::repository;
 use anyhow::Result;
 use chrono::Utc;
 use contracts::shared::analytics::TurnoverLayer;
+use sea_orm::TransactionTrait;
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::general_ledger::turnover_registry::get_turnover_class;
+use crate::shared::data::db::get_connection;
 use crate::shared::marketplaces::wildberries::datetime::wb_business_date_str;
 
 const REGISTRATOR_TYPE: &str = "a012_wb_sales";
@@ -84,44 +87,64 @@ pub async fn post_document_with_cache(
     should_persist_document |=
         super::service::apply_prod_cost_diagnostics(&mut document, &prod_cost_resolution);
 
-    if should_persist_document {
-        document.before_write();
-        repository::upsert_document(&document).await?;
-    }
-
     let prod_item_cost_total = prod_cost_resolution.total;
 
     let registrator_ref = id.to_string();
     let p909_registrator_ref = format!("a012:{id}");
+    let id_str = id.to_string();
 
-    crate::projections::p900_mp_sales_register::service::delete_by_registrator(&registrator_ref)
-        .await?;
-    crate::projections::p904_sales_data::repository::delete_by_registrator(&registrator_ref)
-        .await?;
-    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
-        &p909_registrator_ref,
+    // === ФАЗА 1: подготовка (только чтения), вне транзакции ===
+    // Все проекционные строки собираются в памяти ДО открытия транзакции, чтобы транзакция
+    // держала write-lock SQLite минимально — только на время самих записей.
+    if should_persist_document {
+        document.before_write();
+    }
+
+    let p900_entry = crate::projections::p900_mp_sales_register::projection_builder::from_wb_sales(
+        &document, &id_str,
     )
     .await?;
-    crate::general_ledger::service::remove_by_registrator("a012_wb_sales", &registrator_ref)
+    let p904_entries =
+        crate::projections::p904_sales_data::projection_builder::from_wb_sales_lines(
+            &document, &id_str,
+        )
         .await?;
-    // p913 expense строки используют "a012:{id}" как registrator_ref.
-    crate::projections::p913_wb_advert_order_attr::repository::delete_by_registrator(
-        REGISTRATOR_TYPE,
-        &registrator_ref,
-    )
-    .await?;
-
-    crate::projections::p900_mp_sales_register::service::project_wb_sales(&document, id).await?;
-    crate::projections::p904_sales_data::service::project_wb_sales(&document, id).await?;
-    crate::projections::p909_mp_order_line_turnovers::service::project_wb_sales_fresh(
+    let p909_result = crate::projections::p909_mp_order_line_turnovers::projection_builder::from_wb_sales(
         &document,
-        id,
+        &id_str,
         &registrator_ref,
         prod_item_cost_total,
-    )
-    .await?;
+    )?;
 
-    // Phase 2 p913: создаём expense-строки только при реализации (не возврат).
+    // Группы p909 для пересчёта link_status = (группы, имевшие строки до перепроведения)
+    // ∪ (группы, вставляемые сейчас). Первое читаем до удаления, чтобы у оставшихся строк
+    // групп, которые в этот раз не создаются, статус тоже корректно пересчитался.
+    let mut p909_groups: HashSet<(String, String, String)> = HashSet::new();
+    for group in
+        crate::projections::p909_mp_order_line_turnovers::repository::list_link_groups_by_registrator_ref(
+            &p909_registrator_ref,
+        )
+        .await?
+    {
+        p909_groups.insert((
+            group.connection_mp_ref,
+            group.line_event_key,
+            group.turnover_code,
+        ));
+    }
+    for turnover in &p909_result.turnovers {
+        p909_groups.insert((
+            turnover.connection_mp_ref.clone(),
+            turnover.line_event_key.clone(),
+            turnover.turnover_code.clone(),
+        ));
+    }
+
+    // Phase 2 p913 (advert expense): только при реализации (не возврат). Резерв читаем здесь.
+    let mut p913_gl_entry: Option<GeneralLedgerModel> = None;
+    let mut p913_expense_entries: Vec<
+        crate::projections::p913_wb_advert_order_attr::repository::Model,
+    > = Vec::new();
     if !document.is_customer_return {
         let srid = &document.header.document_no;
         let reserve_rows =
@@ -133,16 +156,15 @@ pub async fn post_document_with_cache(
             let total_amount: f64 = reserve_rows.iter().map(|r| r.amount).sum();
             let entry_date = wb_business_date_str(&document.state.sale_dt);
             let gl_id = Uuid::new_v4().to_string();
-            let gl_entry = to_gl_advert_expense(
+            p913_gl_entry = Some(to_gl_advert_expense(
                 &gl_id,
                 &entry_date,
                 Some(document.header.connection_id.clone()),
                 &registrator_ref,
                 total_amount,
-            );
-            crate::projections::general_ledger::repository::save_entry(&gl_entry).await?;
+            ));
             let sale_finished_price = document.line.finished_price.unwrap_or(0.0);
-            for entry in
+            p913_expense_entries =
                 crate::projections::p913_wb_advert_order_attr::service::build_expense_entries(
                     id,
                     srid,
@@ -150,13 +172,88 @@ pub async fn post_document_with_cache(
                     sale_finished_price,
                     &entry_date,
                     &gl_id,
-                )
-            {
-                crate::projections::p913_wb_advert_order_attr::repository::save_entry(&entry)
-                    .await?;
-            }
+                );
         }
     }
+
+    // === ФАЗА 2: запись (одна транзакция) ===
+    let txn = get_connection().begin().await?;
+
+    if should_persist_document {
+        repository::upsert_document_knowing_existence_with_conn(&txn, &document, Some(id)).await?;
+    }
+
+    // Удаляем прежний след документа во всех проекциях.
+    crate::projections::p900_mp_sales_register::repository::delete_by_registrator_with_conn(
+        &txn,
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator_with_conn(
+        &txn,
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p909_mp_order_line_turnovers::repository::delete_many_by_registrator_ref_with_conn(
+        &txn,
+        &p909_registrator_ref,
+    )
+    .await?;
+    crate::general_ledger::repository::delete_by_registrator_with_conn(
+        &txn,
+        "a012_wb_sales",
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p913_wb_advert_order_attr::repository::delete_by_registrator_with_conn(
+        &txn,
+        REGISTRATOR_TYPE,
+        &registrator_ref,
+    )
+    .await?;
+
+    // Вставляем заново собранные строки.
+    crate::projections::p900_mp_sales_register::repository::upsert_entry_with_conn(
+        &txn, &p900_entry,
+    )
+    .await?;
+    for entry in &p904_entries {
+        crate::projections::p904_sales_data::repository::upsert_entry_with_conn(&txn, entry).await?;
+    }
+    for turnover in &p909_result.turnovers {
+        crate::projections::p909_mp_order_line_turnovers::repository::insert_entry_raw_with_conn(
+            &txn, turnover,
+        )
+        .await?;
+    }
+    crate::general_ledger::repository::insert_entries_bulk_with_conn(
+        &txn,
+        &p909_result.general_ledger_entries,
+    )
+    .await?;
+    for (connection_mp_ref, line_event_key, turnover_code) in &p909_groups {
+        crate::projections::p909_mp_order_line_turnovers::repository::refresh_group_link_status_with_conn(
+            &txn,
+            connection_mp_ref,
+            line_event_key,
+            turnover_code,
+        )
+        .await?;
+    }
+
+    if let Some(gl_entry) = &p913_gl_entry {
+        crate::general_ledger::repository::save_entry_with_conn(&txn, gl_entry).await?;
+    }
+    for entry in &p913_expense_entries {
+        crate::projections::p913_wb_advert_order_attr::repository::save_entry_with_conn(&txn, entry)
+            .await?;
+    }
+
+    txn.commit().await?;
+
+    // Сигнал клиентам обновить открытые списки a012. Бьём внутри _with_cache, чтобы
+    // покрыть все пути проведения (одиночное, batch, repost u508, day-close a033).
+    super::change_token::TOKEN.bump();
 
     Ok(())
 }
@@ -166,30 +263,85 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
+    // Вариант b: на unpost принудительно обновляем все ссылочные реквизиты, чтобы непроведённый
+    // документ оставался корректным для отображения, а инвариант unpost + post = полное
+    // обновление сохранялся (на последующем post реквизиты уже заполнены и пропускаются).
+    let mut cache = super::service::PostingPreparationCache::default();
+    super::service::force_refresh_requisites_cached(&mut document, &mut cache).await?;
+    let prod_cost_resolution =
+        super::service::resolve_prod_cost_cached(&document, &mut cache).await?;
+    super::service::apply_prod_cost_diagnostics(&mut document, &prod_cost_resolution);
+
     document.is_posted = false;
     document.base.metadata.is_posted = false;
     document.before_write();
 
-    repository::upsert_document(&document).await?;
-
     let registrator_ref = id.to_string();
     let p909_registrator_ref = format!("a012:{id}");
 
-    crate::projections::p900_mp_sales_register::service::delete_by_registrator(&registrator_ref)
-        .await?;
-    crate::projections::p904_sales_data::repository::delete_by_registrator(&registrator_ref)
-        .await?;
-    crate::projections::p909_mp_order_line_turnovers::service::remove_by_registrator_ref(
+    // Группы p909, у которых исчезнут строки этого документа — читаем ДО удаления,
+    // чтобы потом пересчитать link_status у оставшихся строк этих групп.
+    let mut p909_groups: HashSet<(String, String, String)> = HashSet::new();
+    for group in
+        crate::projections::p909_mp_order_line_turnovers::repository::list_link_groups_by_registrator_ref(
+            &p909_registrator_ref,
+        )
+        .await?
+    {
+        p909_groups.insert((
+            group.connection_mp_ref,
+            group.line_event_key,
+            group.turnover_code,
+        ));
+    }
+
+    // Одна транзакция: обновление документа + снятие всех проекций + пересчёт групп.
+    let txn = get_connection().begin().await?;
+
+    repository::upsert_document_knowing_existence_with_conn(&txn, &document, Some(id)).await?;
+
+    crate::projections::p900_mp_sales_register::repository::delete_by_registrator_with_conn(
+        &txn,
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p904_sales_data::repository::delete_by_registrator_with_conn(
+        &txn,
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p909_mp_order_line_turnovers::repository::delete_many_by_registrator_ref_with_conn(
+        &txn,
         &p909_registrator_ref,
     )
     .await?;
-    crate::general_ledger::service::remove_by_registrator("a012_wb_sales", &registrator_ref)
-        .await?;
-    crate::projections::p913_wb_advert_order_attr::repository::delete_by_registrator(
+    crate::general_ledger::repository::delete_by_registrator_with_conn(
+        &txn,
+        "a012_wb_sales",
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p913_wb_advert_order_attr::repository::delete_by_registrator_with_conn(
+        &txn,
         REGISTRATOR_TYPE,
         &registrator_ref,
     )
     .await?;
+
+    for (connection_mp_ref, line_event_key, turnover_code) in &p909_groups {
+        crate::projections::p909_mp_order_line_turnovers::repository::refresh_group_link_status_with_conn(
+            &txn,
+            connection_mp_ref,
+            line_event_key,
+            turnover_code,
+        )
+        .await?;
+    }
+
+    txn.commit().await?;
+
+    // Сигнал клиентам обновить открытые списки a012.
+    super::change_token::TOKEN.bump();
 
     Ok(())
 }

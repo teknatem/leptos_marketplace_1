@@ -106,45 +106,6 @@ pub async fn project_wb_sales(
     Ok(())
 }
 
-/// Оптимизированная версия для контекста перепроведения.
-/// Предполагает, что старые записи уже удалены (delete_by_registrator_ref вызван ранее).
-/// - Прямой INSERT без SELECT-проверки на каждую строку
-/// - group_link_status обновляется один раз для всех затронутых групп (не на каждую строку)
-/// - GL-записи вставляются батчем
-pub async fn project_wb_sales_fresh(
-    document: &contracts::domain::a012_wb_sales::aggregate::WbSales,
-    document_id: Uuid,
-    posting_id: &str,
-    prod_item_cost_total: Option<f64>,
-) -> Result<()> {
-    use std::collections::HashSet;
-
-    let document_id_str = document_id.to_string();
-    let result = projection_builder::from_wb_sales(
-        document,
-        &document_id_str,
-        posting_id,
-        prod_item_cost_total,
-    )?;
-
-    let mut affected_groups: HashSet<(String, String, String)> = HashSet::new();
-    for entry in &result.turnovers {
-        affected_groups.insert((
-            entry.connection_mp_ref.clone(),
-            entry.line_event_key.clone(),
-            entry.turnover_code.clone(),
-        ));
-        repository::insert_entry_raw(entry).await?;
-    }
-
-    for (connection_mp_ref, line_event_key, turnover_code) in &affected_groups {
-        repository::refresh_group_link_status(connection_mp_ref, line_event_key, turnover_code)
-            .await?;
-    }
-
-    crate::general_ledger::service::insert_fresh_entries(&result.general_ledger_entries).await?;
-    Ok(())
-}
 
 pub async fn project_wb_finance_entry(
     entry: &crate::projections::p903_wb_finance_report::repository::Model,

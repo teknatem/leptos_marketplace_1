@@ -35,8 +35,8 @@
     <link data-trunk rel="copy-dir" href="assets" />
     <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
 
-    <!-- SheetJS library for Excel parsing -->
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <!-- SheetJS library for Excel parsing (self-hosted mini build, read-only — see static/) -->
+    <script src="static/xlsx.mini.min.js"></script>
     <script>
         // Excel parser helper function
         window.parseExcelFile = function(arrayBuffer) {

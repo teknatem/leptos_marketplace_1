@@ -301,6 +301,23 @@ pub async fn fill_line_price_from_marketplace_raw(order: &mut WbOrders) {
     }
 }
 
+/// Восстановить `salePrice` из привязанного Marketplace-пейлоада, если на строке его нет.
+///
+/// Statistics API не отдаёт `salePrice` и при ре-импорте перезаписывает `line_json`,
+/// затирая `sale_price`, ранее проставленный Marketplace API. А `base_price` для
+/// `margin_pro` у FBS-заказов держится именно на `salePrice`. Поэтому при импорте и
+/// проведении дочитываем его обратно из сохранённого пейлоада (ref переживает ре-импорт).
+pub async fn fill_sale_price_from_marketplace_raw(order: &mut WbOrders) {
+    if order.line.sale_price.filter(|&v| v > 0.0).is_some() {
+        return;
+    }
+    if let Some(value) = marketplace_raw_json(order).await {
+        if let Some(sale_price) = marketplace_field_rubles(&value, "salePrice") {
+            order.line.sale_price = Some(sale_price);
+        }
+    }
+}
+
 pub async fn update_line_price_if_missing(document_no: &str, price_rub: f64) -> Result<bool> {
     repository::update_line_price_if_missing(document_no, price_rub).await
 }
@@ -497,6 +514,11 @@ pub async fn store_document_with_raw(mut document: WbOrders, raw_json: &str) -> 
             }
         }
     }
+
+    // Statistics API не отдаёт salePrice и затирает им строку при ре-импорте; дочитываем
+    // его обратно из сохранённого Marketplace-пейлоада, иначе base_price=0 и margin_pro
+    // не посчитается. marketplace_raw_payload_ref уже восстановлен из existing выше.
+    fill_sale_price_from_marketplace_raw(&mut document).await;
 
     // Автозаполнение ссылок
     auto_fill_references(&mut document).await?;

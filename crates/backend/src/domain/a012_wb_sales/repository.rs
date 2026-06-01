@@ -6,7 +6,7 @@ use contracts::domain::a012_wb_sales::aggregate::{
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set, Statement};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set, Statement};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -427,6 +427,16 @@ pub async fn upsert_document_knowing_existence(
     aggregate: &WbSales,
     existing_uuid: Option<Uuid>,
 ) -> Result<Uuid> {
+    upsert_document_knowing_existence_with_conn(get_connection(), aggregate, existing_uuid).await
+}
+
+/// Variant accepting an explicit connection/transaction so a document's posting writes can be
+/// committed atomically in one transaction (see a012_wb_sales::posting::post_document_with_cache).
+pub async fn upsert_document_knowing_existence_with_conn<C: ConnectionTrait>(
+    db: &C,
+    aggregate: &WbSales,
+    existing_uuid: Option<Uuid>,
+) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
 
     let sale_id = aggregate
@@ -542,7 +552,7 @@ pub async fn upsert_document_knowing_existence(
             version: Set(aggregate.base.metadata.version + 1),
             created_at: sea_orm::ActiveValue::NotSet,
         };
-        active.update(conn()).await?;
+        active.update(db).await?;
         Ok(existing_uuid)
     } else {
         tracing::debug!(
@@ -607,7 +617,7 @@ pub async fn upsert_document_knowing_existence(
             version: Set(aggregate.base.metadata.version),
         };
 
-        active.insert(conn()).await?;
+        active.insert(db).await?;
         Ok(uuid)
     }
 }

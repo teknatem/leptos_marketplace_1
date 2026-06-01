@@ -505,6 +505,9 @@ pub async fn get_change_tokens() -> impl IntoResponse {
     Json(serde_json::json!({
         "sys_tasks": change_token::TOKEN.get(),
         "a027_wb_documents": crate::domain::a027_wb_documents::change_token::TOKEN.get(),
+        "a015_wb_orders": crate::domain::a015_wb_orders::change_token::TOKEN.get(),
+        "a012_wb_sales": crate::domain::a012_wb_sales::change_token::TOKEN.get(),
+        "a013_ym_order": crate::domain::a013_ym_order::change_token::TOKEN.get(),
     }))
 }
 

@@ -13,6 +13,7 @@ use super::tabs::{
 };
 use super::view_model::WbSalesDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::more_actions_menu::{use_more_actions_close, MoreActionsMenu};
 use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use crate::system::favorites::ui::FavoriteButton;
@@ -119,8 +120,26 @@ fn Header(
     let sale = vm.sale;
     let tab_key = format!("a012_wb_sales_details_{}", favorite_target_id);
 
+    // Поднятое состояние меню «Ещё», чтобы открывать его и кнопкой, и правым кликом по заголовку.
+    let more_open = RwSignal::new(false);
+    let more_pos = RwSignal::new((0.0_f64, 0.0_f64));
+
+    // Правый клик по заголовку открывает «Ещё» у курсора (актуально для проведённого документа).
+    let on_header_contextmenu = move |ev: web_sys::MouseEvent| {
+        if !is_posted.get() {
+            return;
+        }
+        ev.prevent_default();
+        let vw = web_sys::window()
+            .and_then(|w| w.inner_width().ok())
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1024.0);
+        more_pos.set((ev.client_y() as f64 + 4.0, vw - ev.client_x() as f64));
+        more_open.set(true);
+    };
+
     view! {
-        <div class="page__header">
+        <div class="page__header" on:contextmenu=on_header_contextmenu>
             <div class="page__header-left">
                 <FavoriteButton
                     target_kind="a012_wb_sales_details".to_string()
@@ -144,13 +163,16 @@ fn Header(
                 </Show>
             </div>
             <div class="page__header-right">
-                <PostButtons vm=vm.clone() />
+                <PostButtons vm=vm.clone() more_open=more_open more_pos=more_pos />
                 <Button
-                    appearance=ButtonAppearance::Secondary
+                    appearance=ButtonAppearance::Subtle
                     size=ButtonSize::Medium
                     on_click=move |_| on_close.run(())
                 >
-                    {icon("x")} "Закрыть"
+                    <span class="page-action-button__content">
+                        <span class="page-action-button__icon page-action-button__icon--close">{icon("x")}</span>
+                        <span class="page-action-button__text">"Закрыть"</span>
+                    </span>
                 </Button>
             </div>
         </div>
@@ -160,7 +182,11 @@ fn Header(
 // ── Post / Unpost ─────────────────────────────────────────────────────────────
 
 #[component]
-fn PostButtons(vm: WbSalesDetailsVm) -> impl IntoView {
+fn PostButtons(
+    vm: WbSalesDetailsVm,
+    more_open: RwSignal<bool>,
+    more_pos: RwSignal<(f64, f64)>,
+) -> impl IntoView {
     let is_posted = vm.is_posted();
     let posting = vm.posting;
     let sale = vm.sale;
@@ -176,25 +202,52 @@ fn PostButtons(vm: WbSalesDetailsVm) -> impl IntoView {
 
     view! {
         <Show when=move || sale.get().is_some()>
-            <Show when=move || !is_posted.get()>
-                <Button
-                    appearance=ButtonAppearance::Primary
-                    size=ButtonSize::Medium
-                    on_click=move |_| on_post.run(())
-                    disabled=Signal::derive(move || posting.get())
-                >
-                    {move || if posting.get() { "Проведение..." } else { "✓ Post" }}
-                </Button>
-            </Show>
+            // «Провести» всегда в заголовке: для непроведённого — проведение, для проведённого —
+            // идемпотентное перепроведение. Спиннер в кнопке во время операции.
+            <Button
+                appearance=ButtonAppearance::Primary
+                size=ButtonSize::Medium
+                on_click=move |_| on_post.run(())
+                disabled=Signal::derive(move || posting.get())
+            >
+                <span class="page-action-button__content">
+                    <span class="page-action-button__icon">
+                        {move || if posting.get() {
+                            view! { <Spinner size=SpinnerSize::Tiny /> }.into_any()
+                        } else {
+                            icon("check").into_any()
+                        }}
+                    </span>
+                    <span class="page-action-button__text">
+                        {move || match (is_posted.get(), posting.get()) {
+                            (_, true) => "Проведение...",
+                            (true, false) => "Перепровести",
+                            (false, false) => "Провести",
+                        }}
+                    </span>
+                </span>
+            </Button>
+            // Проведённый документ — отмена проведения в подменю «Ещё».
             <Show when=move || is_posted.get()>
-                <Button
-                    appearance=ButtonAppearance::Secondary
-                    size=ButtonSize::Medium
-                    on_click=move |_| on_unpost.run(())
-                    disabled=Signal::derive(move || posting.get())
-                >
-                    {move || if posting.get() { "Отмена..." } else { "✗ Unpost" }}
-                </Button>
+                <MoreActionsMenu open=more_open pos=more_pos>
+                    <button
+                        class="theme-dropdown__item"
+                        disabled=move || posting.get()
+                        on:click=move |_| {
+                            use_more_actions_close();
+                            on_unpost.run(());
+                        }
+                    >
+                        <span style="display: flex; align-items: center; gap: 8px;">
+                            {move || if posting.get() {
+                                view! { <Spinner size=SpinnerSize::Tiny /> }.into_any()
+                            } else {
+                                icon("x").into_any()
+                            }}
+                            {move || if posting.get() { "Отмена проведения..." } else { "Отменить проведение" }}
+                        </span>
+                    </button>
+                </MoreActionsMenu>
             </Show>
         </Show>
     }

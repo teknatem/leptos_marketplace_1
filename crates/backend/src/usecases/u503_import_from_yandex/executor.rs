@@ -732,42 +732,118 @@ impl ImportExecutor {
             csv_path
         );
 
-        // Phase 4: parse and import CSV rows
+        // Phase 4: parse CSV in memory (no DB work — cheap even for large files)
         self.progress_tracker.set_current_item(
             session_id,
             aggregate_index,
-            Some(format!("Разбор и загрузка CSV ({})...", csv_path)),
+            Some(format!("Разбор CSV ({})...", csv_path)),
         );
 
-        let (inserted, updated) =
-            payment_report::process_payment_report_csv(connection, &organization_id, &csv_text)
-                .await
+        let parsed =
+            payment_report::parse_payment_report_csv(connection, &organization_id, &csv_text)
                 .map_err(|e| {
                     self.progress_tracker.add_error(
                         session_id,
                         Some(aggregate_index.to_string()),
-                        format!("Ошибка обработки CSV: {}", e),
+                        format!("Ошибка разбора CSV: {}", e),
                         None,
                     );
                     e
                 })?;
 
-        let total = inserted + updated;
-        self.progress_tracker.update_aggregate(
-            session_id,
-            aggregate_index,
-            total,
-            Some(total),
-            inserted,
-            updated,
-        );
+        let entries = parsed.entries;
+        let total = entries.len() as i32;
+        if parsed.skipped > 0 {
+            tracing::warn!(
+                "YM payment report: {} CSV rows skipped during parse",
+                parsed.skipped
+            );
+        }
+
+        // Phase 5: bulk-upsert raw rows in batches. One multi-row statement per
+        // batch replaces thousands of per-row autocommit transactions — the main
+        // fix for large-file import stalls.
+        //
+        // Batch sized so columns × rows stays well under SQLite's bound-parameter
+        // limit (~32k): 36 columns × 500 = 18k params.
+        const UPSERT_BATCH: usize = 500;
+        let mut saved = 0i32;
+        for chunk in entries.chunks(UPSERT_BATCH) {
+            crate::projections::p907_ym_payment_report::repository::bulk_upsert_entries(chunk)
+                .await
+                .map_err(|e| {
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Ошибка сохранения строк отчёта: {}", e),
+                        None,
+                    );
+                    e
+                })?;
+            saved += chunk.len() as i32;
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("Сохранение строк отчёта... ({}/{})", saved, total)),
+            );
+            self.progress_tracker
+                .update_aggregate(session_id, aggregate_index, saved, Some(total), saved, 0);
+        }
+
+        // Phase 6: post each row (GL/p914) one by one, tolerant of per-row errors
+        // so a single bad row no longer aborts the whole import. Reuses the same
+        // rebuild path as u508 repost. Progress is updated periodically.
+        let mut posted = 0i32;
+        for (idx, entry) in entries.iter().enumerate() {
+            match crate::projections::p907_ym_payment_report::service::rebuild_record_key_from_existing(
+                &entry.record_key,
+            )
+            .await
+            {
+                Ok(_) => posted += 1,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to post payment report row {}: {}",
+                        entry.record_key,
+                        e
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Ошибка проведения строки {}", entry.record_key),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+
+            let done = idx + 1;
+            if done % 50 == 0 || done == entries.len() {
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("Проведение GL/p914... ({}/{})", done, total)),
+                );
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total,
+                    Some(total),
+                    saved,
+                    posted,
+                );
+            }
+        }
+
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
 
         tracing::info!(
-            "YM payment report import completed: inserted={}, updated={}",
-            inserted,
-            updated
+            "YM payment report import completed: saved={}, posted={}, skipped={}",
+            saved,
+            posted,
+            parsed.skipped
         );
 
         Ok(())

@@ -39,11 +39,19 @@ pub fn use_more_actions_close() {
 
 /// Кнопка «Ещё ▾» с выпадающим меню, корректно отображаемым поверх
 /// `overflow: hidden` родителей через `position: fixed`.
+///
+/// `open` / `pos` можно передать снаружи, чтобы открывать то же меню из другого места
+/// (например, по правому клику на заголовке). `pos` — это `(top_px, right_px)` относительно
+/// viewport. Если не переданы — компонент держит их сам (поведение по умолчанию).
 #[component]
-pub fn MoreActionsMenu(children: Children) -> impl IntoView {
-    let open = RwSignal::new(false);
+pub fn MoreActionsMenu(
+    #[prop(optional, into)] open: Option<RwSignal<bool>>,
+    #[prop(optional, into)] pos: Option<RwSignal<(f64, f64)>>,
+    children: Children,
+) -> impl IntoView {
+    let open = open.unwrap_or_else(|| RwSignal::new(false));
     let trigger_ref = NodeRef::<leptos::html::Div>::new();
-    let pos: RwSignal<(f64, f64)> = RwSignal::new((0.0, 0.0));
+    let pos: RwSignal<(f64, f64)> = pos.unwrap_or_else(|| RwSignal::new((0.0, 0.0)));
 
     provide_context(MoreActionsClose(open));
 
@@ -95,9 +103,9 @@ pub fn MoreActionsMenu(children: Children) -> impl IntoView {
                         let (top, right) = pos.get();
                         format!(
                             "position: fixed; top: {top:.1}px; right: {right:.1}px; z-index: 10001; \
-                             min-width: 210px; background: var(--color-surface); \
+                             min-width: 210px; background: var(--color-menu-surface, var(--color-surface)); \
                              border: 1px solid var(--color-border); border-radius: var(--radius-md); \
-                             box-shadow: 0 4px 24px rgba(0,0,0,.18); \
+                             box-shadow: 0 8px 28px rgba(0,0,0,.32); \
                              padding: var(--spacing-xs) 0; \
                              display: flex; flex-direction: column; gap: 2px; \
                              animation: fadeIn 0.15s ease;"

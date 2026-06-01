@@ -653,12 +653,27 @@ impl RepostExecutor {
                         }
                     };
 
-                    match crate::domain::a012_wb_sales::posting::post_document_with_cache(
-                        aggregate_id,
-                        &mut posting_cache,
-                    )
-                    .await
-                    {
+                    let post_start = std::time::Instant::now();
+                    let post_result =
+                        crate::domain::a012_wb_sales::posting::post_document_with_cache(
+                            aggregate_id,
+                            &mut posting_cache,
+                        )
+                        .await;
+                    let elapsed_ms = post_start.elapsed().as_millis() as i64;
+                    self.progress_tracker
+                        .record_post_timing(session_id, document_id, elapsed_ms);
+                    // Порог предупреждения о медленном проведении (диагностика динамики).
+                    const SLOW_DOC_MS: i64 = 500;
+                    if elapsed_ms > SLOW_DOC_MS {
+                        tracing::warn!(
+                            "Slow {} post: {} took {} ms",
+                            A012_WB_SALES,
+                            aggregate_id,
+                            elapsed_ms
+                        );
+                    }
+                    match post_result {
                         Ok(()) => reposted += 1,
                         Err(error) => self.progress_tracker.add_error(
                             session_id,

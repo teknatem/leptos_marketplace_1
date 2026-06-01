@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;
@@ -136,12 +136,19 @@ pub struct SalesRegisterEntry {
 
 /// Upsert записи в sales_register по NK (marketplace, document_no, line_id)
 pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
+    upsert_entry_with_conn(conn(), entry).await
+}
+
+pub async fn upsert_entry_with_conn<C: ConnectionTrait>(
+    db: &C,
+    entry: &SalesRegisterEntry,
+) -> Result<()> {
     // Проверяем, существует ли запись
     let existing = Entity::find()
         .filter(Column::Marketplace.eq(&entry.marketplace))
         .filter(Column::DocumentNo.eq(&entry.document_no))
         .filter(Column::LineId.eq(&entry.line_id))
-        .one(conn())
+        .one(db)
         .await?;
 
     let now = Utc::now();
@@ -185,7 +192,7 @@ pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
             payload_version: Set(entry.payload_version),
             extra: Set(entry.extra.clone()),
         };
-        active.update(conn()).await?;
+        active.update(db).await?;
     } else {
         // Вставляем новую запись
         let active = ActiveModel {
@@ -222,7 +229,7 @@ pub async fn upsert_entry(entry: &SalesRegisterEntry) -> Result<()> {
             payload_version: Set(entry.payload_version),
             extra: Set(entry.extra.clone()),
         };
-        active.insert(conn()).await?;
+        active.insert(db).await?;
     }
 
     Ok(())
@@ -352,9 +359,16 @@ pub async fn get_by_registrator(registrator_ref: &str) -> Result<Vec<Model>> {
 
 /// Удалить все записи проекции для документа-регистратора
 pub async fn delete_by_registrator(registrator_ref: &str) -> Result<u64> {
+    delete_by_registrator_with_conn(conn(), registrator_ref).await
+}
+
+pub async fn delete_by_registrator_with_conn<C: ConnectionTrait>(
+    db: &C,
+    registrator_ref: &str,
+) -> Result<u64> {
     let result = Entity::delete_many()
         .filter(Column::RegistratorRef.eq(registrator_ref))
-        .exec(conn())
+        .exec(db)
         .await?;
     Ok(result.rows_affected)
 }

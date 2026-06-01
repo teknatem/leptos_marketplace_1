@@ -156,14 +156,12 @@ pub struct YmPaymentReportEntry {
     pub payload_version: i32,
 }
 
-/// Upsert entry using INSERT ... ON CONFLICT(record_key) DO UPDATE SET ...
-/// `id` (UUID) is intentionally excluded from the UPDATE SET list so it is
-/// preserved for the lifetime of the record even across re-imports.
-pub async fn upsert_entry(entry: &YmPaymentReportEntry) -> Result<()> {
-    let db = get_connection();
-    let loaded_at_utc = Utc::now().to_rfc3339();
-
-    let model = ActiveModel {
+/// Build the import `ActiveModel` from an entry. Derived refs
+/// (`marketplace_product_ref` / `marketplace_order_ref` / `nomenclature_ref`)
+/// never come from import — they are resolved at posting time and excluded from
+/// the conflict UPDATE so previously filled values survive a re-import.
+fn build_active_model(entry: &YmPaymentReportEntry, loaded_at_utc: String) -> ActiveModel {
+    ActiveModel {
         record_key: Set(entry.record_key.clone()),
         id: Set(entry.id.clone()),
         connection_mp_ref: Set(entry.connection_mp_ref.clone()),
@@ -195,58 +193,95 @@ pub async fn upsert_entry(entry: &YmPaymentReportEntry) -> Result<()> {
         claim_number: Set(entry.claim_number.clone()),
         bonus_account_year_month: Set(entry.bonus_account_year_month.clone()),
         comments: Set(entry.comments.clone()),
-        // Производные ссылки не приходят из импорта; на конфликте не обновляются
-        // (сохраняются ранее заполненные значения), заполняются при проведении.
         marketplace_product_ref: Set(None),
         marketplace_order_ref: Set(None),
         nomenclature_ref: Set(None),
         loaded_at_utc: Set(loaded_at_utc),
         payload_version: Set(entry.payload_version),
-    };
+    }
+}
+
+/// `ON CONFLICT(record_key) DO UPDATE SET …` clause shared by single and bulk
+/// upsert. `id` is intentionally NOT in the list — it stays fixed once assigned,
+/// so the internal UUID survives re-imports.
+fn record_key_conflict() -> OnConflict {
+    OnConflict::column(Column::RecordKey)
+        .update_columns([
+            Column::ConnectionMpRef,
+            Column::OrganizationRef,
+            Column::BusinessId,
+            Column::PartnerId,
+            Column::ShopName,
+            Column::Inn,
+            Column::Model,
+            Column::TransactionId,
+            Column::TransactionDate,
+            Column::TransactionType,
+            Column::TransactionSource,
+            Column::TransactionSum,
+            Column::PaymentStatus,
+            Column::OrderId,
+            Column::ShopOrderId,
+            Column::OrderCreationDate,
+            Column::OrderDeliveryDate,
+            Column::OrderType,
+            Column::ShopSku,
+            Column::OfferOrServiceName,
+            Column::Count,
+            Column::ActId,
+            Column::ActDate,
+            Column::BankOrderId,
+            Column::BankOrderDate,
+            Column::BankSum,
+            Column::ClaimNumber,
+            Column::BonusAccountYearMonth,
+            Column::Comments,
+            Column::LoadedAtUtc,
+            Column::PayloadVersion,
+        ])
+        .to_owned()
+}
+
+/// Upsert a single entry using INSERT ... ON CONFLICT(record_key) DO UPDATE SET ...
+pub async fn upsert_entry(entry: &YmPaymentReportEntry) -> Result<()> {
+    let db = get_connection();
+    let model = build_active_model(entry, Utc::now().to_rfc3339());
 
     Entity::insert(model)
-        .on_conflict(
-            // `id` is NOT in this list — it stays fixed once assigned.
-            OnConflict::column(Column::RecordKey)
-                .update_columns([
-                    Column::ConnectionMpRef,
-                    Column::OrganizationRef,
-                    Column::BusinessId,
-                    Column::PartnerId,
-                    Column::ShopName,
-                    Column::Inn,
-                    Column::Model,
-                    Column::TransactionId,
-                    Column::TransactionDate,
-                    Column::TransactionType,
-                    Column::TransactionSource,
-                    Column::TransactionSum,
-                    Column::PaymentStatus,
-                    Column::OrderId,
-                    Column::ShopOrderId,
-                    Column::OrderCreationDate,
-                    Column::OrderDeliveryDate,
-                    Column::OrderType,
-                    Column::ShopSku,
-                    Column::OfferOrServiceName,
-                    Column::Count,
-                    Column::ActId,
-                    Column::ActDate,
-                    Column::BankOrderId,
-                    Column::BankOrderDate,
-                    Column::BankSum,
-                    Column::ClaimNumber,
-                    Column::BonusAccountYearMonth,
-                    Column::Comments,
-                    Column::LoadedAtUtc,
-                    Column::PayloadVersion,
-                ])
-                .to_owned(),
-        )
+        .on_conflict(record_key_conflict())
         .exec(db)
         .await?;
 
     Ok(())
+}
+
+/// Bulk upsert: one multi-row `INSERT … ON CONFLICT(record_key) DO UPDATE` per
+/// call, replacing N autocommit round-trips with a single statement — the key
+/// optimisation for importing large payment-report CSVs.
+///
+/// The caller MUST ensure `entries` contains no duplicate `record_key` within
+/// the slice: SQLite rejects a statement whose `ON CONFLICT DO UPDATE` would
+/// touch the same row twice ("cannot affect row a second time"). De-duplication
+/// happens during CSV parsing (see `parse_payment_report_csv`).
+pub async fn bulk_upsert_entries(entries: &[YmPaymentReportEntry]) -> Result<u64> {
+    if entries.is_empty() {
+        return Ok(0);
+    }
+
+    let db = get_connection();
+    let loaded_at_utc = Utc::now().to_rfc3339();
+
+    let models = entries
+        .iter()
+        .map(|entry| build_active_model(entry, loaded_at_utc.clone()))
+        .collect::<Vec<_>>();
+
+    Entity::insert_many(models)
+        .on_conflict(record_key_conflict())
+        .exec_without_returning(db)
+        .await?;
+
+    Ok(entries.len() as u64)
 }
 
 /// List entries with filters and pagination

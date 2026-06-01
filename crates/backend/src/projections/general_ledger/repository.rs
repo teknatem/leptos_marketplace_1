@@ -83,6 +83,13 @@ pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> 
 /// Batch INSERT новых GL-записей без проверки существования.
 /// Используется только в контексте перепроведения, где записи предварительно удалены.
 pub async fn insert_entries_bulk(entries: &[Model]) -> Result<()> {
+    insert_entries_bulk_with_conn(conn(), entries).await
+}
+
+pub async fn insert_entries_bulk_with_conn<C: ConnectionTrait>(
+    db: &C,
+    entries: &[Model],
+) -> Result<()> {
     if entries.is_empty() {
         return Ok(());
     }
@@ -107,7 +114,7 @@ pub async fn insert_entries_bulk(entries: &[Model]) -> Result<()> {
             created_at: Set(entry.created_at.clone()),
         })
         .collect();
-    Entity::insert_many(models).exec(conn()).await?;
+    Entity::insert_many(models).exec(db).await?;
     Ok(())
 }
 

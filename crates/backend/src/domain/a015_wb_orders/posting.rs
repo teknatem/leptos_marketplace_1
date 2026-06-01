@@ -99,6 +99,10 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     // document.base_nomenclature_ref is already resolved above;
     // passing it through skips the third a004_nomenclature DB lookup.
     super::service::fill_dealer_price_with_known_base_ref(&mut document).await?;
+    // Восстанавливаем salePrice из Marketplace-пейлоада, если Statistics-импорт его затёр:
+    // без него base_price=0 и margin_pro не считается. Делает перепроведение
+    // самовосстанавливающимся для заказов, у которых salePrice потерялся на строке.
+    super::service::fill_sale_price_from_marketplace_raw(&mut document).await;
     super::service::calculate_margin_pro_with_connection(&mut document, connection.as_ref())
         .await?;
 
@@ -119,6 +123,9 @@ pub async fn post_document(id: Uuid) -> Result<()> {
 
     crate::projections::p909_mp_order_line_turnovers::service::project_wb_order(&document, id)
         .await?;
+
+    // Сигнал клиентам обновить открытые списки a015 (margin_pro и пр. могли измениться).
+    super::change_token::TOKEN.bump();
 
     tracing::info!("Posted WB Orders document: {}", id);
     Ok(())
@@ -141,6 +148,9 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
         .await?;
     crate::general_ledger::service::remove_by_registrator(REGISTRATOR_TYPE, &id.to_string())
         .await?;
+
+    // Сигнал клиентам обновить открытые списки a015.
+    super::change_token::TOKEN.bump();
 
     tracing::info!("Unposted WB Orders document: {}", id);
 

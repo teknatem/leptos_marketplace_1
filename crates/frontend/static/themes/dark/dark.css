@@ -20,6 +20,8 @@
   --color-bg-primary: #292929;
   --color-bg-secondary: rgba(40, 40, 40, 0.35);
   --color-surface: rgba(55, 55, 55, 0.8);
+  /* Непрозрачный фон выпадающих меню («Ещё»): темнее фона страницы, без прозрачности. */
+  --color-menu-surface: #1f1f1f;
   --color-code-bg: rgba(0, 0, 0, 0.35);
 
   /* Border Colors */
