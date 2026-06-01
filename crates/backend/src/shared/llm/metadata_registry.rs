@@ -34,6 +34,9 @@ use contracts::projections::p909_mp_order_line_turnovers::{
 use contracts::projections::p910_mp_unlinked_turnovers::{
     ENTITY_METADATA as P910_META, FIELDS as P910_FIELDS,
 };
+use contracts::projections::p914_mp_finance_turnovers::{
+    ENTITY_METADATA as P914_META, FIELDS as P914_FIELDS,
+};
 
 // ─── Структуры ──────────────────────────────────────────────────────────────
 
@@ -142,6 +145,11 @@ impl MetadataRegistry {
                     meta: &P910_META,
                     fields: P910_FIELDS,
                     tags: &["wb", "ym", "bi", "projection"],
+                },
+                RegistryEntry {
+                    meta: &P914_META,
+                    fields: P914_FIELDS,
+                    tags: &["wb", "ym", "bi", "projection", "fina"],
                 },
                 RegistryEntry {
                     meta: &GL_META,

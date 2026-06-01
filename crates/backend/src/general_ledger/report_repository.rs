@@ -10,7 +10,9 @@ use contracts::general_ledger::{
 };
 
 use super::detail_links::descriptor_for_resource_table;
-use super::drilldown_dimensions::{dimension_label, is_nomenclature_dimension};
+use super::drilldown_dimensions::{
+    dimension_available_for_drilldown, dimension_label, is_fina_dimension, is_nomenclature_dimension,
+};
 use super::turnover_registry::get_turnover_class;
 
 fn conn() -> &'static sea_orm::DatabaseConnection {
@@ -299,6 +301,23 @@ pub async fn get_drilldown(query: &GlDrilldownQuery) -> Result<GlDrilldownRespon
         .unwrap_or("Неизвестно")
         .to_string();
 
+    // Проекционные измерения (номенклатура, fina) требуют конкретного слоя —
+    // иначе drilldown смешал бы проводки разных слоёв одного оборота. Common-
+    // измерения допустимы без слоя. Источник истины — реестр доступности
+    // измерений по слоям (drilldown_dimensions).
+    if !dimension_available_for_drilldown(
+        &query.turnover_code,
+        &query.group_by,
+        query.layer.as_deref(),
+    ) {
+        return Err(anyhow::anyhow!(
+            "Dimension '{}' is not available for turnover '{}' at layer '{}'",
+            query.group_by,
+            query.turnover_code,
+            query.layer.as_deref().unwrap_or("(не задан)")
+        ));
+    }
+
     // Детализация по документу-регистратору: запрос из sys_general_ledger напрямую
     if query.group_by == "registrator_ref" {
         return get_drilldown_by_registrator(query, turnover_name, group_by_label).await;
@@ -306,6 +325,8 @@ pub async fn get_drilldown(query: &GlDrilldownQuery) -> Result<GlDrilldownRespon
 
     let rows = if is_common_dimension(&query.group_by) {
         query_sys_gl_common_drilldown(query).await?
+    } else if is_fina_dimension(&query.group_by) {
+        query_p914_fina_drilldown(query).await?
     } else if is_nomenclature_dimension(&query.group_by) {
         query_detail_nomenclature_drilldown(query).await?
     } else {
@@ -332,7 +353,14 @@ pub async fn get_drilldown(query: &GlDrilldownQuery) -> Result<GlDrilldownRespon
 fn is_common_dimension(dimension_id: &str) -> bool {
     matches!(
         dimension_id,
-        "entry_date" | "connection_mp_ref" | "registrator_type" | "layer"
+        "entry_date"
+            | "connection_mp_ref"
+            | "registrator_type"
+            | "layer"
+            // Структурные разрезы проводки — группируются прямо из sys_general_ledger.
+            | "turnover_code"
+            | "debit_account"
+            | "credit_account"
     )
 }
 
@@ -347,7 +375,10 @@ async fn get_drilldown_by_registrator(
 ) -> Result<GlDrilldownResponse> {
     // group_key = "{registrator_type}~~{registrator_ref}" — тильды-разделитель,
     // нужный для разбора на фронте.
-    // group_label = MIN(entry_date) (дата первой проводки по этому документу).
+    // group_label = день проводки (SUBSTR(entry_date,1,10)). Двухуровневая
+    // группировка: сначала по дню, внутри — по регистратору. Один документ,
+    // охватывающий несколько дней, разбивается на строки по дням (для отчётов с
+    // разными периодами регистраторы фактически без соответствия).
     let amount_expr = build_signed_amount_expr(
         "",
         query
@@ -359,7 +390,7 @@ async fn get_drilldown_by_registrator(
         r#"
         SELECT
             COALESCE(registrator_type, '') || '~~' || COALESCE(registrator_ref, '') AS group_key,
-            SUBSTR(MIN(entry_date), 1, 10) AS group_label,
+            SUBSTR(entry_date, 1, 10) AS group_label,
             {amount_expr} AS amount,
             COUNT(*) AS entry_count
         FROM sys_general_ledger
@@ -391,9 +422,13 @@ async fn get_drilldown_by_registrator(
         params.push(string_value(layer.clone()));
     }
 
-    sql.push_str(" GROUP BY registrator_type, registrator_ref ORDER BY amount DESC");
+    sql.push_str(
+        " GROUP BY SUBSTR(entry_date, 1, 10), registrator_type, registrator_ref \
+          ORDER BY group_label ASC, amount DESC",
+    );
 
-    let rows = execute_drilldown_query(&sql, params).await?;
+    let mut rows = execute_drilldown_query(&sql, params).await?;
+    enrich_registrator_representations(&mut rows).await;
     let total_amount: f64 = rows.iter().map(|r| r.amount).sum();
     let total_count: i64 = rows.iter().map(|r| r.entry_count).sum();
 
@@ -405,6 +440,46 @@ async fn get_drilldown_by_registrator(
         total_amount,
         total_count,
     })
+}
+
+/// Обогащает строки drilldown по регистратору реальным представлением документа.
+/// group_key = "{registrator_type}~~{registrator_ref}". Резолв батчем: один
+/// запрос на каждый встретившийся тип регистратора (обычно 1–3).
+async fn enrich_registrator_representations(rows: &mut [GlDrilldownRow]) {
+    use std::collections::HashMap;
+
+    // Сгруппировать id по типу регистратора, сохранив позиции строк.
+    let mut ids_by_type: HashMap<String, Vec<String>> = HashMap::new();
+    for row in rows.iter() {
+        let (reg_type, reg_ref) = match row.group_key.split_once("~~") {
+            Some((t, r)) => (t, r),
+            None => continue,
+        };
+        if reg_type.is_empty() || reg_ref.is_empty() {
+            continue;
+        }
+        ids_by_type
+            .entry(reg_type.to_string())
+            .or_default()
+            .push(reg_ref.to_string());
+    }
+
+    // Резолвить по одному батч-запросу на тип.
+    let mut resolved: HashMap<String, contracts::general_ledger::AggregateRepresentation> =
+        HashMap::new();
+    for (reg_type, ids) in &ids_by_type {
+        let map = crate::shared::representation::resolve_many(reg_type, ids).await;
+        for (id, rep) in map {
+            resolved.insert(format!("{reg_type}~~{id}"), rep);
+        }
+    }
+
+    // Проставить представления обратно по group_key.
+    for row in rows.iter_mut() {
+        if let Some(rep) = resolved.get(&row.group_key) {
+            row.representation = Some(rep.clone());
+        }
+    }
 }
 
 fn build_sys_gl_dimension_sql(
@@ -438,6 +513,28 @@ fn build_sys_gl_dimension_sql(
             format!("COALESCE({alias}.layer, '(не указано)')"),
             String::new(),
             format!("{alias}.layer"),
+            " ORDER BY amount DESC",
+        ),
+        // Структурные разрезы проводки — сырые коды (без резолва имён).
+        "turnover_code" => (
+            format!("COALESCE({alias}.turnover_code, '(не указано)')"),
+            format!("COALESCE({alias}.turnover_code, '(не указано)')"),
+            String::new(),
+            format!("{alias}.turnover_code"),
+            " ORDER BY amount DESC",
+        ),
+        "debit_account" => (
+            format!("COALESCE({alias}.debit_account, '(не указано)')"),
+            format!("COALESCE({alias}.debit_account, '(не указано)')"),
+            String::new(),
+            format!("{alias}.debit_account"),
+            " ORDER BY amount DESC",
+        ),
+        "credit_account" => (
+            format!("COALESCE({alias}.credit_account, '(не указано)')"),
+            format!("COALESCE({alias}.credit_account, '(не указано)')"),
+            String::new(),
+            format!("{alias}.credit_account"),
             " ORDER BY amount DESC",
         ),
         _ => (
@@ -556,6 +653,73 @@ async fn query_sys_gl_common_drilldown(query: &GlDrilldownQuery) -> Result<Vec<G
     ]);
     append_common_gl_filters(&mut sql, &mut params, query, "gl");
     sql.push_str(&format!(" GROUP BY {group_by_expr}{order_by}"));
+    execute_drilldown_query(&sql, params).await
+}
+
+/// SQL для разреза слоя `fina`, хранящегося в зеркальной проекции p914.
+/// `alias` — алиас таблицы p914 в запросе. Возвращает (select_key,
+/// select_label, group_by_expr).
+fn build_p914_dimension_sql(alias: &str, dimension_id: &str) -> (String, String, String) {
+    match dimension_id {
+        "customer_kind" => (
+            format!("COALESCE({alias}.customer_kind, '(не указано)')"),
+            format!(
+                "CASE {alias}.customer_kind \
+                 WHEN 'URL' THEN 'Юрлицо' \
+                 WHEN 'FIZ' THEN 'Физлицо' \
+                 ELSE COALESCE({alias}.customer_kind, '(не указано)') END"
+            ),
+            format!("{alias}.customer_kind"),
+        ),
+        "fulfillment_type" => (
+            format!("COALESCE({alias}.fulfillment_type, '(не указано)')"),
+            format!("COALESCE({alias}.fulfillment_type, '(не указано)')"),
+            format!("{alias}.fulfillment_type"),
+        ),
+        _ => (
+            format!("COALESCE({alias}.customer_kind, '(не указано)')"),
+            format!("COALESCE({alias}.customer_kind, '(не указано)')"),
+            format!("{alias}.customer_kind"),
+        ),
+    }
+}
+
+/// Drilldown по разрезам слоя `fina`. GL соединяется с зеркальной проекцией p914
+/// по `general_ledger_ref`; группировка идёт по колонке p914. Работает для любого
+/// источника fina (p903/p907), так как p914 зеркалит все fina-проводки.
+async fn query_p914_fina_drilldown(query: &GlDrilldownQuery) -> Result<Vec<GlDrilldownRow>> {
+    let (select_key, select_label, group_by_expr) =
+        build_p914_dimension_sql("d", &query.group_by);
+    let amount_expr = build_signed_amount_expr(
+        "gl",
+        query
+            .account
+            .as_ref()
+            .is_some_and(|value| !value.trim().is_empty()),
+    );
+    let mut sql = format!(
+        r#"
+        SELECT
+            {select_key} AS group_key,
+            {select_label} AS group_label,
+            {amount_expr} AS amount,
+            COUNT(*) AS entry_count
+        FROM sys_general_ledger gl
+        INNER JOIN p914_mp_finance_turnovers d ON d.general_ledger_ref = gl.id
+        WHERE gl.turnover_code = ?
+          AND gl.entry_date >= ?
+          AND gl.entry_date <= ?
+        "#
+    );
+    let mut params = Vec::new();
+    append_signed_amount_params(&mut params, &query.account);
+    params.extend(vec![
+        string_value(query.turnover_code.clone()),
+        string_value(query.date_from.clone()),
+        string_value(query.date_to.clone()),
+    ]);
+    append_common_gl_filters(&mut sql, &mut params, query, "gl");
+    sql.push_str(&format!(" GROUP BY {group_by_expr} ORDER BY amount DESC"));
     execute_drilldown_query(&sql, params).await
 }
 
@@ -762,6 +926,7 @@ async fn execute_drilldown_query(sql: &str, params: Vec<Value>) -> Result<Vec<Gl
             group_label,
             amount,
             entry_count,
+            representation: None,
         });
     }
     Ok(result)
@@ -771,7 +936,8 @@ async fn execute_drilldown_query(sql: &str, params: Vec<Value>) -> Result<Vec<Gl
 mod tests {
     use super::{
         append_common_gl_filters, append_signed_amount_params, build_detail_source_sql,
-        build_matched_gl_cte, build_row_sign_factor_expr, build_signed_amount_expr,
+        build_matched_gl_cte, build_p914_dimension_sql, build_row_sign_factor_expr,
+        build_signed_amount_expr,
     };
     use contracts::general_ledger::GlDrilldownQuery;
     use sea_orm::Value;
@@ -879,6 +1045,18 @@ mod tests {
         assert!(sql.contains("d.rr_dt = SUBSTR(gl_row.registrator_ref, 6, 10)"));
         assert!(sql.contains("d.rrd_id = CAST(SUBSTR(gl_row.registrator_ref, 17) AS INTEGER)"));
         assert!(sql.contains("gl_row.registrator_ref LIKE 'p903:%:%'"));
+    }
+
+    #[test]
+    fn p914_fina_dimension_sql_groups_by_projection_column() {
+        let (key, label, group_by) = build_p914_dimension_sql("d", "customer_kind");
+        assert_eq!(group_by, "d.customer_kind");
+        assert!(key.contains("d.customer_kind"));
+        assert!(label.contains("'Юрлицо'"));
+        assert!(label.contains("'Физлицо'"));
+
+        let (_, _, fulf_group_by) = build_p914_dimension_sql("d", "fulfillment_type");
+        assert_eq!(fulf_group_by, "d.fulfillment_type");
     }
 
     #[test]

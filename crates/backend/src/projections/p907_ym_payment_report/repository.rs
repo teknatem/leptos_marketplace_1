@@ -2,7 +2,9 @@ use anyhow::Result;
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -90,6 +92,18 @@ pub struct Model {
     pub bonus_account_year_month: Option<String>,
     #[sea_orm(nullable)]
     pub comments: Option<String>,
+
+    // Производные ссылки: резолвятся на первом этапе проведения (если пусто)
+    // и копируются в p914.
+    /// uuid a007_marketplace_product (по shop_sku).
+    #[sea_orm(nullable)]
+    pub marketplace_product_ref: Option<String>,
+    /// uuid a013_ym_order (по order_id).
+    #[sea_orm(nullable)]
+    pub marketplace_order_ref: Option<String>,
+    /// uuid a004_nomenclature (зеркало a007.nomenclature_ref по marketplace_product_ref).
+    #[sea_orm(nullable)]
+    pub nomenclature_ref: Option<String>,
 
     // Technical
     pub loaded_at_utc: String,
@@ -181,6 +195,11 @@ pub async fn upsert_entry(entry: &YmPaymentReportEntry) -> Result<()> {
         claim_number: Set(entry.claim_number.clone()),
         bonus_account_year_month: Set(entry.bonus_account_year_month.clone()),
         comments: Set(entry.comments.clone()),
+        // Производные ссылки не приходят из импорта; на конфликте не обновляются
+        // (сохраняются ранее заполненные значения), заполняются при проведении.
+        marketplace_product_ref: Set(None),
+        marketplace_order_ref: Set(None),
+        nomenclature_ref: Set(None),
         loaded_at_utc: Set(loaded_at_utc),
         payload_version: Set(entry.payload_version),
     };
@@ -480,10 +499,7 @@ fn parse_display_date(value: &str) -> Option<String> {
 /// Get a single entry by internal UUID (`id` column).
 pub async fn get_by_uuid(id: &str) -> Result<Option<Model>> {
     let db = get_connection();
-    let item = Entity::find()
-        .filter(Column::Id.eq(id))
-        .one(db)
-        .await?;
+    let item = Entity::find().filter(Column::Id.eq(id)).one(db).await?;
     Ok(item)
 }
 
@@ -492,6 +508,41 @@ pub async fn get_by_record_key(record_key: &str) -> Result<Option<Model>> {
     let db = get_connection();
     let item = Entity::find_by_id(record_key).one(db).await?;
     Ok(item)
+}
+
+/// Все внутренние `id` записей p907 — для массового перепроведения (repost-all).
+pub async fn list_all_ids() -> Result<Vec<String>> {
+    use sea_orm::QuerySelect;
+
+    let db = get_connection();
+    let ids = Entity::find()
+        .select_only()
+        .column(Column::Id)
+        .into_tuple::<String>()
+        .all(db)
+        .await?;
+    Ok(ids)
+}
+
+/// Внутренние `id` записей p907 в диапазоне дат транзакции — для перепроведения
+/// за период (u508). Верхняя граница инклюзивна (date_to включается целиком,
+/// даже если transaction_date содержит время).
+pub async fn list_ids_by_transaction_date_range(
+    date_from: &str,
+    date_to: &str,
+) -> Result<Vec<String>> {
+    let db = get_connection();
+    let date_to_bound = format!("{date_to} 23:59:59");
+    let ids = Entity::find()
+        .select_only()
+        .column(Column::Id)
+        .filter(Column::TransactionDate.gte(date_from))
+        .filter(Column::TransactionDate.lte(date_to_bound))
+        .order_by_asc(Column::TransactionDate)
+        .into_tuple::<String>()
+        .all(db)
+        .await?;
+    Ok(ids)
 }
 
 /// Migrate all SYNTH_... record_keys to ymid_... format.
@@ -565,6 +616,9 @@ pub async fn migrate_synth_keys(
             claim_number: Set(record.claim_number.clone()),
             bonus_account_year_month: Set(record.bonus_account_year_month.clone()),
             comments: Set(record.comments.clone()),
+            marketplace_product_ref: Set(record.marketplace_product_ref.clone()),
+            marketplace_order_ref: Set(record.marketplace_order_ref.clone()),
+            nomenclature_ref: Set(record.nomenclature_ref.clone()),
             loaded_at_utc: Set(record.loaded_at_utc.clone()),
             payload_version: Set(record.payload_version),
         };
@@ -617,7 +671,6 @@ pub async fn migrate_synth_keys(
     Ok((migrated, 0, errors))
 }
 
-
 /// Delete all entries for a connection in a date range (for re-import)
 pub async fn delete_by_connection_and_date_range(
     connection_mp_ref: &str,
@@ -625,11 +678,26 @@ pub async fn delete_by_connection_and_date_range(
     date_to: &str,
 ) -> Result<u64> {
     let db = get_connection();
+    let ids = Entity::find()
+        .select_only()
+        .column(Column::Id)
+        .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
+        .filter(Column::TransactionDate.gte(date_from))
+        .filter(Column::TransactionDate.lte(date_to))
+        .into_tuple::<String>()
+        .all(db)
+        .await?;
+
+    let txn = db.begin().await?;
+    crate::general_ledger::repository::delete_by_registrator_refs_with_conn(&txn, &ids).await?;
+
     let result = Entity::delete_many()
         .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
         .filter(Column::TransactionDate.gte(date_from))
         .filter(Column::TransactionDate.lte(date_to))
-        .exec(db)
+        .exec(&txn)
         .await?;
+    txn.commit().await?;
+
     Ok(result.rows_affected)
 }

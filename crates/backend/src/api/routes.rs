@@ -70,6 +70,7 @@ pub fn configure_business_routes() -> Router {
         .merge(p908_routes())
         .merge(p912_routes())
         .merge(p913_routes())
+        .merge(p914_routes())
         // System views with scopes
         .merge(quality_routes())
         .merge(dashboard_routes())
@@ -77,7 +78,22 @@ pub fn configure_business_routes() -> Router {
         .merge(bi_timeline_routes())
         .merge(general_ledger_routes())
         .merge(kb_read_routes())
+        .merge(refs_routes())
         .merge(misc_routes())
+}
+
+// ============================================================================
+// Универсальный резолвер представлений ссылок (*_ref) — только аутентификация
+// ============================================================================
+
+fn refs_routes() -> Router {
+    Router::new()
+        .route("/api/refs/resolve", get(handlers::refs::resolve))
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                crate::system::auth::middleware::require_auth(req, next).await
+            },
+        ))
 }
 
 // ============================================================================
@@ -1494,14 +1510,28 @@ fn p907_routes() -> Router {
             "/api/p907/payment-report/migrate-keys",
             post(handlers::p907_ym_payment_report::migrate_keys),
         )
+        // Перепровести все записи p907 (перестроить GL/p914).
+        .route(
+            "/api/p907/payment-report/repost-all",
+            post(handlers::p907_ym_payment_report::repost_all),
+        )
         // Get single record by internal UUID (id column).
         .route(
             "/api/p907/payment-report/:id",
             get(handlers::p907_ym_payment_report::get_report),
         )
+        .route(
+            "/api/p907/payment-report/:id/post",
+            post(handlers::p907_ym_payment_report::post_report),
+        )
+        // p914 finance turnovers (слой fina) для записи p907.
+        .route(
+            "/api/p907/payment-report/:id/finance-turnovers",
+            get(handlers::p907_ym_payment_report::get_finance_turnovers),
+        )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
-                check_scope_read("p907_ym_payment_report", req, next).await
+                check_scope("p907_ym_payment_report", req, next).await
             },
         ))
 }
@@ -1545,6 +1575,19 @@ fn p913_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope_read("p913_wb_advert_order_attr", req, next).await
+            },
+        ))
+}
+
+fn p914_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/p914/mp-finance-turnovers",
+            get(handlers::p914_mp_finance_turnovers::list),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p914_mp_finance_turnovers", req, next).await
             },
         ))
 }
@@ -1840,6 +1883,14 @@ fn general_ledger_routes() -> Router {
             axum::routing::get(handlers::general_ledger::dimensions_catalog_index),
         )
         .route(
+            "/api/general-ledger/layers",
+            axum::routing::get(handlers::general_ledger::list_layers),
+        )
+        .route(
+            "/api/general-ledger/layer-turnover-matrix",
+            axum::routing::get(handlers::general_ledger::layer_turnover_matrix),
+        )
+        .route(
             "/api/general-ledger/report",
             axum::routing::post(handlers::general_ledger::report),
         )
@@ -1911,10 +1962,7 @@ fn ext_1c_routes() -> Router {
 
 fn quality_routes() -> Router {
     Router::new()
-        .route(
-            "/api/quality/checks",
-            get(handlers::quality::list_checks),
-        )
+        .route("/api/quality/checks", get(handlers::quality::list_checks))
         .route(
             "/api/quality/checks/:id/run",
             post(handlers::quality::run_check),

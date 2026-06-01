@@ -682,6 +682,7 @@ mod tests {
             finished_price: fp,
             price_with_disc: pwd,
             price: p,
+            sale_price: None,
             dealer_price_ut: None,
             margin_pro: None,
         };

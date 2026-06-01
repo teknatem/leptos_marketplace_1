@@ -2,9 +2,10 @@ use axum::{
     extract::{Path, Query},
     Json,
 };
+use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p907_ym_payment_report::dto::{
-    YmPaymentReportDto, YmPaymentReportFilterOptionsResponse, YmPaymentReportListRequest,
-    YmPaymentReportListResponse,
+    YmPaymentReportDetailResponse, YmPaymentReportDto, YmPaymentReportFilterOptionsResponse,
+    YmPaymentReportListRequest, YmPaymentReportListResponse,
 };
 use serde::Deserialize;
 
@@ -36,7 +37,22 @@ pub async fn list_reports(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let dtos: Vec<YmPaymentReportDto> = items.into_iter().map(model_to_dto).collect();
+    let gl_counts = crate::general_ledger::repository::count_by_registrator_refs(
+        &items.iter().map(|item| item.id.clone()).collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to count p907 general ledger rows: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let dtos: Vec<YmPaymentReportDto> = items
+        .into_iter()
+        .map(|item| {
+            let count = gl_counts.get(&item.id).copied().unwrap_or_default();
+            model_to_dto(item, count)
+        })
+        .collect();
     let has_more = total > (req.offset + dtos.len() as i32);
 
     Ok(Json(YmPaymentReportListResponse {
@@ -82,16 +98,65 @@ pub async fn filter_options(
 /// Handler для получения одной записи отчёта по платежам YM по UUID (`id` поле).
 pub async fn get_report(
     Path(id): Path<String>,
-) -> Result<Json<YmPaymentReportDto>, axum::http::StatusCode> {
-    let item = repository::get_by_uuid(&id).await.map_err(|e| {
-        tracing::error!("Failed to get YM payment report: {}", e);
+) -> Result<Json<YmPaymentReportDetailResponse>, axum::http::StatusCode> {
+    load_report_detail_by_id(&id).await.map(Json)
+}
+
+pub async fn post_report(
+    Path(id): Path<String>,
+) -> Result<Json<YmPaymentReportDetailResponse>, axum::http::StatusCode> {
+    crate::projections::p907_ym_payment_report::service::rebuild_entry_from_existing(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to rebuild p907 general ledger for id {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    load_report_detail_by_id(&id).await.map(Json)
+}
+
+/// Массовое перепроведение всех записей p907: перестраивает GL/p914 для каждой
+/// строки. Используется после изменения маппинга оборотов, чтобы провести ранее
+/// не отражавшиеся операции YM.
+pub async fn repost_all() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let (rows, gl_entries) =
+        crate::projections::p907_ym_payment_report::service::repost_all()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to repost all p907 rows: {}", e);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "rows": rows,
+        "general_ledger_entries": gl_entries,
+        "message": format!("Reposted {} rows, {} GL entries", rows, gl_entries),
+    })))
+}
+
+/// Строки проекции p914 (слой `fina`), относящиеся к данной записи p907.
+/// Используется на детальной странице для показа соответствующего JSON.
+pub async fn get_finance_turnovers(
+    Path(id): Path<String>,
+) -> Result<Json<Vec<contracts::projections::p914_mp_finance_turnovers::dto::MpFinanceTurnoverDto>>, axum::http::StatusCode>
+{
+    let rows = crate::projections::p914_mp_finance_turnovers::repository::list_by_registrator(
+        "p907_ym_payment_report",
+        &id,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to load p914 finance turnovers for p907 id {}: {}", id, e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    match item {
-        Some(model) => Ok(Json(model_to_dto(model))),
-        None => Err(axum::http::StatusCode::NOT_FOUND),
-    }
+    let dtos = rows
+        .into_iter()
+        .map(super::p914_mp_finance_turnovers::model_to_dto)
+        .collect::<Vec<_>>();
+
+    Ok(Json(dtos))
 }
 
 /// Migrate all SYNTH_... record keys to ymid_... format.
@@ -120,7 +185,40 @@ pub async fn migrate_keys() -> Result<Json<serde_json::Value>, axum::http::Statu
     })))
 }
 
-fn model_to_dto(model: repository::Model) -> YmPaymentReportDto {
+async fn load_report_detail_by_id(
+    id: &str,
+) -> Result<YmPaymentReportDetailResponse, axum::http::StatusCode> {
+    let item = repository::get_by_uuid(id).await.map_err(|e| {
+        tracing::error!("Failed to get YM payment report detail: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let Some(item) = item else {
+        return Err(axum::http::StatusCode::NOT_FOUND);
+    };
+
+    let general_ledger_entries =
+        crate::general_ledger::repository::list_by_registrator("p907_ym_payment_report", &item.id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to load p907 general ledger rows by id: {}", e);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .into_iter()
+            .map(to_general_ledger_dto)
+            .collect::<Vec<_>>();
+
+    let count = general_ledger_entries.len();
+    Ok(YmPaymentReportDetailResponse {
+        item: model_to_dto(item, count),
+        general_ledger_entries,
+    })
+}
+
+fn model_to_dto(
+    model: repository::Model,
+    general_ledger_entries_count: usize,
+) -> YmPaymentReportDto {
     YmPaymentReportDto {
         id: model.id,
         record_key: model.record_key,
@@ -153,7 +251,15 @@ fn model_to_dto(model: repository::Model) -> YmPaymentReportDto {
         claim_number: model.claim_number,
         bonus_account_year_month: model.bonus_account_year_month,
         comments: model.comments,
+        marketplace_product_ref: model.marketplace_product_ref,
+        marketplace_order_ref: model.marketplace_order_ref,
+        nomenclature_ref: model.nomenclature_ref,
         loaded_at_utc: model.loaded_at_utc,
         payload_version: model.payload_version,
+        general_ledger_entries_count,
     }
+}
+
+fn to_general_ledger_dto(row: crate::general_ledger::repository::Model) -> GeneralLedgerEntryDto {
+    crate::general_ledger::dto::entry_to_dto(row)
 }

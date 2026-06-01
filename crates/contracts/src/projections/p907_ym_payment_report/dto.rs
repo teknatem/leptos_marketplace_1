@@ -1,3 +1,4 @@
+use crate::general_ledger::GeneralLedgerEntryDto;
 use serde::{Deserialize, Serialize};
 
 /// DTO для строки отчёта по платежам Yandex Market
@@ -54,9 +55,19 @@ pub struct YmPaymentReportDto {
     pub bonus_account_year_month: Option<String>,
     pub comments: Option<String>,
 
+    // Производные ссылки (резолвятся при проведении, копируются в p914)
+    #[serde(default)]
+    pub marketplace_product_ref: Option<String>,
+    #[serde(default)]
+    pub marketplace_order_ref: Option<String>,
+    #[serde(default)]
+    pub nomenclature_ref: Option<String>,
+
     // Technical fields
     pub loaded_at_utc: String,
     pub payload_version: i32,
+    #[serde(default)]
+    pub general_ledger_entries_count: usize,
 }
 
 /// Запрос на получение списка записей отчёта по платежам
@@ -115,4 +126,12 @@ pub struct YmPaymentReportFilterOptionsResponse {
     pub transaction_types: Vec<String>,
     pub payment_statuses: Vec<String>,
     pub transaction_sources: Vec<String>,
+}
+
+/// Ответ с деталями по одной записи отчёта по платежам YM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmPaymentReportDetailResponse {
+    pub item: YmPaymentReportDto,
+    #[serde(default)]
+    pub general_ledger_entries: Vec<GeneralLedgerEntryDto>,
 }

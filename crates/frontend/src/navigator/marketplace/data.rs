@@ -188,6 +188,15 @@ const FINANCE_LINKS: &[NavLink] = &[
         marketplaces: LinkScope::Only(YM_ONLY),
         entity_type: EntityType::Projection,
     },
+    NavLink {
+        tab_key: "p914_mp_finance_turnovers",
+        label: "Финансовые обороты (fina)",
+        annotation: "Обороты слоя fina — зеркало проводок GL из финотчётов WB и YM (p914)",
+        icon: "layers",
+        scope_id: None,
+        marketplaces: LinkScope::All,
+        entity_type: EntityType::Projection,
+    },
 ];
 
 // ─────────────────── Реклама и продвижение ────────────────

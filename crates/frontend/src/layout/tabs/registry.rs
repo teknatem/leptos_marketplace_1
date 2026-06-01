@@ -67,9 +67,10 @@ use crate::domain::a032_wb_returns_claims::ui::list::WbReturnsClaimsList;
 use crate::domain::a033_wb_day_close::ui::details::{WbDayCloseDetails, WbDayCloseNewPage};
 use crate::domain::a033_wb_day_close::ui::list::WbDayCloseList;
 use crate::general_ledger::ui::{
-    GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerPage,
-    GeneralLedgerReportPage, GeneralLedgerTurnoverDetails, GeneralLedgerTurnoversPage,
-    GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage,
+    GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerLayersPage,
+    GeneralLedgerLayerTurnoverMatrixPage, GeneralLedgerPage, GeneralLedgerReportPage,
+    GeneralLedgerTurnoverDetails, GeneralLedgerTurnoversPage, GlAccountViewPage, GlDrilldownPage,
+    WbWeeklyReconciliationPage,
 };
 use crate::layout::global_context::AppGlobalContext;
 use crate::navigator::marketplace::MarketplaceNavigator;
@@ -86,6 +87,7 @@ use crate::projections::p907_ym_payment_report::ui::details::YmPaymentReportDeta
 use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
 use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
 use crate::projections::p913_wb_advert_order_attr::ui::list::WbAdvertOrderAttrList;
+use crate::projections::p914_mp_finance_turnovers::ui::list::MpFinanceTurnoverList;
 use crate::shared::bi_timeline::ui::{BiTimelineInitial, BiTimelinePage};
 use crate::shared::drilldown_report::DrilldownReportPage;
 use crate::shared::knowledge_base::ui::{KnowledgeArticlePage, KnowledgeBaseWorkspace};
@@ -898,6 +900,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // Журнал операций (general_ledger)
         "general_ledger" => view! { <GeneralLedgerPage /> }.into_any(),
         "general_ledger_turnovers" => view! { <GeneralLedgerTurnoversPage /> }.into_any(),
+        "general_ledger_layers" => view! { <GeneralLedgerLayersPage /> }.into_any(),
+        "general_ledger_matrix" => {
+            view! { <GeneralLedgerLayerTurnoverMatrixPage /> }.into_any()
+        }
         "general_ledger_dimensions" => {
             view! { <GeneralLedgerDimensionsPage initial_turnover_code=None /> }.into_any()
         }
@@ -1077,16 +1083,17 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating WbAdvertOrderAttrList");
             view! { <WbAdvertOrderAttrList /> }.into_any()
         }
+        "p914_mp_finance_turnovers" => {
+            log!("✅ Creating MpFinanceTurnoverList");
+            view! { <MpFinanceTurnoverList /> }.into_any()
+        }
         k if k.starts_with("p907_ym_payment_report_details_") => {
             // Tab key stores UUID directly (no URL encoding needed for UUID format).
             let id = k
                 .strip_prefix("p907_ym_payment_report_details_")
                 .unwrap_or_default()
                 .to_string();
-            log!(
-                "✅ Creating YmPaymentReportDetail for id: {}",
-                id
-            );
+            log!("✅ Creating YmPaymentReportDetail for id: {}", id);
             view! {
                 <YmPaymentReportDetail
                     id=id

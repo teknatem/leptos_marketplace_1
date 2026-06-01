@@ -19,7 +19,7 @@ use contracts::shared::drilldown::{
 use sea_orm::{FromQueryResult, Statement};
 use std::collections::{HashMap, HashSet};
 
-use crate::general_ledger::drilldown_dimensions::dimensions_for_turnover;
+use crate::general_ledger::drilldown_dimensions::dimensions_for_turnover_at_layer;
 use crate::general_ledger::report_repository;
 use crate::shared::analytics::turnover_registry::get_turnover_class;
 use crate::shared::data::db::get_connection;
@@ -301,17 +301,18 @@ fn resolve_sign_policy(turnovers: &[SignedTurnover]) -> SignPolicy {
 
 fn common_dimensions_for_turnovers(
     turnovers: &[SignedTurnover],
+    layer: &str,
 ) -> Vec<contracts::general_ledger::GlDimensionDef> {
     let Some(first) = turnovers.first() else {
         return Vec::new();
     };
 
-    let first_dimensions = dimensions_for_turnover(&first.code);
+    let first_dimensions = dimensions_for_turnover_at_layer(&first.code, layer);
     first_dimensions
         .into_iter()
         .filter(|dimension| {
             turnovers.iter().skip(1).all(|turnover| {
-                dimensions_for_turnover(&turnover.code)
+                dimensions_for_turnover_at_layer(&turnover.code, layer)
                     .iter()
                     .any(|candidate| candidate.id == dimension.id)
             })
@@ -321,12 +322,13 @@ fn common_dimensions_for_turnovers(
 
 fn union_dimensions_for_turnovers(
     turnovers: &[SignedTurnover],
+    layer: &str,
 ) -> Vec<contracts::general_ledger::GlDimensionDef> {
     let mut seen = HashSet::new();
     let mut result = Vec::new();
 
     for turnover in turnovers {
-        for dimension in dimensions_for_turnover(&turnover.code) {
+        for dimension in dimensions_for_turnover_at_layer(&turnover.code, layer) {
             if seen.insert(dimension.id.clone()) {
                 result.push(dimension);
             }
@@ -336,8 +338,8 @@ fn union_dimensions_for_turnovers(
     result
 }
 
-fn turnover_supports_dimension(turnover_code: &str, dimension_id: &str) -> bool {
-    dimensions_for_turnover(turnover_code)
+fn turnover_supports_dimension(turnover_code: &str, dimension_id: &str, layer: &str) -> bool {
+    dimensions_for_turnover_at_layer(turnover_code, layer)
         .iter()
         .any(|dimension| dimension.id == dimension_id)
 }
@@ -610,7 +612,7 @@ async fn build_drilldown_capabilities(
         let turnover = turnovers
             .first()
             .ok_or_else(|| anyhow!("No turnovers configured for {}", VIEW_ID))?;
-        let safe_dimensions = dimensions_for_turnover(&turnover.code)
+        let safe_dimensions = dimensions_for_turnover_at_layer(&turnover.code, layer)
             .into_iter()
             .map(|dimension| DrilldownDimensionCapability {
                 id: dimension.id,
@@ -639,7 +641,7 @@ async fn build_drilldown_capabilities(
     )
     .await?;
 
-    let safe_dimension_ids = common_dimensions_for_turnovers(turnovers)
+    let safe_dimension_ids = common_dimensions_for_turnovers(turnovers, layer)
         .into_iter()
         .map(|dimension| dimension.id)
         .collect::<HashSet<_>>();
@@ -647,15 +649,15 @@ async fn build_drilldown_capabilities(
     let mut safe_dimensions = Vec::new();
     let mut partial_dimensions = Vec::new();
 
-    for dimension in union_dimensions_for_turnovers(turnovers) {
+    for dimension in union_dimensions_for_turnovers(turnovers, layer) {
         let supported_turnover_codes = turnovers
             .iter()
-            .filter(|turnover| turnover_supports_dimension(&turnover.code, &dimension.id))
+            .filter(|turnover| turnover_supports_dimension(&turnover.code, &dimension.id, layer))
             .map(|turnover| turnover.code.clone())
             .collect::<Vec<_>>();
         let missing_turnover_codes = turnovers
             .iter()
-            .filter(|turnover| !turnover_supports_dimension(&turnover.code, &dimension.id))
+            .filter(|turnover| !turnover_supports_dimension(&turnover.code, &dimension.id, layer))
             .map(|turnover| turnover.code.clone())
             .collect::<Vec<_>>();
         let is_safe = safe_dimension_ids.contains(&dimension.id);
@@ -816,6 +818,18 @@ pub async fn compute_drilldown_capabilities(
     build_drilldown_capabilities(metric, &turnovers, &layer, ctx).await
 }
 
+/// Метка строки: для регистратора — реальное представление документа
+/// (наименование · дата · #номер), иначе — день/сырое значение (через `day_key`).
+fn registrator_label<F: Fn(&str) -> String>(
+    row: &contracts::general_ledger::GlDrilldownRow,
+    day_key: F,
+) -> String {
+    match &row.representation {
+        Some(rep) => crate::shared::representation::to_label(rep),
+        None => day_key(&row.group_label),
+    }
+}
+
 pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<DrilldownResponse> {
     let metric = resolve_metric(ctx)?;
     let (turnovers, layer) = resolve_turnovers(ctx)?;
@@ -918,7 +932,9 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
 
     for row in rows1 {
         let key = day_key(&row.group_key);
-        let label = day_key(&row.group_label);
+        // Для разреза по регистратору метка = реальное представление документа
+        // (наименование · дата · #номер), иначе — день/сырое значение.
+        let label = registrator_label(&row, &day_key);
         merged
             .entry(key.clone())
             .or_insert_with(|| DrilldownRow {
@@ -934,7 +950,7 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
 
     for row in rows2 {
         let key = day_key(&row.group_key);
-        let label = day_key(&row.group_label);
+        let label = registrator_label(&row, &day_key);
         merged
             .entry(key.clone())
             .or_insert_with(|| DrilldownRow {
@@ -1202,6 +1218,7 @@ async fn fetch_composite_drilldown(
                     group_label: row.group_label.clone(),
                     amount: 0.0,
                     entry_count: 0,
+                    representation: row.representation.clone(),
                 }
             });
             let signed_amount = f64::from(turnover.sign) * row.amount;
@@ -1303,16 +1320,19 @@ mod tests {
 
     #[test]
     fn common_dimensions_for_composite_turnovers_is_intersection() {
-        let dims = common_dimensions_for_turnovers(&[
-            SignedTurnover {
-                code: "item_cost".to_string(),
-                sign: 1,
-            },
-            SignedTurnover {
-                code: "mp_commission_adjustment".to_string(),
-                sign: 1,
-            },
-        ]);
+        let dims = common_dimensions_for_turnovers(
+            &[
+                SignedTurnover {
+                    code: "item_cost".to_string(),
+                    sign: 1,
+                },
+                SignedTurnover {
+                    code: "mp_commission_adjustment".to_string(),
+                    sign: 1,
+                },
+            ],
+            "oper",
+        );
         let ids = dims.iter().map(|item| item.id.as_str()).collect::<Vec<_>>();
         assert!(ids.contains(&"entry_date"));
         assert!(ids.contains(&"registrator_ref"));

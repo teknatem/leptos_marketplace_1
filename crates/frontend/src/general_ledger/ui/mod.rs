@@ -1,9 +1,13 @@
 pub mod account_view;
 pub mod details;
+pub mod dimension_chip;
 pub mod dimensions;
 pub mod document_entries;
 pub mod drilldown;
+pub mod layer_badge;
+pub mod layers;
 pub mod list;
+pub mod matrix;
 pub mod report;
 pub mod turnovers;
 pub mod weekly_reconciliation;
@@ -11,6 +15,8 @@ pub mod weekly_reconciliation;
 pub use account_view::GlAccountViewPage;
 pub use details::GeneralLedgerDetailsPage;
 pub use dimensions::GeneralLedgerDimensionsPage;
+pub use layers::GeneralLedgerLayersPage;
+pub use matrix::GeneralLedgerLayerTurnoverMatrixPage;
 pub use document_entries::{
     document_general_ledger_entries_nav_id, DocumentGeneralLedgerEntries,
     DOCUMENT_GENERAL_LEDGER_ENTRIES_NAV_SUFFIX,

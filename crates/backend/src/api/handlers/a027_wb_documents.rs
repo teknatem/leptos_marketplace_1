@@ -50,18 +50,20 @@ const LOGISTICS_TURNOVERS: &[&str] = &[
     "mp_rebill_logistic_cost",
     "mp_rebill_logistic_cost_nm",
 ];
-const ACQUIRING_TURNOVERS: &[&str] = &["mp_acquiring"];
+const ACQUIRING_TURNOVERS: &[&str] = &["mp_acquiring", "mp_acquiring_storno"];
 
 const OPER_LAYER: &str = "oper";
-const FACT_LAYER: &str = "fact";
+// Слой p903/p907 переведён на `fina` (бывший `fact`). Константа сохраняет имя
+// FACT_LAYER для совместимости, но указывает на новый слой.
+const FACT_LAYER: &str = "fina";
 
 const REALIZED_GOODS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('customer_revenue_pl', 'spp_discount', 'wb_extra_discount', 'customer_revenue_pl_storno', 'spp_discount_storno', 'wb_extra_discount_storno') AND layer = 'oper'";
 const WB_REWARD_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_commission', 'mp_commission_storno', 'wb_coinvestment', 'wb_coinvestment_storno') AND layer = 'oper'";
 const SELLER_TRANSFER_FORMULA: &str = "Account 7609 main balance";
 const ADVERT_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('advert_clicks_no_order', 'advert_clicks_order_accrual') AND layer = 'oper'";
-const LOGISTICS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_ppvz_reward', 'mp_ppvz_reward_nm', 'mp_rebill_logistic_cost', 'mp_rebill_logistic_cost_nm') AND layer = 'fact'";
+const LOGISTICS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_ppvz_reward', 'mp_ppvz_reward_nm', 'mp_rebill_logistic_cost', 'mp_rebill_logistic_cost_nm') AND layer = 'fina'";
 const ACQUIRING_FORMULA: &str =
-    "SUM(amount) WHERE turnover_code = 'mp_acquiring' AND layer = 'fact'";
+    "SUM(amount) WHERE turnover_code IN ('mp_acquiring', 'mp_acquiring_storno') AND layer = 'fina'";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Сверка по слою FACT (отдельная таблица, не влияет на старую).
@@ -77,7 +79,7 @@ const ACQUIRING_FORMULA: &str =
 
 // 1.1 — выручка от покупателя и возвраты по факту (p903): retail_amount минус
 // возвраты. Соответствует «Итого стоимость реализованного товара».
-const FACT_REALIZED_GOODS_TURNOVERS: &[&str] = &["customer_revenue", "customer_return"];
+const FACT_REALIZED_GOODS_TURNOVERS: &[&str] = &["customer_revenue", "customer_revenue_storno"];
 // 2.1+2.2 — комиссия WB по факту: комиссия по продаже (mp_commission) и её
 // сторно по возврату (mp_commission_storno, знак инвертирован в GL-билдере p903).
 // Корректировки комиссии (mp_commission_adjustment[_nm]) сюда НЕ входят: они
@@ -99,10 +101,10 @@ const FACT_LOGISTICS_TURNOVERS: &[&str] = LOGISTICS_TURNOVERS;
 const FACT_ACQUIRING_TURNOVERS: &[&str] = ACQUIRING_TURNOVERS;
 
 const FACT_REALIZED_GOODS_FORMULA: &str =
-    "SUM(amount) WHERE turnover_code IN ('customer_revenue', 'customer_return') AND layer = 'fact'";
-const FACT_WB_REWARD_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_commission', 'mp_commission_storno') AND layer = 'fact'";
-const FACT_SELLER_TRANSFER_FORMULA: &str = "SUM over account 7609 (Dt − Cr) WHERE layer = 'fact'";
-const FACT_OTHER_DEDUCTIONS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('acceptance', 'mp_storage', 'mp_penalty', 'mp_penalty_storno') AND layer = 'fact'";
+    "SUM(amount) WHERE turnover_code IN ('customer_revenue', 'customer_revenue_storno') AND layer = 'fina'";
+const FACT_WB_REWARD_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('mp_commission', 'mp_commission_storno') AND layer = 'fina'";
+const FACT_SELLER_TRANSFER_FORMULA: &str = "SUM over account 7609 (Dt − Cr) WHERE layer = 'fina'";
+const FACT_OTHER_DEDUCTIONS_FORMULA: &str = "SUM(amount) WHERE turnover_code IN ('acceptance', 'mp_storage', 'mp_penalty', 'mp_penalty_storno') AND layer = 'fina'";
 const FACT_LOGISTICS_FORMULA: &str = LOGISTICS_FORMULA;
 const FACT_ACQUIRING_FORMULA: &str = ACQUIRING_FORMULA;
 

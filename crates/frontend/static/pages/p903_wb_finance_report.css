@@ -95,6 +95,8 @@
 .p903-fields-row--condition        { background: rgba(15, 118, 110, 0.08); box-shadow: inset 3px 0 0 #0f766e; }
 .p903-fields-row--resource         { background: rgba(154, 52, 18, 0.08);  box-shadow: inset 3px 0 0 #9a3412; }
 .p903-fields-row--resource-and-cond { background: rgba(29, 78, 216, 0.08); box-shadow: inset 3px 0 0 #1d4ed8; }
+/* Производные (добавленные) поля, отсутствующие в исходном ответе WB API. */
+.p903-fields-row--derived          { box-shadow: inset 3px 0 0 #94a3b8; }
 
 /* ── Detail: badge centering helper ──────────────────────────────────────── */
 .p903-badge-center {

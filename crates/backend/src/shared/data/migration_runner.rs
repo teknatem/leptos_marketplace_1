@@ -60,6 +60,61 @@ pub async fn run_migrations() -> anyhow::Result<()> {
     let migrator = sqlx::migrate::Migrator::new(migrations_dir.as_path()).await?;
     migrator.run(&pool).await?;
 
+    ensure_a015_dealer_price_ut_column(&pool).await?;
+
     tracing::info!("Database migrations applied successfully");
+    Ok(())
+}
+
+async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> anyhow::Result<bool> {
+    use sqlx::Row;
+    // PRAGMA не принимает bind-параметры — имя таблицы подставляем напрямую (оно из кода, не из ввода).
+    let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().any(|row| {
+        row.try_get::<String, _>("name")
+            .map(|name| name == column)
+            .unwrap_or(false)
+    }))
+}
+
+/// Идемпотентно гарантирует наличие денормализованного столбца
+/// `a015_wb_orders.dealer_price_ut` (зеркало `line_json.$.dealer_price_ut`).
+///
+/// Через обычную sqlx-миграцию это сделать нельзя: на части баз столбец был заведён
+/// вне миграций, и `ALTER TABLE ... ADD COLUMN` там падает с `duplicate column name`,
+/// а в SQLite нет `ADD COLUMN IF NOT EXISTS`. Поэтому делаем программно и идемпотентно:
+/// добавляем столбец, если его нет; бэкфиллим пустые значения из `line_json`; создаём индекс.
+/// Дальше столбец поддерживается при каждом сохранении документа.
+async fn ensure_a015_dealer_price_ut_column(pool: &SqlitePool) -> anyhow::Result<()> {
+    if !has_table(pool, "a015_wb_orders").await? {
+        return Ok(());
+    }
+
+    if !has_column(pool, "a015_wb_orders", "dealer_price_ut").await? {
+        sqlx::query("ALTER TABLE a015_wb_orders ADD COLUMN dealer_price_ut REAL")
+            .execute(pool)
+            .await?;
+        tracing::info!("Added column a015_wb_orders.dealer_price_ut");
+    }
+
+    // Бэкфилл только пустых зеркал — на повторных стартах ничего не находит и стоит дёшево.
+    sqlx::query(
+        "UPDATE a015_wb_orders \
+         SET dealer_price_ut = json_extract(line_json, '$.dealer_price_ut') \
+         WHERE dealer_price_ut IS NULL \
+           AND json_extract(line_json, '$.dealer_price_ut') IS NOT NULL",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_a015_dealer_price_ut \
+         ON a015_wb_orders(dealer_price_ut)",
+    )
+    .execute(pool)
+    .await?;
+
     Ok(())
 }

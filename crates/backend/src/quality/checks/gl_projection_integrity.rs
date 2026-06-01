@@ -1,7 +1,7 @@
 //! ## Проверка: целостность GL ↔ ProjectionLinked-проекции
 //!
 //! Сканирует ВСЕ записи `sys_general_ledger` с `resource_table` из набора
-//! `{p909, p910, p911, p913}` и проверяет три инварианта:
+//! `{p909, p910, p911, p913, p914}` и проверяет три инварианта:
 //!
 //! | Инвариант | Описание |
 //! |-----------|----------|
@@ -47,6 +47,11 @@ const PROJECTION_TABLES: &[ProjectionTable] = &[
         label: "p913 — Атрибуция рекламных расходов по заказам WB",
         amount_field: "amount",
     },
+    ProjectionTable {
+        resource_table: "p914_mp_finance_turnovers",
+        label: "p914 — Финансовые обороты МП (зеркало fina-проводок)",
+        amount_field: "amount",
+    },
 ];
 
 pub fn info() -> QualityCheckInfo {
@@ -54,7 +59,7 @@ pub fn info() -> QualityCheckInfo {
         code: String::new(),
         id: CHECK_ID.to_string(),
         name: "Целостность GL ↔ проекции (ProjectionLinked)".to_string(),
-        description: "Проверяет три инварианта для таблиц p909/p910/p911/p913: \
+        description: "Проверяет три инварианта для таблиц p909/p910/p911/p913/p914: \
                       GL без строк детализации (orphan_gl), \
                       строки проекции без GL-записи (orphan_projection), \
                       расхождение сумм (amount_mismatch)."

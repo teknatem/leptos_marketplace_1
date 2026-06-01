@@ -35,6 +35,9 @@ pub struct Model {
     pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub base_nomenclature_ref: Option<String>,
+    /// Денормализованное зеркало `line_json.$.dealer_price_ut` для запросов/сортировки
+    /// без json_extract. Пишется из `line.dealer_price_ut` при сохранении документа.
+    pub dealer_price_ut: Option<f64>,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -200,6 +203,8 @@ pub async fn list_by_income_id(income_id: i64) -> Result<Vec<WbOrders>> {
             marketplace_product_ref,
             nomenclature_ref,
             base_nomenclature_ref,
+            // Зеркало читаем не из колонки, а из line_json при сборке WbOrders.
+            dealer_price_ut: None,
             is_deleted,
             is_posted,
             created_at: None,
@@ -298,6 +303,8 @@ pub async fn list_for_advert_attribution(
             marketplace_product_ref,
             nomenclature_ref,
             base_nomenclature_ref,
+            // Зеркало читаем не из колонки, а из line_json при сборке WbOrders.
+            dealer_price_ut: None,
             is_deleted,
             is_posted,
             created_at: None,
@@ -391,6 +398,8 @@ pub async fn list_by_numeric_order_ids(order_ids: &[i64]) -> Result<Vec<WbOrders
             marketplace_product_ref,
             nomenclature_ref,
             base_nomenclature_ref,
+            // Зеркало читаем не из колонки, а из line_json при сборке WbOrders.
+            dealer_price_ut: None,
             is_deleted,
             is_posted,
             created_at: None,
@@ -428,20 +437,32 @@ pub async fn update_income_id_by_document_no(document_no: &str, income_id: i64) 
 
 /// Stores a separate raw payload reference for Marketplace API (/api/v3/orders).
 /// Statistics API continues to own `raw_payload_ref`.
-pub async fn update_marketplace_raw_payload_ref_by_document_no(
+/// Привязывает ссылку на Marketplace raw-payload и, если salePrice известен,
+/// сразу кладёт его готовым на строку (`line_json.$.sale_price`), чтобы расчёт
+/// margin_pro не читал raw-payload отдельным запросом.
+pub async fn update_marketplace_payload_by_document_no(
     document_no: &str,
     raw_payload_ref: &str,
+    sale_price: Option<f64>,
 ) -> Result<bool> {
     use sea_orm::{ConnectionTrait, Statement};
 
     let db = get_connection();
+    let line_set = match sale_price {
+        Some(price) => format!(
+            ", line_json = json_set(line_json, '$.sale_price', {})",
+            price
+        ),
+        None => String::new(),
+    };
     let sql = format!(
         "UPDATE a015_wb_orders \
-         SET source_meta_json = json_set(source_meta_json, '$.marketplace_raw_payload_ref', '{}'), \
+         SET source_meta_json = json_set(source_meta_json, '$.marketplace_raw_payload_ref', '{}'){} , \
              updated_at = datetime('now') \
          WHERE document_no = '{}' \
            AND is_deleted = 0",
         raw_payload_ref.replace('\'', "''"),
+        line_set,
         document_no.replace('\'', "''")
     );
     let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
@@ -640,6 +661,7 @@ pub async fn update_posted_document(document: &WbOrders) -> Result<()> {
         marketplace_product_ref: Set(document.marketplace_product_ref.clone()),
         nomenclature_ref: Set(document.nomenclature_ref.clone()),
         base_nomenclature_ref: Set(document.base_nomenclature_ref.clone()),
+        dealer_price_ut: Set(document.line.dealer_price_ut),
         is_deleted: Set(document.base.metadata.is_deleted),
         is_posted: Set(document.is_posted),
         updated_at: Set(Some(Utc::now())),
@@ -695,6 +717,7 @@ pub async fn upsert_document(document: &WbOrders) -> Result<Uuid> {
             marketplace_product_ref: Set(document.marketplace_product_ref.clone()),
             nomenclature_ref: Set(document.nomenclature_ref.clone()),
             base_nomenclature_ref: Set(document.base_nomenclature_ref.clone()),
+            dealer_price_ut: Set(document.line.dealer_price_ut),
             is_deleted: Set(document.base.metadata.is_deleted),
             is_posted: Set(document.is_posted),
             updated_at: Set(Some(Utc::now())),
@@ -726,6 +749,7 @@ pub async fn upsert_document(document: &WbOrders) -> Result<Uuid> {
             marketplace_product_ref: Set(document.marketplace_product_ref.clone()),
             nomenclature_ref: Set(document.nomenclature_ref.clone()),
             base_nomenclature_ref: Set(document.base_nomenclature_ref.clone()),
+            dealer_price_ut: Set(document.line.dealer_price_ut),
             is_deleted: Set(false),
             is_posted: Set(document.is_posted),
             created_at: Set(Some(Utc::now())),
@@ -900,7 +924,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
         "brand" => "json_extract(w.line_json, '$.brand')",
         "qty" => "json_extract(w.line_json, '$.qty')",
         "margin_pro" => "json_extract(w.line_json, '$.margin_pro')",
-        "dealer_price_ut" => "json_extract(w.line_json, '$.dealer_price_ut')",
+        "dealer_price_ut" => "w.dealer_price_ut",
         "finished_price" => "json_extract(w.line_json, '$.finished_price')",
         "total_price" => "json_extract(w.line_json, '$.total_price')",
         "organization_name" => "org.description",

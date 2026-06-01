@@ -8,4 +8,5 @@ pub mod format;
 pub mod llm;
 pub mod logger;
 pub mod marketplaces;
+pub mod representation;
 pub mod universal_dashboard;

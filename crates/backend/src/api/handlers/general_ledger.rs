@@ -1,8 +1,11 @@
 use axum::{extract::Query, Json};
 use serde::{Deserialize, Serialize};
 
+use crate::general_ledger::detail_links::{descriptor_for_resource_table, GlDetailLinkKind};
 use crate::general_ledger::drilldown_dimensions::{
     dimension_signature_for_turnover, dimensions_catalog, dimensions_for_turnover,
+    dimensions_for_turnover_at_layer, projections_for_cell, source_short_label,
+    table_provides_dimension,
 };
 use crate::general_ledger::drilldown_session_repository;
 use crate::general_ledger::report_repository;
@@ -12,8 +15,10 @@ use contracts::general_ledger::{
     GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
     GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
-    GlReportQuery, GlReportResponse, GlResourceDetailResponse, WbWeeklyReconciliationQuery,
-    WbWeeklyReconciliationResponse,
+    GlLayerDto, GlLayersResponse, GlLayerTurnoverMatrixResponse, GlMatrixCell, GlMatrixDimension,
+    GlMatrixLayer, GlMatrixProjection, GlMatrixTurnover, GlReportQuery, GlReportResponse,
+    GlResourceDetailResponse, WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
+    GL_LAYER_CLASSES,
 };
 
 #[derive(Debug, Deserialize)]
@@ -234,6 +239,166 @@ pub async fn dimensions_catalog_index() -> Json<GlDimensionsCatalogResponse> {
     let items = dimensions_catalog();
     let total = items.len();
     Json(GlDimensionsCatalogResponse { items, total })
+}
+
+/// Человекочитаемое описание проекции-зеркала по её `resource_table`.
+/// «sys_general_ledger» — поле самой проводки; остальные — detail-проекции из
+/// реестра `detail_links` (с указанием способа связи).
+fn matrix_projection(resource_table: &str) -> GlMatrixProjection {
+    if resource_table == "sys_general_ledger" {
+        return GlMatrixProjection {
+            resource_table: resource_table.to_string(),
+            label: "Журнал GL (sys_general_ledger)".to_string(),
+            kind: "gl".to_string(),
+        };
+    }
+
+    let kind = match descriptor_for_resource_table(resource_table).map(|d| d.kind) {
+        Some(GlDetailLinkKind::ProjectionLinked) => "projection_linked",
+        Some(GlDetailLinkKind::ExternalLinked) => "external_linked",
+        None => "gl",
+    };
+    GlMatrixProjection {
+        resource_table: resource_table.to_string(),
+        label: resource_table.to_string(),
+        kind: kind.to_string(),
+    }
+}
+
+/// Матрица «Слой / Оборот»: обзор доступности измерений по слоям.
+///
+/// Состав (какие обороты × слои и какие измерения) — из реестра
+/// (`TURNOVER_CLASSES` × `GL_LAYER_CLASSES` + `dimensions_for_turnover_at_layer`);
+/// проекции — из реестра слоёв (`projections_for_cell`); счётчик проводок —
+/// overlay из данных GL. Естественная деривация без хардкода.
+pub async fn layer_turnover_matrix(
+) -> Result<Json<GlLayerTurnoverMatrixResponse>, axum::http::StatusCode> {
+    let counts =
+        crate::general_ledger::repository::count_grouped_by_turnover_and_layer()
+            .await
+            .map_err(|e| {
+                tracing::error!("layer/turnover matrix counts error: {e}");
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+    let mut layers = GL_LAYER_CLASSES
+        .iter()
+        .map(|layer| GlMatrixLayer {
+            code: layer.code.to_string(),
+            name: layer.name.to_string(),
+            color_key: layer.color_key.to_string(),
+            sort_order: layer.sort_order,
+        })
+        .collect::<Vec<_>>();
+    layers.sort_by_key(|layer| layer.sort_order);
+
+    let mut turnovers = TURNOVER_CLASSES
+        .iter()
+        .map(|tc| GlMatrixTurnover {
+            code: tc.code.to_string(),
+            name: tc.name.to_string(),
+            report_group: tc.report_group.as_str().to_string(),
+        })
+        .collect::<Vec<_>>();
+    turnovers.sort_by(|left, right| {
+        left.report_group
+            .cmp(&right.report_group)
+            .then_with(|| left.code.cmp(&right.code))
+    });
+
+    let mut cells = Vec::with_capacity(turnovers.len() * layers.len());
+    let mut filter_dimensions = Vec::new();
+    let mut seen_filter_ids = std::collections::HashSet::new();
+
+    for turnover in &turnovers {
+        for layer in &layers {
+            // Зеркала ячейки (GL + проекции слоя) — общий пул источников; для
+            // каждого измерения оставляем те, что физически его содержат.
+            let cell_sources = projections_for_cell(&turnover.code, &layer.code);
+
+            let raw_dimensions = dimensions_for_turnover_at_layer(&turnover.code, &layer.code);
+            let mut top_level_count = 0usize;
+            let dimensions = raw_dimensions
+                .into_iter()
+                .map(|def| {
+                    let is_top_level = def.parent_id.is_none();
+                    if is_top_level {
+                        top_level_count += 1;
+                    }
+                    if seen_filter_ids.insert(def.id.clone()) {
+                        filter_dimensions.push(def.clone());
+                    }
+                    let sources = cell_sources
+                        .iter()
+                        .copied()
+                        .filter(|table| table_provides_dimension(table, &def.id))
+                        .map(source_short_label)
+                        .collect::<Vec<_>>();
+                    GlMatrixDimension {
+                        def,
+                        is_top_level,
+                        sources,
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let projections = cell_sources
+                .iter()
+                .copied()
+                .map(matrix_projection)
+                .collect::<Vec<_>>();
+
+            let entry_count = counts
+                .get(&(turnover.code.clone(), layer.code.clone()))
+                .copied()
+                .unwrap_or(0);
+
+            cells.push(GlMatrixCell {
+                turnover_code: turnover.code.clone(),
+                layer: layer.code.clone(),
+                top_level_count,
+                entry_count,
+                dimensions,
+                projections,
+            });
+        }
+    }
+
+    filter_dimensions.sort_by(|left, right| left.code.cmp(&right.code));
+
+    Ok(Json(GlLayerTurnoverMatrixResponse {
+        layers,
+        turnovers,
+        cells,
+        filter_dimensions,
+    }))
+}
+
+pub async fn list_layers() -> Result<Json<GlLayersResponse>, axum::http::StatusCode> {
+    let counts = crate::general_ledger::repository::count_grouped_by_layer()
+        .await
+        .map_err(|e| {
+            tracing::error!("general_ledger layer counts error: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let mut items = GL_LAYER_CLASSES
+        .iter()
+        .map(|item| GlLayerDto {
+            code: item.code.to_string(),
+            name: item.name.to_string(),
+            description: item.description.to_string(),
+            color_key: item.color_key.to_string(),
+            sort_order: item.sort_order,
+            gl_entries_count: counts.get(item.code).copied().unwrap_or(0),
+        })
+        .collect::<Vec<_>>();
+
+    items.sort_by_key(|item| item.sort_order);
+
+    let total = items.len();
+
+    Ok(Json(GlLayersResponse { items, total }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

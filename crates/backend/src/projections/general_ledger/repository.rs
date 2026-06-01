@@ -246,6 +246,55 @@ pub async fn count_grouped_by_turnover_code() -> Result<HashMap<String, usize>> 
     Ok(counts)
 }
 
+/// Кол-во GL-проводок по паре (turnover_code, layer). Один индексируемый
+/// group-by; используется для overlay счётчиков в матрице Слой/Оборот.
+pub async fn count_grouped_by_turnover_and_layer() -> Result<HashMap<(String, String), i64>> {
+    let stmt = Statement::from_string(
+        conn().get_database_backend(),
+        r#"
+            SELECT turnover_code, COALESCE(layer, '') AS layer, COUNT(*) AS gl_entries_count
+            FROM sys_general_ledger
+            GROUP BY turnover_code, layer
+        "#
+        .to_string(),
+    );
+
+    let rows = conn().query_all(stmt).await?;
+    let mut counts = HashMap::new();
+
+    for row in rows {
+        let turnover_code: String = row.try_get("", "turnover_code")?;
+        let layer: String = row.try_get("", "layer")?;
+        let count: i64 = row.try_get("", "gl_entries_count")?;
+        counts.insert((turnover_code, layer), count.max(0));
+    }
+
+    Ok(counts)
+}
+
+pub async fn count_grouped_by_layer() -> Result<HashMap<String, i64>> {
+    let stmt = Statement::from_string(
+        conn().get_database_backend(),
+        r#"
+            SELECT COALESCE(layer, '') AS layer, COUNT(*) AS gl_entries_count
+            FROM sys_general_ledger
+            GROUP BY layer
+        "#
+        .to_string(),
+    );
+
+    let rows = conn().query_all(stmt).await?;
+    let mut counts = HashMap::new();
+
+    for row in rows {
+        let layer: String = row.try_get("", "layer")?;
+        let count: i64 = row.try_get("", "gl_entries_count")?;
+        counts.insert(layer, count.max(0));
+    }
+
+    Ok(counts)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn list_with_filters(
     date_from: Option<String>,

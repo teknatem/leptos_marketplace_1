@@ -216,4 +216,22 @@
   --list-scrollbar-track: rgba(0, 0, 0, 0.15);
   --list-scrollbar-thumb: rgba(255, 255, 255, 0.20);
   --list-scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
+
+  /* GL dimension chip colors (brighter for dark backgrounds) */
+  --gl-dim-day:     #22d3ee;
+  --gl-dim-cab:     #60a5fa;
+  --gl-dim-regtype: #a78bfa;
+  --gl-dim-layer:   #fbbf24;
+  --gl-dim-regref:  #f472b6;
+  --gl-dim-nom:     #4ade80;
+  --gl-dim-uf:      #2dd4bf;
+  --gl-dim-fulf:    #c084fc;
+  --gl-dim-sys:     #94a3b8;
+
+  /* GL layer badge text colors (brighter for dark backgrounds) */
+  --gl-layer-oper:  #60a5fa;
+  --gl-layer-fact:  #22d3ee;
+  --gl-layer-fina:  #fbbf24;
+  --gl-layer-prod:  #4ade80;
+  --gl-layer-plan:  #a78bfa;
 }

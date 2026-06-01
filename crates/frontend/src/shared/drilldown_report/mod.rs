@@ -12,8 +12,10 @@ use crate::data_view::types::{
     ResourceMeta,
 };
 use crate::data_view::ui::FilterBar;
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
+use crate::shared::registrator_link::{is_registrator_key, reg_tab_key, split_group_key};
 use contracts::shared::data_view::ViewContext;
 use contracts::shared::drilldown::{DrilldownResponse, DrilldownRow, ExtraColumnDef, MetricValues};
 use gloo_net::http::Request;
@@ -321,6 +323,32 @@ fn extra_footer_cells(cols: &[ExtraColumnDef]) -> impl IntoView {
         .collect_view()
 }
 
+/// Ячейка наименования группы. Для строк-регистраторов (group_key вида
+/// "{type}~~{ref}") рендерит гиперссылку на детальный документ; иначе — текст.
+fn group_label_cell(row: &DrilldownRow, tabs_store: Option<AppGlobalContext>) -> AnyView {
+    if let Some(store) = tabs_store {
+        if is_registrator_key(&row.group_key) {
+            let (reg_type, reg_ref) = split_group_key(&row.group_key);
+            if let Some(key) = reg_tab_key(reg_type, reg_ref) {
+                let display = row.label.clone();
+                let title = row.label.clone();
+                return view! {
+                    <td class="data-table__cell">
+                        <button
+                            class="gl-link-btn"
+                            on:click=move |_| store.open_tab(&key, &title)
+                        >
+                            {display}
+                        </button>
+                    </td>
+                }
+                .into_any();
+            }
+        }
+    }
+    view! { <td class="data-table__cell">{row.label.clone()}</td> }.into_any()
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 #[component]
@@ -330,6 +358,9 @@ pub fn DrilldownReportPage(
     on_close: Option<Callback<()>>,
 ) -> impl IntoView {
     let is_manual = session_id.is_none();
+
+    // Контекст вкладок для перехода к документу-регистратору по гиперссылке.
+    let tabs_store = use_context::<AppGlobalContext>();
 
     // ── Session state ─────────────────────────────────────────────────────────
     let session_loaded = RwSignal::new(is_manual);
@@ -858,7 +889,7 @@ pub fn DrilldownReportPage(
                                             let cols = cols_rows.clone();
                                             view! {
                                                 <tr class="data-table__row">
-                                                    <td class="data-table__cell">{row.label.clone()}</td>
+                                                    {group_label_cell(&row, tabs_store)}
                                                     {extra_body_cells(&extra_body, &extra_vals, &row.group_key)}
                                                     {cols.into_iter().map(|col| {
                                                         let mv: MetricValues = row.metric_values
@@ -1009,7 +1040,7 @@ pub fn DrilldownReportPage(
                                             let delta_str = fmt_delta(row.delta_pct);
                                             view! {
                                                 <tr class="data-table__row">
-                                                    <td class="data-table__cell">{row.label.clone()}</td>
+                                                    {group_label_cell(&row, tabs_store)}
                                                     {extra_body_cells(&extra_body, &extra_vals, &row.group_key)}
                                                     <td class="data-table__cell data-table__cell--num">
                                                         {fmt_value(row.value1)}

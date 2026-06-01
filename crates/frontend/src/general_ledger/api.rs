@@ -3,8 +3,8 @@ use contracts::general_ledger::{
     GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
     GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
-    GlReportQuery, GlReportResponse, GlResourceDetailResponse, WbWeeklyReconciliationQuery,
-    WbWeeklyReconciliationResponse,
+    GlLayersResponse, GlLayerTurnoverMatrixResponse, GlReportQuery, GlReportResponse,
+    GlResourceDetailResponse, WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
 };
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -189,6 +189,23 @@ pub async fn fetch_general_ledger_turnovers() -> Result<GeneralLedgerTurnoverLis
         .map_err(|e| format!("Failed to parse GL turnovers response: {e}"))
 }
 
+pub async fn fetch_general_ledger_layers() -> Result<GlLayersResponse, String> {
+    let url = format!("{}/api/general-ledger/layers", api_base());
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch GL layers: {e}"))?;
+
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    response
+        .json::<GlLayersResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse GL layers response: {e}"))
+}
+
 pub async fn fetch_gl_report(query: &GlReportQuery) -> Result<GlReportResponse, String> {
     let url = format!("{}/api/general-ledger/report", api_base());
     let response = Request::post(&url)
@@ -244,6 +261,23 @@ pub async fn fetch_gl_dimensions_catalog() -> Result<GlDimensionsCatalogResponse
         .json::<GlDimensionsCatalogResponse>()
         .await
         .map_err(|e| format!("Failed to parse GL dimensions catalog response: {e}"))
+}
+
+pub async fn fetch_gl_layer_turnover_matrix() -> Result<GlLayerTurnoverMatrixResponse, String> {
+    let url = format!("{}/api/general-ledger/layer-turnover-matrix", api_base());
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch GL layer/turnover matrix: {e}"))?;
+
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    response
+        .json::<GlLayerTurnoverMatrixResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse GL layer/turnover matrix response: {e}"))
 }
 
 pub async fn fetch_gl_drilldown(query: &GlDrilldownQuery) -> Result<GlDrilldownResponse, String> {

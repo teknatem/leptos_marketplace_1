@@ -1,14 +1,15 @@
 mod api;
 
-use api::{fetch_detail, fetch_linked_sales, post_detail, WbSalesLink};
 use crate::domain::a012_wb_sales::ui::details::WbSalesDetail;
 use crate::general_ledger::ui::{
     document_general_ledger_entries_nav_id, DocumentGeneralLedgerEntries,
 };
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::json_viewer::widget::JsonViewer;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator};
 use crate::shared::page_frame::PageFrame;
+use api::{fetch_detail, fetch_linked_sales, post_detail, WbSalesLink};
 use contracts::general_ledger::GeneralLedgerEntryDto;
 use contracts::projections::p903_wb_finance_report::dto::WbFinanceReportDto;
 use leptos::logging::log;
@@ -123,6 +124,19 @@ fn is_emphasized_string_field(field_id: &str) -> bool {
     matches!(field_id, "payment_processing")
 }
 
+/// Производные поля, добавленные системой (не приходят из WB API напрямую).
+/// В UI выделяются серой рамкой слева, чтобы отличаться от оригинальных полей.
+fn is_derived_field(field_id: &str) -> bool {
+    matches!(
+        field_id,
+        "id" | "source_row_ref"
+            | "general_ledger_entries_count"
+            | "a004_nomenclature_ref"
+            | "marketplace_product_ref"
+            | "marketplace_order_ref"
+    )
+}
+
 fn display_field_note(field_id: &str) -> Option<&'static str> {
     match field_id {
         _ => field_note(field_id),
@@ -139,11 +153,13 @@ fn display_field_description(row: &FieldRow) -> String {
 
 fn gl_resource_turnovers(field_id: &str) -> &'static [&'static str] {
     match field_id {
-        "retail_amount" => &["customer_revenue"],
-        "return_amount" => &["customer_return"],
-        "ppvz_vw" | "ppvz_vw_nds" => &["mp_commission", "mp_commission_adjustment"],
+        "retail_amount" => &["customer_revenue", "customer_revenue_storno"],
+        "return_amount" => &["customer_return", "customer_revenue_storno"],
+        "ppvz_vw" | "ppvz_vw_nds" => {
+            &["mp_commission", "mp_commission_storno", "mp_commission_adjustment"]
+        }
         "ppvz_sales_commission" => &["mp_commission_adjustment"],
-        "acquiring_fee" => &["mp_acquiring"],
+        "acquiring_fee" => &["mp_acquiring", "mp_acquiring_storno"],
         "rebill_logistic_cost" => &["mp_rebill_logistic_cost"],
         "ppvz_reward" => &["mp_ppvz_reward"],
         "storage_fee" => &["mp_storage"],
@@ -159,9 +175,12 @@ fn gl_condition_turnovers(field_id: &str) -> &'static [&'static str] {
         "supplier_oper_name" => &[
             "customer_revenue",
             "customer_return",
+            "customer_revenue_storno",
             "mp_commission",
+            "mp_commission_storno",
             "mp_commission_adjustment",
             "mp_acquiring",
+            "mp_acquiring_storno",
             "mp_storage",
             "mp_penalty",
             "mp_penalty_storno",
@@ -171,24 +190,32 @@ fn gl_condition_turnovers(field_id: &str) -> &'static [&'static str] {
         "srid" => &[
             "customer_revenue",
             "customer_return",
+            "customer_revenue_storno",
             "mp_commission",
+            "mp_commission_storno",
             "mp_commission_adjustment",
             "mp_acquiring",
+            "mp_acquiring_storno",
             "mp_rebill_logistic_cost",
             "mp_storage",
             "acceptance",
         ],
-        "payment_processing" => &["mp_acquiring"],
+        "payment_processing" => &["mp_acquiring", "mp_acquiring_storno"],
         "retail_amount" => &[
             "customer_revenue",
             "customer_return",
+            "customer_revenue_storno",
             "mp_commission",
+            "mp_commission_storno",
             "mp_ppvz_reward",
         ],
         "return_amount" => &[
             "customer_return",
+            "customer_revenue_storno",
             "mp_acquiring",
+            "mp_acquiring_storno",
             "mp_commission",
+            "mp_commission_storno",
             "mp_ppvz_reward",
         ],
         _ => &[],
@@ -276,10 +303,13 @@ fn parse_field_value(value: &str) -> Option<f64> {
 
 fn turnover_financial_result(turnover_code: &str) -> Option<FinancialResultRole> {
     match turnover_code {
-        "customer_revenue" | "voluntary_return_compensation" | "mp_penalty_storno" => {
-            Some(FinancialResultRole::Income)
-        }
+        "customer_revenue"
+        | "voluntary_return_compensation"
+        | "mp_penalty_storno"
+        | "mp_commission_storno"
+        | "mp_acquiring_storno" => Some(FinancialResultRole::Income),
         "customer_return"
+        | "customer_revenue_storno"
         | "mp_commission"
         | "mp_commission_adjustment"
         | "mp_commission_adjustment_nm"
@@ -333,9 +363,9 @@ fn gl_role_row_class(role: GlFieldRole) -> &'static str {
     }
 }
 
-
 #[component]
 pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
+    let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let (data, set_data) = signal::<Option<WbFinanceReportDto>>(None);
     let (general_ledger_entries, set_general_ledger_entries) =
         signal::<Vec<GeneralLedgerEntryDto>>(Vec::new());
@@ -666,6 +696,30 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                 field_id: "general_ledger_entries_count".to_string(),
                 value: item.general_ledger_entries_count.to_string(),
             },
+            FieldRow {
+                description: "Номенклатура (a004)".to_string(),
+                field_id: "a004_nomenclature_ref".to_string(),
+                value: item
+                    .a004_nomenclature_ref
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+            },
+            FieldRow {
+                description: "Товар маркетплейса (a007)".to_string(),
+                field_id: "marketplace_product_ref".to_string(),
+                value: item
+                    .marketplace_product_ref
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+            },
+            FieldRow {
+                description: "Заказ (a015)".to_string(),
+                field_id: "marketplace_order_ref".to_string(),
+                value: item
+                    .marketplace_order_ref
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+            },
         ];
 
         // Сортировка
@@ -975,8 +1029,39 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                             let result_role = field_financial_result_role(&row, &gl_entries);
                                                             let emphasized_value =
                                                                 is_emphasized_string_field(&row.field_id);
+                                                            let derived = is_derived_field(&row.field_id);
+                                                            let row_class = {
+                                                                let mut classes = String::new();
+                                                                if let Some(role) = gl_role {
+                                                                    classes.push_str(gl_role_row_class(role));
+                                                                }
+                                                                if derived {
+                                                                    if !classes.is_empty() {
+                                                                        classes.push(' ');
+                                                                    }
+                                                                    classes.push_str("p903-fields-row--derived");
+                                                                }
+                                                                classes
+                                                            };
+                                                            let tabs_store = tabs_store.clone();
+                                                            // Предвычисляем значения из row, чтобы не захватывать
+                                                            // сам row в нескольких view-замыканиях.
+                                                            let field_id_display = row.field_id.clone();
+                                                            let value = row.value.clone();
+                                                            let has_value = value != "-" && !value.is_empty();
+                                                            let link_target = match row.field_id.as_str() {
+                                                                "marketplace_product_ref" if has_value => Some((
+                                                                    format!("a007_marketplace_product_details_{}", value),
+                                                                    format!("Товар {}", &value[..value.len().min(8)]),
+                                                                )),
+                                                                "marketplace_order_ref" if has_value => Some((
+                                                                    format!("a015_wb_orders_details_{}", value),
+                                                                    format!("Заказ {}", &value[..value.len().min(8)]),
+                                                                )),
+                                                                _ => None,
+                                                            };
                                                             view! {
-                                                                <TableRow class={gl_role.map(gl_role_row_class).unwrap_or("")}>
+                                                                <TableRow class={row_class}>
                                                                     <TableCell>
                                                                         <TableCellLayout>
                                                                             <div class="p903-field-desc">{description}</div>
@@ -1013,20 +1098,30 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
                                                                     </TableCell>
                                                                     <TableCell>
                                                                         <TableCellLayout>
-                                                                            <span class="p903-field-id">{row.field_id.clone()}</span>
+                                                                            <span class="p903-field-id">{field_id_display}</span>
                                                                         </TableCellLayout>
                                                                     </TableCell>
                                                                     <TableCell>
                                                                         <TableCellLayout>
-                                                                            {if emphasized_value {
-                                                                                view! {
-                                                                                    <code class="p903-field-value--code">{row.value.clone()}</code>
-                                                                                }.into_any()
-                                                                            } else {
-                                                                                view! {
-                                                                                    <span class="p903-field-value">{row.value.clone()}</span>
-                                                                                }.into_any()
-                                                                            }}
+                                                                            {
+                                                                                if let Some((tab_key, tab_label)) = link_target {
+                                                                                    let tabs_store = tabs_store.clone();
+                                                                                    view! {
+                                                                                        <a href="#" class="table__link" on:click=move |e| {
+                                                                                            e.prevent_default();
+                                                                                            tabs_store.open_tab(&tab_key, &tab_label);
+                                                                                        }>{value}</a>
+                                                                                    }.into_any()
+                                                                                } else if emphasized_value {
+                                                                                    view! {
+                                                                                        <code class="p903-field-value--code">{value}</code>
+                                                                                    }.into_any()
+                                                                                } else {
+                                                                                    view! {
+                                                                                        <span class="p903-field-value">{value}</span>
+                                                                                    }.into_any()
+                                                                                }
+                                                                            }
                                                                         </TableCellLayout>
                                                                     </TableCell>
                                                                 </TableRow>
@@ -1178,4 +1273,3 @@ pub fn WbFinanceReportDetail(id: String, #[prop(into)] on_close: Callback<()>) -
         </PageFrame>
     }
 }
-

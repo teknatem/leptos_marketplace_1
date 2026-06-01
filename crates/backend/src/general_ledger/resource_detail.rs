@@ -17,6 +17,7 @@ use crate::projections::p909_mp_order_line_turnovers::repository as p909;
 use crate::projections::p910_mp_unlinked_turnovers::repository as p910;
 use crate::projections::p911_wb_advert_by_items::repository as p911;
 use crate::projections::p913_wb_advert_order_attr::repository as p913;
+use crate::projections::p914_mp_finance_turnovers::repository as p914;
 use crate::shared::data::db::get_connection;
 
 const MATCH_TOLERANCE: f64 = 0.01;
@@ -159,6 +160,7 @@ async fn fetch_rows(
             "p910_mp_unlinked_turnovers" => fetch_p910(gl).await,
             "p911_wb_advert_by_items" => fetch_p911(gl).await,
             "p913_wb_advert_order_attr" => fetch_p913(gl).await,
+            "p914_mp_finance_turnovers" => fetch_p914(gl).await,
             other => Err(anyhow::anyhow!(
                 "ProjectionLinked table '{other}' has no detail loader"
             )),
@@ -241,6 +243,24 @@ async fn fetch_p913(gl: &super::repository::Model) -> Result<Vec<JsonValue>> {
         .filter(p913::Column::RegistratorRef.eq(gl.registrator_ref.clone()))
         .filter(p913::Column::TurnoverCode.eq(gl.turnover_code.clone()))
         .filter(p913::Column::GeneralLedgerRef.is_null())
+        .into_json()
+        .all(conn())
+        .await?;
+    rows.extend(orphans);
+    Ok(rows)
+}
+
+async fn fetch_p914(gl: &super::repository::Model) -> Result<Vec<JsonValue>> {
+    let mut rows = p914::Entity::find()
+        .filter(p914::Column::GeneralLedgerRef.eq(gl.id.clone()))
+        .into_json()
+        .all(conn())
+        .await?;
+    let orphans = p914::Entity::find()
+        .filter(p914::Column::RegistratorType.eq(gl.registrator_type.clone()))
+        .filter(p914::Column::RegistratorRef.eq(gl.registrator_ref.clone()))
+        .filter(p914::Column::TurnoverCode.eq(gl.turnover_code.clone()))
+        .filter(p914::Column::GeneralLedgerRef.is_null())
         .into_json()
         .all(conn())
         .await?;

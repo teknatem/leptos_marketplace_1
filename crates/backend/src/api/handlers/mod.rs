@@ -48,6 +48,7 @@ pub mod p910_mp_unlinked_turnovers;
 pub mod p911_wb_advert_by_items;
 pub mod p912_nomenclature_costs;
 pub mod p913_wb_advert_order_attr;
+pub mod p914_mp_finance_turnovers;
 
 // DataView semantic layer handlers
 pub mod bi_timeline;
@@ -80,3 +81,6 @@ pub mod quality;
 pub mod debug;
 pub mod kb_read;
 pub mod llm_knowledge;
+
+// Универсальный резолвер представлений ссылок (*_ref)
+pub mod refs;

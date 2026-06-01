@@ -1,6 +1,9 @@
 use anyhow::Result;
 use chrono::NaiveDate;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait};
+use contracts::domain::common::AggregateId;
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+};
 use serde::Serialize;
 use std::collections::BTreeSet;
 
@@ -151,6 +154,8 @@ fn active_model_from_model(
         delivery_rub: Set(row.delivery_rub),
         nm_id: Set(row.nm_id),
         a004_nomenclature_ref: Set(row.a004_nomenclature_ref.clone()),
+        marketplace_product_ref: Set(row.marketplace_product_ref.clone()),
+        marketplace_order_ref: Set(row.marketplace_order_ref.clone()),
         penalty: Set(row.penalty),
         ppvz_vw: Set(row.ppvz_vw),
         ppvz_vw_nds: Set(row.ppvz_vw_nds),
@@ -198,6 +203,8 @@ fn model_from_entry(
         delivery_rub: row.delivery_rub,
         nm_id: row.nm_id,
         a004_nomenclature_ref: row.a004_nomenclature_ref.clone(),
+        marketplace_product_ref: None,
+        marketplace_order_ref: None,
         penalty: row.penalty,
         ppvz_vw: row.ppvz_vw,
         ppvz_vw_nds: row.ppvz_vw_nds,
@@ -246,19 +253,81 @@ async fn load_day_models(
     )
 }
 
-fn build_general_ledger_entries(
+/// Строит и сохраняет GL-проводки и зеркальные строки p914 (слой fina) для
+/// набора строк p903. GL и p914 формируются синхронно построчно, поэтому
+/// гарантированно совпадают по сумме, дате транзакции и измерениям.
+/// Возвращает количество сохранённых GL-проводок.
+async fn save_general_ledger_and_finance_turnovers<C: ConnectionTrait>(
+    db: &C,
     models: &[crate::projections::p903_wb_finance_report::repository::Model],
-) -> Result<Vec<crate::general_ledger::repository::Model>> {
-    models
-        .iter()
-        .map(|item| {
-            crate::projections::p903_wb_finance_report::general_ledger_builder::build_general_ledger_entries(
-                item,
-                "",
+) -> Result<usize> {
+    use crate::projections::p903_wb_finance_report::general_ledger_builder;
+
+    let mut gl_count = 0usize;
+    for model in models {
+        let gl_entries = general_ledger_builder::build_general_ledger_entries(model, "")?;
+        for entry in &gl_entries {
+            crate::general_ledger::repository::save_entry_with_conn(db, entry).await?;
+        }
+
+        let mut finance_turnovers =
+            general_ledger_builder::build_finance_turnover_entries(model, &gl_entries);
+        if !finance_turnovers.is_empty() {
+            enrich_wb_finance_turnovers(model, &mut finance_turnovers).await?;
+        }
+        for turnover in &finance_turnovers {
+            crate::projections::p914_mp_finance_turnovers::repository::save_entry_with_conn(
+                db, turnover,
             )
-        })
-        .collect::<Result<Vec<_>>>()
-        .map(|items| items.into_iter().flatten().collect())
+            .await?;
+        }
+
+        gl_count += gl_entries.len();
+    }
+    Ok(gl_count)
+}
+
+/// Уточняет `fulfillment_type` строк p914 из склада заказа a015 (точнее, чем
+/// базовый srv_dbs). `marketplace_product_ref`/`order_ref` уже скопированы из
+/// строки p903 в билдере, поэтому здесь не резолвятся.
+async fn enrich_wb_finance_turnovers(
+    model: &crate::projections::p903_wb_finance_report::repository::Model,
+    turnovers: &mut [crate::projections::p914_mp_finance_turnovers::repository::Model],
+) -> Result<()> {
+    let Some(order_ref) = model
+        .marketplace_order_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    else {
+        return Ok(());
+    };
+
+    let order_uuid = match uuid::Uuid::parse_str(order_ref) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+
+    let Some(order) = crate::domain::a015_wb_orders::repository::get_by_id(order_uuid).await? else {
+        return Ok(());
+    };
+
+    let Some(warehouse_fulfillment) = order
+        .warehouse
+        .warehouse_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string())
+    else {
+        return Ok(());
+    };
+
+    for turnover in turnovers.iter_mut() {
+        turnover.fulfillment_type = Some(warehouse_fulfillment.clone());
+    }
+
+    Ok(())
 }
 
 fn gl_registrator_aliases_from_models(
@@ -316,6 +385,11 @@ pub async fn reconcile_day(
         &registrator_refs,
     )
     .await?;
+    crate::projections::p914_mp_finance_turnovers::repository::delete_by_registrator_refs_with_conn(
+        &txn,
+        &registrator_refs,
+    )
+    .await?;
 
     crate::projections::p903_wb_finance_report::repository::Entity::delete_many()
         .filter(crate::projections::p903_wb_finance_report::repository::Column::RrDt.eq(&date_str))
@@ -327,17 +401,41 @@ pub async fn reconcile_day(
         .await?;
 
     let preserved_ids = existing_id_map(&existing);
+    let preserved_marketplace_refs: std::collections::HashMap<P903NaturalKey, (Option<String>, Option<String>)> =
+        existing
+            .iter()
+            .map(|item| {
+                (
+                    item.rrd_id,
+                    (
+                        item.marketplace_product_ref.clone(),
+                        item.marketplace_order_ref.clone(),
+                    ),
+                )
+            })
+            .collect();
     let loaded_at_utc = chrono::Utc::now().to_rfc3339();
-    let models = entries
+    let mut models = entries
         .iter()
         .map(|item| {
             let key = item.rrd_id;
             let id = preserved_ids.get(&key).cloned().unwrap_or_else(
                 crate::projections::p903_wb_finance_report::repository::make_entry_id,
             );
-            model_from_entry(item, id, &loaded_at_utc)
+            let mut model = model_from_entry(item, id, &loaded_at_utc);
+            // Сохраняем уже заполненные производные ссылки при пересборке дня.
+            if let Some((mp_ref, order_ref)) = preserved_marketplace_refs.get(&key) {
+                model.marketplace_product_ref = mp_ref.clone();
+                model.marketplace_order_ref = order_ref.clone();
+            }
+            model
         })
         .collect::<Vec<_>>();
+
+    // Первый этап проведения: дозаполнить производные ссылки, если пусто.
+    for model in &mut models {
+        resolve_and_set_marketplace_refs(model).await?;
+    }
 
     for model in &models {
         crate::projections::p903_wb_finance_report::repository::Entity::insert(
@@ -347,18 +445,15 @@ pub async fn reconcile_day(
         .await?;
     }
 
-    let general_ledger_entries = build_general_ledger_entries(&models)?;
-
-    for entry in &general_ledger_entries {
-        crate::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
-    }
+    let general_ledger_rows =
+        save_general_ledger_and_finance_turnovers(&txn, &models).await?;
 
     txn.commit().await?;
 
     Ok(ReconcileResult {
         changed: true,
         source_rows: models.len(),
-        general_ledger_rows: general_ledger_entries.len(),
+        general_ledger_rows,
     })
 }
 
@@ -379,6 +474,8 @@ pub async fn rebuild_day_from_existing(
     // Перед перерасчётом GL подтянуть актуальное a004_nomenclature_ref в строки p903
     // из текущего состояния a007 — закрывает «mismatched_document_link» при перепроведении.
     refresh_a004_links_from_a007(connection_mp_ref, &mut existing).await?;
+    // Первый этап проведения: дозаполнить производные ссылки (если пусто) и сохранить.
+    refresh_marketplace_refs(&mut existing).await?;
 
     let txn = db.begin().await?;
     let registrator_refs = gl_registrator_aliases_from_models(&existing);
@@ -387,18 +484,21 @@ pub async fn rebuild_day_from_existing(
         &registrator_refs,
     )
     .await?;
+    crate::projections::p914_mp_finance_turnovers::repository::delete_by_registrator_refs_with_conn(
+        &txn,
+        &registrator_refs,
+    )
+    .await?;
 
-    let general_ledger_entries = build_general_ledger_entries(&existing)?;
-    for entry in &general_ledger_entries {
-        crate::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
-    }
+    let general_ledger_rows =
+        save_general_ledger_and_finance_turnovers(&txn, &existing).await?;
 
     txn.commit().await?;
 
     Ok(ReconcileResult {
         changed: true,
         source_rows: existing.len(),
-        general_ledger_rows: general_ledger_entries.len(),
+        general_ledger_rows,
     })
 }
 
@@ -433,6 +533,71 @@ async fn refresh_a004_links_from_a007(
             .exec(db)
             .await?;
         model.a004_nomenclature_ref = new_ref;
+    }
+    Ok(())
+}
+
+/// Резолвит и заполняет (только если ещё пусто) производные ссылки строки p903:
+/// `marketplace_product_ref` (a007 по nm_id/артикулу) и `marketplace_order_ref`
+/// (a015 по srid). В нормальной ситуации значения уже заполнены и копируются
+/// в p914 без обращения к источникам. Возвращает `true`, если что-то заполнено.
+async fn resolve_and_set_marketplace_refs(
+    model: &mut crate::projections::p903_wb_finance_report::repository::Model,
+) -> Result<bool> {
+    let mut changed = false;
+
+    if model.marketplace_product_ref.is_none() {
+        if let Some(nm_id) = model.nm_id {
+            if let Some(mp_ref) =
+                crate::domain::a007_marketplace_product::service::resolve_marketplace_product_ref(
+                    &model.connection_mp_ref,
+                    &nm_id.to_string(),
+                    model.sa_name.as_deref(),
+                )
+                .await?
+            {
+                model.marketplace_product_ref = Some(mp_ref);
+                changed = true;
+            }
+        }
+    }
+
+    if model.marketplace_order_ref.is_none() {
+        if let Some(srid) = model.srid.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+            if let Some(order) =
+                crate::domain::a015_wb_orders::repository::get_by_document_no(srid).await?
+            {
+                model.marketplace_order_ref = Some(order.base.id.as_string());
+                changed = true;
+            }
+        }
+    }
+
+    Ok(changed)
+}
+
+/// Дозаполняет производные ссылки в существующих строках p903 и сохраняет
+/// изменения в БД. Используется на этапе перепроведения.
+async fn refresh_marketplace_refs(
+    models: &mut [crate::projections::p903_wb_finance_report::repository::Model],
+) -> Result<()> {
+    use crate::projections::p903_wb_finance_report::repository::ActiveModel;
+
+    let db = get_connection();
+    for model in models.iter_mut() {
+        if resolve_and_set_marketplace_refs(model).await? {
+            let am = ActiveModel {
+                id: Set(model.id.clone()),
+                marketplace_product_ref: Set(model.marketplace_product_ref.clone()),
+                marketplace_order_ref: Set(model.marketplace_order_ref.clone()),
+                ..Default::default()
+            };
+            <crate::projections::p903_wb_finance_report::repository::Entity as EntityTrait>::update(
+                am,
+            )
+            .exec(db)
+            .await?;
+        }
     }
     Ok(())
 }

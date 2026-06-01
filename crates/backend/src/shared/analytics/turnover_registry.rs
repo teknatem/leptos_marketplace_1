@@ -8,6 +8,14 @@ const GL_DIMS_COMMON: &[&str] = &[
     "registrator_type",
     "layer",
     "registrator_ref",
+    // Разрезы слоя fina (p914): доступны для любого оборота, у которого есть
+    // зеркало в p914. Для не-fina проводок drilldown по ним вернёт пусто.
+    "customer_kind",
+    "fulfillment_type",
+    // Структурные разрезы проводки (оборот/счета) — колонки самой GL.
+    "turnover_code",
+    "debit_account",
+    "credit_account",
 ];
 
 const GL_DIMS_WITH_NOMENCLATURE: &[&str] = &[
@@ -23,6 +31,13 @@ const GL_DIMS_WITH_NOMENCLATURE: &[&str] = &[
     "dim4_format",
     "dim5_sink",
     "dim6_size",
+    // Разрезы слоя fina (p914).
+    "customer_kind",
+    "fulfillment_type",
+    // Структурные разрезы проводки (оборот/счета) — колонки самой GL.
+    "turnover_code",
+    "debit_account",
+    "credit_account",
 ];
 
 pub const TURNOVER_CLASSES: &[TurnoverClassDef] = &[
@@ -823,11 +838,11 @@ pub const TURNOVER_CLASSES: &[TurnoverClassDef] = &[
         aliases: &["revenue_storno", "customer_revenue_return_storno"],
         source_examples: &["a012_wb_sales.line.price_effective (return, negative)"],
         formula_hint: "amount where layer=oper and is_customer_return=true",
-        notes: "Хранится отрицательной суммой. Сторно customer_revenue при возврате.",
-        debit_account: "",
-        credit_account: "",
+        notes: "Хранится отрицательной суммой. Сторно customer_revenue при возврате. Для слоя fina (p903/p907) формирует GL-проводку Дт7609/Кт9001 с отрицательной суммой; для oper-слоя a012 GL не формируется (generates_journal_entry=false).",
+        debit_account: "7609",
+        credit_account: "9001",
         generates_journal_entry: false,
-        journal_comment: "Сторно выручки от продажи при возврате товара. Источник: price_effective при возврате. В журнале не отражается.",
+        journal_comment: "Сторно выручки от продажи при возврате товара. Источник: price_effective (a012) или retail/return_amount (p903). В oper-слое в журнале не отражается; в слое fina формирует красное сторно Дт7609/Кт9001.",
     },
     TurnoverClassDef {
         code: "customer_revenue_pl_storno",

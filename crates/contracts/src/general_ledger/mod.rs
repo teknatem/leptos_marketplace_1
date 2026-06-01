@@ -6,6 +6,7 @@
 pub mod account_view;
 pub mod accounting;
 pub mod dto;
+pub mod layer;
 pub mod metadata;
 pub mod report;
 pub mod resource_detail;
@@ -15,12 +16,17 @@ pub mod weekly_reconciliation;
 pub use account_view::{GlAccountViewQuery, GlAccountViewResponse, GlAccountViewRow};
 pub use accounting::{AccountDef, AccountType, NormalBalance, StatementSection};
 pub use dto::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
+pub use layer::{
+    get_layer_class, GlLayerClassDef, GlLayerDto, GlLayersResponse, GL_LAYER_CLASSES,
+};
 pub use metadata::{ENTITY_METADATA, FIELDS};
 pub use report::{
-    GlDimensionCatalogItem, GlDimensionDef, GlDimensionUsageRef, GlDimensionsCatalogResponse,
+    AggregateRepresentation, GlDimensionCatalogItem, GlDimensionDef, GlDimensionUsageRef,
+    GlDimensionsCatalogResponse,
     GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse, GlDrilldownRow,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
-    GlReportQuery, GlReportResponse, GlReportRow,
+    GlLayerTurnoverMatrixResponse, GlMatrixCell, GlMatrixDimension, GlMatrixLayer,
+    GlMatrixProjection, GlMatrixTurnover, GlReportQuery, GlReportResponse, GlReportRow,
 };
 pub use resource_detail::{GlResourceDetailResponse, GlResourceDetailTotals};
 pub use turnover::{

@@ -273,9 +273,9 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                         <TableRow>
                         <TableCell><TableCellLayout>
                             <PriceMetricLabel
-                                label="Цена продажи"
+                                label="Цена прайс-листа"
                                 endpoint="/api/v3/orders/new"
-                                description="salePrice из Marketplace API: цена в валюте продажи с учетом скидки продавца, без учета скидки WB Club. WB передает значение в копейках; поле может отсутствовать."
+                                description="salePrice из Marketplace API: цена прайс-листа, без учета скидки WB. WB передает значение в копейках; поле может отсутствовать."
                             />
                         </TableCellLayout></TableCell>
                         <TableCell><TableCellLayout><code>"salePrice"</code></TableCellLayout></TableCell>

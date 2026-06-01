@@ -98,14 +98,20 @@ fn build_entry(
     resource: ResourceAmount,
 ) -> Option<GeneralLedgerModel> {
     let class = get_turnover_class(turnover_code)?;
-    if !class.generates_journal_entry || resource.amount.abs() <= f64::EPSILON {
+    // Слой fina формирует проводку по любому обороту с заданными счетами.
+    // Не завязываемся на глобальный `generates_journal_entry`, чтобы не менять
+    // его для oper-слоя a012 (там тот же код может не формировать GL).
+    if class.debit_account.is_empty()
+        || class.credit_account.is_empty()
+        || resource.amount.abs() <= f64::EPSILON
+    {
         return None;
     }
 
     Some(GeneralLedgerModel {
         id: Uuid::new_v4().to_string(),
         entry_date: row.rr_dt.clone(),
-        layer: TurnoverLayer::Fact.as_str().to_string(),
+        layer: TurnoverLayer::Fina.as_str().to_string(),
         connection_mp_ref: Some(row.connection_mp_ref.clone()),
         registrator_type: REGISTRATOR_TYPE.to_string(),
         registrator_ref: row.id.clone(),
@@ -238,6 +244,24 @@ fn extra_f64_field(
         .and_then(|value| opt_nonzero(Some(value)))
 }
 
+fn extra_bool_field(
+    row: &crate::projections::p903_wb_finance_report::repository::Model,
+    field: &str,
+) -> Option<bool> {
+    row.extra
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .and_then(|json| {
+            json.get(field).and_then(|value| {
+                value.as_bool().or_else(|| match value.as_str() {
+                    Some("true") => Some(true),
+                    Some("false") => Some(false),
+                    _ => None,
+                })
+            })
+        })
+}
+
 fn is_excluded_acquiring_payment_processing(
     row: &crate::projections::p903_wb_finance_report::repository::Model,
 ) -> bool {
@@ -339,7 +363,13 @@ pub fn build_general_ledger_entries(
             } else {
                 scaled_passthrough_amount(row.retail_amount, "retail_amount", -1.0)
             };
-            push_optional_entry(&mut entries, row, posting_id, "customer_return", resource);
+            push_optional_entry(
+                &mut entries,
+                row,
+                posting_id,
+                "customer_revenue_storno",
+                resource,
+            );
         } else if is_sale_row(row) {
             push_optional_entry(
                 &mut entries,
@@ -411,16 +441,22 @@ pub fn build_general_ledger_entries(
     }
 
     if !is_excluded_acquiring_payment_processing(row) {
-        let acquiring_resource = if linked && is_return_row(row) {
-            scaled_passthrough_amount(row.acquiring_fee, "acquiring_fee", -1.0)
+        let (acquiring_code, acquiring_resource) = if linked && is_return_row(row) {
+            (
+                "mp_acquiring_storno",
+                scaled_passthrough_amount(row.acquiring_fee, "acquiring_fee", -1.0),
+            )
         } else {
-            expense_amount_for_branch(row, row.acquiring_fee, "acquiring_fee")
+            (
+                "mp_acquiring",
+                expense_amount_for_branch(row, row.acquiring_fee, "acquiring_fee"),
+            )
         };
         push_optional_entry(
             &mut entries,
             row,
             posting_id,
-            "mp_acquiring",
+            acquiring_code,
             acquiring_resource,
         );
     }
@@ -478,6 +514,62 @@ pub fn build_general_ledger_entries(
     Ok(entries)
 }
 
+/// Строит строки проекции p914 (слой `fina`) как зеркало GL-проводок строки
+/// p903. Дополнительные разрезы берутся из самой строки финотчёта.
+///
+/// `customer_kind` и `fulfillment_type` пока не определены в финотчёте WB —
+/// заполняются заглушкой `None` до подключения реального источника.
+pub fn build_finance_turnover_entries(
+    row: &crate::projections::p903_wb_finance_report::repository::Model,
+    gl_entries: &[GeneralLedgerModel],
+) -> Vec<crate::projections::p914_mp_finance_turnovers::repository::Model> {
+    use crate::projections::p914_mp_finance_turnovers::builder::{
+        from_general_ledger_entries, FinanceTurnoverContext,
+    };
+
+    // customer_kind: is_legal_entity из сырого отчёта WB (extra). true → URL (юрлицо),
+    // false → FIZ (физлицо).
+    let customer_kind = extra_bool_field(row, "is_legal_entity")
+        .map(|legal| if legal { "URL" } else { "FIZ" }.to_string());
+    // fulfillment_type: базово из srv_dbs (доставка силами продавца → DBS).
+    // Точная схема FBO/FBS уточняется из заказа a015 в сервисном слое.
+    let fulfillment_type = if row.srv_dbs == Some(1) {
+        Some("DBS".to_string())
+    } else {
+        None
+    };
+
+    // marketplace_product_ref и marketplace_order_ref уже резолвятся и хранятся
+    // в самой строке p903 (на этапе проведения) — здесь просто копируются.
+    let order_ref = row
+        .marketplace_order_ref
+        .clone()
+        .filter(|value| !value.trim().is_empty());
+    let order_registrator_type = order_ref
+        .as_ref()
+        .map(|_| "a015_wb_orders".to_string());
+
+    let ctx = FinanceTurnoverContext {
+        nomenclature_ref: row.a004_nomenclature_ref.clone(),
+        marketplace_product_ref: row
+            .marketplace_product_ref
+            .clone()
+            .filter(|value| !value.trim().is_empty()),
+        order_key: row
+            .srid
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_default(),
+        order_ref,
+        order_registrator_type,
+        customer_kind,
+        fulfillment_type,
+        quantity: row.quantity.map(|value| value as f64),
+    };
+
+    from_general_ledger_entries(gl_entries, &ctx)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -499,6 +591,8 @@ mod tests {
             delivery_rub: None,
             nm_id: None,
             a004_nomenclature_ref: None,
+            marketplace_product_ref: None,
+            marketplace_order_ref: None,
             penalty: None,
             ppvz_vw: None,
             ppvz_vw_nds: None,
@@ -537,7 +631,7 @@ mod tests {
 
         let entries = build_general_ledger_entries(&row, "posting-1").unwrap();
         assert!(!entries.is_empty());
-        assert!(entries.iter().all(|item| item.layer == "fact"));
+        assert!(entries.iter().all(|item| item.layer == "fina"));
         assert!(entries.iter().all(|item| item.registrator_ref == row.id));
         assert!(entries
             .iter()
@@ -574,12 +668,16 @@ mod tests {
         let entries = build_general_ledger_entries(&row, "posting-1").unwrap();
         let acquiring = entries
             .iter()
-            .find(|item| item.turnover_code == "mp_acquiring")
+            .find(|item| item.turnover_code == "mp_acquiring_storno")
             .unwrap();
 
         assert_eq!(acquiring.debit_account, "4403");
         assert_eq!(acquiring.amount, -50.0);
         assert_eq!(acquiring.resource_sign, -1);
+        // Возврат больше не порождает обычный mp_acquiring.
+        assert!(!entries
+            .iter()
+            .any(|item| item.turnover_code == "mp_acquiring"));
     }
 
     #[test]
@@ -612,23 +710,64 @@ mod tests {
     }
 
     #[test]
-    fn linked_return_row_books_customer_return_as_negative_revenue() {
+    fn linked_return_row_books_customer_revenue_storno_as_negative_revenue() {
         let mut row = base_row();
         row.srid = Some("srid-1".to_string());
         row.supplier_oper_name = Some(OP_RETURN_RU.to_string());
         row.return_amount = Some(1000.0);
 
         let entries = build_general_ledger_entries(&row, "posting-1").unwrap();
-        let customer_return = entries
+        let storno = entries
             .iter()
-            .find(|item| item.turnover_code == "customer_return")
+            .find(|item| item.turnover_code == "customer_revenue_storno")
             .unwrap();
 
-        assert_eq!(customer_return.debit_account, "7609");
-        assert_eq!(customer_return.credit_account, "9001");
-        assert_eq!(customer_return.amount, -1000.0);
-        assert_eq!(customer_return.resource_field, "return_amount");
-        assert_eq!(customer_return.resource_sign, -1);
+        assert_eq!(storno.debit_account, "7609");
+        assert_eq!(storno.credit_account, "9001");
+        assert_eq!(storno.amount, -1000.0);
+        assert_eq!(storno.resource_field, "return_amount");
+        assert_eq!(storno.resource_sign, -1);
+        // customer_return больше не используется.
+        assert!(!entries
+            .iter()
+            .any(|item| item.turnover_code == "customer_return"));
+    }
+
+    #[test]
+    fn finance_turnovers_mirror_fina_general_ledger_entries() {
+        let mut row = base_row();
+        row.srid = Some("srid-1".to_string());
+        row.supplier_oper_name = Some(OP_SALE_RU.to_string());
+        row.retail_amount = Some(1000.0);
+        row.acquiring_fee = Some(50.0);
+        row.a004_nomenclature_ref = Some("nom-1".to_string());
+        row.quantity = Some(2);
+
+        let gl_entries = build_general_ledger_entries(&row, "posting-1").unwrap();
+        let turnovers = build_finance_turnover_entries(&row, &gl_entries);
+
+        // 1:1 с GL-проводками слоя fina.
+        assert_eq!(turnovers.len(), gl_entries.len());
+        for gl in &gl_entries {
+            let mirror = turnovers
+                .iter()
+                .find(|t| t.general_ledger_ref.as_deref() == Some(gl.id.as_str()))
+                .expect("every fina GL entry has a p914 mirror");
+            assert_eq!(mirror.amount, gl.amount);
+            assert_eq!(mirror.transaction_date, gl.entry_date);
+            assert_eq!(mirror.turnover_code, gl.turnover_code);
+            assert_eq!(mirror.layer, "fina");
+            assert_eq!(mirror.connection_mp_ref, "conn-1");
+            assert_eq!(mirror.order_key, "srid-1");
+            assert_eq!(mirror.nomenclature_ref.as_deref(), Some("nom-1"));
+            assert_eq!(mirror.quantity, Some(2.0));
+        }
+
+        let revenue_mirror = turnovers
+            .iter()
+            .find(|t| t.turnover_code == "customer_revenue")
+            .unwrap();
+        assert_eq!(revenue_mirror.event_kind, "sold");
     }
 
     #[test]

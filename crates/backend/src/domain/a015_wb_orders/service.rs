@@ -332,10 +332,17 @@ async fn marketplace_price_rubles(document: &WbOrders) -> Option<f64> {
     marketplace_field_rubles(&value, "price")
 }
 
-/// Цена продажи из Marketplace API (`salePrice` в копейках), рубли.
-async fn marketplace_sale_price_rubles(document: &WbOrders) -> Option<f64> {
-    let value = marketplace_raw_json(document).await?;
-    marketplace_field_rubles(&value, "salePrice")
+/// Базовая цена для расчёта margin_pro, взятая готовой со строки a015.
+/// Приоритет: salePrice (Marketplace API) → price_with_disc (Statistics API).
+/// Никаких обращений к raw-payload — все поля уже на агрегате.
+fn resolve_base_price(document: &WbOrders) -> (f64, &'static str) {
+    match document.line.sale_price {
+        Some(sp) if sp > 0.0 => (sp, "salePrice (Marketplace API)"),
+        _ => (
+            document.line.price_with_disc.unwrap_or(0.0),
+            "price_with_disc (Statistics API)",
+        ),
+    }
 }
 
 /// Расчёт плановой маржи margin_pro в процентах.
@@ -353,15 +360,10 @@ async fn marketplace_sale_price_rubles(document: &WbOrders) -> Option<f64> {
 pub async fn calculate_margin_pro(document: &mut WbOrders) -> Result<()> {
     let dealer_price = document.line.dealer_price_ut.unwrap_or(0.0);
 
-    // salePrice из Marketplace API имеет приоритет над price_with_disc.
-    let sale_price = marketplace_sale_price_rubles(document).await;
-    let (base_price, price_source) = match sale_price {
-        Some(sp) if sp > 0.0 => (sp, "salePrice (Marketplace API)"),
-        _ => (
-            document.line.price_with_disc.unwrap_or(0.0),
-            "price_with_disc (Statistics API)",
-        ),
-    };
+    // base_price берём готовым со строки: salePrice (Marketplace API) приоритетнее
+    // price_with_disc (Statistics API). Оба хранятся на a015 — никаких обращений к
+    // raw-payload здесь нет.
+    let (base_price, price_source) = resolve_base_price(document);
 
     if dealer_price <= 0.0 || base_price <= 0.0 {
         document.line.margin_pro = None;
@@ -393,14 +395,7 @@ pub async fn calculate_margin_pro_with_connection(
 ) -> Result<()> {
     let dealer_price = document.line.dealer_price_ut.unwrap_or(0.0);
 
-    let sale_price = marketplace_sale_price_rubles(document).await;
-    let (base_price, price_source) = match sale_price {
-        Some(sp) if sp > 0.0 => (sp, "salePrice (Marketplace API)"),
-        _ => (
-            document.line.price_with_disc.unwrap_or(0.0),
-            "price_with_disc (Statistics API)",
-        ),
-    };
+    let (base_price, price_source) = resolve_base_price(document);
 
     if dealer_price <= 0.0 || base_price <= 0.0 {
         document.line.margin_pro = None;
@@ -537,9 +532,40 @@ pub async fn store_marketplace_raw_payload(
     )
     .await?;
 
-    let updated =
-        repository::update_marketplace_raw_payload_ref_by_document_no(document_no, &raw_ref)
-            .await?;
+    // salePrice парсим из пейлоада один раз — здесь, на записи, — и кладём готовым
+    // на строку a015. Дальше расчёт margin_pro берёт его прямо со строки и больше
+    // не читает raw-payload.
+    let sale_price = serde_json::from_str::<serde_json::Value>(raw_json)
+        .ok()
+        .and_then(|value| marketplace_field_rubles(&value, "salePrice"));
+
+    let updated = repository::update_marketplace_payload_by_document_no(
+        document_no,
+        &raw_ref,
+        sale_price,
+    )
+    .await?;
+
+    // Привязка свежего Marketplace-пейлоада приносит `salePrice`, который является
+    // основным источником `base_price` для `margin_pro` у FBS-заказов (Statistics API
+    // отдаёт `price_with_disc` с задержкой). Пейлоад прикрепляется ПОСЛЕ авто-проведения
+    // в `store_document_with_raw`, поэтому при первичном проведении `margin_pro` не мог
+    // быть рассчитан. Перепроводим уже проведённый документ, чтобы пересчитать
+    // `margin_pro` (и проекции p909/GL) с актуальным `salePrice`.
+    if updated {
+        if let Ok(Some(document)) = repository::get_by_document_no(document_no).await {
+            if document.is_posted {
+                if let Err(e) = super::posting::post_document(document.base.id.value()).await {
+                    tracing::error!(
+                        "Failed to re-post WB Orders {} after attaching marketplace payload: {}",
+                        document_no,
+                        e
+                    );
+                }
+            }
+        }
+    }
+
     Ok(updated.then_some(raw_ref))
 }
 

@@ -8,7 +8,8 @@ use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
 use contracts::general_ledger::{
-    GlDrilldownQuery, GlDrilldownResponse, GlDrilldownRow, GlDrilldownSessionRecord,
+    AggregateRepresentation, GlDrilldownQuery, GlDrilldownResponse, GlDrilldownRow,
+    GlDrilldownSessionRecord,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -38,7 +39,9 @@ fn reg_type_name(reg_type: &str) -> &'static str {
         "a021_production_output" => "Производство",
         "a022_kit_variant" => "Комплект",
         "a023_purchase_of_goods" => "Закупка",
+        "a028_missing_cost_registry" => "Реестр себестоимости",
         "p903_wb_finance_report" => "WB Финотчёт",
+        "p907_ym_payment_report" => "YM Платёж",
         _ => "Документ",
     }
 }
@@ -47,6 +50,26 @@ fn reg_display(reg_type: &str, reg_ref: &str, date: &str) -> String {
     let id = extract_doc_id(reg_ref);
     let short = if id.len() >= 8 { &id[..8] } else { id };
     format!("{} · {} · #{}", reg_type_name(reg_type), date, short)
+}
+
+/// Представление реального документа: «наименование · дата · #номер».
+fn repr_display(rep: &AggregateRepresentation) -> String {
+    let mut parts = vec![rep.title.clone()];
+    if let Some(date) = rep.date.as_ref().filter(|s| !s.trim().is_empty()) {
+        parts.push(date.clone());
+    }
+    if let Some(doc) = rep.doc_id.as_ref().filter(|s| !s.trim().is_empty()) {
+        parts.push(format!("#{doc}"));
+    }
+    parts.join(" · ")
+}
+
+/// Короткая подпись вкладки документа из реального представления.
+fn repr_tab_label(rep: &AggregateRepresentation) -> String {
+    match rep.doc_id.as_ref().filter(|s| !s.trim().is_empty()) {
+        Some(doc) => format!("{} · #{doc}", rep.title),
+        None => rep.title.clone(),
+    }
 }
 
 fn reg_tab_key(reg_type: &str, reg_ref: &str) -> Option<String> {
@@ -61,6 +84,12 @@ fn reg_tab_key(reg_type: &str, reg_ref: &str) -> Option<String> {
         "a021_production_output" => Some(format!("a021_production_output_details_{id}")),
         "a022_kit_variant" => Some(format!("a022_kit_variant_details_{id}")),
         "a023_purchase_of_goods" => Some(format!("a023_purchase_of_goods_details_{id}")),
+        "a028_missing_cost_registry" => {
+            Some(format!("a028_missing_cost_registry_details_{id}"))
+        }
+        "p907_ym_payment_report" if !id.trim().is_empty() => {
+            Some(format!("p907_ym_payment_report_details_{id}"))
+        }
         "p903_wb_finance_report" if !id.trim().is_empty() => Some(format!(
             "p903_wb_finance_report_details_id_{}",
             urlencoding::encode(id)
@@ -73,6 +102,71 @@ fn reg_tab_label(reg_type: &str, reg_ref: &str) -> String {
     let id = extract_doc_id(reg_ref);
     let short = if id.len() >= 8 { &id[..8] } else { id };
     format!("{} · {}", reg_type_name(reg_type), short)
+}
+
+/// Группирует строки drilldown по дню (group_label), сохраняя порядок строк
+/// (бэкенд уже отсортировал по дню, внутри — по сумме).
+fn group_rows_by_day(rows: Vec<GlDrilldownRow>) -> Vec<(String, Vec<GlDrilldownRow>)> {
+    let mut groups: Vec<(String, Vec<GlDrilldownRow>)> = Vec::new();
+    for r in rows {
+        let day = r.group_label.clone();
+        if let Some(last) = groups.last_mut() {
+            if last.0 == day {
+                last.1.push(r);
+                continue;
+            }
+        }
+        groups.push((day, vec![r]));
+    }
+    groups
+}
+
+/// Рендерит строку регистратора (документа) внутри дневной группы: реальное
+/// представление + гиперссылка (если доступна), сумма и количество.
+fn render_registrator_row(r: GlDrilldownRow, tabs_store: AppGlobalContext) -> impl IntoView {
+    let group_key = r.group_key.clone();
+    let date = r.group_label.clone();
+    let (reg_type, reg_ref) = split_group_key(&group_key);
+    let reg_type = reg_type.to_string();
+    let reg_ref = reg_ref.to_string();
+    // Реальное представление документа (если бэкенд его прислал), иначе фолбэк.
+    let (display, tab_label) = match r.representation.as_ref() {
+        Some(rep) => (repr_display(rep), repr_tab_label(rep)),
+        None => (
+            reg_display(&reg_type, &reg_ref, &date),
+            reg_tab_label(&reg_type, &reg_ref),
+        ),
+    };
+    let tab_key = reg_tab_key(&reg_type, &reg_ref);
+    let label_cell = if let Some(key) = tab_key {
+        view! {
+            <td class="table__cell" style="padding-left:24px;">
+                <button
+                    class="gl-link-btn"
+                    on:click=move |_| tabs_store.open_tab(&key, &tab_label)
+                >
+                    {display}
+                </button>
+            </td>
+        }
+        .into_any()
+    } else {
+        view! {
+            <td class="table__cell" style="padding-left:24px;">
+                <span style="color:var(--color-text-secondary); font-size:12px;">{display}</span>
+            </td>
+        }
+        .into_any()
+    };
+    view! {
+        <tr class="table__row">
+            {label_cell}
+            <td class="table__cell table__cell--right">
+                <span class="gl-drilldown__money">{fmt_money(r.amount)}</span>
+            </td>
+            <td class="table__cell table__cell--right">{r.entry_count}</td>
+        </tr>
+    }
 }
 
 fn fmt_money(v: f64) -> String {
@@ -113,6 +207,9 @@ fn filter_value(value: Option<&str>, empty_label: &str) -> String {
 
 fn visible_group_label(query: &GlDrilldownQuery, row: &GlDrilldownRow) -> String {
     if query.group_by == "registrator_ref" {
+        if let Some(rep) = row.representation.as_ref() {
+            return repr_display(rep);
+        }
         let (reg_type, reg_ref) = split_group_key(&row.group_key);
         reg_display(reg_type, reg_ref, &row.group_label)
     } else {
@@ -154,9 +251,16 @@ fn download_gl_drilldown_csv(query: &GlDrilldownQuery, resp: &GlDrilldownRespons
         csv_escape(&resp.group_by_label)
     ));
     for row in &resp.rows {
+        // Для разреза по регистратору добавляем день (двухуровневая группировка),
+        // т.к. в таблице день показан отдельным заголовком группы.
+        let label = if query.group_by == "registrator_ref" {
+            format!("{} · {}", row.group_label, visible_group_label(query, row))
+        } else {
+            visible_group_label(query, row)
+        };
         csv.push_str(&format!(
             "{};{};{}\n",
-            csv_escape(&visible_group_label(query, row)),
+            csv_escape(&label),
             fmt_csv_money(row.amount),
             row.entry_count,
         ));
@@ -414,58 +518,52 @@ pub fn GlDrilldownPage(
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {rows.into_iter()
-                                        .map(|r| {
-                                            let label_cell = if is_reg_dim {
-                                                let group_key = r.group_key.clone();
-                                                let date = r.group_label.clone();
-                                                let (reg_type, reg_ref) = split_group_key(&group_key);
-                                                let reg_type = reg_type.to_string();
-                                                let reg_ref = reg_ref.to_string();
-                                                let display = reg_display(&reg_type, &reg_ref, &date);
-                                                let tab_key = reg_tab_key(&reg_type, &reg_ref);
-                                                let tab_label = reg_tab_label(&reg_type, &reg_ref);
-
-                                                if let Some(key) = tab_key {
-                                                    view! {
-                                                        <td class="table__cell">
-                                                            <button
-                                                                class="gl-link-btn"
-                                                                on:click=move |_| tabs_store.open_tab(&key, &tab_label)
-                                                            >
-                                                                {display}
-                                                            </button>
+                                    {if is_reg_dim {
+                                        // Двухуровневая группировка: заголовок дня + подытог,
+                                        // под ним — строки регистраторов этого дня.
+                                        group_rows_by_day(rows)
+                                            .into_iter()
+                                            .map(|(day, day_rows)| {
+                                                let day_amount: f64 = day_rows.iter().map(|r| r.amount).sum();
+                                                let day_count: i64 = day_rows.iter().map(|r| r.entry_count).sum();
+                                                let reg_views = day_rows
+                                                    .into_iter()
+                                                    .map(|r| render_registrator_row(r, tabs_store))
+                                                    .collect_view();
+                                                view! {
+                                                    <tr class="table__row gl-drilldown__day-row" style="background:var(--color-bg-subtle,#f5f6f8);">
+                                                        <td class="table__cell"><strong>{day}</strong></td>
+                                                        <td class="table__cell table__cell--right">
+                                                            <strong>{fmt_money(day_amount)}</strong>
                                                         </td>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    view! {
-                                                        <td class="table__cell">
-                                                            <span style="color:var(--color-text-secondary); font-size:12px;">
-                                                                {display}
-                                                            </span>
+                                                        <td class="table__cell table__cell--right">
+                                                            <strong>{day_count}</strong>
                                                         </td>
-                                                    }
-                                                        .into_any()
+                                                    </tr>
+                                                    {reg_views}
                                                 }
-                                            } else {
+                                            })
+                                            .collect_view()
+                                            .into_any()
+                                    } else {
+                                        rows.into_iter()
+                                            .map(|r| {
                                                 let label = visible_group_label(&active_query, &r);
-                                                view! { <td class="table__cell">{label}</td> }.into_any()
-                                            };
-
-                                            view! {
-                                                <tr class="table__row">
-                                                    {label_cell}
-                                                    <td class="table__cell table__cell--right">
-                                                        <span class="gl-drilldown__money">{fmt_money(r.amount)}</span>
-                                                    </td>
-                                                    <td class="table__cell table__cell--right">
-                                                        {r.entry_count}
-                                                    </td>
-                                                </tr>
-                                            }
-                                        })
-                                        .collect_view()}
+                                                view! {
+                                                    <tr class="table__row">
+                                                        <td class="table__cell">{label}</td>
+                                                        <td class="table__cell table__cell--right">
+                                                            <span class="gl-drilldown__money">{fmt_money(r.amount)}</span>
+                                                        </td>
+                                                        <td class="table__cell table__cell--right">
+                                                            {r.entry_count}
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            })
+                                            .collect_view()
+                                            .into_any()
+                                    }}
                                 </tbody>
                                 <tfoot>
                                     <tr class="table__totals-row">

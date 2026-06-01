@@ -79,6 +79,11 @@ pub struct WbOrdersLine {
     /// Цена продавца (Statistics totalPrice или Marketplace API `price` в рублях)
     #[serde(default)]
     pub price: Option<f64>,
+    /// Цена продажи из Marketplace API (`salePrice`, рубли). Хранится готовой на
+    /// строке, чтобы расчёт margin_pro брал base_price одним запросом к a015 и не
+    /// читал raw-payload из document_raw_storage на каждом проведении.
+    #[serde(default)]
+    pub sale_price: Option<f64>,
     /// Дилерская цена УТ
     pub dealer_price_ut: Option<f64>,
     /// Маржинальность, %
