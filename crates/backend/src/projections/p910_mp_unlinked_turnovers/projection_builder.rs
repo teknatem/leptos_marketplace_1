@@ -405,6 +405,8 @@ mod tests {
             delivery_rub: None,
             nm_id: None,
             a004_nomenclature_ref: None,
+            marketplace_product_ref: None,
+            marketplace_order_ref: None,
             penalty: None,
             ppvz_vw: None,
             ppvz_vw_nds: None,

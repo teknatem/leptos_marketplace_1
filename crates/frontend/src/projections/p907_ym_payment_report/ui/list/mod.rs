@@ -206,9 +206,8 @@ async fn call_migrate_keys() -> Result<String, String> {
     opts.set_method("POST");
     opts.set_mode(RequestMode::Cors);
 
-    let request =
-        Request::new_with_str_and_init("/api/p907/payment-report/migrate-keys", &opts)
-            .map_err(|e| format!("{e:?}"))?;
+    let request = Request::new_with_str_and_init("/api/p907/payment-report/migrate-keys", &opts)
+        .map_err(|e| format!("{e:?}"))?;
 
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let resp_value = JsFuture::from(window.fetch_with_request(&request))
@@ -700,6 +699,10 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     </span>
                                 </TableHeaderCell>
 
+                                <TableHeaderCell resizable=true min_width=80.0>
+                                    "GL Rows"
+                                </TableHeaderCell>
+
                                 <TableHeaderCell resizable=true min_width=140.0>
                                     "Тип транзакции"
                                     <span class=move || get_sort_class("transaction_type", &state.get().sort_by)
@@ -756,7 +759,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                 if is_loading.get() {
                                     return view! {
                                         <TableRow>
-                                            <TableCell attr:colspan="12">
+                                            <TableCell attr:colspan="13">
                                                 <TableCellLayout>
                                                     "Загрузка..."
                                                 </TableCellLayout>
@@ -768,7 +771,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                 if data.is_empty() {
                                     return view! {
                                         <TableRow>
-                                            <TableCell attr:colspan="12">
+                                            <TableCell attr:colspan="13">
                                                 <TableCellLayout>
                                                     "Нет данных. Выполните импорт через u503 или проверьте фильтры."
                                                 </TableCellLayout>
@@ -792,6 +795,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     let comments = row.comments.clone().unwrap_or_default();
                                     let ts = row.transaction_sum;
                                     let bs = row.bank_sum;
+                                    let gl_rows = row.general_ledger_entries_count;
                                     let row_id = row.id.clone();
                                     let date_for_link = date_str.clone();
 
@@ -810,6 +814,9 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                                         {date_str}
                                                     </a>
                                                 </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell class="text-right">
+                                                <TableCellLayout>{gl_rows}</TableCellLayout>
                                             </TableCell>
                                             <TableCell>
                                                 <TableCellLayout truncate=true>

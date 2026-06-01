@@ -3,6 +3,7 @@ use crate::data_view::api as dv_api;
 use crate::data_view::types::{FilterDef, FilterKind, FilterRef};
 use crate::data_view::ui::filter_bar::apply_defaults;
 use crate::data_view::ui::FilterBar;
+use crate::general_ledger::ui::dimension_chip::{chip_from_code_main, GlDimensionChip};
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::bi_card::{
@@ -155,21 +156,36 @@ struct DrillDimensionGroup {
     items: Vec<DrillDim>,
 }
 
-/// Maps a drill dimension id to a feather-style icon name (see `shared/icons.rs`),
-/// giving each analytics breakdown a recognisable glyph instead of a bare arrow.
-fn drill_dim_icon(id: &str) -> &'static str {
+/// Maps a drill dimension id to the GL dimension `code_main`, so the picker can
+/// render the same standard dimension badge as the «Измерения GL» catalog
+/// (see [`crate::general_ledger::ui::dimension_chip`]). Unknown ids fall back to
+/// a neutral chip.
+fn drill_dim_code_main(id: &str) -> &'static str {
     match id {
-        "turnover" => "activity",
-        "entry_date" => "clock",
-        "connection_mp_ref" => "store",
-        "layer" => "layers",
-        "registrator_type" => "file-text",
-        "registrator_ref" => "file",
-        "nomenclature" => "package",
-        "dim1_category" | "dim2_line" | "dim3_model" | "dim4_format" | "dim5_sink"
-        | "dim6_size" => "tag",
-        _ => "bar-chart-2",
+        "turnover" | "turnover_code" => "Turn",
+        "entry_date" => "Day",
+        "connection_mp_ref" => "Cab",
+        "layer" => "Layer",
+        "registrator_type" => "RegType",
+        "registrator_ref" => "RegRef",
+        "nomenclature" | "dim1_category" | "dim2_line" | "dim3_model" | "dim4_format"
+        | "dim5_sink" | "dim6_size" => "Nom",
+        "debit_account" => "Dr",
+        "credit_account" => "Cr",
+        "customer_kind" => "uf",
+        "fulfillment_type" => "fulf",
+        _ => "default",
     }
+}
+
+/// Число колонок для сетки групп: не более 3, но строки заполняются равномерно,
+/// чтобы 4 группы шли 2+2, а 5 — 3+2 (а не «3 + одинокая»).
+fn balanced_group_columns(group_count: usize) -> usize {
+    if group_count <= 1 {
+        return 1;
+    }
+    let rows = group_count.div_ceil(3);
+    group_count.div_ceil(rows)
 }
 
 #[derive(Clone, Debug)]
@@ -269,8 +285,8 @@ enum DashboardPeriodSlot {
 impl DashboardPeriodSlot {
     fn title(self) -> &'static str {
         match self {
-            Self::Primary => "П1",
-            Self::Comparison => "П2",
+            Self::Primary => "Period1",
+            Self::Comparison => "Period 2",
         }
     }
 
@@ -3153,7 +3169,7 @@ fn IndicatorDetailModal(
                                 // only for indicators that have no drilldown tab to host it.
                                 {if !has_drilldown {
                                     view! {
-                                        <div class="indicator-detail__periods">
+                                        <div class="indicator-detail__periods indicator-detail__periods--with-delta">
                                             <div class="indicator-detail__period-card">
                                                 <span class="indicator-detail__period-caption">"Текущий период"</span>
                                                 <span class="indicator-detail__period-range">{overview_current_period_label.clone()}</span>
@@ -3164,16 +3180,16 @@ fn IndicatorDetailModal(
                                                 <span class="indicator-detail__period-range">{overview_comparison_period_label.clone()}</span>
                                                 <span class="indicator-detail__period-value">{overview_prev_full_str.clone()}</span>
                                             </div>
+                                            <div class="indicator-detail__period-card indicator-detail__period-card--delta">
+                                                <span class="indicator-detail__period-caption">"Изменение"</span>
+                                                <span class=format!("indicator-detail__delta {}", overview_delta_class)>{overview_delta_str.clone()}</span>
+                                            </div>
                                         </div>
                                     }.into_any()
                                 } else {
                                     view! { <></> }.into_any()
                                 }}
                                 <div class="indicator-detail__meta">
-                                    <div class="indicator-detail__meta-row">
-                                        <span class="indicator-detail__meta-label">"Изменение"</span>
-                                        <span class=format!("indicator-detail__delta {}", overview_delta_class)>{overview_delta_str.clone()}</span>
-                                    </div>
                                     {if !overview_view_id.is_empty() {
                                         view! {
                                             <div class="indicator-detail__meta-row">
@@ -3235,7 +3251,7 @@ fn IndicatorDetailModal(
 
                         view! {
                             <>
-                            <div class="indicator-detail__periods">
+                            <div class="indicator-detail__periods indicator-detail__periods--with-delta">
                                 <div class="indicator-detail__period-card">
                                     <span class="indicator-detail__period-caption">"Текущий период"</span>
                                     <span class="indicator-detail__period-range">{overview_current_period_label.clone()}</span>
@@ -3245,6 +3261,10 @@ fn IndicatorDetailModal(
                                     <span class="indicator-detail__period-caption">{overview_comparison_period_title.clone()}</span>
                                     <span class="indicator-detail__period-range">{overview_comparison_period_label.clone()}</span>
                                     <span class="indicator-detail__period-value">{overview_prev_full_str.clone()}</span>
+                                </div>
+                                <div class="indicator-detail__period-card indicator-detail__period-card--delta">
+                                    <span class="indicator-detail__period-caption">"Изменение"</span>
+                                    <span class=format!("indicator-detail__delta {}", overview_delta_class)>{overview_delta_str.clone()}</span>
                                 </div>
                             </div>
                             <div class="drill-picker">
@@ -3266,9 +3286,13 @@ fn IndicatorDetailModal(
                                             let ts = tabs_store.clone();
                                             let grouped_dims = group_drill_dimensions(&dims_list);
                                             let drill_params = overview_effective_indicator_params.get_value();
+                                            let group_cols = balanced_group_columns(grouped_dims.len());
 
                                             view! {
-                                                <div class="drill-picker__groups">
+                                                <div
+                                                    class="drill-picker__groups"
+                                                    style=format!("--drill-cols: {group_cols};")
+                                                >
                                                     {if dims_list.is_empty() {
                                                         view! {
                                                             <div class="drill-picker__empty">
@@ -3294,7 +3318,7 @@ fn IndicatorDetailModal(
                                                                     <div class="drill-picker__list">
                                                                         {group_items.into_iter().map(|item| {
                                                                             let dim = item.id.clone();
-                                                                            let icon_name = drill_dim_icon(&item.id);
+                                                                            let chip = chip_from_code_main(drill_dim_code_main(&item.id), &item.label);
                                                                             let label_text = item.label.clone();
                                                                             let dim_label = item.label.clone();
                                                                             let is_partial = item.mode == "partial";
@@ -3343,7 +3367,11 @@ fn IndicatorDetailModal(
                                                                                         });
                                                                                     }
                                                                                 >
-                                                                                    <span class="drill-picker__item-icon">{icon(icon_name)}</span>
+                                                                                    <GlDimensionChip
+                                                                                        label=chip.label
+                                                                                        color_key=chip.color_key
+                                                                                        title=chip.title
+                                                                                    />
                                                                                     <span class="drill-picker__item-label">{label_text}</span>
                                                                                     {if is_partial {
                                                                                         view! {

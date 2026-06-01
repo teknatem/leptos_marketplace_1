@@ -231,6 +231,10 @@ pub enum TurnoverLayer {
     Plan,
     Oper,
     Fact,
+    /// Финансовый слой: обороты, построенные из финансовых отчётов МП
+    /// (p903/p907) синхронно с GL. Постепенно заменяет `Fact` для этих
+    /// источников.
+    Fina,
     Prod,
 }
 
@@ -240,6 +244,7 @@ impl TurnoverLayer {
             Self::Plan => "plan",
             Self::Oper => "oper",
             Self::Fact => "fact",
+            Self::Fina => "fina",
             Self::Prod => "prod",
         }
     }
@@ -249,6 +254,7 @@ impl TurnoverLayer {
             "plan" => Some(Self::Plan),
             "oper" => Some(Self::Oper),
             "fact" => Some(Self::Fact),
+            "fina" => Some(Self::Fina),
             "prod" => Some(Self::Prod),
             _ => None,
         }

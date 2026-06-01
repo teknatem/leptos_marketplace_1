@@ -1,6 +1,7 @@
 use crate::general_ledger::api::{
     create_gl_drilldown_session, fetch_gl_account_view, fetch_gl_dimensions,
 };
+use crate::general_ledger::ui::dimension_chip::is_system_dim_id;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::icons::icon;
@@ -439,9 +440,23 @@ pub fn GlAccountViewPage() -> impl IntoView {
 
                 let row_for_tabs = row.clone();
                 let dims = dimensions.get();
-                let split = 4.min(dims.len());
-                let common_dims = dims[..split].to_vec();
-                let nomen_dims = dims[split..].to_vec();
+                // Классификация по содержимому (не по индексу): номенклатурные —
+                // по code_main == "Nom"; системные — оборот/счета; остальное общее.
+                let nomen_dims = dims
+                    .iter()
+                    .filter(|dim| dim.code_main == "Nom")
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let system_dims = dims
+                    .iter()
+                    .filter(|dim| is_system_dim_id(&dim.id))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let common_dims = dims
+                    .iter()
+                    .filter(|dim| dim.code_main != "Nom" && !is_system_dim_id(&dim.id))
+                    .cloned()
+                    .collect::<Vec<_>>();
 
                 view! {
                     <ModalFrame
@@ -463,54 +478,45 @@ pub fn GlAccountViewPage() -> impl IntoView {
                                     <Spinner /> " Загрузка..."
                                 </div>
                             }.into_any()
-                        } else if common_dims.is_empty() {
+                        } else if dims.is_empty() {
                             view! {
                                 <div style="padding: 20px 18px; font-size:13px; color:var(--color-text-secondary);">
                                     "Детализация недоступна для данного вида оборота"
                                 </div>
                             }.into_any()
                         } else {
-                            let row_common = row_for_tabs.clone();
-                            let row_nomen = row_for_tabs.clone();
+                            let render_section = {
+                                let row_base = row_for_tabs.clone();
+                                move |title: &'static str, items: Vec<GlDimensionDef>| {
+                                    if items.is_empty() {
+                                        return view! { <></> }.into_any();
+                                    }
+                                    let row_base = row_base.clone();
+                                    view! {
+                                        <div>
+                                            <div class="gl-dim-section" style="margin-top: 2px;">{title}</div>
+                                            {items.into_iter().map(|dim| {
+                                                let row_d = row_base.clone();
+                                                let dim_c = dim.clone();
+                                                view! {
+                                                    <div
+                                                        class="gl-dim-item"
+                                                        on:click=move |_| open_drilldown_tab(row_d.clone(), dim_c.clone())
+                                                    >
+                                                        <span class="gl-dim-item__label">{dim.label.clone()}</span>
+                                                        <span class="gl-dim-item__arrow">"›"</span>
+                                                    </div>
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                    }.into_any()
+                                }
+                            };
                             view! {
                                 <div>
-                                    <div class="gl-dim-section">"Общие"</div>
-                                    {common_dims.into_iter().map(|dim| {
-                                        let row_d = row_common.clone();
-                                        let dim_c = dim.clone();
-                                        view! {
-                                            <div
-                                                class="gl-dim-item"
-                                                on:click=move |_| open_drilldown_tab(row_d.clone(), dim_c.clone())
-                                            >
-                                                <span class="gl-dim-item__label">{dim.label.clone()}</span>
-                                                <span class="gl-dim-item__arrow">"›"</span>
-                                            </div>
-                                        }
-                                    }).collect_view()}
-
-                                    {if !nomen_dims.is_empty() {
-                                        view! {
-                                            <div>
-                                                <div class="gl-dim-section" style="margin-top: 2px;">"По номенклатуре"</div>
-                                                {nomen_dims.into_iter().map(|dim| {
-                                                    let row_d = row_nomen.clone();
-                                                    let dim_c = dim.clone();
-                                                    view! {
-                                                        <div
-                                                            class="gl-dim-item"
-                                                            on:click=move |_| open_drilldown_tab(row_d.clone(), dim_c.clone())
-                                                        >
-                                                            <span class="gl-dim-item__label">{dim.label.clone()}</span>
-                                                            <span class="gl-dim-item__arrow">"›"</span>
-                                                        </div>
-                                                    }
-                                                }).collect_view()}
-                                            </div>
-                                        }.into_any()
-                                    } else {
-                                        view! { <></> }.into_any()
-                                    }}
+                                    {render_section("Общие", common_dims)}
+                                    {render_section("Системные", system_dims)}
+                                    {render_section("По номенклатуре", nomen_dims)}
                                 </div>
                             }.into_any()
                         }}

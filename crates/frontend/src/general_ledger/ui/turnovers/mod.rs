@@ -2,7 +2,7 @@ pub mod details;
 pub use details::GeneralLedgerTurnoverDetails;
 
 use crate::general_ledger::api::fetch_general_ledger_turnovers;
-use crate::general_ledger::ui::dimensions::{dimension_search_text, DimensionPreview};
+use crate::general_ledger::ui::dimensions::{dimension_search_text, DimensionPreviewMains};
 use crate::layout::global_context::AppGlobalContext;
 use crate::layout::tabs::tab_label_for_key;
 use crate::shared::page_frame::PageFrame;
@@ -220,8 +220,11 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                     </div>
                 </div>
 
-                <div style="overflow: auto;">
-                    <Table>
+                <div class="table-wrapper">
+                    <Table
+                        attr:class="gl-turnovers-table"
+                        attr:style="width: 100%; min-width: 1080px; table-layout: fixed;"
+                    >
                         <TableHeader>
                             <TableRow>
                                 <TableHeaderCell>"Code"</TableHeaderCell>
@@ -285,42 +288,37 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                                                 </TableCell>
 
                                                 <TableCell>
-                                                    <TableCellLayout>
-                                                        <div>{item.name.clone()}</div>
-                                                        <div style="font-size: 12px; opacity: 0.75;">
+                                                    <TableCellLayout truncate=true>
+                                                        <div class="cell-truncate">{item.name.clone()}</div>
+                                                        <div
+                                                            class="cell-truncate"
+                                                            style="font-size: 12px; opacity: 0.75;"
+                                                            title=item.llm_description.clone()
+                                                        >
                                                             {item.llm_description.clone()}
                                                         </div>
                                                     </TableCellLayout>
                                                 </TableCell>
 
                                                 <TableCell>
-                                                    <TableCellLayout>
-                                                        <div class="gldim-signature">
-                                                            {if item.dimension_signature.trim().is_empty() {
-                                                                "—".to_string()
-                                                            } else {
-                                                                item.dimension_signature.clone()
-                                                            }}
-                                                        </div>
-                                                        <div style="margin-top: 8px;">
-                                                            <DimensionPreview dimensions=item.available_dimensions.clone() />
-                                                        </div>
+                                                    <TableCellLayout truncate=true>
+                                                        <DimensionPreviewMains dimensions=item.available_dimensions.clone() />
                                                     </TableCellLayout>
                                                 </TableCell>
 
                                                 <TableCell>
-                                                    <TableCellLayout>
-                                                        <div>{format!("group: {}", item.report_group.as_str())}</div>
-                                                        <div>{format!("scope: {}", item.scope.as_str())}</div>
-                                                        <div>{format!("value: {}", item.value_kind.as_str())}</div>
+                                                    <TableCellLayout truncate=true>
+                                                        <div class="cell-truncate">{format!("group: {}", item.report_group.as_str())}</div>
+                                                        <div class="cell-truncate">{format!("scope: {}", item.scope.as_str())}</div>
+                                                        <div class="cell-truncate">{format!("value: {}", item.value_kind.as_str())}</div>
                                                     </TableCellLayout>
                                                 </TableCell>
 
                                                 <TableCell>
-                                                    <TableCellLayout>
-                                                        <div>{format!("agg: {}", item.agg_kind.as_str())}</div>
-                                                        <div>{format!("select: {}", item.selection_rule.as_str())}</div>
-                                                        <div>{format!("sign: {}", item.sign_policy.as_str())}</div>
+                                                    <TableCellLayout truncate=true>
+                                                        <div class="cell-truncate">{format!("agg: {}", item.agg_kind.as_str())}</div>
+                                                        <div class="cell-truncate">{format!("select: {}", item.selection_rule.as_str())}</div>
+                                                        <div class="cell-truncate">{format!("sign: {}", item.sign_policy.as_str())}</div>
                                                     </TableCellLayout>
                                                 </TableCell>
 
@@ -357,18 +355,21 @@ pub fn GeneralLedgerTurnoversPage() -> impl IntoView {
                                                 </TableCell>
 
                                                 <TableCell>
-                                                    <TableCellLayout attr:style="text-align: right;">
+                                                    <TableCellLayout
+                                                        truncate=true
+                                                        attr:style="text-align: right;"
+                                                    >
                                                         {item.gl_entries_count.to_string()}
                                                     </TableCellLayout>
                                                 </TableCell>
 
                                                 <TableCell>
-                                                    <TableCellLayout>
-                                                        <div>
+                                                    <TableCellLayout truncate=true>
+                                                        <div class="cell-truncate">
                                                             <strong>"Aliases: "</strong>
                                                             {join_or_dash(&item.aliases)}
                                                         </div>
-                                                        <div style="margin-top: 6px;">
+                                                        <div class="cell-truncate" style="margin-top: 6px;">
                                                             <strong>"Sources: "</strong>
                                                             {join_or_dash(&item.source_examples)}
                                                         </div>

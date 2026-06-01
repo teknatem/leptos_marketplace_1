@@ -86,18 +86,8 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 16%, transparent);
 }
 
-.gldim-tree__code {
-  font-family: var(--font-family-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-primary));
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
+.gldim-tree__btn .gl-dim-chip {
   flex-shrink: 0;
-  min-width: 48px;
-  text-align: center;
 }
 
 .gldim-tree__label {
@@ -134,19 +124,6 @@
   border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border));
 }
 
-.gldim-hero__code {
-  font-family: var(--font-family-mono);
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--color-primary);
-  line-height: 1;
-  padding: 8px 14px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg-primary));
-  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
-  white-space: nowrap;
-}
-
 .gldim-hero__body {
   display: flex;
   flex-direction: column;
@@ -158,6 +135,22 @@
   font-size: 16px;
   font-weight: 600;
   color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gldim-system-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--gl-dim-sys, #64748b);
+  background: color-mix(in srgb, var(--gl-dim-sys, #64748b) 12%, var(--color-bg-primary) 88%);
+  border: 1px solid color-mix(in srgb, var(--gl-dim-sys, #64748b) 30%, var(--color-border) 70%);
 }
 
 .gldim-hero__field {
@@ -272,23 +265,6 @@
   flex-wrap: wrap;
 }
 
-.gldim-breadcrumb__item {
-  font-family: var(--font-family-mono);
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.gldim-breadcrumb__item--active {
-  color: var(--color-primary);
-  font-weight: 700;
-}
-
-.gldim-breadcrumb__sep {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  padding: 0 2px;
-}
-
 /* ─── Copy button ────────────────────────────────────────────────────────── */
 
 .gldim-copy-btn {
@@ -313,74 +289,118 @@
   background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-primary));
 }
 
-/* ─── Turnover tags ──────────────────────────────────────────────────────── */
+/* ─── Description paragraph ──────────────────────────────────────────────── */
 
-.gldim-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.gldim-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
-.gldim-tag {
+/* ─── Turnovers grouped by layer (упрощённая матрица) ────────────────────── */
+
+.gldim-layers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gldim-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gldim-layer__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.gldim-layer__name {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.gldim-layer__count {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  border: 1px solid var(--color-border);
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
   border-radius: 999px;
   background: var(--color-bg-secondary);
-  font-family: var(--font-family-mono);
-  font-size: 11px;
-  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.gldim-layer__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gldim-turnover-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.gldim-turnover-row:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-bg-secondary));
+}
+
+.gldim-turnover-row__name {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.gldim-turnover-row__qty {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 
-.gldim-tag:hover {
-  border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-primary));
-  color: var(--color-primary);
+/* Комбинация существует лишь теоретически (0 проводок) — приглушаем. */
+.gldim-turnover-row--theoretical {
+  opacity: 0.5;
 }
 
-/* ─── DimensionPreview (used in other pages) ──────────────────────────────── */
+.gldim-turnover-row--theoretical .gldim-turnover-row__qty {
+  color: var(--color-text-muted);
+}
 
-.gldim-preview {
-  display: flex;
+.gldim-breadcrumb.gl-dim-chip-list {
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.gldim-preview__group {
-  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-bg-secondary);
+  gap: 4px;
 }
 
-.gldim-preview__root {
-  font-family: var(--font-family-mono);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--color-primary);
-}
-
-.gldim-preview__children {
-  display: inline-flex;
-  gap: 3px;
-}
-
-.gldim-preview__child {
-  min-width: 20px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-primary));
-  font-family: var(--font-family-mono);
-  font-size: 10px;
-  text-align: center;
-  color: var(--color-text-secondary);
+.gldim-breadcrumb__sep {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  padding: 0 2px;
+  flex-shrink: 0;
 }
 
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
@@ -539,4 +559,71 @@
   .gl-td-cols {
     grid-template-columns: 1fr;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GL Turnovers list  (#general_ledger_turnovers--list)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#general_ledger_turnovers--list .gl-turnovers-table {
+  table-layout: fixed;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th,
+#general_ledger_turnovers--list .gl-turnovers-table td {
+  overflow: hidden;
+  vertical-align: top;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th:nth-child(1),
+#general_ledger_turnovers--list .gl-turnovers-table td:nth-child(1) {
+  width: 10%;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th:nth-child(2),
+#general_ledger_turnovers--list .gl-turnovers-table td:nth-child(2) {
+  width: 17%;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th:nth-child(3),
+#general_ledger_turnovers--list .gl-turnovers-table td:nth-child(3) {
+  width: 15%;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th:nth-child(4),
+#general_ledger_turnovers--list .gl-turnovers-table td:nth-child(4) {
+  width: 11%;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th:nth-child(5),
+#general_ledger_turnovers--list .gl-turnovers-table td:nth-child(5) {
+  width: 11%;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th:nth-child(6),
+#general_ledger_turnovers--list .gl-turnovers-table td:nth-child(6) {
+  width: 11%;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th:nth-child(7),
+#general_ledger_turnovers--list .gl-turnovers-table td:nth-child(7) {
+  width: 6%;
+}
+
+#general_ledger_turnovers--list .gl-turnovers-table th:nth-child(8),
+#general_ledger_turnovers--list .gl-turnovers-table td:nth-child(8) {
+  width: 19%;
+}
+
+#general_ledger_turnovers--list .gl-dim-chip-list {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+#general_ledger_turnovers--list .gl-dim-chip {
+  font-size: 9px;
+  line-height: 14px;
+  padding: 0 4px;
 }

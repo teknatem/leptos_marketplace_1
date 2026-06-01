@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 const P904_SALES_DATA: &str = "p904_sales_data";
 const P903_FINANCE_REPORT: &str = "p903_wb_finance_report";
+const P907_PAYMENT_REPORT: &str = "p907_ym_payment_report";
 const A012_WB_SALES: &str = "a012_wb_sales";
 const A015_WB_ORDERS: &str = "a015_wb_orders";
 const A021_PRODUCTION_OUTPUT: &str = "a021_production_output";
@@ -37,15 +38,21 @@ impl RepostExecutor {
         vec![
             ProjectionOption {
                 key: P903_FINANCE_REPORT.to_string(),
-                label: "WB Finance Report".to_string(),
+                label: "p903 — WB Finance Report".to_string(),
                 description:
                     "Локальная пересборка general ledger по сохранённым строкам p903_wb_finance_report".to_string(),
             },
             ProjectionOption {
                 key: P904_SALES_DATA.to_string(),
-                label: "Sales Data".to_string(),
+                label: "p904 — Sales Data".to_string(),
                 description:
                     "Перепроведение документов по registrator_ref из p904_sales_data".to_string(),
+            },
+            ProjectionOption {
+                key: P907_PAYMENT_REPORT.to_string(),
+                label: "p907 — YM Payment Report".to_string(),
+                description:
+                    "Локальная пересборка general ledger по сохранённым строкам p907_ym_payment_report".to_string(),
             },
         ]
     }
@@ -54,35 +61,35 @@ impl RepostExecutor {
         vec![
             AggregateOption {
                 key: A012_WB_SALES.to_string(),
-                label: "WB Sales".to_string(),
+                label: "a012 — WB Sales".to_string(),
                 description:
                     "Перепроведение документов a012_wb_sales с пересборкой связанных проекций"
                         .to_string(),
             },
             AggregateOption {
                 key: A015_WB_ORDERS.to_string(),
-                label: "WB Orders".to_string(),
+                label: "a015 — WB Orders".to_string(),
                 description:
                     "Перепроведение документов a015_wb_orders с пересборкой строк p909"
                         .to_string(),
             },
             AggregateOption {
                 key: A021_PRODUCTION_OUTPUT.to_string(),
-                label: "Production Output".to_string(),
+                label: "a021 — Production Output".to_string(),
                 description:
                     "Перепроведение документов a021_production_output с пересборкой связанных проекций"
                         .to_string(),
             },
             AggregateOption {
                 key: A023_PURCHASE_OF_GOODS.to_string(),
-                label: "Purchase Of Goods".to_string(),
+                label: "a023 — Purchase Of Goods".to_string(),
                 description:
                     "Перепроведение документов a023_purchase_of_goods с пересборкой связанных проекций"
                         .to_string(),
             },
             AggregateOption {
                 key: A026_WB_ADVERT_DAILY.to_string(),
-                label: "WB Advert Daily".to_string(),
+                label: "a026 — WB Advert Daily".to_string(),
                 description: "Перепроведение проведённых документов a026_wb_advert_daily с пересборкой связанных проекций".to_string(),
             },
         ]
@@ -163,6 +170,7 @@ impl RepostExecutor {
     fn validate_request(request: &RepostRequest) -> Result<()> {
         if request.projection_key != P903_FINANCE_REPORT
             && request.projection_key != P904_SALES_DATA
+            && request.projection_key != P907_PAYMENT_REPORT
         {
             return Err(anyhow!(
                 "Unsupported projection_key: {}",
@@ -230,6 +238,65 @@ impl RepostExecutor {
                 );
                 self.progress_tracker
                     .complete_session(session_id, RepostStatus::Completed);
+                return Ok(());
+            }
+            P907_PAYMENT_REPORT => {
+                let ids =
+                    crate::projections::p907_ym_payment_report::repository::list_ids_by_transaction_date_range(
+                        &request.date_from,
+                        &request.date_to,
+                    )
+                    .await?;
+
+                let total = ids.len() as i32;
+                self.progress_tracker.set_total(session_id, total);
+
+                let mut reposted = 0;
+                for (index, id) in ids.iter().enumerate() {
+                    let current_item = format!("{} {}", P907_PAYMENT_REPORT, id);
+                    self.progress_tracker.update_progress(
+                        session_id,
+                        index as i32,
+                        reposted,
+                        Some(current_item.clone()),
+                    );
+
+                    match crate::projections::p907_ym_payment_report::service::rebuild_entry_from_existing(
+                        id,
+                    )
+                    .await
+                    {
+                        Ok(_) => reposted += 1,
+                        Err(error) => self.progress_tracker.add_error(
+                            session_id,
+                            format!("Failed to repost {} {}: {}", P907_PAYMENT_REPORT, id, error),
+                        ),
+                    }
+
+                    self.progress_tracker.update_progress(
+                        session_id,
+                        (index + 1) as i32,
+                        reposted,
+                        Some(current_item),
+                    );
+                }
+
+                self.progress_tracker
+                    .update_progress(session_id, total, reposted, None);
+
+                let final_status = if self
+                    .progress_tracker
+                    .get_progress(session_id)
+                    .map(|progress| progress.errors > 0)
+                    .unwrap_or(false)
+                {
+                    RepostStatus::CompletedWithErrors
+                } else {
+                    RepostStatus::Completed
+                };
+
+                self.progress_tracker
+                    .complete_session(session_id, final_status);
                 return Ok(());
             }
             P904_SALES_DATA => {

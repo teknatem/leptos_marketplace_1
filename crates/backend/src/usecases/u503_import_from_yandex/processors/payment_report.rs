@@ -22,7 +22,8 @@ pub fn encode_transaction_type(typ: &str) -> u8 {
         || lower.contains("charge")
     {
         1
-    } else if lower.contains("возврат") || lower.contains("return") || lower.contains("refund") {
+    } else if lower.contains("возврат") || lower.contains("return") || lower.contains("refund")
+    {
         2
     } else if lower.contains("удержан")
         || lower.contains("штраф")
@@ -67,9 +68,7 @@ pub fn build_ymid_key(
     transaction_sum: Option<f64>,
 ) -> String {
     // order: digits from integer representation
-    let order_part = order_id
-        .map(|v| v.to_string())
-        .unwrap_or_default();
+    let order_part = order_id.map(|v| v.to_string()).unwrap_or_default();
 
     // date: normalise RU → ISO, then keep only digit chars
     let iso = ru_date_to_iso(transaction_date);
@@ -87,7 +86,10 @@ pub fn build_ymid_key(
         .unwrap_or(0)
         .to_string();
 
-    format!("ymid_{}{}{}{}{}", order_part, date_part, type_part, sku_part, sum_part)
+    format!(
+        "ymid_{}{}{}{}{}",
+        order_part, date_part, type_part, sku_part, sum_part
+    )
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -217,6 +219,10 @@ pub async fn process_payment_report_csv(
 
         match repository::upsert_entry(&entry).await {
             Ok(()) => {
+                crate::projections::p907_ym_payment_report::service::rebuild_record_key_from_existing(
+                    &entry.record_key,
+                )
+                .await?;
                 upserted += 1;
             }
             Err(e) => {

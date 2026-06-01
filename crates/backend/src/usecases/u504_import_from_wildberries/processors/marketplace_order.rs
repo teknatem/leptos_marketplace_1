@@ -112,6 +112,7 @@ pub async fn process_marketplace_order(
         finished_price: None,
         price_with_disc: None,
         price: order.price.map(|p| p as f64 / 100.0),
+        sale_price: order.sale_price.filter(|&p| p > 0).map(|p| p as f64 / 100.0),
         dealer_price_ut: None,
         margin_pro: None,
     };

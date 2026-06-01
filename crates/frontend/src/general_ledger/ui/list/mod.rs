@@ -1,3 +1,4 @@
+use crate::general_ledger::ui::layer_badge::GlLayerBadge;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::date_range_picker::DateRangePicker;
@@ -882,7 +883,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
 
                                                     <TableCell>
                                                         <TableCellLayout>
-                                                            {entry.layer.as_str().to_string()}
+                                                            <GlLayerBadge layer=entry.layer.as_str().to_string() />
                                                         </TableCellLayout>
                                                     </TableCell>
 

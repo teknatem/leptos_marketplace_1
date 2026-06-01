@@ -41,6 +41,14 @@ pub struct Model {
     pub nm_id: Option<i64>,
     #[sea_orm(nullable)]
     pub a004_nomenclature_ref: Option<String>,
+    /// Производное поле: uuid a007_marketplace_product. Резолвится на первом
+    /// этапе проведения (если не заполнено) и копируется в p914.
+    #[sea_orm(nullable)]
+    pub marketplace_product_ref: Option<String>,
+    /// Производное поле: uuid a015_wb_orders (по srid). Резолвится на первом
+    /// этапе проведения (если не заполнено) и копируется в p914.
+    #[sea_orm(nullable)]
+    pub marketplace_order_ref: Option<String>,
     #[sea_orm(nullable)]
     pub penalty: Option<f64>,
     #[sea_orm(nullable)]
@@ -239,6 +247,8 @@ pub async fn upsert_entry(entry: &WbFinanceReportEntry) -> Result<()> {
             delivery_rub: Set(entry.delivery_rub),
             nm_id: Set(entry.nm_id),
             a004_nomenclature_ref: Set(entry.a004_nomenclature_ref.clone()),
+            marketplace_product_ref: Set(None),
+            marketplace_order_ref: Set(None),
             penalty: Set(entry.penalty),
             ppvz_vw: Set(entry.ppvz_vw),
             ppvz_vw_nds: Set(entry.ppvz_vw_nds),

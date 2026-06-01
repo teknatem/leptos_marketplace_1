@@ -330,6 +330,16 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "layers",
                 ),
                 SidebarItem::new(
+                    "general_ledger_layers",
+                    tab_label_for_key("general_ledger_layers"),
+                    "database",
+                ),
+                SidebarItem::new(
+                    "general_ledger_matrix",
+                    tab_label_for_key("general_ledger_matrix"),
+                    "table",
+                ),
+                SidebarItem::new(
                     "u505_match_nomenclature",
                     tab_label_for_key("u505_match_nomenclature"),
                     "layers",
@@ -425,6 +435,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "p913_wb_advert_order_attr",
                     tab_label_for_key("p913_wb_advert_order_attr"),
                     "trending-up",
+                ),
+                SidebarItem::new(
+                    "p914_mp_finance_turnovers",
+                    tab_label_for_key("p914_mp_finance_turnovers"),
+                    "layers",
                 ),
                 SidebarItem::new(
                     "a032_wb_returns_claims",

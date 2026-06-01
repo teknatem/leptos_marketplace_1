@@ -991,62 +991,183 @@
   color: var(--color-primary-hover, #0958d9);
 }
 
+/* ── GL dimension chip colors (light theme defaults) ── */
+:root {
+  --gl-dim-day:     #0891b2;
+  --gl-dim-cab:     #2563eb;
+  --gl-dim-regtype: #7c3aed;
+  --gl-dim-layer:   #d97706;
+  --gl-dim-regref:  #be185d;
+  --gl-dim-nom:     #16a34a;
+  --gl-dim-uf:      #0d9488;
+  --gl-dim-fulf:    #9333ea;
+  --gl-dim-sys:     #64748b;
+
+  /* GL layer badge text colors (light theme defaults) */
+  --gl-layer-oper:  #2563eb;
+  --gl-layer-fact:  #0891b2;
+  --gl-layer-fina:  #d97706;
+  --gl-layer-prod:  #16a34a;
+  --gl-layer-plan:  #7c3aed;
+}
+
+/* ── GL layer badge: rectangular, uniform background, per-layer text color ── */
+.gl-layer-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--badge-neutral-bg);
+  border: 1px solid var(--badge-neutral-border);
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+.gl-layer-badge--oper { color: var(--gl-layer-oper); }
+.gl-layer-badge--fact { color: var(--gl-layer-fact); }
+.gl-layer-badge--fina { color: var(--gl-layer-fina); }
+.gl-layer-badge--prod { color: var(--gl-layer-prod); }
+.gl-layer-badge--plan { color: var(--gl-layer-plan); }
+.gl-layer-badge--default { color: var(--color-text-secondary); }
+
 .gl-dim-chip-list {
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
-  justify-content: flex-start;
   align-items: center;
 }
 
+.gl-dim-chip-empty {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
 .gl-dim-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--color-border);
   background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
-  padding: 1px 5px;
-  min-width: 32px;
+  color: var(--color-text-secondary);
+  padding: 1px 6px;
   border-radius: 999px;
   cursor: pointer;
   font-size: 10px;
-  line-height: 1.25;
+  line-height: 16px;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, color 120ms ease;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: transform 100ms ease, box-shadow 100ms ease, background 100ms ease;
 }
 
 .gl-dim-chip:hover {
   transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,.10);
 }
 
-.gl-dim-chip--primary {
-  color: var(--color-primary, #1677ff);
-  background: color-mix(in srgb, var(--color-primary, #1677ff) 12%, var(--color-bg-primary) 88%);
-  border-color: color-mix(in srgb, var(--color-primary, #1677ff) 26%, var(--color-border) 74%);
+span.gl-dim-chip {
+  cursor: default;
 }
 
-.gl-dim-chip--primary:hover {
-  color: var(--color-primary-hover, #0958d9);
-  background: color-mix(in srgb, var(--color-primary, #1677ff) 18%, var(--color-bg-primary) 82%);
+span.gl-dim-chip:hover {
+  transform: none;
+  box-shadow: none;
 }
 
-.gl-dim-chip--additional {
-  color: var(--color-success, #15803d);
-  background: color-mix(in srgb, var(--color-success, #15803d) 12%, var(--color-bg-primary) 88%);
-  border-color: color-mix(in srgb, var(--color-success, #15803d) 26%, var(--color-border) 74%);
+/* Per-dimension colors — each code_main gets its own hue */
+.gl-dim-chip--day {
+  color: var(--gl-dim-day);
+  background: color-mix(in srgb, var(--gl-dim-day) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-day) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--day:hover {
+  background: color-mix(in srgb, var(--gl-dim-day) 16%, var(--color-bg-primary) 84%);
 }
 
-.gl-dim-chip--additional:hover {
-  background: color-mix(in srgb, var(--color-success, #15803d) 18%, var(--color-bg-primary) 82%);
+.gl-dim-chip--cab {
+  color: var(--gl-dim-cab);
+  background: color-mix(in srgb, var(--gl-dim-cab) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-cab) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--cab:hover {
+  background: color-mix(in srgb, var(--gl-dim-cab) 16%, var(--color-bg-primary) 84%);
+}
+
+.gl-dim-chip--regtype {
+  color: var(--gl-dim-regtype);
+  background: color-mix(in srgb, var(--gl-dim-regtype) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-regtype) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--regtype:hover {
+  background: color-mix(in srgb, var(--gl-dim-regtype) 16%, var(--color-bg-primary) 84%);
+}
+
+.gl-dim-chip--layer {
+  color: var(--gl-dim-layer);
+  background: color-mix(in srgb, var(--gl-dim-layer) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-layer) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--layer:hover {
+  background: color-mix(in srgb, var(--gl-dim-layer) 16%, var(--color-bg-primary) 84%);
+}
+
+.gl-dim-chip--regref {
+  color: var(--gl-dim-regref);
+  background: color-mix(in srgb, var(--gl-dim-regref) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-regref) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--regref:hover {
+  background: color-mix(in srgb, var(--gl-dim-regref) 16%, var(--color-bg-primary) 84%);
+}
+
+.gl-dim-chip--nom {
+  color: var(--gl-dim-nom);
+  background: color-mix(in srgb, var(--gl-dim-nom) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-nom) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--nom:hover {
+  background: color-mix(in srgb, var(--gl-dim-nom) 16%, var(--color-bg-primary) 84%);
+}
+
+.gl-dim-chip--uf {
+  color: var(--gl-dim-uf);
+  background: color-mix(in srgb, var(--gl-dim-uf) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-uf) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--uf:hover {
+  background: color-mix(in srgb, var(--gl-dim-uf) 16%, var(--color-bg-primary) 84%);
+}
+
+.gl-dim-chip--fulf {
+  color: var(--gl-dim-fulf);
+  background: color-mix(in srgb, var(--gl-dim-fulf) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-fulf) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--fulf:hover {
+  background: color-mix(in srgb, var(--gl-dim-fulf) 16%, var(--color-bg-primary) 84%);
 }
 
 .gl-dim-chip--all {
   color: var(--color-warning, #b54708);
-  background: color-mix(in srgb, var(--color-warning, #b54708) 12%, var(--color-bg-primary) 88%);
-  border-color: color-mix(in srgb, var(--color-warning, #b54708) 26%, var(--color-border) 74%);
+  background: color-mix(in srgb, var(--color-warning, #b54708) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--color-warning, #b54708) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--all:hover {
+  background: color-mix(in srgb, var(--color-warning, #b54708) 16%, var(--color-bg-primary) 84%);
 }
 
-.gl-dim-chip--all:hover {
-  background: color-mix(in srgb, var(--color-warning, #b54708) 18%, var(--color-bg-primary) 82%);
+.gl-dim-chip--sys {
+  color: var(--gl-dim-sys);
+  background: color-mix(in srgb, var(--gl-dim-sys) 10%, var(--color-bg-primary) 90%);
+  border-color: color-mix(in srgb, var(--gl-dim-sys) 30%, var(--color-border) 70%);
+}
+.gl-dim-chip--sys:hover {
+  background: color-mix(in srgb, var(--gl-dim-sys) 16%, var(--color-bg-primary) 84%);
 }
 
 .gl-drilldown__filters-card {

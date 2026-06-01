@@ -100,56 +100,69 @@ pub static ACCOUNT_7609_VIEW: GlAccountViewDef = GlAccountViewDef {
             turnover_code: "advert_clicks_no_order",
             layer: "oper",
         },
-        // ── Добровольная компенсация (fact) ───────────────────────────────
+        // ── Выручка и сторно возврата (fina) ───────────────────────────────
+        GlAccountViewEntry {
+            turnover_code: "customer_revenue",
+            layer: "fina",
+        },
+        GlAccountViewEntry {
+            turnover_code: "customer_revenue_storno",
+            layer: "fina",
+        },
+        // ── Добровольная компенсация (fina) ───────────────────────────────
         GlAccountViewEntry {
             turnover_code: "voluntary_return_compensation",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "mp_acquiring",
-            layer: "fact",
+            layer: "fina",
         },
-        // ── Логистика и хранение (fact) ────────────────────────────────────
+        GlAccountViewEntry {
+            turnover_code: "mp_acquiring_storno",
+            layer: "fina",
+        },
+        // ── Логистика и хранение (fina) ────────────────────────────────────
         GlAccountViewEntry {
             turnover_code: "mp_logistics",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "mp_rebill_logistic_cost",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "mp_rebill_logistic_cost_nm",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "mp_rebill_logistic_cost_legacy",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "mp_ppvz_reward",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "mp_ppvz_reward_nm",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "mp_storage",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "acceptance",
-            layer: "fact",
+            layer: "fina",
         },
-        // ── Штрафы (fact) ──────────────────────────────────────────────────
+        // ── Штрафы (fina) ──────────────────────────────────────────────────
         GlAccountViewEntry {
             turnover_code: "mp_penalty",
-            layer: "fact",
+            layer: "fina",
         },
         GlAccountViewEntry {
             turnover_code: "mp_penalty_storno",
-            layer: "fact",
+            layer: "fina",
         },
     ],
 };
@@ -173,9 +186,11 @@ mod tests {
     use super::ACCOUNT_7609_VIEW;
 
     #[test]
-    fn account_7609_view_places_acquiring_fact_in_main_block() {
-        assert!(ACCOUNT_7609_VIEW.is_main_row("mp_acquiring", "fact"));
+    fn account_7609_view_places_acquiring_fina_in_main_block() {
+        assert!(ACCOUNT_7609_VIEW.is_main_row("mp_acquiring", "fina"));
         assert!(!ACCOUNT_7609_VIEW.is_main_row("mp_acquiring", "oper"));
+        assert!(!ACCOUNT_7609_VIEW.is_main_row("mp_acquiring", "fact"));
+        assert!(ACCOUNT_7609_VIEW.is_main_row("mp_acquiring_storno", "fina"));
         assert!(!ACCOUNT_7609_VIEW.is_main_row("mp_acquiring_storno", "oper"));
     }
 }

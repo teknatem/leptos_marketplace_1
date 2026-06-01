@@ -37,6 +37,34 @@ pub async fn resolve_wb_nomenclature_ref(
         .filter(|s| !s.is_empty()))
 }
 
+/// Резолвер `marketplace_product_ref` (uuid a007) по `(connection_mp_ref, sku)`
+/// с фолбэком по уникальному `(connection_mp_ref, article)`. Используется
+/// регистраторами (p903/p907) при построении проекции p914.
+///
+/// Для WB `sku = nm_id`, для YM `sku = shop_sku`.
+pub async fn resolve_marketplace_product_ref(
+    connection_mp_ref: &str,
+    sku: &str,
+    article: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    let sku = sku.trim();
+    if !sku.is_empty() {
+        if let Some(item) = repository::get_by_connection_and_sku(connection_mp_ref, sku).await? {
+            return Ok(Some(item.base.id.as_string()));
+        }
+    }
+
+    if let Some(article) = article.map(str::trim).filter(|v| !v.is_empty()) {
+        if let Some(item) =
+            repository::get_unique_by_connection_and_article(connection_mp_ref, article).await?
+        {
+            return Ok(Some(item.base.id.as_string()));
+        }
+    }
+
+    Ok(None)
+}
+
 /// Поиск и установка nomenclature_ref по артикулу
 /// Возвращает true если nomenclature_ref был установлен, false если нет
 pub async fn search_and_set_nomenclature(

@@ -1,3 +1,4 @@
+use crate::general_ledger::ui::layer_badge::GlLayerBadge;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::clipboard::copy_to_clipboard_with_callback;
 use crate::shared::components::card_animated::CardAnimated;
@@ -297,7 +298,7 @@ pub fn DocumentGeneralLedgerEntries(
                                                 </TableCell>
                                                 <TableCell attr:style="width:72px;">
                                                     <TableCellLayout>
-                                                        <span class="badge badge--neutral">{entry.layer.as_str().to_string()}</span>
+                                                        <GlLayerBadge layer=entry.layer.as_str().to_string() />
                                                     </TableCellLayout>
                                                 </TableCell>
                                                 <TableCell>

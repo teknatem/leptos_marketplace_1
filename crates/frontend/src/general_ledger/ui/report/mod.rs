@@ -1,6 +1,9 @@
 use crate::general_ledger::api::{
     create_gl_drilldown_session, fetch_general_ledger_turnovers, fetch_gl_report,
 };
+use crate::general_ledger::ui::dimension_chip::{is_system_dim_id, GlDimensionChip};
+use crate::general_ledger::ui::layer_badge::GlLayerBadge;
+use contracts::general_ledger::GL_LAYER_CLASSES;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::date_range_picker::DateRangePicker;
@@ -24,6 +27,13 @@ use wasm_bindgen::JsCast;
 // ─────────────────────────────────────────────────────────────────────────────
 // Вспомогательные типы
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Измерения, материализованные только на слое `fina` (зеркало p914).
+/// Зеркалит backend-реестр LAYER_DIMENSION_PROFILES: на остальных слоях drilldown
+/// по ним невозможен, поэтому в UI их не предлагаем.
+fn is_fina_only_dimension(dimension_id: &str) -> bool {
+    matches!(dimension_id, "customer_kind" | "fulfillment_type")
+}
 
 #[derive(Clone, Debug)]
 struct CabinetOption {
@@ -78,14 +88,6 @@ static ACCOUNT_OPTIONS: &[(&str, &str)] = &[
     ("91", "91 — Прочие"),
     ("76", "76 — Расчёты"),
     ("7609", "7609 — Расчёты с МП"),
-];
-
-static LAYER_OPTIONS: &[(&str, &str)] = &[
-    ("prod", "Производственный"),
-    ("", "Все слои"),
-    ("oper", "Операционный"),
-    ("fact", "Фактический"),
-    ("plan", "Плановый"),
 ];
 
 fn fmt_money(v: f64) -> String {
@@ -387,8 +389,9 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                     }).collect_view()}
                 </Select>
                 <Select value=layer_sig>
-                    {LAYER_OPTIONS.iter().map(|(val, label)| {
-                        view! { <option value=*val>{*label}</option> }
+                    <option value="">"Все слои"</option>
+                    {GL_LAYER_CLASSES.iter().map(|item| {
+                        view! { <option value=item.code>{item.name}</option> }
                     }).collect_view()}
                 </Select>
                 <Button
@@ -463,9 +466,19 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                                         .map(|item| item.credit_account.clone())
                                         .filter(|value| !value.trim().is_empty())
                                         .unwrap_or_else(|| "—".to_string());
+                                    // Разрезы слоя fina (p914) материализованы
+                                    // только на слое fina — на других слоях их
+                                    // не предлагаем (backend всё равно отклонит).
+                                    // См. реестр LAYER_DIMENSION_PROFILES.
+                                    let row_layer = row.layer.trim().to_string();
                                     let available_dimensions = turnover_meta
                                         .map(|item| item.available_dimensions.clone())
-                                        .unwrap_or_default();
+                                        .unwrap_or_default()
+                                        .into_iter()
+                                        .filter(|dim| {
+                                            !is_fina_only_dimension(&dim.id) || row_layer == "fina"
+                                        })
+                                        .collect::<Vec<_>>();
                                     view! {
                                         <tr class="table__row">
                                             <td class="table__cell" style="overflow-wrap: anywhere;">
@@ -490,7 +503,7 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                                                 </code>
                                             </td>
                                             <td class="table__cell">
-                                                <code class="text-code">{row.layer.clone()}</code>
+                                                <GlLayerBadge layer=row.layer.clone() />
                                             </td>
                                             <td class="table__cell table__cell--right">
                                                 {fmt_money(row.debit_amount)}
@@ -514,6 +527,10 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                                                         let cab_dim = dims_for_buttons
                                                             .iter()
                                                             .find(|item| item.id == "connection_mp_ref")
+                                                            .cloned();
+                                                        let type_dim = dims_for_buttons
+                                                            .iter()
+                                                            .find(|item| item.id == "registrator_type")
                                                             .cloned();
                                                         let doc_dim = dims_for_buttons
                                                             .iter()
@@ -540,72 +557,112 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                                                                     let row_for_click = row_for_buttons.clone();
                                                                     let dims_for_click = nomenclature_dims.clone();
                                                                     view! {
-                                                                        <button
-                                                                            class="gl-dim-chip gl-dim-chip--additional"
-                                                                            title="Дополнительные измерения из связанных проекций"
-                                                                            on:click=move |_| open_dimension_dialog(
-                                                                                row_for_click.clone(),
-                                                                                dims_for_click.clone(),
-                                                                                DrilldownDialogMode::Nomenclature,
-                                                                            )
-                                                                        >
-                                                                            "NOM"
-                                                                        </button>
+                                                                        <GlDimensionChip
+                                                                            label="NOM".to_string()
+                                                                            color_key="nom"
+                                                                            title="Дополнительные измерения из связанных проекций".to_string()
+                                                                            interactive=true
+                                                                            on_click=Callback::new(move |_| {
+                                                                                open_dimension_dialog(
+                                                                                    row_for_click.clone(),
+                                                                                    dims_for_click.clone(),
+                                                                                    DrilldownDialogMode::Nomenclature,
+                                                                                );
+                                                                            })
+                                                                        />
                                                                     }.into_any()
                                                                 } else {
                                                                     view! { <></> }.into_any()
                                                                 }}
                                                                 {day_dim.map(|dim| {
                                                                     let row_for_click = row_for_buttons.clone();
+                                                                    let dim_for_click = dim.clone();
                                                                     view! {
-                                                                        <button
-                                                                            class="gl-dim-chip gl-dim-chip--primary"
-                                                                            title="Основное измерение из GL: по дням"
-                                                                            on:click=move |_| open_drilldown_tab(row_for_click.clone(), dim.clone())
-                                                                        >
-                                                                            "DAY"
-                                                                        </button>
+                                                                        <GlDimensionChip
+                                                                            label="DAY".to_string()
+                                                                            color_key="day"
+                                                                            title="Основное измерение из GL: по дням".to_string()
+                                                                            interactive=true
+                                                                            on_click=Callback::new(move |_| {
+                                                                                open_drilldown_tab(
+                                                                                    row_for_click.clone(),
+                                                                                    dim_for_click.clone(),
+                                                                                );
+                                                                            })
+                                                                        />
                                                                     }
                                                                 })}
                                                                 {cab_dim.map(|dim| {
                                                                     let row_for_click = row_for_buttons.clone();
+                                                                    let dim_for_click = dim.clone();
                                                                     view! {
-                                                                        <button
-                                                                            class="gl-dim-chip gl-dim-chip--primary"
-                                                                            title="Основное измерение из GL: по кабинету"
-                                                                            on:click=move |_| open_drilldown_tab(row_for_click.clone(), dim.clone())
-                                                                        >
-                                                                            "CAB"
-                                                                        </button>
+                                                                        <GlDimensionChip
+                                                                            label="CAB".to_string()
+                                                                            color_key="cab"
+                                                                            title="Основное измерение из GL: по кабинету".to_string()
+                                                                            interactive=true
+                                                                            on_click=Callback::new(move |_| {
+                                                                                open_drilldown_tab(
+                                                                                    row_for_click.clone(),
+                                                                                    dim_for_click.clone(),
+                                                                                );
+                                                                            })
+                                                                        />
+                                                                    }
+                                                                })}
+                                                                {type_dim.map(|dim| {
+                                                                    let row_for_click = row_for_buttons.clone();
+                                                                    let dim_for_click = dim.clone();
+                                                                    view! {
+                                                                        <GlDimensionChip
+                                                                            label="TYPE".to_string()
+                                                                            color_key="regtype"
+                                                                            title="Основное измерение из GL: по типу регистратора".to_string()
+                                                                            interactive=true
+                                                                            on_click=Callback::new(move |_| {
+                                                                                open_drilldown_tab(
+                                                                                    row_for_click.clone(),
+                                                                                    dim_for_click.clone(),
+                                                                                );
+                                                                            })
+                                                                        />
                                                                     }
                                                                 })}
                                                                 {doc_dim.map(|dim| {
                                                                     let row_for_click = row_for_buttons.clone();
+                                                                    let dim_for_click = dim.clone();
                                                                     view! {
-                                                                        <button
-                                                                            class="gl-dim-chip gl-dim-chip--primary"
-                                                                            title="Основное измерение из GL: по документу-регистратору"
-                                                                            on:click=move |_| open_drilldown_tab(row_for_click.clone(), dim.clone())
-                                                                        >
-                                                                            "DOC"
-                                                                        </button>
+                                                                        <GlDimensionChip
+                                                                            label="DOC".to_string()
+                                                                            color_key="regref"
+                                                                            title="Основное измерение из GL: по документу-регистратору".to_string()
+                                                                            interactive=true
+                                                                            on_click=Callback::new(move |_| {
+                                                                                open_drilldown_tab(
+                                                                                    row_for_click.clone(),
+                                                                                    dim_for_click.clone(),
+                                                                                );
+                                                                            })
+                                                                        />
                                                                     }
                                                                 })}
                                                                 {{
                                                                     let row_for_click = row_for_buttons.clone();
                                                                     let dims_for_click = dims_for_buttons.clone();
                                                                     view! {
-                                                                        <button
-                                                                            class="gl-dim-chip gl-dim-chip--all"
-                                                                            title="Все доступные измерения: основные и дополнительные"
-                                                                            on:click=move |_| open_dimension_dialog(
-                                                                                row_for_click.clone(),
-                                                                                dims_for_click.clone(),
-                                                                                DrilldownDialogMode::All,
-                                                                            )
-                                                                        >
-                                                                            "ALL"
-                                                                        </button>
+                                                                        <GlDimensionChip
+                                                                            label="ALL".to_string()
+                                                                            color_key="all"
+                                                                            title="Все доступные измерения: основные и дополнительные".to_string()
+                                                                            interactive=true
+                                                                            on_click=Callback::new(move |_| {
+                                                                                open_dimension_dialog(
+                                                                                    row_for_click.clone(),
+                                                                                    dims_for_click.clone(),
+                                                                                    DrilldownDialogMode::All,
+                                                                                );
+                                                                            })
+                                                                        />
                                                                     }
                                                                 }}
                                                             </>
@@ -677,6 +734,11 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                     .filter(|item| {
                         matches!(item.id.as_str(), "registrator_type" | "layer")
                     })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let system_dims = dims
+                    .iter()
+                    .filter(|item| is_system_dim_id(&item.id))
                     .cloned()
                     .collect::<Vec<_>>();
 
@@ -765,6 +827,17 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                                                     <div>
                                                         <div class="gl-dim-section" style="margin-top: 2px;">"Вспомогательные"</div>
                                                         {render_dim_list(auxiliary_dims.clone(), row.clone())}
+                                                    </div>
+                                                }.into_any()
+                                            } else {
+                                                view! { <></> }.into_any()
+                                            }}
+
+                                            {if !system_dims.is_empty() {
+                                                view! {
+                                                    <div>
+                                                        <div class="gl-dim-section" style="margin-top: 2px;">"Системные"</div>
+                                                        {render_dim_list(system_dims.clone(), row.clone())}
                                                     </div>
                                                 }.into_any()
                                             } else {

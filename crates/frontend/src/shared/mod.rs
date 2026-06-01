@@ -23,6 +23,7 @@ pub mod modal_stack;
 pub mod page_frame;
 pub mod page_standard;
 pub mod picker_aggregate;
+pub mod registrator_link;
 pub mod state;
 pub mod table_utils;
 pub mod theme;

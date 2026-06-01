@@ -92,6 +92,18 @@ const DETAIL_LINKS: &[GlDetailLinkDescriptor] = &[
         where_sql: "gl.resource_table = 'p913_wb_advert_order_attr'",
         nomenclature_ref_expr: "d.nomenclature_ref",
     },
+    GlDetailLinkDescriptor {
+        resource_table: "p914_mp_finance_turnovers",
+        detail_table: "p914_mp_finance_turnovers",
+        detail_alias: "d",
+        kind: GlDetailLinkKind::ProjectionLinked,
+        join_variants: &[GlDetailJoinVariant {
+            join_sql: "INNER JOIN p914_mp_finance_turnovers d ON d.general_ledger_ref = gl.id",
+            extra_where_sql: "",
+        }],
+        where_sql: "gl.resource_table = 'p914_mp_finance_turnovers'",
+        nomenclature_ref_expr: "d.nomenclature_ref",
+    },
 ];
 
 pub fn descriptor_for_resource_table(

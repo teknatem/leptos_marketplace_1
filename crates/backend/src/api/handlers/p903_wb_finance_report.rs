@@ -391,6 +391,8 @@ fn model_to_dto(
         delivery_rub: model.delivery_rub,
         nm_id: model.nm_id,
         a004_nomenclature_ref: model.a004_nomenclature_ref,
+        marketplace_product_ref: model.marketplace_product_ref,
+        marketplace_order_ref: model.marketplace_order_ref,
         penalty: model.penalty,
         ppvz_vw: model.ppvz_vw,
         ppvz_vw_nds: model.ppvz_vw_nds,
