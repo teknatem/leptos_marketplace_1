@@ -54,6 +54,10 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         id,
         document.is_error
     );
+
+    // Сигнал клиентам обновить открытые списки a013.
+    super::change_token::TOKEN.bump();
+
     Ok(())
 }
 
@@ -77,5 +81,9 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
 
     tracing::info!("Unposted document a013: {}", id);
+
+    // Сигнал клиентам обновить открытые списки a013.
+    super::change_token::TOKEN.bump();
+
     Ok(())
 }

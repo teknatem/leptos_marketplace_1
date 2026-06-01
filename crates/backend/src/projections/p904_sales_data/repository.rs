@@ -1,6 +1,6 @@
 use anyhow::Result;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;
@@ -55,6 +55,10 @@ fn conn() -> &'static DatabaseConnection {
 }
 
 pub async fn upsert_entry(entry: &Model) -> Result<()> {
+    upsert_entry_with_conn(conn(), entry).await
+}
+
+pub async fn upsert_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> Result<()> {
     let active = ActiveModel {
         id: Set(entry.id.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
@@ -83,12 +87,8 @@ pub async fn upsert_entry(entry: &Model) -> Result<()> {
         posted_at: Set(entry.posted_at.clone()),
     };
 
-    // Using insert with on_conflict would be better, but for now simple insert/update logic
-    // Since we generate UUIDs for ID, we can just insert.
-    // If we want idempotency based on business keys, we should check first.
-    // For now, let's assume we delete by registrator before inserting, so insert is safe.
-
-    Entity::insert(active).exec(conn()).await?;
+    // Caller deletes by registrator before inserting, so a plain insert is safe (no SELECT).
+    Entity::insert(active).exec(db).await?;
 
     Ok(())
 }
@@ -102,9 +102,16 @@ pub async fn get_by_registrator(registrator_ref: &str) -> Result<Vec<Model>> {
 }
 
 pub async fn delete_by_registrator(registrator_ref: &str) -> Result<u64> {
+    delete_by_registrator_with_conn(conn(), registrator_ref).await
+}
+
+pub async fn delete_by_registrator_with_conn<C: ConnectionTrait>(
+    db: &C,
+    registrator_ref: &str,
+) -> Result<u64> {
     let result = Entity::delete_many()
         .filter(Column::RegistratorRef.eq(registrator_ref))
-        .exec(conn())
+        .exec(db)
         .await?;
     Ok(result.rows_affected)
 }

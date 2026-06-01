@@ -73,6 +73,20 @@ impl ProgressTracker {
         }
     }
 
+    /// Учесть время проведения одного документа (мс): копит сумму и обновляет максимум.
+    /// In-memory только — на каждый документ в БД ничего не пишем.
+    pub fn record_post_timing(&self, session_id: &str, document_id: &str, elapsed_ms: i64) {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(progress) = sessions.get_mut(session_id) {
+            progress.total_post_ms += elapsed_ms;
+            if elapsed_ms > progress.max_doc_ms {
+                progress.max_doc_ms = elapsed_ms;
+                progress.max_doc_id = Some(document_id.to_string());
+            }
+            progress.updated_at = chrono::Utc::now();
+        }
+    }
+
     pub fn add_error(&self, session_id: &str, message: String) {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(progress) = sessions.get_mut(session_id) {

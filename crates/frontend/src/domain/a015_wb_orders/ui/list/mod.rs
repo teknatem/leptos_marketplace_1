@@ -2,6 +2,7 @@ pub mod state;
 
 use self::state::create_state;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::change_tokens::ChangeTokenContext;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::{
@@ -461,6 +462,18 @@ pub fn WbOrdersList() -> impl IntoView {
         } else {
             log!("Used cached data for A015");
         }
+    });
+
+    // Автообновление списка при изменении токена a015 на сервере (например, после
+    // проведения/отмены заказа в другой вкладке). prev=None при первом вызове —
+    // пропускаем, чтобы не дублировать первичную загрузку из эффекта монтирования.
+    let ct = use_context::<ChangeTokenContext>().expect("ChangeTokenContext not found");
+    Effect::new(move |prev: Option<u64>| {
+        let token = ct.a015_wb_orders.get();
+        if prev.is_some() {
+            load_orders();
+        }
+        token
     });
 
     // Thaw inputs
@@ -952,10 +965,7 @@ pub fn WbOrdersList() -> impl IntoView {
                         </TableHeader>
 
                         <TableBody>
-                            <For
-                                each=move || state.get().orders
-                                key=|item| item.id.clone()
-                                children=move |order| {
+                            {move || state.get().orders.into_iter().map(move |order| {
                                     let order_id = order.id.clone();
                                     let order_id_for_link = order_id.clone();
                                     let document_no_for_link = order.document_no.clone();
@@ -1116,8 +1126,7 @@ pub fn WbOrdersList() -> impl IntoView {
                                             </TableCell>
                                         </TableRow>
                                     }
-                                }
-                            />
+                            }).collect_view()}
                         </TableBody>
                     </Table>
                 </div>

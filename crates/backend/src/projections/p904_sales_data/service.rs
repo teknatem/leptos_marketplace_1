@@ -3,28 +3,10 @@ use anyhow::Result;
 use contracts::domain::a009_ozon_returns::aggregate::OzonReturns;
 use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
-use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
 use contracts::domain::a014_ozon_transactions::aggregate::OzonTransactions;
 use contracts::domain::a016_ym_returns::aggregate::YmReturn;
 use uuid::Uuid;
-
-/// Проецировать WB Sales в Sales Data (P904)
-pub async fn project_wb_sales(document: &WbSales, document_id: Uuid) -> Result<()> {
-    let entries =
-        projection_builder::from_wb_sales_lines(document, &document_id.to_string()).await?;
-
-    for entry in entries {
-        repository::upsert_entry(&entry).await?;
-    }
-
-    tracing::info!(
-        "Projected WB Sales document {} into Sales Data P904",
-        document.header.document_no
-    );
-
-    Ok(())
-}
 
 pub async fn list(limit: Option<u64>) -> Result<Vec<repository::Model>> {
     repository::list(limit).await

@@ -1,16 +1,20 @@
 use crate::shared::config;
 use once_cell::sync::OnceCell;
-use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
-use std::path::Path;
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, SqlxSqliteConnector, Statement};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
+use std::time::Duration;
 
 static DB_CONN: OnceCell<DatabaseConnection> = OnceCell::new();
 
-fn build_sqlite_url(path: &Path) -> String {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    let needs_leading_slash = !normalized.starts_with('/') && normalized.contains(':');
-    let prefix = if needs_leading_slash { "/" } else { "" };
-    format!("sqlite://{}{}?mode=rwc", prefix, normalized)
-}
+/// Pool sizing. SQLite serializes writes regardless of pool size, so a larger pool does NOT add
+/// write throughput — its job is to avoid *connection starvation* (the "pool timed out" failure)
+/// when many tasks hold connections while blocked on the single write lock.
+const MAX_CONNECTIONS: u32 = 16;
+/// How long `.await` on a query waits for a free pooled connection before erroring.
+/// Kept >= BUSY_TIMEOUT so a connection legitimately waiting on the write lock doesn't trip this.
+const ACQUIRE_TIMEOUT_SECS: u64 = 30;
+/// How long SQLite waits for the write lock before returning SQLITE_BUSY (per connection).
+const BUSY_TIMEOUT_SECS: u64 = 15;
 
 pub async fn initialize_database() -> anyhow::Result<()> {
     if DB_CONN.get().is_some() {
@@ -25,11 +29,29 @@ pub async fn initialize_database() -> anyhow::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let db_url = build_sqlite_url(&absolute_path);
     println!("✓ Config path resolved to: {}", config_path.display());
     println!("✓ Database path resolved to: {}", absolute_path.display());
-    tracing::info!("Connecting to database: {}", db_url);
-    let conn = Database::connect(&db_url).await?;
+    tracing::info!("Connecting to database: {}", absolute_path.display());
+
+    // Per-connection options applied to EVERY pooled connection by sqlx.
+    // WAL is a persistent file property (readers no longer block the writer and vice versa —
+    // the key fix for write-lock contention under concurrent load); synchronous=NORMAL is safe
+    // under WAL; busy_timeout lets writers queue for the lock instead of erroring immediately.
+    let connect_options = SqliteConnectOptions::new()
+        .filename(&absolute_path)
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(BUSY_TIMEOUT_SECS))
+        .foreign_keys(true);
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(MAX_CONNECTIONS)
+        .acquire_timeout(Duration::from_secs(ACQUIRE_TIMEOUT_SECS))
+        .connect_with(connect_options)
+        .await?;
+
+    let conn = SqlxSqliteConnector::from_sqlx_sqlite_pool(pool);
 
     DB_CONN
         .set(conn)

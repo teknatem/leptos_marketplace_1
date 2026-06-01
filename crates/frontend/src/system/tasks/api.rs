@@ -447,6 +447,9 @@ pub async fn set_watermark(id: &str, date: Option<String>) -> Result<(), String>
 pub struct ChangeTokensDto {
     pub sys_tasks: u64,
     pub a027_wb_documents: u64,
+    pub a015_wb_orders: u64,
+    pub a012_wb_sales: u64,
+    pub a013_ym_order: u64,
 }
 
 pub async fn fetch_change_tokens() -> Result<ChangeTokensDto, String> {
@@ -473,6 +476,9 @@ pub async fn fetch_change_tokens() -> Result<ChangeTokensDto, String> {
     Ok(ChangeTokensDto {
         sys_tasks: json["sys_tasks"].as_u64().unwrap_or(0),
         a027_wb_documents: json["a027_wb_documents"].as_u64().unwrap_or(0),
+        a015_wb_orders: json["a015_wb_orders"].as_u64().unwrap_or(0),
+        a012_wb_sales: json["a012_wb_sales"].as_u64().unwrap_or(0),
+        a013_ym_order: json["a013_ym_order"].as_u64().unwrap_or(0),
     })
 }
 

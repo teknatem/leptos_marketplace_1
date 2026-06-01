@@ -2,6 +2,7 @@ pub mod state;
 
 use self::state::{create_state, WbSalesTotals};
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::change_tokens::ChangeTokenContext;
 use crate::shared::components::close_page_button::ClosePageButton;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
@@ -27,27 +28,6 @@ use crate::shared::api_utils::api_base;
 use crate::shared::components::table::{
     TableCellCheckbox, TableCellMoney, TableCrosshairHighlight, TableHeaderCheckbox,
 };
-
-const A012_WB_SALES_LIST_DIRTY_KEY: &str = "a012_wb_sales_list_dirty";
-
-fn get_wb_sales_list_dirty_marker() -> Option<String> {
-    web_sys::window()
-        .and_then(|window| window.local_storage().ok().flatten())
-        .and_then(|storage| {
-            storage
-                .get_item(A012_WB_SALES_LIST_DIRTY_KEY)
-                .ok()
-                .flatten()
-        })
-}
-
-fn clear_wb_sales_list_dirty_marker() {
-    if let Some(storage) =
-        web_sys::window().and_then(|window| window.local_storage().ok().flatten())
-    {
-        let _ = storage.remove_item(A012_WB_SALES_LIST_DIRTY_KEY);
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organization {
@@ -280,7 +260,6 @@ pub fn WbSalesList() -> impl IntoView {
 
     // State for save settings notification
     let (save_notification, set_save_notification) = signal(None::<String>);
-    let last_seen_dirty_marker = StoredValue::new(get_wb_sales_list_dirty_marker());
 
     // Derived signal for selected items count (for button reactivity)
     let selected_count = Signal::derive(move || state.with(|s| s.selected_ids.len()));
@@ -368,8 +347,6 @@ pub fn WbSalesList() -> impl IntoView {
                                             s.server_totals = paginated.totals;
                                             s.is_loaded = true;
                                         });
-                                        clear_wb_sales_list_dirty_marker();
-                                        last_seen_dirty_marker.set_value(None);
                                         set_loading.set(false);
                                     }
                                     Err(e) => {
@@ -480,24 +457,18 @@ pub fn WbSalesList() -> impl IntoView {
         }
     });
 
-    let was_active = StoredValue::new(false);
-    Effect::new(move |_| {
-        let is_active = tabs_store.active.get().as_deref() == Some("a012_wb_sales");
-        let was_active_before = was_active.get_value();
-        was_active.set_value(is_active);
-
-        if !is_active || !state.with(|s| s.is_loaded) {
-            return;
-        }
-
-        let current_dirty_marker = get_wb_sales_list_dirty_marker();
-        let last_dirty_marker = last_seen_dirty_marker.get_value();
-        let should_refresh = !was_active_before || current_dirty_marker != last_dirty_marker;
-
-        if should_refresh {
-            last_seen_dirty_marker.set_value(current_dirty_marker);
+    // Автообновление списка при изменении токена a012 на сервере (проведение/отмена,
+    // refresh dealer price — в любой вкладке). Заменяет прежний механизм localStorage
+    // dirty-marker + реактивация вкладки: поллер работает в фоне, поэтому список
+    // остаётся свежим даже когда вкладка неактивна. prev=None — пропускаем (первичная
+    // загрузка идёт из эффекта монтирования).
+    let ct = use_context::<ChangeTokenContext>().expect("ChangeTokenContext not found");
+    Effect::new(move |prev: Option<u64>| {
+        let token = ct.a012_wb_sales.get();
+        if prev.is_some() && state.with_untracked(|s| s.is_loaded) {
             load_sales();
         }
+        token
     });
 
     // Thaw inputs: keep local RwSignal, sync -> state (one-way)
@@ -967,10 +938,43 @@ pub fn WbSalesList() -> impl IntoView {
                         <UiButton
                             variant="secondary".to_string()
                             on_click=Callback::new(move |_| {
-                                let data = get_items();
-                                if let Err(e) = export_to_csv(&data) {
-                                    log!("Failed to export: {}", e);
-                                }
+                                // Отдельная серверная выгрузка: тянем весь отфильтрованный
+                                // датасет (limit = total_count), а не текущую страницу списка.
+                                let date_from = state.with_untracked(|s| s.date_from.clone());
+                                let date_to = state.with_untracked(|s| s.date_to.clone());
+                                let org_id = state.with_untracked(|s| s.selected_organization_id.clone());
+                                let sort_field = state.with_untracked(|s| s.sort_field.clone());
+                                let sort_ascending = state.with_untracked(|s| s.sort_ascending);
+                                let search_document_no = state.with_untracked(|s| s.search_document_no.clone());
+                                let search_sale_id = state.with_untracked(|s| s.search_sale_id.clone());
+                                let search_supplier_article = state.with_untracked(|s| s.search_supplier_article.clone());
+                                let limit = state.with_untracked(|s| s.total_count).max(1);
+                                set_loading.set(true);
+                                spawn_local(async move {
+                                    match fetch_all_sales_for_export(
+                                        date_from,
+                                        date_to,
+                                        org_id,
+                                        sort_field,
+                                        sort_ascending,
+                                        search_document_no,
+                                        search_sale_id,
+                                        search_supplier_article,
+                                        limit,
+                                    ).await {
+                                        Ok(data) => {
+                                            if let Err(e) = export_to_csv(&data) {
+                                                log!("Failed to export: {}", e);
+                                                set_error.set(Some(format!("Ошибка экспорта: {}", e)));
+                                            }
+                                        }
+                                        Err(e) => {
+                                            log!("Failed to fetch sales for export: {}", e);
+                                            set_error.set(Some(format!("Не удалось выгрузить данные: {}", e)));
+                                        }
+                                    }
+                                    set_loading.set(false);
+                                });
                             })
                             disabled=Signal::derive(move || loading.get() || state.get().sales.is_empty())
                         >
@@ -1057,7 +1061,7 @@ pub fn WbSalesList() -> impl IntoView {
                             page_size=Signal::derive(move || state.get().page_size)
                             on_page_change=Callback::new(go_to_page)
                             on_page_size_change=Callback::new(change_page_size)
-                            page_size_options=vec![50, 100, 200, 500, 10000]
+                            page_size_options=vec![50, 100, 200, 500]
                         />
                     </div>
 
@@ -1430,10 +1434,7 @@ pub fn WbSalesList() -> impl IntoView {
                                     </TableHeader>
 
                                     <TableBody>
-                                        <For
-                                            each=move || state.with(|s| s.sales.clone())
-                                            key=|item| item.id.clone()
-                                            children=move |item| {
+                                        {move || state.with(|s| s.sales.clone()).into_iter().map(move |item| {
                                                 let id = item.id.clone();
                                                 let document_no = item.document_no.clone();
                                                 let sale_id = item.sale_id.clone().unwrap_or_else(|| "—".to_string());
@@ -1519,8 +1520,7 @@ pub fn WbSalesList() -> impl IntoView {
                                                     <TableCellMoney value=finished show_currency=false color_by_sign=false />
                                                 </TableRow>
                                             }
-                                            }
-                                        />
+                                        }).collect_view()}
                                     </TableBody>
                                 </Table>
             </div>
@@ -1646,6 +1646,67 @@ async fn fetch_organizations() -> Result<Vec<Organization>, String> {
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let data: Vec<Organization> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
+}
+
+/// Отдельная серверная выгрузка для CSV: тянет весь отфильтрованный датасет одним
+/// запросом (offset=0, limit=total), независимо от размера страницы в списке.
+/// Список ограничен 500 строками на странице; полная выгрузка живёт отдельно здесь.
+#[allow(clippy::too_many_arguments)]
+async fn fetch_all_sales_for_export(
+    date_from: String,
+    date_to: String,
+    org_id: Option<String>,
+    sort_field: String,
+    sort_ascending: bool,
+    search_document_no: String,
+    search_sale_id: String,
+    search_supplier_article: String,
+    limit: usize,
+) -> Result<Vec<WbSalesDto>, String> {
+    let cache_buster = js_sys::Date::now() as i64;
+    let mut url = format!(
+        "{}/api/a012/wb-sales?date_from={}&date_to={}&limit={}&offset=0&sort_by={}&sort_desc={}&_ts={}",
+        api_base(),
+        date_from,
+        date_to,
+        limit,
+        sort_field,
+        !sort_ascending,
+        cache_buster
+    );
+
+    if let Some(org_id) = org_id {
+        if !org_id.is_empty() {
+            url.push_str(&format!("&organization_id={}", org_id));
+        }
+    }
+    if !search_document_no.is_empty() {
+        url.push_str(&format!("&search_srid={}", search_document_no));
+    }
+    if !search_sale_id.is_empty() {
+        url.push_str(&format!("&search_sale_id={}", search_sale_id));
+    }
+    if !search_supplier_article.is_empty() {
+        url.push_str(&format!("&search_supplier_article={}", search_supplier_article));
+    }
+
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    if response.status() != 200 {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    let text = response.text().await.map_err(|e| format!("{e:?}"))?;
+    let paginated: PaginatedResponse =
+        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let items: Vec<WbSalesDto> = paginated
+        .items
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, v)| parse_wb_sales_item(&v, idx))
+        .collect();
+    Ok(items)
 }
 
 /// Экспорт WB Sales в CSV для Excel

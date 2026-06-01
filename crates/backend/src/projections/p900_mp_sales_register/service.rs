@@ -3,7 +3,6 @@ use anyhow::Result;
 use contracts::domain::a009_ozon_returns::aggregate::OzonReturns;
 use contracts::domain::a010_ozon_fbs_posting::aggregate::OzonFbsPosting;
 use contracts::domain::a011_ozon_fbo_posting::aggregate::OzonFboPosting;
-use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a013_ym_order::aggregate::YmOrder;
 use contracts::projections::p900_mp_sales_register::{DailyStat, MarketplaceStat};
 use std::collections::HashMap;
@@ -38,19 +37,6 @@ pub async fn project_ozon_fbo(document: &OzonFboPosting, document_id: Uuid) -> R
         "Projected OZON FBO document {} into Sales Register ({} lines)",
         document.header.document_no,
         document.lines.len()
-    );
-
-    Ok(())
-}
-
-/// Проецировать WB Sales в Sales Register
-pub async fn project_wb_sales(document: &WbSales, document_id: Uuid) -> Result<()> {
-    let entry = projection_builder::from_wb_sales(document, &document_id.to_string()).await?;
-    repository::upsert_entry(&entry).await?;
-
-    tracing::info!(
-        "Projected WB Sales document {} into Sales Register",
-        document.header.document_no
     );
 
     Ok(())

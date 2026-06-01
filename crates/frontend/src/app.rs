@@ -36,6 +36,15 @@ pub fn App() -> impl IntoView {
                 if tokens.a027_wb_documents != ct.a027_wb_documents.get_untracked() {
                     ct.a027_wb_documents.set(tokens.a027_wb_documents);
                 }
+                if tokens.a015_wb_orders != ct.a015_wb_orders.get_untracked() {
+                    ct.a015_wb_orders.set(tokens.a015_wb_orders);
+                }
+                if tokens.a012_wb_sales != ct.a012_wb_sales.get_untracked() {
+                    ct.a012_wb_sales.set(tokens.a012_wb_sales);
+                }
+                if tokens.a013_ym_order != ct.a013_ym_order.get_untracked() {
+                    ct.a013_ym_order.set(tokens.a013_ym_order);
+                }
             }
         }
     });

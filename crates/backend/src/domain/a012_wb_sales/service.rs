@@ -26,6 +26,9 @@ pub struct PostingPreparationCache {
         HashMap<String, Option<contracts::domain::a022_kit_variant::aggregate::KitVariant>>,
     direct_cost_by_nom_and_date: HashMap<(String, String), Option<f64>>,
     resolved_prod_unit_cost_by_nom_and_date: HashMap<(String, String), Option<f64>>,
+    /// Memoizes the a007 nomenclature_ref resolution, keyed by (connection_id, nm_id, article).
+    /// Lets the import/batch path and unpost-refresh avoid repeating the same a007 lookups.
+    nomenclature_ref_by_lookup: HashMap<(String, i64, String), Option<String>>,
 }
 
 impl PostingPreparationCache {
@@ -84,6 +87,28 @@ impl PostingPreparationCache {
             )
             .await?;
         self.resolved_price_by_nom_and_date
+            .insert(cache_key, resolved.clone());
+        Ok(resolved)
+    }
+
+    async fn resolve_nomenclature_ref(
+        &mut self,
+        connection_id: &str,
+        nm_id: i64,
+        article: &str,
+    ) -> Result<Option<String>> {
+        let cache_key = (connection_id.to_string(), nm_id, article.to_string());
+        if let Some(value) = self.nomenclature_ref_by_lookup.get(&cache_key) {
+            return Ok(value.clone());
+        }
+
+        let resolved = crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
+            connection_id,
+            nm_id,
+            Some(article),
+        )
+        .await?;
+        self.nomenclature_ref_by_lookup
             .insert(cache_key, resolved.clone());
         Ok(resolved)
     }
@@ -772,9 +797,13 @@ pub async fn sync_organization_from_connection_cached(
     Ok(false)
 }
 
-pub async fn auto_fill_references_cached(
+/// Принудительно разрешает и заполняет ссылочные реквизиты (marketplace_product_ref,
+/// nomenclature_ref), всегда зеркаля актуальное состояние a007. Используется при импорте
+/// (первое проведение) и при unpost (вариант b: чтобы непроведённый документ оставался
+/// корректным для отображения).
+pub async fn refresh_references_cached(
     document: &mut WbSales,
-    _cache: &mut PostingPreparationCache,
+    cache: &mut PostingPreparationCache,
 ) -> Result<bool> {
     let mut changed = false;
 
@@ -807,19 +836,39 @@ pub async fn auto_fill_references_cached(
         }
     }
 
-    // Перепроведение всегда зеркалит актуальное состояние a007 — единый резолвер.
-    let resolved = crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
-        &document.header.connection_id,
-        document.line.nm_id,
-        Some(&document.line.supplier_article),
-    )
-    .await?;
+    let resolved = cache
+        .resolve_nomenclature_ref(
+            &document.header.connection_id,
+            document.line.nm_id,
+            &document.line.supplier_article,
+        )
+        .await?;
     if document.nomenclature_ref != resolved {
         document.nomenclature_ref = resolved;
         changed = true;
     }
 
     Ok(changed)
+}
+
+/// Дешёвый путь проведения: ссылочные реквизиты меняются крайне редко, поэтому если оба
+/// реквизита уже заполнены — пропускаем обращения к a007 целиком (предложение 2). На свежем
+/// документе (пустые ссылки) откатываемся к полному резолву. Принудительное обновление
+/// делается на unpost через refresh_references_cached.
+pub async fn auto_fill_references_cached(
+    document: &mut WbSales,
+    cache: &mut PostingPreparationCache,
+) -> Result<bool> {
+    if document.marketplace_product_ref.is_some()
+        && document
+            .nomenclature_ref
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Ok(false);
+    }
+
+    refresh_references_cached(document, cache).await
 }
 
 pub async fn fill_dealer_price_resolved_cached(
@@ -915,6 +964,27 @@ pub async fn prepare_document_for_posting_cached(
     changed |= fill_dealer_price_resolved_cached(document, cache).await?;
     changed |= calculate_plan_fields_cached(document, cache).await?;
     Ok(changed)
+}
+
+/// Принудительно обновляет ВСЕ ссылочные реквизиты (организация, ссылки a007, дилерская цена /
+/// себестоимость, плановые поля) независимо от текущих значений. Используется при unpost
+/// (вариант b), чтобы выполнялся инвариант: unpost + post = полное обновление всех реквизитов,
+/// при этом непроведённый документ остаётся корректным для отображения. В отличие от
+/// `prepare_document_for_posting_cached`, обходит «дешёвые» пропуски (заполненные ссылки и
+/// дилерская цена принудительно перерасчитываются).
+pub async fn force_refresh_requisites_cached(
+    document: &mut WbSales,
+    cache: &mut PostingPreparationCache,
+) -> Result<()> {
+    sync_organization_from_connection_cached(document, cache).await?;
+    refresh_references_cached(document, cache).await?;
+    // Принудительно сбрасываем и перезаполняем дилерскую цену/себестоимость (на post они
+    // пропускаются, если заполнены), чтобы unpost действительно обновил их.
+    document.line.dealer_price_ut = None;
+    document.line.cost_of_production = None;
+    fill_dealer_price_resolved_cached(document, cache).await?;
+    calculate_plan_fields_cached(document, cache).await?;
+    Ok(())
 }
 
 pub async fn calculate_plan_fields(document: &mut WbSales) -> Result<()> {
@@ -1056,6 +1126,9 @@ pub async fn refresh_dealer_price(id: Uuid) -> Result<()> {
         id,
         document.line.dealer_price_ut
     );
+
+    // Сигнал клиентам обновить открытые списки a012 (изменились dealer_price/prod_cost).
+    super::change_token::TOKEN.bump();
 
     Ok(())
 }

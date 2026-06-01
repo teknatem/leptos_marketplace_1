@@ -2,7 +2,7 @@ use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
 
-use crate::projections::p907_ym_payment_report::repository::{self, YmPaymentReportEntry};
+use crate::projections::p907_ym_payment_report::repository::YmPaymentReportEntry;
 
 // ────────────────────────────────────────────────────────────────────────────
 // ymid_ key helpers
@@ -93,20 +93,39 @@ pub fn build_ymid_key(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// CSV processor
+// CSV parser
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Parse and store YM payment report CSV text.
-/// Returns (upserted, skipped) counts.
-pub async fn process_payment_report_csv(
+/// Result of parsing a YM payment-report CSV: rows ready for bulk upsert plus
+/// the count of rows skipped (malformed / no identifying fields).
+pub struct ParsedPaymentReport {
+    /// Entries de-duplicated by `record_key` (last occurrence wins), so the slice
+    /// is safe to feed to `bulk_upsert_entries` (no double-touch within a batch).
+    pub entries: Vec<YmPaymentReportEntry>,
+    /// Rows skipped during parsing.
+    pub skipped: i32,
+}
+
+/// Parse YM payment-report CSV text into upsert-ready entries.
+///
+/// Pure parsing only — performs NO database work. The executor drives the (now
+/// batched) bulk upsert and the GL/p914 posting separately, so a large file is
+/// loaded in a handful of statements instead of tens of thousands of per-row
+/// transactions, and progress can be reported between phases.
+pub fn parse_payment_report_csv(
     connection: &ConnectionMP,
     organization_id: &str,
     csv_text: &str,
-) -> Result<(i32, i32)> {
+) -> Result<ParsedPaymentReport> {
     let connection_mp_ref = connection.base.id.as_string();
 
-    let mut upserted = 0i32;
     let mut skipped = 0i32;
+
+    // De-duplicate by record_key, keeping the last occurrence (matching the old
+    // per-row "last upsert wins" behaviour). Order is irrelevant: upsert is
+    // order-independent and per-row posting is idempotent.
+    let mut by_key: std::collections::HashMap<String, YmPaymentReportEntry> =
+        std::collections::HashMap::new();
 
     // Strip UTF-8 BOM if present
     let text = csv_text.trim_start_matches('\u{FEFF}');
@@ -127,8 +146,6 @@ pub async fn process_payment_report_csv(
         "Payment report CSV headers: {:?}",
         headers.iter().collect::<Vec<_>>()
     );
-
-    let mut records_processed = 0usize;
 
     for result in reader.records() {
         let record = match result {
@@ -217,40 +234,18 @@ pub async fn process_payment_report_csv(
             payload_version: 1,
         };
 
-        match repository::upsert_entry(&entry).await {
-            Ok(()) => {
-                crate::projections::p907_ym_payment_report::service::rebuild_record_key_from_existing(
-                    &entry.record_key,
-                )
-                .await?;
-                upserted += 1;
-            }
-            Err(e) => {
-                tracing::error!(
-                    "Failed to upsert payment report entry {}: {}",
-                    entry.record_key,
-                    e
-                );
-                skipped += 1;
-            }
-        }
-
-        records_processed += 1;
-        if records_processed % 100 == 0 {
-            tracing::info!(
-                "Payment report progress: {} records processed",
-                records_processed
-            );
-        }
+        by_key.insert(entry.record_key.clone(), entry);
     }
 
+    let entries: Vec<YmPaymentReportEntry> = by_key.into_values().collect();
+
     tracing::info!(
-        "Payment report processing complete: {} upserted, {} skipped",
-        upserted,
+        "Payment report parsed: {} unique rows, {} skipped",
+        entries.len(),
         skipped
     );
 
-    Ok((upserted, skipped))
+    Ok(ParsedPaymentReport { entries, skipped })
 }
 
 // ────────────────────────────────────────────────────────────────────────────

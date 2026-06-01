@@ -1,6 +1,8 @@
 use anyhow::Result;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Select, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Select, Set,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -66,7 +68,8 @@ fn derive_link_status(layers: &BTreeSet<String>) -> String {
     .to_string()
 }
 
-async fn update_group_link_status(
+async fn update_group_link_status_with_conn<C: ConnectionTrait>(
+    db: &C,
     connection_mp_ref: &str,
     line_event_key: &str,
     turnover_code: &str,
@@ -75,7 +78,7 @@ async fn update_group_link_status(
         .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
         .filter(Column::LineEventKey.eq(line_event_key))
         .filter(Column::TurnoverCode.eq(turnover_code))
-        .all(conn())
+        .all(db)
         .await?;
 
     if group.is_empty() {
@@ -92,11 +95,20 @@ async fn update_group_link_status(
         if entry.link_status != link_status {
             entry.link_status = link_status.clone();
             let active: ActiveModel = entry.into();
-            active.update(conn()).await?;
+            active.update(db).await?;
         }
     }
 
     Ok(())
+}
+
+async fn update_group_link_status(
+    connection_mp_ref: &str,
+    line_event_key: &str,
+    turnover_code: &str,
+) -> Result<()> {
+    update_group_link_status_with_conn(conn(), connection_mp_ref, line_event_key, turnover_code)
+        .await
 }
 
 pub async fn refresh_group_link_status(
@@ -105,6 +117,15 @@ pub async fn refresh_group_link_status(
     turnover_code: &str,
 ) -> Result<()> {
     update_group_link_status(connection_mp_ref, line_event_key, turnover_code).await
+}
+
+pub async fn refresh_group_link_status_with_conn<C: ConnectionTrait>(
+    db: &C,
+    connection_mp_ref: &str,
+    line_event_key: &str,
+    turnover_code: &str,
+) -> Result<()> {
+    update_group_link_status_with_conn(db, connection_mp_ref, line_event_key, turnover_code).await
 }
 
 pub async fn get_by_id(id: &str) -> Result<Option<Model>> {
@@ -163,6 +184,10 @@ pub async fn upsert_entry(entry: &Model) -> Result<()> {
 /// Используется в batch-контексте перепроведения. После вставки всех строк
 /// вызывающий код должен вызвать refresh_group_link_status для затронутых групп.
 pub async fn insert_entry_raw(entry: &Model) -> Result<()> {
+    insert_entry_raw_with_conn(conn(), entry).await
+}
+
+pub async fn insert_entry_raw_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> Result<()> {
     let active = ActiveModel {
         id: Set(entry.id.clone()),
         connection_mp_ref: Set(entry.connection_mp_ref.clone()),
@@ -185,7 +210,7 @@ pub async fn insert_entry_raw(entry: &Model) -> Result<()> {
         created_at: Set(entry.created_at.clone()),
         updated_at: Set(entry.updated_at.clone()),
     };
-    active.insert(conn()).await?;
+    active.insert(db).await?;
     Ok(())
 }
 
@@ -300,9 +325,16 @@ pub async fn list_link_groups_by_registrator_ref(
 }
 
 pub async fn delete_many_by_registrator_ref(registrator_ref: &str) -> Result<u64> {
+    delete_many_by_registrator_ref_with_conn(conn(), registrator_ref).await
+}
+
+pub async fn delete_many_by_registrator_ref_with_conn<C: ConnectionTrait>(
+    db: &C,
+    registrator_ref: &str,
+) -> Result<u64> {
     let result = Entity::delete_many()
         .filter(Column::RegistratorRef.eq(registrator_ref))
-        .exec(conn())
+        .exec(db)
         .await?;
     Ok(result.rows_affected)
 }
