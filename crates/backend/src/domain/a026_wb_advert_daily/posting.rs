@@ -41,6 +41,7 @@ fn to_general_ledger_entry_reserve(
         id: id.to_string(),
         entry_date: entry_date.to_string(),
         layer: TurnoverLayer::Oper.as_str().to_string(),
+        entity: None,
         connection_mp_ref,
         registrator_type: REGISTRATOR_TYPE.to_string(),
         registrator_ref: registrator_ref.to_string(),
@@ -71,6 +72,7 @@ fn to_general_ledger_entry_direct(
         id: id.to_string(),
         entry_date: entry_date.to_string(),
         layer: TurnoverLayer::Oper.as_str().to_string(),
+        entity: None,
         connection_mp_ref,
         registrator_type: REGISTRATOR_TYPE.to_string(),
         registrator_ref: registrator_ref.to_string(),
@@ -148,8 +150,17 @@ fn build_direct_p911_entries(
         return result;
     }
 
-    for (line, group) in document.lines.iter().zip(linked_orders.iter()) {
-        let direct_amount = round_kopeyka((line.metrics.sum - group.wb_advert_sum).max(0.0));
+    // Зарезервированная (привязанная к заказам) сумма per nm_id. Группы linked_orders
+    // отфильтрованы (только wb_reported_orders > 0) и не совпадают позиционно со
+    // строками документа, поэтому ищем по nm_id, а не через zip.
+    let reserve_by_nm: HashMap<i64, f64> = linked_orders
+        .iter()
+        .map(|group| (group.nm_id, group.wb_advert_sum))
+        .collect();
+
+    for line in &document.lines {
+        let reserve = reserve_by_nm.get(&line.nm_id).copied().unwrap_or(0.0);
+        let direct_amount = round_kopeyka((line.metrics.sum - reserve).max(0.0));
         if direct_amount <= f64::EPSILON {
             continue;
         }

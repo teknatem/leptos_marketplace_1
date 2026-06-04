@@ -448,6 +448,14 @@ pub fn ImportWidget() -> impl IntoView {
                         needs_period=true
                         selected_connection=selected_connection
                     />
+                    <ServiceRow
+                        row_id="a034"
+                        title="Отчёт о реализации (слой ybuh)"
+                        description="a034_ym_realization"
+                        aggregate="a034_ym_realization"
+                        needs_period=true
+                        selected_connection=selected_connection
+                    />
                 </div>
             </div>
         </PageFrame>

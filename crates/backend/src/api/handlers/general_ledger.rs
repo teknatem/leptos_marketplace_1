@@ -15,10 +15,10 @@ use contracts::general_ledger::{
     GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
     GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
-    GlLayerDto, GlLayersResponse, GlLayerTurnoverMatrixResponse, GlMatrixCell, GlMatrixDimension,
-    GlMatrixLayer, GlMatrixProjection, GlMatrixTurnover, GlReportQuery, GlReportResponse,
-    GlResourceDetailResponse, WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
-    GL_LAYER_CLASSES,
+    GlEntitiesResponse, GlEntityDto, GlLayerDto, GlLayersResponse, GlLayerTurnoverMatrixResponse,
+    GlMatrixCell, GlMatrixDimension, GlMatrixLayer, GlMatrixProjection, GlMatrixTurnover,
+    GlReportQuery, GlReportResponse, GlResourceDetailResponse, WbWeeklyReconciliationQuery,
+    WbWeeklyReconciliationResponse, GL_ENTITY_CLASSES, GL_LAYER_CLASSES,
 };
 
 #[derive(Debug, Deserialize)]
@@ -28,6 +28,7 @@ pub struct GeneralLedgerQuery {
     pub registrator_ref: Option<String>,
     pub registrator_type: Option<String>,
     pub layer: Option<String>,
+    pub entity: Option<String>,
     pub turnover_code: Option<String>,
     pub connection_mp_ref: Option<String>,
     pub debit_account: Option<String>,
@@ -67,6 +68,7 @@ pub async fn list(
         q.registrator_ref.clone(),
         q.registrator_type.clone(),
         q.layer.clone(),
+        q.entity.clone(),
         q.debit_account.clone(),
         q.credit_account.clone(),
         q.turnover_code.clone(),
@@ -84,6 +86,7 @@ pub async fn list(
         q.registrator_ref,
         q.registrator_type,
         q.layer,
+        q.entity,
         q.debit_account,
         q.credit_account,
         q.turnover_code,
@@ -401,6 +404,34 @@ pub async fn list_layers() -> Result<Json<GlLayersResponse>, axum::http::StatusC
     Ok(Json(GlLayersResponse { items, total }))
 }
 
+pub async fn list_entities() -> Result<Json<GlEntitiesResponse>, axum::http::StatusCode> {
+    let counts = crate::general_ledger::repository::count_grouped_by_entity()
+        .await
+        .map_err(|e| {
+            tracing::error!("general_ledger entity counts error: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let mut items = GL_ENTITY_CLASSES
+        .iter()
+        .map(|item| GlEntityDto {
+            code: item.code.to_string(),
+            name: item.name.to_string(),
+            description: item.description.to_string(),
+            kind: item.kind.to_string(),
+            color_key: item.color_key.to_string(),
+            sort_order: item.sort_order,
+            gl_entries_count: counts.get(item.code).copied().unwrap_or(0),
+        })
+        .collect::<Vec<_>>();
+
+    items.sort_by_key(|item| item.sort_order);
+
+    let total = items.len();
+
+    Ok(Json(GlEntitiesResponse { items, total }))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GL Report endpoints
 // ─────────────────────────────────────────────────────────────────────────────
@@ -413,6 +444,18 @@ pub async fn report(
         .map(Json)
         .map_err(|e| {
             tracing::error!("GL report error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+pub async fn ym_revenue_reconciliation(
+    Query(query): Query<contracts::general_ledger::YmRevenueReconQuery>,
+) -> Result<Json<contracts::general_ledger::YmRevenueReconResponse>, axum::http::StatusCode> {
+    report_repository::get_ym_revenue_reconciliation(&query)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("YM revenue reconciliation error: {e}");
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })
 }

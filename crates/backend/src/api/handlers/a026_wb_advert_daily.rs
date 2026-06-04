@@ -96,6 +96,7 @@ pub struct PaginatedResponse {
 pub struct WbAdvertDailyLineDetailsDto {
     pub nm_id: i64,
     pub wb_name: String,
+    pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub nomenclature_article: Option<String>,
     pub nomenclature_name: Option<String>,
@@ -490,6 +491,8 @@ fn line_to_details_dto(
     WbAdvertDailyLineDetailsDto {
         nm_id: line.nm_id,
         wb_name: line.nm_name.clone(),
+        // Not resolved on the list/report path — only the details page links nmID.
+        marketplace_product_ref: None,
         nomenclature_ref: line.nomenclature_ref.clone(),
         nomenclature_article: article,
         nomenclature_name: name,
@@ -664,6 +667,28 @@ async fn build_details_dto(doc: WbAdvertDaily) -> anyhow::Result<WbAdvertDailyDe
         nomenclature_cache.insert(nom_ref.clone(), cached);
     }
 
+    // Resolve a007 marketplace product ref per nm_id (read-only; для гиперссылки nmID).
+    let mut product_ref_cache: HashMap<i64, Option<String>> = HashMap::new();
+    for line in &doc.lines {
+        if line.nm_id <= 0 || product_ref_cache.contains_key(&line.nm_id) {
+            continue;
+        }
+        let article = line
+            .nomenclature_ref
+            .as_ref()
+            .and_then(|nom_ref| nomenclature_cache.get(nom_ref).cloned())
+            .and_then(|(article, _)| article);
+        let product_ref =
+            crate::domain::a007_marketplace_product::service::resolve_marketplace_product_ref(
+                &doc.header.connection_id,
+                &line.nm_id.to_string(),
+                article.as_deref(),
+            )
+            .await
+            .unwrap_or(None);
+        product_ref_cache.insert(line.nm_id, product_ref);
+    }
+
     let lines = doc
         .lines
         .iter()
@@ -677,6 +702,10 @@ async fn build_details_dto(doc: WbAdvertDaily) -> anyhow::Result<WbAdvertDailyDe
             WbAdvertDailyLineDetailsDto {
                 nm_id: line.nm_id,
                 wb_name: line.nm_name.clone(),
+                marketplace_product_ref: product_ref_cache
+                    .get(&line.nm_id)
+                    .cloned()
+                    .flatten(),
                 nomenclature_ref: line.nomenclature_ref.clone(),
                 nomenclature_article: article,
                 nomenclature_name: name,

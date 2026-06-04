@@ -869,6 +869,7 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         connection_mp_refs: ctx.connection_mp_refs.clone(),
         account: None,
         layer: Some(layer_filter.clone()),
+        entity: None,
         corr_account: None,
     };
     let query_p2 = GlDrilldownQuery {
@@ -880,6 +881,7 @@ pub async fn compute_drilldown(ctx: &ViewContext, group_by: &str) -> Result<Dril
         connection_mp_refs: ctx.connection_mp_refs.clone(),
         account: None,
         layer: Some(layer_filter.clone()),
+        entity: None,
         corr_account: None,
     };
 

@@ -34,6 +34,9 @@ pub struct Model {
     #[sea_orm(nullable)]
     pub fulfillment_type: Option<String>,
     pub layer: String,
+    /// Субъект учёта (зеркало gl.entity).
+    #[sea_orm(nullable)]
+    pub entity: Option<String>,
     pub amount: f64,
     #[sea_orm(nullable)]
     pub quantity: Option<f64>,
@@ -68,6 +71,7 @@ fn active_from_model(entry: &Model) -> ActiveModel {
         customer_kind: Set(entry.customer_kind.clone()),
         fulfillment_type: Set(entry.fulfillment_type.clone()),
         layer: Set(entry.layer.clone()),
+        entity: Set(entry.entity.clone()),
         amount: Set(entry.amount),
         quantity: Set(entry.quantity),
         created_at_msk: Set(entry.created_at_msk.clone()),

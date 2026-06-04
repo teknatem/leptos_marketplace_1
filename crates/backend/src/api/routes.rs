@@ -40,6 +40,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a024_routes())
         .merge(a025_routes())
         .merge(a026_routes())
+        .merge(a034_routes())
         .merge(a027_routes())
         .merge(a028_routes())
         .merge(a029_routes())
@@ -814,6 +815,42 @@ fn a026_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a026_wb_advert_daily", req, next).await
+            },
+        ))
+}
+
+fn a034_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a034/ym-realization/list",
+            get(handlers::a034_ym_realization::list_paginated),
+        )
+        .route(
+            "/api/a034/ym-realization/:id",
+            get(handlers::a034_ym_realization::get_by_id),
+        )
+        .route(
+            "/api/a034/ym-realization/:id/post",
+            post(handlers::a034_ym_realization::post_document),
+        )
+        .route(
+            "/api/a034/ym-realization/:id/unpost",
+            post(handlers::a034_ym_realization::unpost_document),
+        )
+        .route(
+            "/api/a034/ym-realization/:id/journal",
+            get(handlers::a034_ym_realization::get_general_ledger_entries),
+        )
+        // Revenue reconciliation report (fina/p907 vs ybuh/a034) — read-only,
+        // scoped to a034 so operators with a034 access can reach it without
+        // requiring the broader `general_ledger` system-view scope.
+        .route(
+            "/api/reports/ym-revenue-reconciliation",
+            get(handlers::general_ledger::ym_revenue_reconciliation),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a034_ym_realization", req, next).await
             },
         ))
 }
@@ -1885,6 +1922,10 @@ fn general_ledger_routes() -> Router {
         .route(
             "/api/general-ledger/layers",
             axum::routing::get(handlers::general_ledger::list_layers),
+        )
+        .route(
+            "/api/general-ledger/entities",
+            axum::routing::get(handlers::general_ledger::list_entities),
         )
         .route(
             "/api/general-ledger/layer-turnover-matrix",

@@ -127,6 +127,38 @@ pub fn OrganizationDetails(
                 </div>
 
                 <div class="form__group">
+                    <label class="form__label" for="entity_ref">{"Субъект учёта GL"}</label>
+                    <select
+                        class="form__input"
+                        id="entity_ref"
+                        prop:value={
+                            let vm = vm_clone.clone();
+                            move || vm.form.get().entity_ref.clone().unwrap_or_default()
+                        }
+                        on:change={
+                            let vm = vm_clone.clone();
+                            move |ev| {
+                                let value = event_target_value(&ev);
+                                vm.form.update(|f| {
+                                    f.entity_ref = if value.is_empty() { None } else { Some(value) };
+                                });
+                            }
+                        }
+                    >
+                        <option value="">{"— не задан —"}</option>
+                        {contracts::general_ledger::GL_ENTITY_CLASSES
+                            .iter()
+                            .filter(|e| e.kind == "own")
+                            .map(|e| {
+                                let v = e.code.to_string();
+                                let l = format!("{} — {}", e.code, e.name);
+                                view! { <option value=v>{l}</option> }
+                            })
+                            .collect::<Vec<_>>()}
+                    </select>
+                </div>
+
+                <div class="form__group">
                     <label class="form__label" for="comment">{"Комментарий"}</label>
                     <textarea
                         class="form__textarea"

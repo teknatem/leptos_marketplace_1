@@ -1,4 +1,5 @@
 use anyhow::Result;
+use contracts::general_ledger::GlEntity;
 use contracts::shared::analytics::TurnoverLayer;
 use uuid::Uuid;
 
@@ -42,6 +43,18 @@ fn turnover_code_for_source(source: &str) -> Option<&'static str> {
     }
 }
 
+/// Универсальный («прочий») оборот для операций YM без специального правила:
+/// положительная сумма → «Прочие доходы», отрицательная → «Прочие расходы».
+/// Знак суммы сохраняется как есть (конвенция знака — см. реестр оборотов).
+/// Гарантирует, что любая проведённая ненулевая строка p907 формирует проводку.
+fn fallback_turnover_code(amount: f64) -> &'static str {
+    if amount > 0.0 {
+        "other_income"
+    } else {
+        "other_expense"
+    }
+}
+
 /// Дата проводки по МСК: источник `transaction_date` хранится как
 /// `"YYYY-MM-DD HH:MM"` без зоны и уже в МСК, поэтому берём только дату-часть
 /// (первые 10 символов). Работает и для значений без времени.
@@ -65,17 +78,6 @@ pub fn build_general_ledger_entries(
     let Some(source) = row.transaction_source.as_deref() else {
         return Ok(Vec::new());
     };
-    let Some(turnover_code) = turnover_code_for_source(source) else {
-        // Неизвестная операция YM: не мис-постим молча — логируем, чтобы её
-        // можно было добавить в маппинг.
-        tracing::warn!(
-            "p907 GL: неизвестный transaction_source «{}» (row {}), проводка не сформирована",
-            source.trim(),
-            row.id
-        );
-        return Ok(Vec::new());
-    };
-
     let Some(amount) = opt_nonzero(row.transaction_sum) else {
         return Ok(Vec::new());
     };
@@ -86,6 +88,25 @@ pub fn build_general_ledger_entries(
     else {
         return Ok(Vec::new());
     };
+
+    // Известная операция → специальный оборот. Иначе сумму не теряем, а относим
+    // на универсальный «Прочие доходы/расходы» по знаку — это даёт 100% покрытие
+    // проведённых (ненулевых) строк p907 в GL. Лог оставляем, чтобы операцию
+    // можно было затем формализовать отдельным правилом в turnover_code_for_source.
+    let turnover_code = match turnover_code_for_source(source) {
+        Some(code) => code,
+        None => {
+            let fallback = fallback_turnover_code(amount);
+            tracing::warn!(
+                "p907 GL: неизвестный transaction_source «{}» (row {}) — отнесён на «{}» (fallback)",
+                source.trim(),
+                row.id,
+                fallback
+            );
+            fallback
+        }
+    };
+
     let Some(class) = get_turnover_class(turnover_code) else {
         return Ok(Vec::new());
     };
@@ -97,10 +118,23 @@ pub fn build_general_ledger_entries(
         return Ok(Vec::new());
     }
 
+    // Количественный учёт: знак количества как у суммы (сторно/возврат —
+    // отрицательное), чтобы нетто-кол-во = продажи − возвраты.
+    let qty = row.count.map(|c| {
+        let q = c as f64;
+        if turnover_code.ends_with("_storno") {
+            -q
+        } else {
+            q
+        }
+    });
+
     Ok(vec![GeneralLedgerModel {
         id: Uuid::new_v4().to_string(),
         entry_date: entry_date.to_string(),
         layer: TurnoverLayer::Fina.as_str().to_string(),
+        // Весь платёжный отчёт YM — операции субъекта-маркетплейса «ym».
+        entity: Some(GlEntity::Ym.as_str().to_string()),
         connection_mp_ref: Some(row.connection_mp_ref.clone()),
         registrator_type: REGISTRATOR_TYPE.to_string(),
         registrator_ref: row.id.clone(),
@@ -108,7 +142,7 @@ pub fn build_general_ledger_entries(
         debit_account: class.debit_account.to_string(),
         credit_account: class.credit_account.to_string(),
         amount,
-        qty: None,
+        qty,
         turnover_code: turnover_code.to_string(),
         // Зеркало p914 хранит ту же сумму (gl.amount), поэтому сверка идёт по
         // полю `amount` со знаком +1 — строка p914 совпадает с проводкой 1:1.
@@ -248,6 +282,7 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let entry = &entries[0];
         assert_eq!(entry.layer, "fina");
+        assert_eq!(entry.entity.as_deref(), Some("ym"));
         assert_eq!(entry.registrator_type, "p907_ym_payment_report");
         assert_eq!(entry.registrator_ref, row.id);
         assert_eq!(entry.order_id.as_deref(), Some("12345"));
@@ -322,9 +357,33 @@ mod tests {
     }
 
     #[test]
-    fn unknown_source_does_not_generate_entries() {
+    fn unknown_positive_source_falls_back_to_other_income() {
+        // «Премия» и подобные начисления без спец-правила: сумма > 0 → Прочие доходы.
+        let entry = single_entry("Начисление", "Премия", 4031418.61);
+        assert_eq!(entry.turnover_code, "other_income");
+        assert_eq!(entry.debit_account, "7609");
+        assert_eq!(entry.credit_account, "91");
+        assert_eq!(entry.amount, 4031418.61);
+        assert_eq!(entry.layer, "fina");
+    }
+
+    #[test]
+    fn unknown_negative_source_falls_back_to_other_expense() {
+        // «Оплата услуг Яндекс.Маркета»: сумма < 0 → Прочие расходы, знак сохраняется.
+        let entry = single_entry("Списание", "Оплата услуг Яндекс.Маркета", -21871760.16);
+        assert_eq!(entry.turnover_code, "other_expense");
+        assert_eq!(entry.debit_account, "7609");
+        assert_eq!(entry.credit_account, "9102");
+        assert_eq!(entry.amount, -21871760.16);
+        assert_eq!(entry.layer, "fina");
+    }
+
+    #[test]
+    fn zero_sum_unknown_source_generates_no_entry() {
+        // Нулевая сумма не порождает проводку даже при неизвестном источнике.
         let mut row = base_row();
         row.transaction_source = Some("Неизвестная операция".to_string());
+        row.transaction_sum = Some(0.0);
 
         let entries = build_general_ledger_entries(&row, "posting-1").unwrap();
 
@@ -352,12 +411,18 @@ mod tests {
     }
 
     #[test]
-    fn other_source_does_not_generate_entries() {
+    fn fallback_other_expense_mirrors_into_p914() {
+        // Прочий расход тоже зеркалится в p914 (слой fina), сумма совпадает 1:1.
         let mut row = base_row();
-        row.transaction_source = Some("Другая операция".to_string());
+        row.transaction_source = Some("Оплата услуг Яндекс.Маркета".to_string());
+        row.transaction_sum = Some(-1000.0);
+        let gl_entries = build_general_ledger_entries(&row, "posting-1").unwrap();
+        let turnovers = build_finance_turnover_entries(&row, &gl_entries);
 
-        let entries = build_general_ledger_entries(&row, "posting-1").unwrap();
-
-        assert!(entries.is_empty());
+        assert_eq!(gl_entries.len(), 1);
+        assert_eq!(turnovers.len(), 1);
+        assert_eq!(turnovers[0].turnover_code, "other_expense");
+        assert_eq!(turnovers[0].amount, -1000.0);
+        assert_eq!(turnovers[0].layer, "fina");
     }
 }

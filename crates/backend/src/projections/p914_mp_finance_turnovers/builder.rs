@@ -81,6 +81,7 @@ pub fn from_general_ledger_entry(
         customer_kind: ctx.customer_kind.clone(),
         fulfillment_type: ctx.fulfillment_type.clone(),
         layer: gl.layer.clone(),
+        entity: gl.entity.clone(),
         amount: gl.amount,
         quantity: ctx.quantity,
         created_at_msk: now.clone(),

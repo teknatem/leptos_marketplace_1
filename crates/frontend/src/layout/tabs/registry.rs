@@ -67,10 +67,10 @@ use crate::domain::a032_wb_returns_claims::ui::list::WbReturnsClaimsList;
 use crate::domain::a033_wb_day_close::ui::details::{WbDayCloseDetails, WbDayCloseNewPage};
 use crate::domain::a033_wb_day_close::ui::list::WbDayCloseList;
 use crate::general_ledger::ui::{
-    GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerLayersPage,
-    GeneralLedgerLayerTurnoverMatrixPage, GeneralLedgerPage, GeneralLedgerReportPage,
-    GeneralLedgerTurnoverDetails, GeneralLedgerTurnoversPage, GlAccountViewPage, GlDrilldownPage,
-    WbWeeklyReconciliationPage,
+    GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerEntitiesPage,
+    GeneralLedgerLayersPage, GeneralLedgerLayerTurnoverMatrixPage, GeneralLedgerPage,
+    GeneralLedgerReportPage, GeneralLedgerTurnoverDetails, GeneralLedgerTurnoversPage,
+    GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage, YmRevenueReconciliationPage,
 };
 use crate::layout::global_context::AppGlobalContext;
 use crate::navigator::marketplace::MarketplaceNavigator;
@@ -85,6 +85,7 @@ use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryL
 use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesList;
 use crate::projections::p907_ym_payment_report::ui::details::YmPaymentReportDetail;
 use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
+use crate::domain::a034_ym_realization::{YmRealizationDetail, YmRealizationList};
 use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
 use crate::projections::p913_wb_advert_order_attr::ui::list::WbAdvertOrderAttrList;
 use crate::projections::p914_mp_finance_turnovers::ui::list::MpFinanceTurnoverList;
@@ -901,6 +902,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "general_ledger" => view! { <GeneralLedgerPage /> }.into_any(),
         "general_ledger_turnovers" => view! { <GeneralLedgerTurnoversPage /> }.into_any(),
         "general_ledger_layers" => view! { <GeneralLedgerLayersPage /> }.into_any(),
+        "general_ledger_entities" => view! { <GeneralLedgerEntitiesPage /> }.into_any(),
         "general_ledger_matrix" => {
             view! { <GeneralLedgerLayerTurnoverMatrixPage /> }.into_any()
         }
@@ -941,6 +943,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "general_ledger_report" => view! { <GeneralLedgerReportPage /> }.into_any(),
         "gl_account_view__7609" => view! { <GlAccountViewPage /> }.into_any(),
         "wb_weekly_reconciliation" => view! { <WbWeeklyReconciliationPage /> }.into_any(),
+        "ym_revenue_reconciliation" => view! { <YmRevenueReconciliationPage /> }.into_any(),
 
         // GL Drilldown (детализация оборота в отдельной закладке)
         // Key format:
@@ -978,6 +981,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                     } else {
                         Some(parts[6].to_string())
                     },
+                    entity: None,
                     corr_account: None,
                 };
                 view! {
@@ -1074,6 +1078,14 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "p907_ym_payment_report" => {
             log!("✅ Creating YmPaymentReportList");
             view! { <YmPaymentReportList /> }.into_any()
+        }
+        "a034_ym_realization" => view! { <YmRealizationList /> }.into_any(),
+        k if k.starts_with("a034_ym_realization_details_") => {
+            let id = k
+                .strip_prefix("a034_ym_realization_details_")
+                .unwrap_or_default()
+                .to_string();
+            view! { <YmRealizationDetail id=id /> }.into_any()
         }
         "p908_wb_goods_prices" => {
             log!("✅ Creating WbGoodsPricesList");

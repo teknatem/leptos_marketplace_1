@@ -744,7 +744,7 @@
   align-items: center;
   flex-shrink: 0;
   padding: 7px 10px;
-  border-radius: 12px;
+  border-radius: var(--borderRadiusMedium, 4px);
 }
 .dpc-slot-group--primary    { background: var(--color-bg-secondary); }
 .dpc-slot-group--comparison { background: var(--badge-primary-bg); }
@@ -756,9 +756,11 @@
   justify-content: center;
   min-width: 32px;
   height: 28px;
-  border-radius: 8px;
+  padding: 0 10px;
+  border-radius: var(--borderRadiusMedium, 4px);
   font-size: 11px;
   font-weight: 700;
+  white-space: nowrap;
   flex-shrink: 0;
 }
 .dpc-slot-badge--primary {
@@ -782,7 +784,7 @@
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-primary);
-  border-radius: 8px;
+  border-radius: var(--borderRadiusMedium, 4px);
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.15s;
@@ -805,7 +807,7 @@
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-primary);
-  border-radius: 8px;
+  border-radius: var(--borderRadiusMedium, 4px);
   padding: 5px 8px;
   min-width: 140px;
   font-size: 12px;
@@ -1009,6 +1011,7 @@
   --gl-layer-fina:  #d97706;
   --gl-layer-prod:  #16a34a;
   --gl-layer-plan:  #7c3aed;
+  --gl-layer-ybuh:  #db2777;
 }
 
 /* ── GL layer badge: rectangular, uniform background, per-layer text color ── */
@@ -1033,7 +1036,35 @@
 .gl-layer-badge--fina { color: var(--gl-layer-fina); }
 .gl-layer-badge--prod { color: var(--gl-layer-prod); }
 .gl-layer-badge--plan { color: var(--gl-layer-plan); }
+.gl-layer-badge--ybuh { color: var(--gl-layer-ybuh); }
 .gl-layer-badge--default { color: var(--color-text-secondary); }
+
+/* Бейдж субъекта учёта (entity) — та же форма, что и слой; различается цвет. */
+.gl-entity-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--badge-neutral-bg);
+  border: 1px solid var(--badge-neutral-border);
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+/* Маркетплейсы — тёплые/брендовые тона. */
+.gl-entity-badge--ym { color: #c28a00; }
+.gl-entity-badge--wb { color: #8b3dbf; }
+.gl-entity-badge--ozon { color: #1a6dff; }
+/* Собственные организации — спокойные тона. */
+.gl-entity-badge--san { color: #1f9d6b; }
+.gl-entity-badge--sts { color: #2b8a9e; }
+.gl-entity-badge--upr { color: #5a6b8c; }
+.gl-entity-badge--default { color: var(--color-text-secondary); }
 
 .gl-dim-chip-list {
   display: flex;

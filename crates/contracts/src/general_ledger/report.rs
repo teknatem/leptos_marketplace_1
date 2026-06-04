@@ -17,6 +17,8 @@ pub struct GlReportQuery {
     pub account: Option<String>,
     /// Фильтр по слою: oper / fact / plan.
     pub layer: Option<String>,
+    /// Фильтр по субъекту учёта (ym / wb / ozon / san / sts / upr).
+    pub entity: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +34,9 @@ pub struct GlReportRow {
     /// Сальдо = debit_amount - credit_amount.
     pub balance: f64,
     pub entry_count: i64,
+    /// Субъект учёта (ym / wb / ozon / san / sts / upr), если задан.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +133,8 @@ pub struct GlDrilldownQuery {
     pub connection_mp_refs: Vec<String>,
     pub account: Option<String>,
     pub layer: Option<String>,
+    #[serde(default)]
+    pub entity: Option<String>,
     #[serde(default)]
     pub corr_account: Option<String>,
 }

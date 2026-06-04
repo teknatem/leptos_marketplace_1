@@ -17,6 +17,7 @@ pub fn entry_to_dto(row: Model) -> GeneralLedgerEntryDto {
         id: row.id,
         entry_date: row.entry_date,
         layer: TurnoverLayer::from_str(&row.layer).unwrap_or(TurnoverLayer::Oper),
+        entity: row.entity,
         connection_mp_ref: row.connection_mp_ref,
         registrator_type: row.registrator_type,
         registrator_ref: row.registrator_ref,

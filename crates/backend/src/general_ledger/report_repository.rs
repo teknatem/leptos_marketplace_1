@@ -216,6 +216,10 @@ async fn get_report_with_account(query: &GlReportQuery, account: &str) -> Result
         sql.push_str(" AND layer = ?");
         params.push(Value::String(Some(Box::new(layer.clone()))));
     }
+    if let Some(entity) = query.entity.as_ref().filter(|v| !v.trim().is_empty()) {
+        sql.push_str(" AND entity = ?");
+        params.push(Value::String(Some(Box::new(entity.clone()))));
+    }
 
     sql.push_str(" GROUP BY turnover_code, layer ORDER BY layer, turnover_code");
 
@@ -250,6 +254,10 @@ async fn get_report_without_account(query: &GlReportQuery) -> Result<Vec<GlRepor
         sql.push_str(" AND layer = ?");
         params.push(Value::String(Some(Box::new(layer.clone()))));
     }
+    if let Some(entity) = query.entity.as_ref().filter(|v| !v.trim().is_empty()) {
+        sql.push_str(" AND entity = ?");
+        params.push(Value::String(Some(Box::new(entity.clone()))));
+    }
 
     sql.push_str(" GROUP BY turnover_code, layer ORDER BY layer, turnover_code");
 
@@ -280,12 +288,143 @@ async fn execute_report_query(sql: &str, params: Vec<Value>) -> Result<Vec<GlRep
             debit_amount,
             credit_amount,
             entry_count,
+            // Отчёт группируется по (turnover_code, layer); субъект — фильтр, не разрез.
+            entity: None,
         });
     }
 
     // Обогатить нулями обороты, которые есть в реестре но нет в запросе
     // (опционально — не добавляем, чтобы не засорять пустыми строками)
     Ok(result)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Сверка выручки YM: слой fina (p907) vs ybuh (a034 отчёт о реализации)
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub async fn get_ym_revenue_reconciliation(
+    query: &contracts::general_ledger::YmRevenueReconQuery,
+) -> Result<contracts::general_ledger::YmRevenueReconResponse> {
+    use contracts::general_ledger::{
+        YmRevenueReconGroup, YmRevenueReconResponse, YmRevenueReconRow,
+    };
+    use std::collections::BTreeMap;
+
+    let period_expr = match query.group {
+        YmRevenueReconGroup::Day => "SUBSTR(gl.entry_date, 1, 10)",
+        YmRevenueReconGroup::Month => "SUBSTR(gl.entry_date, 1, 7)",
+    };
+
+    let mut sql = format!(
+        r#"
+        SELECT
+            {period_expr} AS period,
+            gl.connection_mp_ref AS connection_mp_ref,
+            COALESCE(c.description, gl.connection_mp_ref) AS connection_name,
+            gl.layer AS layer,
+            COALESCE(SUM(gl.amount), 0.0) AS net,
+            COALESCE(SUM(gl.qty), 0.0) AS net_qty
+        FROM sys_general_ledger gl
+        LEFT JOIN a006_connection_mp c ON c.id = gl.connection_mp_ref
+        WHERE gl.turnover_code IN ('customer_revenue', 'customer_revenue_storno')
+          AND gl.layer IN ('fina', 'ybuh')
+          AND gl.entry_date >= ?
+          AND gl.entry_date <= ?
+        "#
+    );
+
+    let mut params: Vec<Value> = vec![
+        string_value(query.date_from.clone()),
+        string_value(query.date_to.clone()),
+    ];
+
+    if let Some(cab) = query
+        .connection_mp_ref
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        sql.push_str(" AND gl.connection_mp_ref = ?");
+        params.push(string_value(cab.clone()));
+    }
+
+    sql.push_str(" GROUP BY period, gl.connection_mp_ref, gl.layer ORDER BY period ASC");
+
+    let stmt = Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+    let rows = conn().query_all(stmt).await?;
+
+    // Пивот: (period, connection) → суммы и количества по слоям.
+    #[derive(Default)]
+    struct Acc {
+        connection_name: Option<String>,
+        fina_net: f64,
+        ybuh_net: f64,
+        fina_qty: f64,
+        ybuh_qty: f64,
+    }
+    let mut acc: BTreeMap<(String, String), Acc> = BTreeMap::new();
+
+    for row in rows {
+        let period: String = row.try_get("", "period").unwrap_or_default();
+        let connection_mp_ref: Option<String> = row.try_get("", "connection_mp_ref").ok();
+        let connection_name: Option<String> = row.try_get("", "connection_name").ok();
+        let layer: String = row.try_get("", "layer").unwrap_or_default();
+        let net: f64 = row.try_get("", "net").unwrap_or(0.0);
+        let net_qty: f64 = row.try_get("", "net_qty").unwrap_or(0.0);
+
+        let conn_key = connection_mp_ref.clone().unwrap_or_default();
+        let entry = acc.entry((period, conn_key)).or_default();
+        if entry.connection_name.is_none() {
+            entry.connection_name = connection_name;
+        }
+        match layer.as_str() {
+            "fina" => {
+                entry.fina_net += net;
+                entry.fina_qty += net_qty;
+            }
+            "ybuh" => {
+                entry.ybuh_net += net;
+                entry.ybuh_qty += net_qty;
+            }
+            _ => {}
+        }
+    }
+
+    let mut result_rows = Vec::with_capacity(acc.len());
+    let mut total_fina_net = 0.0;
+    let mut total_ybuh_net = 0.0;
+    let mut total_fina_qty = 0.0;
+    let mut total_ybuh_qty = 0.0;
+    for ((period, conn_key), data) in acc {
+        total_fina_net += data.fina_net;
+        total_ybuh_net += data.ybuh_net;
+        total_fina_qty += data.fina_qty;
+        total_ybuh_qty += data.ybuh_qty;
+        result_rows.push(YmRevenueReconRow {
+            period,
+            connection_mp_ref: if conn_key.is_empty() {
+                None
+            } else {
+                Some(conn_key)
+            },
+            connection_name: data.connection_name,
+            fina_net: data.fina_net,
+            ybuh_net: data.ybuh_net,
+            delta: data.fina_net - data.ybuh_net,
+            fina_qty: data.fina_qty,
+            ybuh_qty: data.ybuh_qty,
+            qty_delta: data.fina_qty - data.ybuh_qty,
+        });
+    }
+
+    Ok(YmRevenueReconResponse {
+        rows: result_rows,
+        total_fina_net,
+        total_ybuh_net,
+        total_delta: total_fina_net - total_ybuh_net,
+        total_fina_qty,
+        total_ybuh_qty,
+        total_qty_delta: total_fina_qty - total_ybuh_qty,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -357,6 +496,7 @@ fn is_common_dimension(dimension_id: &str) -> bool {
             | "connection_mp_ref"
             | "registrator_type"
             | "layer"
+            | "entity"
             // Структурные разрезы проводки — группируются прямо из sys_general_ledger.
             | "turnover_code"
             | "debit_account"
@@ -515,6 +655,13 @@ fn build_sys_gl_dimension_sql(
             format!("{alias}.layer"),
             " ORDER BY amount DESC",
         ),
+        "entity" => (
+            format!("COALESCE({alias}.entity, '(не указано)')"),
+            format!("COALESCE({alias}.entity, '(не указано)')"),
+            String::new(),
+            format!("{alias}.entity"),
+            " ORDER BY amount DESC",
+        ),
         // Структурные разрезы проводки — сырые коды (без резолва имён).
         "turnover_code" => (
             format!("COALESCE({alias}.turnover_code, '(не указано)')"),
@@ -617,6 +764,11 @@ fn append_common_gl_filters(
         let layer_column = qualified_column(alias, "layer");
         sql.push_str(&format!(" AND {layer_column} = ?"));
         params.push(string_value(layer.clone()));
+    }
+    if let Some(entity) = query.entity.as_ref().filter(|v| !v.trim().is_empty()) {
+        let entity_column = qualified_column(alias, "entity");
+        sql.push_str(&format!(" AND {entity_column} = ?"));
+        params.push(string_value(entity.clone()));
     }
 }
 
@@ -975,6 +1127,7 @@ mod tests {
             connection_mp_refs: vec![],
             account: Some("7609".to_string()),
             layer: Some("fact".to_string()),
+            entity: None,
             corr_account: Some("4403".to_string()),
         };
 
@@ -1005,6 +1158,7 @@ mod tests {
             connection_mp_refs: vec![],
             account: None,
             layer: Some("fact".to_string()),
+            entity: None,
             corr_account: None,
         };
 
@@ -1034,6 +1188,7 @@ mod tests {
             connection_mp_refs: vec![],
             account: None,
             layer: Some("fact".to_string()),
+            entity: None,
             corr_account: None,
         };
 
@@ -1070,6 +1225,7 @@ mod tests {
             connection_mp_refs: vec![],
             account: None,
             layer: Some("oper".to_string()),
+            entity: None,
             corr_account: None,
         };
 

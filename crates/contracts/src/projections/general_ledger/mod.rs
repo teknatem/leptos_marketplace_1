@@ -9,6 +9,9 @@ pub struct GeneralLedgerEntryDto {
     pub id: String,
     pub entry_date: String,
     pub layer: TurnoverLayer,
+    /// Субъект учёта (ym/wb/ozon/san/sts/upr), если задан.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connection_mp_ref: Option<String>,
     pub registrator_type: String,

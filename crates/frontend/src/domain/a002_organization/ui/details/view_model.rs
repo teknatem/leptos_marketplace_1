@@ -63,6 +63,7 @@ impl OrganizationDetailsViewModel {
                 inn: aggregate.inn,
                 kpp: aggregate.kpp,
                 comment: aggregate.base.comment,
+                entity_ref: aggregate.entity_ref,
             };
             form.set(dto);
         });

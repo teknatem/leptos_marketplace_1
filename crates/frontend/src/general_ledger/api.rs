@@ -3,8 +3,9 @@ use contracts::general_ledger::{
     GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
     GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
-    GlLayersResponse, GlLayerTurnoverMatrixResponse, GlReportQuery, GlReportResponse,
-    GlResourceDetailResponse, WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
+    GlEntitiesResponse, GlLayersResponse, GlLayerTurnoverMatrixResponse, GlReportQuery,
+    GlReportResponse, GlResourceDetailResponse, WbWeeklyReconciliationQuery,
+    WbWeeklyReconciliationResponse, YmRevenueReconQuery, YmRevenueReconResponse,
 };
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ pub struct GeneralLedgerListQuery {
     pub registrator_ref: Option<String>,
     pub registrator_type: Option<String>,
     pub layer: Option<String>,
+    pub entity: Option<String>,
     pub turnover_code: Option<String>,
     pub connection_mp_ref: Option<String>,
     pub debit_account: Option<String>,
@@ -65,6 +67,7 @@ pub async fn fetch_general_ledger(
         query.registrator_type.as_deref(),
     );
     append_query_param(&mut url, "layer", query.layer.as_deref());
+    append_query_param(&mut url, "entity", query.entity.as_deref());
     append_query_param(&mut url, "turnover_code", query.turnover_code.as_deref());
     append_query_param(
         &mut url,
@@ -204,6 +207,23 @@ pub async fn fetch_general_ledger_layers() -> Result<GlLayersResponse, String> {
         .json::<GlLayersResponse>()
         .await
         .map_err(|e| format!("Failed to parse GL layers response: {e}"))
+}
+
+pub async fn fetch_general_ledger_entities() -> Result<GlEntitiesResponse, String> {
+    let url = format!("{}/api/general-ledger/entities", api_base());
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch GL entities: {e}"))?;
+
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    response
+        .json::<GlEntitiesResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse GL entities response: {e}"))
 }
 
 pub async fn fetch_gl_report(query: &GlReportQuery) -> Result<GlReportResponse, String> {
@@ -381,6 +401,43 @@ pub async fn fetch_gl_account_view(
         .json::<GlAccountViewResponse>()
         .await
         .map_err(|e| format!("Failed to parse GL account view response: {e}"))
+}
+
+pub async fn fetch_ym_revenue_reconciliation(
+    query: &YmRevenueReconQuery,
+) -> Result<YmRevenueReconResponse, String> {
+    let group = match query.group {
+        contracts::general_ledger::YmRevenueReconGroup::Month => "month",
+        contracts::general_ledger::YmRevenueReconGroup::Day => "day",
+    };
+    let mut url = format!(
+        "{}/api/reports/ym-revenue-reconciliation?date_from={}&date_to={}&group={}",
+        api_base(),
+        urlencoding::encode(query.date_from.trim()),
+        urlencoding::encode(query.date_to.trim()),
+        group,
+    );
+    if let Some(cab) = query
+        .connection_mp_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        url.push_str("&connection_mp_ref=");
+        url.push_str(&urlencoding::encode(cab));
+    }
+
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch YM revenue reconciliation: {e}"))?;
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    response
+        .json::<YmRevenueReconResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse YM revenue reconciliation response: {e}"))
 }
 
 pub async fn fetch_wb_weekly_reconciliation(

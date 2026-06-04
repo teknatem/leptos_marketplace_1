@@ -274,6 +274,7 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
                 connection_mp_ref: if cab.is_empty() { None } else { Some(cab) },
                 account: if acc.is_empty() { None } else { Some(acc) },
                 layer: if lay.is_empty() { None } else { Some(lay) },
+                entity: None,
             };
 
             match fetch_gl_report(&query).await {
@@ -311,6 +312,7 @@ pub fn GeneralLedgerReportPage() -> impl IntoView {
             connection_mp_refs: vec![],
             account: if acc.is_empty() { None } else { Some(acc) },
             layer: if lay.is_empty() { None } else { Some(lay) },
+            entity: None,
             corr_account: None,
         };
         let body = GlDrilldownSessionCreate {

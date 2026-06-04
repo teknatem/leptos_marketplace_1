@@ -17,6 +17,7 @@ const COMMON_DIMENSION_IDS: &[&str] = &[
     "connection_mp_ref",
     "registrator_type",
     "layer",
+    "entity",
     "registrator_ref",
     // Структурные разрезы проводки — хранятся в самой GL, доступны на всех слоях
     // (как registrator_ref). См. [`STRUCTURAL_DIMENSION_IDS`].
@@ -116,6 +117,16 @@ const LAYER_DIMENSION_PROFILES: &[LayerDimensionProfile] = &[
         nomenclature_projections: &[],
         fina_projection: None,
     },
+    // Слой «Яндекс бухгалтерия»: официальная выручка a034_ym_realization,
+    // проводки на уровне день×кабинет — только common-измерения (дата,
+    // кабинет, регистратор), без номенклатурной/fina-аналитики.
+    LayerDimensionProfile {
+        layer: "ybuh",
+        nomenclature: false,
+        fina: false,
+        nomenclature_projections: &[],
+        fina_projection: None,
+    },
 ];
 
 fn layer_profile(layer: &str) -> Option<LayerDimensionProfile> {
@@ -193,6 +204,18 @@ const DIMENSION_SEEDS: &[DimensionSeed] = &[
         db_field: "sys_gl.layer",
         description: "Слой учёта проводки (oper / prod / fact / fina / plan). Один и \
             тот же оборот может существовать на разных слоях с разной семантикой.",
+    },
+    DimensionSeed {
+        id: "entity",
+        label: "По субъекту",
+        code_main: "Entity",
+        code_suffix: None,
+        parent_id: None,
+        sort_order: 45,
+        db_field: "sys_gl.entity",
+        description: "Субъект учёта (контур): маркетплейс (ym/wb/ozon) или собственная \
+            организация (san/sts/upr). Весь финансовый отчёт маркетплейса отражается как \
+            операции его субъекта; сальдо счёта расчётов = наши деньги у маркетплейса.",
     },
     DimensionSeed {
         id: "registrator_ref",

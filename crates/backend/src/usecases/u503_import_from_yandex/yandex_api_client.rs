@@ -293,6 +293,22 @@ impl Default for YandexApiClient {
     }
 }
 
+/// Декодирует байты CSV-отчёта YM. Если это валидный UTF-8 (с BOM или без) —
+/// используем как есть (netting-отчёт). Иначе декодируем как Windows-1251
+/// (отчёт о реализации приходит в CP1251).
+fn decode_report_csv(raw_bytes: &[u8]) -> String {
+    let body = raw_bytes
+        .strip_prefix(&[0xEF, 0xBB, 0xBF])
+        .unwrap_or(raw_bytes);
+    match std::str::from_utf8(body) {
+        Ok(text) => text.to_string(),
+        Err(_) => {
+            let (decoded, _, _) = encoding_rs::WINDOWS_1251.decode(body);
+            decoded.into_owned()
+        }
+    }
+}
+
 // ============================================================================
 // Request/Response structures для Yandex Market API
 // ============================================================================
@@ -1196,6 +1212,125 @@ impl YandexApiClient {
         Ok(report_id)
     }
 
+    /// Phase 1 (отчёт о реализации): запросить генерацию месячного отчёта.
+    ///
+    /// Отчёт `/reports/goods-realization` — **помесячный, на кампанию**: тело
+    /// требует `campaignId` + `year` + `month` (подтверждено ответом YM API).
+    /// `campaignId` берётся из `connection.supplier_id` (Идентификатор магазина).
+    /// Возвращает reportId для последующего поллинга `poll_report_status`.
+    pub async fn generate_realization_report(
+        &self,
+        connection: &ConnectionMP,
+        year: i32,
+        month: u32,
+    ) -> Result<String> {
+        let campaign_id: i64 = connection
+            .supplier_id
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "campaignId (Идентификатор магазина / supplier_id) is required for YM realization report"
+                )
+            })?
+            .parse()
+            .map_err(|e| anyhow::anyhow!("campaignId must be an integer: {}", e))?;
+
+        let url =
+            "https://api.partner.market.yandex.ru/v2/reports/goods-realization/generate?format=CSV";
+
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct GenerateRealizationReportRequest {
+            campaign_id: i64,
+            year: i32,
+            month: u32,
+        }
+
+        let body = GenerateRealizationReportRequest {
+            campaign_id,
+            year,
+            month,
+        };
+
+        self.log_to_file(&format!(
+            "=== GENERATE REALIZATION REPORT ===\nPOST {}\ncampaignId={}, year={}, month={}",
+            url, campaign_id, year, month
+        ));
+
+        // YM ограничивает генерацию отчёта о реализации (1 запрос в минуту).
+        // На 420/429 (rate limit) ждём ~65с и повторяем один раз.
+        const MAX_ATTEMPTS: u32 = 2;
+        const RATE_LIMIT_WAIT_SECS: u64 = 65;
+        let mut resp_body = String::new();
+        for attempt in 1..=MAX_ATTEMPTS {
+            let request = self
+                .client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .json(&body);
+
+            let response = self
+                .apply_auth(request, connection)?
+                .send()
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to request realization report generation: {}", e)
+                })?;
+
+            let status = response.status();
+            if status.is_success() {
+                resp_body = response.text().await?;
+                break;
+            }
+
+            let err_body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!(
+                "Generate realization report failed ({}): {}",
+                status, err_body
+            ));
+
+            let is_rate_limited = status.as_u16() == 420
+                || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || err_body.contains("rate limit");
+
+            if is_rate_limited && attempt < MAX_ATTEMPTS {
+                self.log_to_file(&format!(
+                    "Realization report rate-limited; waiting {}s before retry ({}/{})",
+                    RATE_LIMIT_WAIT_SECS, attempt, MAX_ATTEMPTS
+                ));
+                tokio::time::sleep(tokio::time::Duration::from_secs(RATE_LIMIT_WAIT_SECS)).await;
+                continue;
+            }
+            if is_rate_limited {
+                anyhow::bail!(
+                    "YM ограничивает генерацию отчёта о реализации (1 запрос в минуту). \
+                     Подождите минуту и повторите импорт. Ответ YM: {}",
+                    err_body
+                );
+            }
+            anyhow::bail!(
+                "generate_realization_report failed with status {}: {}",
+                status,
+                err_body
+            );
+        }
+
+        self.log_to_file(&format!("Generate realization report response: {}", resp_body));
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+            .map_err(|e| anyhow::anyhow!("Failed to parse generate response: {}", e))?;
+
+        let report_id = parsed
+            .pointer("/result/reportId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("reportId not found in response: {}", resp_body))?
+            .to_string();
+
+        self.log_to_file(&format!("Realization report generated, reportId={}", report_id));
+        Ok(report_id)
+    }
+
     /// Phase 2: Poll report generation status.
     /// Endpoint: GET https://api.partner.market.yandex.ru/v2/reports/info/{reportId}
     /// Returns (status_str, Option<download_url>).
@@ -1253,9 +1388,13 @@ impl YandexApiClient {
 
     /// Phase 3: Download the generated CSV report from the signed URL.
     /// Returns the raw CSV text content.
-    /// Downloads a ZIP archive from the given URL, saves it to `downloads/p907_ym_payment_report/`,
+    /// Downloads a ZIP archive from the given URL, saves it under `downloads/{subdir}/`,
     /// extracts the first CSV file found inside, saves that too, and returns (csv_text, zip_path, csv_path).
-    pub async fn download_report_zip(&self, url: &str) -> Result<(String, String, String)> {
+    pub async fn download_report_zip(
+        &self,
+        url: &str,
+        subdir: &str,
+    ) -> Result<(String, String, String)> {
         self.log_to_file(&format!("Downloading payment report ZIP from: {}", url));
 
         let response = self
@@ -1298,10 +1437,12 @@ impl YandexApiClient {
         };
 
         let bytes_vec = bytes.to_vec();
+        let subdir = subdir.to_string();
         let (csv_text, zip_path, csv_path) =
             tokio::task::spawn_blocking(move || -> Result<(String, String, String)> {
                 // Ensure downloads directory exists
-                let dir = std::path::Path::new("downloads/p907_ym_payment_report");
+                let dir_path = format!("downloads/{}", subdir);
+                let dir = std::path::Path::new(&dir_path);
                 std::fs::create_dir_all(dir)
                     .map_err(|e| anyhow::anyhow!("Failed to create downloads dir: {}", e))?;
 
@@ -1352,12 +1493,9 @@ impl YandexApiClient {
                         let csv_path_str = csv_path.to_string_lossy().to_string();
                         log_closure(format!("Saved CSV to: {}", csv_path_str));
 
-                        // Decode: strip UTF-8 BOM if present
-                        let content = if raw_bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
-                            String::from_utf8_lossy(&raw_bytes[3..]).into_owned()
-                        } else {
-                            String::from_utf8_lossy(&raw_bytes).into_owned()
-                        };
+                        // Decode: UTF-8 (BOM-aware) если валиден; иначе Windows-1251.
+                        // Netting-отчёт YM приходит в UTF-8, отчёт о реализации — в CP1251.
+                        let content = decode_report_csv(&raw_bytes);
 
                         let preview: String = content.chars().take(500).collect();
                         log_closure(format!(
@@ -1377,5 +1515,95 @@ impl YandexApiClient {
             .map_err(|e| anyhow::anyhow!("spawn_blocking panicked: {}", e))??;
 
         Ok((csv_text, zip_path, csv_path))
+    }
+
+    /// Скачивает ZIP и извлекает ВСЕ .csv-файлы внутри (отчёт о реализации YM —
+    /// многофайловый: transferred_to_delivery / delivered / returned / unredeemed
+    /// / lost_items). Возвращает список (имя_файла_в_архиве, содержимое).
+    pub async fn download_report_csvs(
+        &self,
+        url: &str,
+        subdir: &str,
+    ) -> Result<Vec<(String, String)>> {
+        self.log_to_file(&format!("Downloading multi-CSV report ZIP from: {}", url));
+
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to download report file: {}", e))?;
+        let status = response.status();
+        if !status.is_success() {
+            let err_body = response.text().await.unwrap_or_default();
+            anyhow::bail!("download_report_csvs failed with status {}: {}", status, err_body);
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read report file body: {}", e))?;
+
+        let log_closure = {
+            let log_path = "yandex_api_requests.log".to_string();
+            move |msg: String| {
+                use std::io::Write;
+                if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_path) {
+                    let ts = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                    let _ = writeln!(f, "[{}] {}", ts, msg);
+                }
+            }
+        };
+
+        let bytes_vec = bytes.to_vec();
+        let subdir = subdir.to_string();
+        let result = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>> {
+            let dir_path = format!("downloads/{}", subdir);
+            let dir = std::path::Path::new(&dir_path);
+            std::fs::create_dir_all(dir)
+                .map_err(|e| anyhow::anyhow!("Failed to create downloads dir: {}", e))?;
+            let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+            let zip_path = dir.join(format!("report_{}.zip", ts));
+            std::fs::write(&zip_path, &bytes_vec)
+                .map_err(|e| anyhow::anyhow!("Failed to save ZIP to disk: {}", e))?;
+
+            let cursor = std::io::Cursor::new(&bytes_vec[..]);
+            let mut archive = zip::ZipArchive::new(cursor)
+                .map_err(|e| anyhow::anyhow!("Failed to open ZIP archive: {}", e))?;
+
+            let mut out: Vec<(String, String)> = Vec::new();
+            for i in 0..archive.len() {
+                let mut file = archive
+                    .by_index(i)
+                    .map_err(|e| anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e))?;
+                let name = file.name().to_string();
+                if !name.to_lowercase().ends_with(".csv") {
+                    continue;
+                }
+                use std::io::Read;
+                let mut raw_bytes: Vec<u8> = Vec::new();
+                file.read_to_end(&mut raw_bytes)
+                    .map_err(|e| anyhow::anyhow!("Failed to read {} from ZIP: {}", name, e))?;
+
+                let stem = std::path::Path::new(&name)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("part");
+                let saved = dir.join(format!("report_{}__{}.csv", ts, stem));
+                let _ = std::fs::write(&saved, &raw_bytes);
+
+                let content = decode_report_csv(&raw_bytes);
+                log_closure(format!("Extracted CSV '{}': {} chars", name, content.len()));
+                out.push((name, content));
+            }
+
+            if out.is_empty() {
+                anyhow::bail!("No .csv files found inside the report ZIP archive");
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking panicked: {}", e))??;
+
+        Ok(result)
     }
 }

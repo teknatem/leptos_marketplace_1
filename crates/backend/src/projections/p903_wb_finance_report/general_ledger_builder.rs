@@ -112,6 +112,8 @@ fn build_entry(
         id: Uuid::new_v4().to_string(),
         entry_date: row.rr_dt.clone(),
         layer: TurnoverLayer::Fina.as_str().to_string(),
+        // Субъект WB ('wb') проставится при переработке p903 (Фаза 2+).
+        entity: None,
         connection_mp_ref: Some(row.connection_mp_ref.clone()),
         registrator_type: REGISTRATOR_TYPE.to_string(),
         registrator_ref: row.id.clone(),

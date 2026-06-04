@@ -408,7 +408,8 @@ pub async fn list_sql(query: WbSupplyListQuery) -> Result<WbSupplyListResult> {
             s.connection_id,
             org.description as organization_name,
             CASE
-                WHEN json_array_length(s.supply_orders_json) > 0
+                WHEN json_valid(s.supply_orders_json)
+                     AND json_array_length(s.supply_orders_json) > 0
                 THEN json_array_length(s.supply_orders_json)
                 WHEN s.supply_id LIKE 'WB-GI-%'
                 THEN (

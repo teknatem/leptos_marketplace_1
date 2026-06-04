@@ -285,8 +285,8 @@ enum DashboardPeriodSlot {
 impl DashboardPeriodSlot {
     fn title(self) -> &'static str {
         match self {
-            Self::Primary => "Period1",
-            Self::Comparison => "Period 2",
+            Self::Primary => "Период 1",
+            Self::Comparison => "Период 2",
         }
     }
 
