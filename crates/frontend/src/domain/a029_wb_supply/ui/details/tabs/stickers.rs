@@ -21,6 +21,13 @@ fn ext_for(t: &str) -> &'static str {
     }
 }
 
+/// Format the WB sticker number "partA-partB". The second part always has a
+/// fixed width of four digits, padded with leading zeros
+/// (e.g. 5409058-284 → 5409058-0284).
+fn format_sticker_number(part_a: i64, part_b: i64) -> String {
+    format!("{}-{:04}", part_a, part_b)
+}
+
 /// Trigger a file download via a temporary <a> element.
 fn trigger_anchor_download(href: &str, filename: &str) {
     let Some(win) = window() else { return };
@@ -43,7 +50,7 @@ fn trigger_anchor_download(href: &str, filename: &str) {
 fn download_sticker(s: &StickerDto, stype: &str) {
     let Some(ref b64) = s.file else { return };
     let fname = match (s.part_a, s.part_b) {
-        (Some(a), Some(b)) => format!("sticker_{}-{}.{}", a, b, ext_for(stype)),
+        (Some(a), Some(b)) => format!("sticker_{}.{}", format_sticker_number(a, b), ext_for(stype)),
         (Some(a), None) => format!("sticker_{}.{}", a, ext_for(stype)),
         _ => format!("sticker_{}.{}", s.order_id, ext_for(stype)),
     };
@@ -122,7 +129,7 @@ body{{margin:0;padding:6px;font-family:Arial,sans-serif;font-size:8pt;}}
 
     for s in stickers {
         let lbl = match (s.part_a, s.part_b) {
-            (Some(a), Some(b)) => format!("{}-{}", a, b),
+            (Some(a), Some(b)) => format_sticker_number(a, b),
             (Some(a), None) => a.to_string(),
             _ => s.order_id.to_string(),
         };
@@ -161,7 +168,7 @@ body{{margin:0;padding:6px;font-family:Arial,sans-serif;font-size:8pt;}}
 
 fn sticker_ab(part_a: Option<i64>, part_b: Option<i64>) -> String {
     match (part_a, part_b) {
-        (Some(a), Some(b)) => format!("{}-{}", a, b),
+        (Some(a), Some(b)) => format_sticker_number(a, b),
         (Some(a), None) => a.to_string(),
         _ => "—".to_string(),
     }

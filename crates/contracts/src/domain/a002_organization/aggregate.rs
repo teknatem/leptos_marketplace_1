@@ -54,6 +54,11 @@ pub struct Organization {
 
     pub inn: String,
     pub kpp: String,
+
+    /// Субъект учёта GL (код из `GL_ENTITY_CLASSES`, kind=own: san/sts/upr).
+    /// Локальное поле — НЕ перезаписывается импортом из 1С.
+    #[serde(rename = "entityRef", default, skip_serializing_if = "Option::is_none")]
+    pub entity_ref: Option<String>,
 }
 
 impl Organization {
@@ -74,6 +79,7 @@ impl Organization {
             full_name,
             inn,
             kpp,
+            entity_ref: None,
         }
     }
 
@@ -95,6 +101,7 @@ impl Organization {
             full_name,
             inn,
             kpp,
+            entity_ref: None,
         }
     }
 
@@ -116,6 +123,10 @@ impl Organization {
         self.full_name = dto.full_name.clone();
         self.inn = dto.inn.clone();
         self.kpp = dto.kpp.clone();
+        self.entity_ref = dto
+            .entity_ref
+            .clone()
+            .filter(|value| !value.trim().is_empty());
     }
 
     /// Валидация данных
@@ -224,4 +235,8 @@ pub struct OrganizationDto {
     pub inn: String,
     pub kpp: String,
     pub comment: Option<String>,
+
+    /// Субъект учёта GL (код kind=own: san/sts/upr). Локальное поле.
+    #[serde(rename = "entityRef", default)]
+    pub entity_ref: Option<String>,
 }

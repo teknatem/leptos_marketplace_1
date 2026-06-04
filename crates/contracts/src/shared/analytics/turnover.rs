@@ -236,6 +236,10 @@ pub enum TurnoverLayer {
     /// источников.
     Fina,
     Prod,
+    /// Слой «Яндекс бухгалтерия»: официальная выручка из «Отчёта о реализации»
+    /// YM (агрегат a034_ym_realization). Независимый источник для сверки с `Fina`
+    /// (p907) по одному и тому же обороту `customer_revenue`.
+    Ybuh,
 }
 
 impl TurnoverLayer {
@@ -246,6 +250,7 @@ impl TurnoverLayer {
             Self::Fact => "fact",
             Self::Fina => "fina",
             Self::Prod => "prod",
+            Self::Ybuh => "ybuh",
         }
     }
 
@@ -256,6 +261,7 @@ impl TurnoverLayer {
             "fact" => Some(Self::Fact),
             "fina" => Some(Self::Fina),
             "prod" => Some(Self::Prod),
+            "ybuh" => Some(Self::Ybuh),
             _ => None,
         }
     }

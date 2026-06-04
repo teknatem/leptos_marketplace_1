@@ -53,6 +53,7 @@ pub fn list_checks() -> Vec<QualityCheckInfo> {
         checks::marketplace_product_ref_required::info(),
         checks::gl_projection_integrity::info(),
         checks::p903_gl_integrity::info(),
+        checks::p907_gl_coverage::info(),
     ];
 
     for (idx, check) in checks.iter_mut().enumerate() {
@@ -78,6 +79,7 @@ pub async fn run_check(id: &str) -> anyhow::Result<CheckResult> {
         }
         checks::gl_projection_integrity::CHECK_ID => checks::gl_projection_integrity::run().await,
         checks::p903_gl_integrity::CHECK_ID => checks::p903_gl_integrity::run().await,
+        checks::p907_gl_coverage::CHECK_ID => checks::p907_gl_coverage::run().await,
         other => Err(anyhow::anyhow!("NOT_FOUND: Unknown check id: {}", other)),
     }
 }

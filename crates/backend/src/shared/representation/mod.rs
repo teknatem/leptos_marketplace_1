@@ -96,6 +96,9 @@ pub async fn resolve_many(
         "a026_wb_advert_daily" => {
             crate::domain::a026_wb_advert_daily::representation::represent_many(ids).await
         }
+        "a034_ym_realization" => {
+            crate::domain::a034_ym_realization::representation::represent_many(ids).await
+        }
         "a028_missing_cost_registry" => {
             crate::domain::a028_missing_cost_registry::representation::represent_many(ids).await
         }

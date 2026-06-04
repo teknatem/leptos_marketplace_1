@@ -299,6 +299,7 @@ pub fn GlAccountViewPage() -> impl IntoView {
             connection_mp_refs: vec![],
             account: Some(ACCOUNT.to_string()),
             layer: if lay.is_empty() { None } else { Some(lay) },
+            entity: None,
             corr_account: if row.corr_account.trim().is_empty() {
                 None
             } else {

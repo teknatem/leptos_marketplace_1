@@ -193,6 +193,16 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         all_label: "Управление рекламными данными",
     },
     ScopeDescriptor {
+        scope_id: "a034_ym_realization",
+        scope_type: ScopeType::Aggregate,
+        label: "Реализация YM (Отчёт о реализации)",
+        description: "Официальный отчёт о реализации Yandex Market, слой ybuh",
+        icon: "receipt",
+        category: "marketplace_data",
+        read_label: "Просмотр реализации YM",
+        all_label: "Управление реализацией YM",
+    },
+    ScopeDescriptor {
         scope_id: "a027_wb_documents",
         scope_type: ScopeType::Aggregate,
         label: "Документы Wildberries",

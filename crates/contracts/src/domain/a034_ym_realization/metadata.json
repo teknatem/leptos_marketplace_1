@@ -1,0 +1,173 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "YmRealization",
+  "entity_index": "a034",
+  "collection_name": "ym_realization",
+  "table_name": "a034_ym_realization",
+
+  "ui": {
+    "element_name": "Реализация YM",
+    "element_name_en": "YM Realization",
+    "list_name": "Реализация YM (Отчёт о реализации)",
+    "list_name_en": "YM Realization Report",
+    "icon": "receipt"
+  },
+
+  "ai": {
+    "description": "Официальный «Отчёт о реализации» Yandex Market, импортируемый как суточный документ (один кабинет, одна дата). Содержит выручку по покупателю в разрезе SKU. Проводится в General Ledger на слое `ybuh` (Яндекс бухгалтерия) оборотом customer_revenue/customer_revenue_storno и служит независимым источником для сверки выручки со слоем `fina` (p907_ym_payment_report).",
+    "questions": [
+      "Какая официальная выручка YM по отчёту о реализации за период?",
+      "Сходится ли выручка слоя ybuh со слоем fina (p907) за месяц?",
+      "Какая реализация YM по кабинету за день?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "p907_ym_payment_report"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "YmRealizationId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "Код", "visible_in_list": true, "visible_in_form": false, "column_width": 160 },
+      "validation": { "required": true },
+      "ai_hint": "Внутренний код документа реализации YM."
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "Описание", "visible_in_list": true, "visible_in_form": false, "column_width": 260 },
+      "validation": { "required": true },
+      "ai_hint": "Человекочитаемое описание документа: дата реализации и кабинет."
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Номер документа", "visible_in_list": false, "visible_in_form": false, "column_width": 160 },
+      "validation": { "required": true },
+      "ai_hint": "Технический номер документа реализации."
+    },
+    {
+      "name": "document_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Дата", "visible_in_list": true, "visible_in_form": false, "widget": "date", "column_width": 120 },
+      "validation": { "required": true },
+      "ai_hint": "Дата реализации YM. Для периода: document_date >= 'YYYY-MM-DD' AND document_date <= 'YYYY-MM-DD'."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a006_connection_mp",
+      "ui": { "label": "Подключение (кабинет YM)", "visible_in_list": true, "visible_in_form": false, "column_width": 220 },
+      "validation": { "required": true },
+      "ai_hint": "UUID подключения кабинета YM из a006_connection_mp."
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a002_organization",
+      "ui": { "label": "Организация", "visible_in_list": false, "visible_in_form": false, "column_width": 220 },
+      "validation": { "required": true },
+      "ai_hint": "UUID организации из a002_organization."
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a005_marketplace",
+      "ui": { "label": "Маркетплейс", "visible_in_list": false, "visible_in_form": false, "column_width": 180 },
+      "validation": { "required": true },
+      "ai_hint": "UUID маркетплейса из a005_marketplace (для YM)."
+    },
+    {
+      "name": "lines_count",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Строк", "visible_in_list": true, "visible_in_form": false, "column_width": 90 },
+      "validation": { "required": true },
+      "ai_hint": "Количество строк (SKU) в документе реализации."
+    },
+    {
+      "name": "total_sales_revenue",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Продажи", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 130 },
+      "validation": { "required": true },
+      "ai_hint": "Сумма выручки по строкам-продажам."
+    },
+    {
+      "name": "total_return_revenue",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Возвраты", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 130 },
+      "validation": { "required": true },
+      "ai_hint": "Сумма выручки по строкам-возвратам (положительная)."
+    },
+    {
+      "name": "net_revenue",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Нетто-выручка", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 140 },
+      "validation": { "required": true },
+      "ai_hint": "Нетто-выручка = продажи − возвраты. Сверяется со слоем fina (p907)."
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Строки JSON", "visible_in_list": false, "visible_in_form": false, "widget": "textarea" },
+      "validation": { "required": true },
+      "ai_hint": "JSON детализация строк реализации по SKU."
+    },
+    {
+      "name": "fetched_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Загружено", "visible_in_list": false, "visible_in_form": false, "widget": "datetime", "column_width": 160 },
+      "validation": { "required": true },
+      "ai_hint": "Дата и время получения отчёта о реализации из YM API."
+    }
+  ],
+
+  "access": {
+    "scope_id": "a034_ym_realization",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

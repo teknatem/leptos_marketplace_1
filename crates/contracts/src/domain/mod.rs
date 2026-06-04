@@ -31,4 +31,5 @@ pub mod a030_wb_advert_campaign;
 pub mod a031_kb_edit;
 pub mod a032_wb_returns_claims;
 pub mod a033_wb_day_close;
+pub mod a034_ym_realization;
 pub mod common;

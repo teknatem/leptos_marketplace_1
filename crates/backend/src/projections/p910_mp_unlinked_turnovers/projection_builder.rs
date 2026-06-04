@@ -152,6 +152,7 @@ fn make_general_ledger_entry(row: &Model, _posting_id: &str) -> Option<GeneralLe
         id: Uuid::new_v4().to_string(),
         entry_date: row.entry_date.clone(),
         layer: row.layer.clone(),
+        entity: None,
         connection_mp_ref: Some(row.connection_mp_ref.clone()),
         registrator_type: row.registrator_type.clone(),
         registrator_ref: row.registrator_ref.clone(),

@@ -33,6 +33,7 @@ fn to_gl_advert_expense(
         id: gl_id.to_string(),
         entry_date: entry_date.to_string(),
         layer: TurnoverLayer::Oper.as_str().to_string(),
+        entity: None,
         connection_mp_ref,
         registrator_type: REGISTRATOR_TYPE.to_string(),
         registrator_ref: registrator_ref.to_string(),

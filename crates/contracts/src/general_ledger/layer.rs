@@ -62,6 +62,15 @@ pub const GL_LAYER_CLASSES: &[GlLayerClassDef] = &[
         color_key: "plan",
         sort_order: 4,
     },
+    GlLayerClassDef {
+        code: "ybuh",
+        name: "Яндекс бухгалтерия",
+        description: "Официальная выручка из «Отчёта о реализации» YM \
+            (агрегат a034_ym_realization). Независимый источник для сверки со \
+            слоем `fina` (p907) по обороту `customer_revenue`.",
+        color_key: "ybuh",
+        sort_order: 5,
+    },
 ];
 
 /// Поиск определения слоя по коду.

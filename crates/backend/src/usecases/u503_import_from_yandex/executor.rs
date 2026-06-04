@@ -1,5 +1,5 @@
 use super::{
-    processors::{order, payment_report, product, returns},
+    processors::{order, payment_report, product, realization, returns},
     progress_tracker::ProgressTracker,
     yandex_api_client::YandexApiClient,
 };
@@ -60,6 +60,7 @@ impl ImportExecutor {
                 "a013_ym_order" => "Заказы Yandex Market",
                 "a016_ym_returns" => "Возвраты Yandex Market",
                 "p907_ym_payment_report" => "Отчёт по платежам YM",
+                "a034_ym_realization" => "Отчёт о реализации YM",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -191,6 +192,15 @@ impl ImportExecutor {
                 }
                 "p907_ym_payment_report" => {
                     self.import_ym_payment_report(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a034_ym_realization" => {
+                    self.import_realization(
                         session_id,
                         connection,
                         request.date_from,
@@ -714,7 +724,7 @@ impl ImportExecutor {
 
         let (csv_text, zip_path, csv_path) = self
             .api_client
-            .download_report_zip(&url)
+            .download_report_zip(&url, "p907_ym_payment_report")
             .await
             .map_err(|e| {
                 self.progress_tracker.add_error(
@@ -848,6 +858,245 @@ impl ImportExecutor {
 
         Ok(())
     }
+}
+
+impl ImportExecutor {
+    /// Импорт «Отчёта о реализации» YM → агрегат a034_ym_realization (слой ybuh).
+    /// Отчёт помесячный на кампанию: перебираем месяцы периода, для каждого —
+    /// генерация (year/month) → polling → download → parse → replace_for_period →
+    /// авто-пост. Между месяцами лимит YM (1/мин) гасит wait-and-retry в генераторе.
+    async fn import_realization(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        use crate::domain::a002_organization;
+
+        tracing::info!("Importing YM realization report for session: {}", session_id);
+        let aggregate_index = "a034_ym_realization";
+
+        let organization_id = match Uuid::parse_str(&connection.organization_ref) {
+            Ok(org_uuid) => match a002_organization::service::get_by_id(org_uuid).await? {
+                Some(org) => org.base.id.as_string(),
+                None => anyhow::bail!(
+                    "Organization UUID '{}' not found",
+                    connection.organization_ref
+                ),
+            },
+            Err(_) => anyhow::bail!(
+                "Invalid organization_ref UUID in connection: '{}'",
+                connection.organization_ref
+            ),
+        };
+        let connection_id = connection.base.id.as_string();
+
+        // Месяцы, попадающие в период [date_from, date_to].
+        let months = months_in_range(date_from, date_to);
+        let total_months = months.len() as i32;
+
+        let mut doc_total = 0i32;
+        let mut posted_total = 0i32;
+
+        for (month_idx, (year, month)) in months.iter().enumerate() {
+            let (year, month) = (*year, *month);
+            let first_day = chrono::NaiveDate::from_ymd_opt(year, month, 1)
+                .ok_or_else(|| anyhow::anyhow!("Invalid month {}-{}", year, month))?;
+            let last_day = {
+                let (ny, nm) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
+                chrono::NaiveDate::from_ymd_opt(ny, nm, 1)
+                    .and_then(|d| d.pred_opt())
+                    .ok_or_else(|| anyhow::anyhow!("Invalid month end {}-{}", year, month))?
+            };
+
+            // Phase 1: generate (год/месяц)
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!(
+                    "Генерация отчёта за {}-{:02} ({}/{})...",
+                    year, month, month_idx + 1, total_months
+                )),
+            );
+            let report_id = self
+                .api_client
+                .generate_realization_report(connection, year, month)
+                .await
+                .map_err(|e| {
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Ошибка генерации отчёта за {}-{:02}: {}", year, month, e),
+                        None,
+                    );
+                    e
+                })?;
+
+            // Phase 2: poll until DONE
+            const MAX_POLL_ATTEMPTS: u32 = 60;
+            const POLL_INTERVAL_SECS: u64 = 5;
+            let mut download_url: Option<String> = None;
+            for attempt in 1..=MAX_POLL_ATTEMPTS {
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!(
+                        "Ожидание отчёта за {}-{:02}... ({}/{})",
+                        year, month, attempt, MAX_POLL_ATTEMPTS
+                    )),
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
+                let (status, file_url) = self
+                    .api_client
+                    .poll_report_status(connection, &report_id)
+                    .await
+                    .map_err(|e| {
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Ошибка статуса отчёта за {}-{:02}: {}", year, month, e),
+                            None,
+                        );
+                        e
+                    })?;
+                match status.as_str() {
+                    "DONE" => {
+                        download_url = file_url;
+                        break;
+                    }
+                    "FAILED" => {
+                        anyhow::bail!(
+                            "Генерация отчёта за {}-{:02} завершилась ошибкой на стороне YM",
+                            year,
+                            month
+                        );
+                    }
+                    _ => {}
+                }
+                if attempt == MAX_POLL_ATTEMPTS {
+                    anyhow::bail!(
+                        "Превышено время ожидания отчёта за {}-{:02}",
+                        year,
+                        month
+                    );
+                }
+            }
+            let url = download_url
+                .ok_or_else(|| anyhow::anyhow!("Отчёт DONE, но URL файла не получен"))?;
+
+            // Phase 3: download + extract ВСЕ CSV (delivered/returned/…)
+            let csvs = self
+                .api_client
+                .download_report_csvs(&url, "a034_ym_realization")
+                .await
+                .map_err(|e| {
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Ошибка загрузки ZIP за {}-{:02}: {}", year, month, e),
+                        None,
+                    );
+                    e
+                })?;
+
+            // Phase 4: parse (delivered − returned, даты привязаны к месяцу отчёта)
+            let month_first = first_day.format("%Y-%m-%d").to_string();
+            let month_last = last_day.format("%Y-%m-%d").to_string();
+            let parsed = realization::parse_realization_files(
+                connection,
+                &organization_id,
+                &csvs,
+                &month_first,
+                &month_last,
+            )
+            .map_err(|e| {
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    format!("Ошибка разбора CSV за {}-{:02}: {}", year, month, e),
+                    None,
+                );
+                e
+            })?;
+            let documents = parsed.documents;
+
+            // Phase 5: replace_for_period (кабинет × месяц) — идемпотентно.
+            crate::domain::a034_ym_realization::service::replace_for_period(
+                &connection_id,
+                &first_day.format("%Y-%m-%d").to_string(),
+                &last_day.format("%Y-%m-%d").to_string(),
+                &documents,
+            )
+            .await
+            .map_err(|e| {
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    format!("Ошибка сохранения документов за {}-{:02}: {}", year, month, e),
+                    None,
+                );
+                e
+            })?;
+
+            // Phase 6: провести каждый документ в GL (слой ybuh).
+            for document in &documents {
+                doc_total += 1;
+                let id = Uuid::parse_str(&document.base.id.as_string())
+                    .map_err(|e| anyhow::anyhow!("Invalid document id: {}", e))?;
+                match crate::domain::a034_ym_realization::posting::post_document(id).await {
+                    Ok(_) => posted_total += 1,
+                    Err(e) => {
+                        tracing::error!("Failed to post realization document {}: {}", id, e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Ошибка проведения документа {}", id),
+                            Some(e.to_string()),
+                        );
+                    }
+                }
+            }
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                doc_total,
+                Some(doc_total),
+                doc_total,
+                posted_total,
+            );
+        }
+
+        self.progress_tracker
+            .set_current_item(session_id, aggregate_index, None);
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "YM realization import completed: months={}, documents={}, posted={}",
+            total_months,
+            doc_total,
+            posted_total
+        );
+        Ok(())
+    }
+}
+
+/// Список (год, месяц), попадающих в период [from, to] включительно.
+fn months_in_range(from: chrono::NaiveDate, to: chrono::NaiveDate) -> Vec<(i32, u32)> {
+    use chrono::Datelike;
+    let mut out = Vec::new();
+    let (mut y, mut m) = (from.year(), from.month());
+    let (end_y, end_m) = (to.year(), to.month());
+    while (y, m) <= (end_y, end_m) {
+        out.push((y, m));
+        if m == 12 {
+            y += 1;
+            m = 1;
+        } else {
+            m += 1;
+        }
+    }
+    out
 }
 
 impl Clone for ImportExecutor {

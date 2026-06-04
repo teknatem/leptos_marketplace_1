@@ -757,6 +757,7 @@ pub async fn get_general_ledger_entries(
                 id: r.id,
                 entry_date: r.entry_date,
                 layer: TurnoverLayer::from_str(&r.layer).unwrap_or(TurnoverLayer::Oper),
+                entity: r.entity,
                 connection_mp_ref: r.connection_mp_ref,
                 registrator_type: r.registrator_type,
                 registrator_ref: r.registrator_ref,

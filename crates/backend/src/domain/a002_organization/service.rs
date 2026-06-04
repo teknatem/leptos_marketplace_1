@@ -81,6 +81,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             inn: "7701234567".into(),
             kpp: "770101001".into(),
             comment: Some("Основная организация для тестирования".into()),
+            entity_ref: None,
         },
         OrganizationDto {
             id: None,
@@ -90,6 +91,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             inn: "771234567890".into(),
             kpp: "".into(),
             comment: Some("Индивидуальный предприниматель".into()),
+            entity_ref: None,
         },
         OrganizationDto {
             id: None,
@@ -99,6 +101,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
             inn: "7702345678".into(),
             kpp: "770201001".into(),
             comment: None,
+            entity_ref: None,
         },
     ];
 

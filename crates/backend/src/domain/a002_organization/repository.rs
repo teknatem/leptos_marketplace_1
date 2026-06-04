@@ -21,6 +21,9 @@ pub struct Model {
     pub full_name: String,
     pub inn: String,
     pub kpp: String,
+    /// Субъект учёта GL (san/sts/upr). Локальное поле — не из 1С.
+    #[sea_orm(nullable)]
+    pub entity_ref: Option<String>,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -55,6 +58,7 @@ impl From<Model> for Organization {
             full_name: m.full_name,
             inn: m.inn,
             kpp: m.kpp,
+            entity_ref: m.entity_ref.filter(|value| !value.trim().is_empty()),
         }
     }
 }
@@ -95,6 +99,7 @@ pub async fn insert(aggregate: &Organization) -> anyhow::Result<Uuid> {
         full_name: Set(aggregate.full_name.clone()),
         inn: Set(aggregate.inn.clone()),
         kpp: Set(aggregate.kpp.clone()),
+        entity_ref: Set(aggregate.entity_ref.clone()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         created_at: Set(Some(aggregate.base.metadata.created_at)),
@@ -115,6 +120,7 @@ pub async fn update(aggregate: &Organization) -> anyhow::Result<()> {
         full_name: Set(aggregate.full_name.clone()),
         inn: Set(aggregate.inn.clone()),
         kpp: Set(aggregate.kpp.clone()),
+        entity_ref: Set(aggregate.entity_ref.clone()),
         is_deleted: Set(aggregate.base.metadata.is_deleted),
         is_posted: Set(aggregate.base.metadata.is_posted),
         updated_at: Set(Some(aggregate.base.metadata.updated_at)),

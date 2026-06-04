@@ -6,16 +6,22 @@
 pub mod account_view;
 pub mod accounting;
 pub mod dto;
+pub mod entity;
 pub mod layer;
 pub mod metadata;
 pub mod report;
 pub mod resource_detail;
 pub mod turnover;
 pub mod weekly_reconciliation;
+pub mod ym_revenue_reconciliation;
 
 pub use account_view::{GlAccountViewQuery, GlAccountViewResponse, GlAccountViewRow};
 pub use accounting::{AccountDef, AccountType, NormalBalance, StatementSection};
 pub use dto::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
+pub use entity::{
+    get_entity_class, GlEntitiesResponse, GlEntity, GlEntityClassDef, GlEntityDto,
+    GL_ENTITY_CLASSES,
+};
 pub use layer::{
     get_layer_class, GlLayerClassDef, GlLayerDto, GlLayersResponse, GL_LAYER_CLASSES,
 };
@@ -36,4 +42,7 @@ pub use turnover::{
 };
 pub use weekly_reconciliation::{
     WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse, WbWeeklyReconciliationRow,
+};
+pub use ym_revenue_reconciliation::{
+    YmRevenueReconGroup, YmRevenueReconQuery, YmRevenueReconResponse, YmRevenueReconRow,
 };

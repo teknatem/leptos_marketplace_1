@@ -335,6 +335,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "database",
                 ),
                 SidebarItem::new(
+                    "general_ledger_entities",
+                    tab_label_for_key("general_ledger_entities"),
+                    "database",
+                ),
+                SidebarItem::new(
                     "general_ledger_matrix",
                     tab_label_for_key("general_ledger_matrix"),
                     "table",
@@ -370,6 +375,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                 SidebarItem::new(
                     "wb_weekly_reconciliation",
                     tab_label_for_key("wb_weekly_reconciliation"),
+                    "table",
+                ),
+                SidebarItem::new(
+                    "ym_revenue_reconciliation",
+                    tab_label_for_key("ym_revenue_reconciliation"),
                     "table",
                 ),
                 SidebarItem {
@@ -424,6 +434,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                 SidebarItem::new(
                     "p907_ym_payment_report",
                     tab_label_for_key("p907_ym_payment_report"),
+                    "receipt",
+                ),
+                SidebarItem::new(
+                    "a034_ym_realization",
+                    tab_label_for_key("a034_ym_realization"),
                     "receipt",
                 ),
                 SidebarItem::new(

@@ -1,3 +1,4 @@
+use crate::general_ledger::ui::entity_badge::GlEntityBadge;
 use crate::general_ledger::ui::layer_badge::GlLayerBadge;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
@@ -145,6 +146,7 @@ struct GeneralLedgerListState {
     registrator_ref: String,
     registrator_type: String,
     layer: String,
+    entity: String,
     turnover_code: String,
     connection_mp_ref: String,
     debit_account: String,
@@ -182,6 +184,7 @@ impl Default for GeneralLedgerListState {
             registrator_ref: String::new(),
             registrator_type: String::new(),
             layer: String::new(),
+            entity: String::new(),
             turnover_code: String::new(),
             connection_mp_ref: String::new(),
             debit_account: String::new(),
@@ -281,6 +284,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
     let registrator_type_input = RwSignal::new(state.get_untracked().registrator_type.clone());
     let registrator_ref_input = RwSignal::new(state.get_untracked().registrator_ref.clone());
     let layer_input = RwSignal::new(state.get_untracked().layer.clone());
+    let entity_input = RwSignal::new(state.get_untracked().entity.clone());
     let turnover_code_input = RwSignal::new(state.get_untracked().turnover_code.clone());
     let connection_mp_ref_input = RwSignal::new(state.get_untracked().connection_mp_ref.clone());
     let debit_account_input = RwSignal::new(state.get_untracked().debit_account.clone());
@@ -322,6 +326,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                 registrator_type: (!s.registrator_type.is_empty())
                     .then(|| s.registrator_type.clone()),
                 layer: (!s.layer.is_empty()).then(|| s.layer.clone()),
+                entity: (!s.entity.is_empty()).then(|| s.entity.clone()),
                 turnover_code: (!s.turnover_code.is_empty()).then(|| s.turnover_code.clone()),
                 connection_mp_ref: (!s.connection_mp_ref.is_empty())
                     .then(|| s.connection_mp_ref.clone()),
@@ -389,6 +394,9 @@ pub fn GeneralLedgerPage() -> impl IntoView {
         if !s.layer.is_empty() {
             count += 1;
         }
+        if !s.entity.is_empty() {
+            count += 1;
+        }
         if !s.debit_account.is_empty() {
             count += 1;
         }
@@ -403,6 +411,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
             s.registrator_type = registrator_type_input.get_untracked().trim().to_string();
             s.registrator_ref = registrator_ref_input.get_untracked().trim().to_string();
             s.layer = layer_input.get_untracked().trim().to_string();
+            s.entity = entity_input.get_untracked().trim().to_string();
             s.turnover_code = turnover_code_input.get_untracked().trim().to_string();
             s.connection_mp_ref = connection_mp_ref_input.get_untracked().trim().to_string();
             s.debit_account = debit_account_input.get_untracked().trim().to_string();
@@ -417,6 +426,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
         registrator_type_input.set(String::new());
         registrator_ref_input.set(String::new());
         layer_input.set(String::new());
+        entity_input.set(String::new());
         turnover_code_input.set(String::new());
         connection_mp_ref_input.set(String::new());
         debit_account_input.set(String::new());
@@ -427,6 +437,7 @@ pub fn GeneralLedgerPage() -> impl IntoView {
             s.registrator_ref.clear();
             s.registrator_type.clear();
             s.layer.clear();
+            s.entity.clear();
             s.turnover_code.clear();
             s.connection_mp_ref.clear();
             s.debit_account.clear();
@@ -616,6 +627,20 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                         </Flex>
                                     </div>
 
+                                    <div style="width: 180px;">
+                                        <Flex vertical=true gap=FlexGap::Small>
+                                            <Label>"Субъект"</Label>
+                                            <Select value=entity_input>
+                                                <option value="">"Все"</option>
+                                                {contracts::general_ledger::GL_ENTITY_CLASSES.iter().map(|e| {
+                                                    let v = e.code.to_string();
+                                                    let l = format!("{} — {}", e.code, e.name);
+                                                    view! { <option value=v>{l}</option> }
+                                                }).collect::<Vec<_>>()}
+                                            </Select>
+                                        </Flex>
+                                    </div>
+
                                     <div style="width: 340px;">
                                         <Flex vertical=true gap=FlexGap::Small>
                                             <Label>"Вид оборота"</Label>
@@ -736,6 +761,15 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                                 "Layer"
                                                 <span class=move || state.with(|s| get_sort_class(&s.sort_field, "layer"))>
                                                     {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "layer", state.with(|s| s.sort_ascending))}
+                                                </span>
+                                            </div>
+                                        </TableHeaderCell>
+
+                                        <TableHeaderCell resizable=false class="resizable" min_width=90.0>
+                                            <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("entity")>
+                                                "Субъект"
+                                                <span class=move || state.with(|s| get_sort_class(&s.sort_field, "entity"))>
+                                                    {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "entity", state.with(|s| s.sort_ascending))}
                                                 </span>
                                             </div>
                                         </TableHeaderCell>
@@ -884,6 +918,17 @@ pub fn GeneralLedgerPage() -> impl IntoView {
                                                     <TableCell>
                                                         <TableCellLayout>
                                                             <GlLayerBadge layer=entry.layer.as_str().to_string() />
+                                                        </TableCellLayout>
+                                                    </TableCell>
+
+                                                    <TableCell>
+                                                        <TableCellLayout>
+                                                            {match entry.entity.as_deref() {
+                                                                Some(code) if !code.is_empty() => {
+                                                                    view! { <GlEntityBadge entity=code.to_string() /> }.into_any()
+                                                                }
+                                                                _ => view! { <span class="text-muted">"—"</span> }.into_any(),
+                                                            }}
                                                         </TableCellLayout>
                                                     </TableCell>
 

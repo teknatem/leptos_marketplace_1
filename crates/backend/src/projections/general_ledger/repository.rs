@@ -16,6 +16,10 @@ pub struct Model {
     pub id: String,
     pub entry_date: String,
     pub layer: String,
+    /// Субъект учёта (ym/wb/ozon/san/sts/upr). Nullable: заполняется по мере
+    /// перевода источников на измерение (Фаза 1 — только p907 → ym).
+    #[sea_orm(nullable)]
+    pub entity: Option<String>,
     #[sea_orm(nullable)]
     pub connection_mp_ref: Option<String>,
     pub registrator_type: String,
@@ -52,6 +56,7 @@ pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> 
         id: Set(entry.id.clone()),
         entry_date: Set(entry.entry_date.clone()),
         layer: Set(entry.layer.clone()),
+        entity: Set(entry.entity.clone()),
         connection_mp_ref: Set(entry.connection_mp_ref.clone()),
         registrator_type: Set(entry.registrator_type.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
@@ -99,6 +104,7 @@ pub async fn insert_entries_bulk_with_conn<C: ConnectionTrait>(
             id: Set(entry.id.clone()),
             entry_date: Set(entry.entry_date.clone()),
             layer: Set(entry.layer.clone()),
+            entity: Set(entry.entity.clone()),
             connection_mp_ref: Set(entry.connection_mp_ref.clone()),
             registrator_type: Set(entry.registrator_type.clone()),
             registrator_ref: Set(entry.registrator_ref.clone()),
@@ -302,6 +308,29 @@ pub async fn count_grouped_by_layer() -> Result<HashMap<String, i64>> {
     Ok(counts)
 }
 
+pub async fn count_grouped_by_entity() -> Result<HashMap<String, i64>> {
+    let stmt = Statement::from_string(
+        conn().get_database_backend(),
+        r#"
+            SELECT COALESCE(entity, '') AS entity, COUNT(*) AS gl_entries_count
+            FROM sys_general_ledger
+            GROUP BY entity
+        "#
+        .to_string(),
+    );
+
+    let rows = conn().query_all(stmt).await?;
+    let mut counts = HashMap::new();
+
+    for row in rows {
+        let entity: String = row.try_get("", "entity")?;
+        let count: i64 = row.try_get("", "gl_entries_count")?;
+        counts.insert(entity, count.max(0));
+    }
+
+    Ok(counts)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn list_with_filters(
     date_from: Option<String>,
@@ -309,6 +338,7 @@ pub async fn list_with_filters(
     registrator_ref: Option<String>,
     registrator_type: Option<String>,
     layer: Option<String>,
+    entity: Option<String>,
     debit_account: Option<String>,
     credit_account: Option<String>,
     turnover_code: Option<String>,
@@ -325,6 +355,7 @@ pub async fn list_with_filters(
         &registrator_ref,
         &registrator_type,
         &layer,
+        &entity,
         &debit_account,
         &credit_account,
         &turnover_code,
@@ -347,6 +378,7 @@ pub async fn count_with_filters(
     registrator_ref: Option<String>,
     registrator_type: Option<String>,
     layer: Option<String>,
+    entity: Option<String>,
     debit_account: Option<String>,
     credit_account: Option<String>,
     turnover_code: Option<String>,
@@ -359,6 +391,7 @@ pub async fn count_with_filters(
         &registrator_ref,
         &registrator_type,
         &layer,
+        &entity,
         &debit_account,
         &credit_account,
         &turnover_code,
@@ -375,6 +408,7 @@ fn apply_filters(
     registrator_ref: &Option<String>,
     registrator_type: &Option<String>,
     layer: &Option<String>,
+    entity: &Option<String>,
     debit_account: &Option<String>,
     credit_account: &Option<String>,
     turnover_code: &Option<String>,
@@ -394,6 +428,9 @@ fn apply_filters(
     }
     if let Some(v) = layer {
         query = query.filter(Column::Layer.eq(v.clone()));
+    }
+    if let Some(v) = entity {
+        query = query.filter(Column::Entity.eq(v.clone()));
     }
     if let Some(v) = debit_account {
         query = query.filter(Column::DebitAccount.eq(v.clone()));
@@ -416,6 +453,8 @@ fn apply_sort(mut query: Select<Entity>, sort_by: &str, sort_desc: bool) -> Sele
         ("entry_date", false) => query = query.order_by_asc(Column::EntryDate),
         ("layer", true) => query = query.order_by_desc(Column::Layer),
         ("layer", false) => query = query.order_by_asc(Column::Layer),
+        ("entity", true) => query = query.order_by_desc(Column::Entity),
+        ("entity", false) => query = query.order_by_asc(Column::Entity),
         ("debit_account", true) => query = query.order_by_desc(Column::DebitAccount),
         ("debit_account", false) => query = query.order_by_asc(Column::DebitAccount),
         ("credit_account", true) => query = query.order_by_desc(Column::CreditAccount),

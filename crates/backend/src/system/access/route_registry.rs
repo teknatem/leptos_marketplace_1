@@ -681,6 +681,18 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/a034/ym-realization",
+        scope_id: Some("a034_ym_realization"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a034/ym-realization/:id",
+        scope_id: Some("a034_ym_realization"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/a026/wb-advert-daily/report.csv",
         scope_id: Some("a026_wb_advert_daily"),
         mode: PolicyMode::Auto,
@@ -1238,6 +1250,12 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         method: "*",
         path: "/api/reports/wb-weekly-reconciliation",
         scope_id: Some("general_ledger"),
+        mode: PolicyMode::ReadOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/reports/ym-revenue-reconciliation",
+        scope_id: Some("a034_ym_realization"),
         mode: PolicyMode::ReadOnly,
     },
     RoutePolicy {

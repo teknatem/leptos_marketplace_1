@@ -375,6 +375,7 @@ dependencies = [
  "contracts",
  "cron",
  "csv",
+ "encoding_rs",
  "jsonwebtoken",
  "maplit",
  "once_cell",

@@ -24,6 +24,7 @@ const A015_WB_ORDERS: &str = "a015_wb_orders";
 const A021_PRODUCTION_OUTPUT: &str = "a021_production_output";
 const A023_PURCHASE_OF_GOODS: &str = "a023_purchase_of_goods";
 const A026_WB_ADVERT_DAILY: &str = "a026_wb_advert_daily";
+const A034_YM_REALIZATION: &str = "a034_ym_realization";
 
 pub struct RepostExecutor {
     pub progress_tracker: Arc<ProgressTracker>,
@@ -91,6 +92,11 @@ impl RepostExecutor {
                 key: A026_WB_ADVERT_DAILY.to_string(),
                 label: "a026 — WB Advert Daily".to_string(),
                 description: "Перепроведение проведённых документов a026_wb_advert_daily с пересборкой связанных проекций".to_string(),
+            },
+            AggregateOption {
+                key: A034_YM_REALIZATION.to_string(),
+                label: "a034 — YM Realization".to_string(),
+                description: "Перепроведение документов a034_ym_realization с пересборкой GL-проводок слоя ybuh".to_string(),
             },
         ]
     }
@@ -196,6 +202,7 @@ impl RepostExecutor {
             && request.aggregate_key != A021_PRODUCTION_OUTPUT
             && request.aggregate_key != A023_PURCHASE_OF_GOODS
             && request.aggregate_key != A026_WB_ADVERT_DAILY
+            && request.aggregate_key != A034_YM_REALIZATION
         {
             return Err(anyhow!(
                 "Unsupported aggregate_key: {}",
@@ -434,6 +441,14 @@ impl RepostExecutor {
             }
             A026_WB_ADVERT_DAILY => {
                 crate::domain::a026_wb_advert_daily::repository::list_ids_by_period(
+                    &request.date_from,
+                    &request.date_to,
+                    request.only_posted,
+                )
+                .await?
+            }
+            A034_YM_REALIZATION => {
+                crate::domain::a034_ym_realization::repository::list_ids_by_period(
                     &request.date_from,
                     &request.date_to,
                     request.only_posted,
@@ -771,6 +786,9 @@ async fn dispatch_aggregate_repost(aggregate_key: &str, aggregate_id: Uuid) -> R
         }
         A026_WB_ADVERT_DAILY => {
             crate::domain::a026_wb_advert_daily::posting::post_document(aggregate_id).await
+        }
+        A034_YM_REALIZATION => {
+            crate::domain::a034_ym_realization::posting::post_document(aggregate_id).await
         }
         _ => Err(anyhow!("Unsupported aggregate_key: {}", aggregate_key)),
     }

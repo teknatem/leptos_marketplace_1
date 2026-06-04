@@ -7,6 +7,7 @@ const GL_DIMS_COMMON: &[&str] = &[
     "connection_mp_ref",
     "registrator_type",
     "layer",
+    "entity",
     "registrator_ref",
     // Разрезы слоя fina (p914): доступны для любого оборота, у которого есть
     // зеркало в p914. Для не-fina проводок drilldown по ним вернёт пусто.
@@ -23,6 +24,7 @@ const GL_DIMS_WITH_NOMENCLATURE: &[&str] = &[
     "connection_mp_ref",
     "registrator_type",
     "layer",
+    "entity",
     "registrator_ref",
     "nomenclature",
     "dim1_category",
@@ -742,7 +744,7 @@ pub const TURNOVER_CLASSES: &[TurnoverClassDef] = &[
         sign_policy: SignPolicy::IncomePositive,
         report_group: ReportGroup::Adjustment,
         available_dimensions: GL_DIMS_COMMON,
-        aliases: &["other_income"],
+        aliases: &[],
         source_examples: &[
             "p903_wb_finance_report.additional_payment",
             "p903_wb_finance_report.cashback_amount",
@@ -789,7 +791,7 @@ pub const TURNOVER_CLASSES: &[TurnoverClassDef] = &[
         sign_policy: SignPolicy::ExpensePositive,
         report_group: ReportGroup::Adjustment,
         available_dimensions: GL_DIMS_COMMON,
-        aliases: &["other_expense"],
+        aliases: &[],
         source_examples: &["p903_wb_finance_report.additional_payment<0"],
         formula_hint: "amount where layer=fact",
         notes: "Хранится отрицательной суммой как расход. Счёт не определён в текущем плане.",
@@ -797,6 +799,63 @@ pub const TURNOVER_CLASSES: &[TurnoverClassDef] = &[
         credit_account: "",
         generates_journal_entry: false,
         journal_comment: "Прочие удержания WB с продавца (переплаты, штрафные корректировки). Источник: additional_payment < 0. В журнале не отражается.",
+    },
+    // ─── Универсальные «прочие» обороты (catch-all для слоя fina) ────────────
+    // Используются источниками fina (p907 YM и др.), когда конкретное правило
+    // маппинга операции не предусмотрено: вместо «потери» суммы строка относится
+    // на «Прочие доходы» (сумма > 0) или «Прочие расходы» (сумма < 0). Это
+    // гарантирует, что любая проведённая ненулевая строка формирует GL-проводку.
+    //
+    // Конвенция знака (как и у остальных оборотов YM): счёт расчётов с МП (7609)
+    // всегда на дебете, знак суммы из источника несёт экономику. Поэтому:
+    //   доход  +X: Дт7609 / Кт91   → +91 (прочий доход),  +7609 (рост долга МП);
+    //   расход −X: Дт7609 / Кт9102 → +9102 расход (signed по счёту = −amount),
+    //                                 −7609 (долг МП уменьшается на удержание).
+    TurnoverClassDef {
+        code: "other_income",
+        name: "Прочие доходы",
+        description: "Универсальный оборот прочих доходов для операций, не предусмотренных отдельным правилом маппинга.",
+        llm_description: "Прочий доход маркетплейса (премия, компенсация и т.п.), не покрытый специальным оборотом.",
+        scope: TurnoverScope::Both,
+        value_kind: ValueKind::Money,
+        agg_kind: AggKind::Sum,
+        selection_rule: SelectionRule::FactOnly,
+        sign_policy: SignPolicy::Natural,
+        report_group: ReportGroup::Adjustment,
+        available_dimensions: GL_DIMS_COMMON,
+        aliases: &[],
+        source_examples: &[
+            "p907_ym_payment_report: «Премия», «Компенсация по претензии» и прочие начисления (сумма > 0)",
+        ],
+        formula_hint: "amount where layer=fina and transaction_sum > 0 and нет специального правила",
+        notes: "Catch-all для положительных сумм fina-источников. Знак суммы из источника сохраняется как есть.",
+        debit_account: "7609",
+        credit_account: "91",
+        generates_journal_entry: true,
+        journal_comment: "Прочие доходы по операции маркетплейса без специального правила маппинга (сумма > 0). Дт7609 / Кт91.",
+    },
+    TurnoverClassDef {
+        code: "other_expense",
+        name: "Прочие расходы",
+        description: "Универсальный оборот прочих расходов для операций, не предусмотренных отдельным правилом маппинга.",
+        llm_description: "Прочий расход/удержание маркетплейса (услуги, сборы и т.п.), не покрытый специальным оборотом.",
+        scope: TurnoverScope::Both,
+        value_kind: ValueKind::Money,
+        agg_kind: AggKind::Sum,
+        selection_rule: SelectionRule::FactOnly,
+        sign_policy: SignPolicy::Natural,
+        report_group: ReportGroup::Adjustment,
+        available_dimensions: GL_DIMS_COMMON,
+        aliases: &[],
+        source_examples: &[
+            "p907_ym_payment_report: «Оплата услуг Яндекс.Маркета» и прочие удержания (сумма < 0)",
+        ],
+        formula_hint: "amount where layer=fina and transaction_sum < 0 and нет специального правила",
+        notes: "Catch-all для отрицательных сумм fina-источников. Хранится отрицательной суммой; 7609 на дебете по конвенции YM.",
+        debit_account: "7609",
+        credit_account: "9102",
+        generates_journal_entry: true,
+        journal_comment: "Прочие расходы/удержания по операции маркетплейса без специального правила маппинга (сумма < 0). Хранится отрицательной суммой. Дт7609 / Кт9102.",
     },
     // ─── Storno-обороты для возвратов (oper-слой a012_wb_sales) ──────────────
     // Используются вместо базовых кодов когда document.is_customer_return = true.

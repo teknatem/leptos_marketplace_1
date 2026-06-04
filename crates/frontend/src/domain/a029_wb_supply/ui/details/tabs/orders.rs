@@ -168,7 +168,7 @@ pub fn OrdersTab(vm: WbSupplyDetailsVm) -> impl IntoView {
                                             let nomenclature_ref = order.nomenclature_ref.clone();
                                             let base_nomenclature_ref = effective_base_nomenclature_ref(&order);
                                             let sticker = match (order.part_a, order.part_b) {
-                                                (Some(a), Some(b)) => format!("{}-{}", a, b),
+                                                (Some(a), Some(b)) => format!("{}-{:04}", a, b),
                                                 (Some(a), None) => a.to_string(),
                                                 _ => order.color_code.clone().unwrap_or_else(|| "—".to_string()),
                                             };

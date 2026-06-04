@@ -3,5 +3,5 @@ pub mod ui;
 
 pub use ui::{
     GeneralLedgerDetailsPage, GeneralLedgerPage, GeneralLedgerTurnoversPage, GlAccountViewPage,
-    WbWeeklyReconciliationPage,
+    WbWeeklyReconciliationPage, YmRevenueReconciliationPage,
 };
