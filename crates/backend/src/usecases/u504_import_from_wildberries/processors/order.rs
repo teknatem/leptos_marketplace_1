@@ -59,6 +59,9 @@ pub async fn process_order_row(
         sale_price: None,
         dealer_price_ut: None,
         margin_pro: None,
+        // Statistics API всегда отдаёт суммы в рублях — валюта не сохраняется.
+        currency_code: None,
+        fx_rate: None,
     };
 
     // Парсим даты

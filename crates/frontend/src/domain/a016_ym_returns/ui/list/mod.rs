@@ -9,7 +9,7 @@ use crate::shared::components::table::{
     TableCellCheckbox, TableCellMoney, TableCrosshairHighlight, TableHeaderCheckbox,
 };
 use crate::shared::components::ui::badge::Badge as UiBadge;
-use crate::shared::date_utils::format_datetime;
+use crate::shared::date_utils::format_datetime_utc_local;
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{format_number, get_sort_class, get_sort_indicator, Sortable};
 use crate::shared::page_frame::PageFrame;
@@ -21,6 +21,7 @@ use leptos::task::spawn_local;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use thaw::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
@@ -43,6 +44,10 @@ pub struct YmReturnDto {
     pub id: String,
     pub return_id: i64,
     pub order_id: i64,
+    #[serde(default)]
+    pub connection_id: String,
+    #[serde(default)]
+    pub order_date: String,
     pub return_type: String,
     pub refund_status: String,
     pub total_items: i32,
@@ -50,6 +55,13 @@ pub struct YmReturnDto {
     pub created_at_source: String,
     pub fetched_at: String,
     pub is_posted: bool,
+}
+
+/// Опция подключения МП для фильтра/колонки «Кабинет» (из /api/connection_mp)
+#[derive(Debug, Clone, Deserialize)]
+struct ConnectionOption {
+    id: String,
+    description: String,
 }
 
 impl Sortable for YmReturnDto {
@@ -97,6 +109,30 @@ pub fn YmReturnsList() -> impl IntoView {
             .clone()
             .unwrap_or_default(),
     );
+    let filter_connection = RwSignal::new(state.get_untracked().filter_connection.clone());
+
+    // Список подключений МП (id -> описание) для фильтра и колонки «Кабинет»
+    let (connections, set_connections) = signal::<Vec<ConnectionOption>>(Vec::new());
+    let conn_map = Memo::new(move |_| {
+        connections
+            .get()
+            .into_iter()
+            .map(|c| (c.id, c.description))
+            .collect::<HashMap<String, String>>()
+    });
+
+    spawn_local(async move {
+        if let Ok(resp) = Request::get(&format!("{}/api/connection_mp", api_base()))
+            .send()
+            .await
+        {
+            if resp.status() == 200 {
+                if let Ok(list) = resp.json::<Vec<ConnectionOption>>().await {
+                    set_connections.set(list);
+                }
+            }
+        }
+    });
 
     Effect::new(move || {
         let return_id = search_return_id.get();
@@ -132,6 +168,16 @@ pub fn YmReturnsList() -> impl IntoView {
         });
     });
 
+    Effect::new(move || {
+        let conn = filter_connection.get();
+        untrack(move || {
+            state.update(|s| {
+                s.filter_connection = conn;
+                s.page = 0;
+            });
+        });
+    });
+
     let load_data = move || {
         let current_state = state.get_untracked();
         set_loading.set(true);
@@ -151,6 +197,12 @@ pub fn YmReturnsList() -> impl IntoView {
             );
             if let Some(ref t) = current_state.filter_type {
                 url.push_str(&format!("&return_type={}", t));
+            }
+            if !current_state.filter_connection.is_empty() {
+                url.push_str(&format!(
+                    "&connection_mp_ref={}",
+                    current_state.filter_connection
+                ));
             }
             if !current_state.search_return_id.is_empty() {
                 url.push_str(&format!(
@@ -211,6 +263,16 @@ pub fn YmReturnsList() -> impl IntoView {
         }
     });
 
+    let filter_connection_first_run = StoredValue::new(true);
+    Effect::new(move || {
+        let _ = filter_connection.get();
+        if !filter_connection_first_run.get_value() {
+            load_data();
+        } else {
+            filter_connection_first_run.set_value(false);
+        }
+    });
+
     let resize_initialized = StoredValue::new(false);
     Effect::new(move |_| {
         if !resize_initialized.get_value() {
@@ -238,6 +300,9 @@ pub fn YmReturnsList() -> impl IntoView {
             count += 1;
         }
         if s.filter_type.is_some() {
+            count += 1;
+        }
+        if !s.filter_connection.is_empty() {
             count += 1;
         }
         count
@@ -281,11 +346,13 @@ pub fn YmReturnsList() -> impl IntoView {
             s.search_return_id = String::new();
             s.search_order_id = String::new();
             s.filter_type = None;
+            s.filter_connection = String::new();
             s.page = 0;
         });
         search_return_id.set(String::new());
         search_order_id.set(String::new());
         filter_type.set(String::new());
+        filter_connection.set(String::new());
         load_data();
     };
 
@@ -356,7 +423,7 @@ pub fn YmReturnsList() -> impl IntoView {
                 item.refund_status,
                 item.total_items,
                 format_number(item.total_amount),
-                format_datetime(&item.created_at_source),
+                format_datetime_utc_local(&item.created_at_source, "%d.%m.%Y %H:%M:%S"),
                 if item.is_posted { "Да" } else { "Нет" }
             ));
         }
@@ -566,6 +633,18 @@ pub fn YmReturnsList() -> impl IntoView {
                                     </Flex>
                                 </div>
 
+                                <div style="min-width: 200px;">
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <Label>"Кабинет:"</Label>
+                                        <Select value=filter_connection>
+                                            <option value="">"— все —"</option>
+                                            {move || connections.get().into_iter().map(|c| {
+                                                view! { <option value={c.id}>{c.description}</option> }
+                                            }).collect_view()}
+                                        </Select>
+                                    </Flex>
+                                </div>
+
                                 {move || {
                                     if active_filters_count.get() > 0 {
                                         view! {
@@ -619,6 +698,10 @@ pub fn YmReturnsList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
+                                <TableHeaderCell resizable=false min_width=160.0 class="resizable">
+                                    "Кабинет"
+                                </TableHeaderCell>
+
                                 <TableHeaderCell resizable=false min_width=110.0 class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=toggle_sort("return_id")>
                                         "Return №"
@@ -635,6 +718,10 @@ pub fn YmReturnsList() -> impl IntoView {
                                             {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "order_id", state.with(|s| s.sort_ascending))}
                                         </span>
                                     </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=130.0 class="resizable">
+                                    "Дата заказа"
                                 </TableHeaderCell>
 
                                 <TableHeaderCell resizable=false min_width=100.0 class="resizable">
@@ -655,7 +742,7 @@ pub fn YmReturnsList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=false min_width=70.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=35.0 class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=toggle_sort("total_items")>
                                         "Шт."
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_items"))>
@@ -664,17 +751,13 @@ pub fn YmReturnsList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
-                                <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                                <TableHeaderCell resizable=false min_width=55.0 class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=toggle_sort("total_amount")>
                                         "Сумма"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_amount"))>
                                             {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "total_amount", state.with(|s| s.sort_ascending))}
                                         </span>
                                     </div>
-                                </TableHeaderCell>
-
-                                <TableHeaderCell resizable=false min_width=80.0 class="resizable">
-                                    "Провед."
                                 </TableHeaderCell>
                             </TableRow>
                         </TableHeader>
@@ -687,7 +770,6 @@ pub fn YmReturnsList() -> impl IntoView {
                                     let item_id = item.id.clone();
                                     let item_id_click = item.id.clone();
                                     let return_id = item.return_id;
-                                    let is_posted = item.is_posted;
 
                                     let return_type_badge = match item.return_type.as_str() {
                                         "UNREDEEMED" => "badge badge--warning",
@@ -722,8 +804,16 @@ pub fn YmReturnsList() -> impl IntoView {
                                                             open_detail(item_id_click.clone(), return_id);
                                                         }
                                                     >
-                                                        {format_datetime(&item.created_at_source)}
+                                                        {format_datetime_utc_local(&item.created_at_source, "%d.%m.%Y %H:%M:%S")}
                                                     </a>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {
+                                                        let conn_id = item.connection_id.clone();
+                                                        move || conn_map.get().get(&conn_id).cloned().unwrap_or_else(|| conn_id.clone())
+                                                    }
                                                 </TableCellLayout>
                                             </TableCell>
                                             <TableCell>
@@ -734,6 +824,15 @@ pub fn YmReturnsList() -> impl IntoView {
                                             <TableCell>
                                                 <TableCellLayout>
                                                     <span style="font-variant-numeric: tabular-nums;">{item.order_id}</span>
+                                                </TableCellLayout>
+                                            </TableCell>
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {if item.order_date.is_empty() {
+                                                        "—".to_string()
+                                                    } else {
+                                                        format_datetime_utc_local(&item.order_date, "%d.%m.%Y %H:%M")
+                                                    }}
                                                 </TableCellLayout>
                                             </TableCell>
                                             <TableCell>
@@ -756,15 +855,6 @@ pub fn YmReturnsList() -> impl IntoView {
                                                 show_currency=false
                                                 color_by_sign=false
                                             />
-                                            <TableCell>
-                                                <TableCellLayout>
-                                                    {if is_posted {
-                                                        view! { <span class="badge badge--success">"Да"</span> }.into_any()
-                                                    } else {
-                                                        view! { <span class="badge badge--neutral">"Нет"</span> }.into_any()
-                                                    }}
-                                                </TableCellLayout>
-                                            </TableCell>
                                         </TableRow>
                                     }
                                 }

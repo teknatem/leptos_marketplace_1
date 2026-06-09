@@ -11,11 +11,13 @@ pub mod layer;
 pub mod metadata;
 pub mod report;
 pub mod resource_detail;
+pub mod supplier_balance;
 pub mod turnover;
 pub mod weekly_reconciliation;
 pub mod ym_revenue_reconciliation;
 
 pub use account_view::{GlAccountViewQuery, GlAccountViewResponse, GlAccountViewRow};
+pub use supplier_balance::{SupplierBalanceQuery, SupplierBalanceResponse};
 pub use accounting::{AccountDef, AccountType, NormalBalance, StatementSection};
 pub use dto::{GeneralLedgerEntryDto, GeneralLedgerTurnoverDto};
 pub use entity::{

@@ -295,6 +295,8 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
     let (resource_loading, set_resource_loading) = signal(false);
     let (resource_error, set_resource_error) = signal::<Option<String>>(None);
     let ref_lookups: RwSignal<RefLookups> = RwSignal::new(HashMap::new());
+    // Представление кабинета МП (description) для блока «Глобальные измерения».
+    let (connection_name, set_connection_name) = signal::<Option<String>>(None);
 
     Effect::new(move |_| {
         let id = id.clone();
@@ -315,6 +317,22 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                 &format!("general_ledger_details_{}", detail_id.get_value()),
                 &format!("General Ledger {}", short_id(&item.id)),
             );
+
+            // Резолвим представление кабинета МП (uuid → description).
+            set_connection_name.set(None);
+            if let Some(conn_id) = item
+                .connection_mp_ref
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+            {
+                spawn_local(async move {
+                    if let Some((_, _, label)) =
+                        resolve_ref(RefKind::ConnectionMp, conn_id).await
+                    {
+                        set_connection_name.set(Some(label));
+                    }
+                });
+            }
 
             let code = item.turnover_code.clone();
             if !code.is_empty() {
@@ -562,9 +580,21 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                                 ref_lookups=ref_lookups
                             />
                         }.into_any(),
-                        _ => view! {
+                        _ => {
+                            // Представление кабинета: resolved description → иначе сырой ref → «-».
+                            let connection_display = connection_name
+                                .get()
+                                .filter(|value| !value.trim().is_empty())
+                                .or_else(|| {
+                                    item.connection_mp_ref
+                                        .clone()
+                                        .filter(|value| !value.trim().is_empty())
+                                })
+                                .unwrap_or_else(|| "-".to_string());
+                            view! {
                             <GeneralTabContent
                                 item=item
+                                connection_display=connection_display
                                 turnover=turnover
                                 turnover_loading=turnover_loading
                                 on_open_registrator=Callback::new(move |(t, r): (String, String)| {
@@ -574,7 +604,8 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                                     open_resource_target(t, r)
                                 })
                             />
-                        }.into_any(),
+                        }.into_any()
+                        },
                     }
                 }}
             </div>
@@ -585,6 +616,7 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
 #[component]
 fn GeneralTabContent(
     item: GeneralLedgerEntryDto,
+    connection_display: String,
     turnover: ReadSignal<Option<GeneralLedgerTurnoverDto>>,
     turnover_loading: ReadSignal<bool>,
     on_open_registrator: Callback<(String, String)>,
@@ -668,9 +700,11 @@ fn GeneralTabContent(
                         label="Order ID"
                         value=item.order_id.clone().unwrap_or_else(|| "-".to_string())
                     />
+                    <ReadonlyField label="Connection MP" value=connection_display />
+                    <ReadonlyField label="Layer" value=item.layer.as_str().to_string() />
                     <ReadonlyField
-                        label="Connection MP"
-                        value=item.connection_mp_ref.clone().unwrap_or_else(|| "-".to_string())
+                        label="Субъект (entity)"
+                        value=item.entity.clone().unwrap_or_else(|| "-".to_string())
                     />
                 </CardAnimated>
 
@@ -1101,7 +1135,7 @@ fn ResourceRecordCard(
                         let encoded = urlencoding::encode(&srid_for_click);
                         tabs.open_tab(
                             &format!("d402_wb_order_flow_srid_{}", encoded),
-                            "Схема заказа WB",
+                            "Вся история",
                         );
                     }
                     title=srid_for_title

@@ -129,6 +129,8 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                         let mp_ref = line.marketplace_product_ref.clone();
                                         let nom_map = vm.nomenclatures_info;
                                         let mp_map = vm.marketplace_products_info;
+                                        let line_status = line.status.clone();
+                                        let line_details = line.details.clone();
 
                                         view! {
                                             <TableRow>
@@ -213,7 +215,33 @@ pub fn LinesTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                                         }}
                                                     </TableCellLayout>
                                                 </TableCell>
-                                                <TableCell><TableCellLayout>{line.status.unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
+                                                <TableCell>
+                                                    <TableCellLayout>
+                                                        {match line_status.clone() {
+                                                            Some(s) if !s.is_empty() => {
+                                                                let upper = s.to_uppercase();
+                                                                let color = if upper.contains("REJECT") {
+                                                                    BadgeColor::Danger
+                                                                } else if upper.contains("RETURN") {
+                                                                    BadgeColor::Warning
+                                                                } else {
+                                                                    BadgeColor::Subtle
+                                                                };
+                                                                let upd = line_details
+                                                                    .iter()
+                                                                    .find_map(|d| d.update_date.clone())
+                                                                    .unwrap_or_default();
+                                                                view! {
+                                                                    <Badge appearance=BadgeAppearance::Tint color=color>{s}</Badge>
+                                                                    {(!upd.is_empty()).then(|| view! {
+                                                                        <span style="margin-left: var(--spacing-xs); color: var(--colorNeutralForeground3); font-size: 0.85em;">{upd}</span>
+                                                                    })}
+                                                                }.into_any()
+                                                            }
+                                                            _ => view! { <span>"—"</span> }.into_any(),
+                                                        }}
+                                                    </TableCellLayout>
+                                                </TableCell>
                                             </TableRow>
                                         }
                                     }

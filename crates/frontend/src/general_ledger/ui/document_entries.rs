@@ -1,3 +1,4 @@
+use crate::general_ledger::ui::entity_badge::GlEntityBadge;
 use crate::general_ledger::ui::layer_badge::GlLayerBadge;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::clipboard::copy_to_clipboard_with_callback;
@@ -54,6 +55,11 @@ fn sort_entries(rows: &mut [GeneralLedgerEntryDto], field: &str, ascending: bool
         let ord = match field {
             "entry_date" => left.entry_date.cmp(&right.entry_date),
             "layer" => left.layer.as_str().cmp(right.layer.as_str()),
+            "entity" => left
+                .entity
+                .as_deref()
+                .unwrap_or("")
+                .cmp(right.entity.as_deref().unwrap_or("")),
             "turnover_name" => turnover_name(left).cmp(turnover_name(right)),
             "turnover_code" => left.turnover_code.cmp(&right.turnover_code),
             "debit_account" => left.debit_account.cmp(&right.debit_account),
@@ -87,6 +93,7 @@ fn build_excel_tsv(rows: &[GeneralLedgerEntryDto]) -> String {
         [
             "Дата",
             "Слой",
+            "Субъект",
             "Наименование оборота",
             "Код оборота",
             "Дт",
@@ -102,6 +109,7 @@ fn build_excel_tsv(rows: &[GeneralLedgerEntryDto]) -> String {
             [
                 tsv_cell(fmt_date_time(&entry.entry_date)),
                 tsv_cell(entry.layer.as_str()),
+                tsv_cell(entry.entity.as_deref().unwrap_or("")),
                 tsv_cell(turnover_name(entry)),
                 tsv_cell(&entry.turnover_code),
                 tsv_cell(&entry.debit_account),
@@ -210,7 +218,7 @@ pub fn DocumentGeneralLedgerEntries(
                     </div>
 
                     <div class="table-wrapper" style="max-width:1180px;margin-left:auto;margin-right:auto;">
-                        <Table attr:style="width:100%;min-width:960px;table-layout:fixed;">
+                        <Table attr:style="width:100%;min-width:1040px;table-layout:fixed;">
                             <TableHeader>
                                 <TableRow>
                                     <TableHeaderCell min_width=120.0 attr:style="width:120px;">
@@ -226,6 +234,14 @@ pub fn DocumentGeneralLedgerEntries(
                                             "Слой"
                                             <span class=move || get_sort_class(&sort_field.get(), "layer")>
                                                 {move || get_sort_indicator(&sort_field.get(), "layer", sort_ascending.get())}
+                                            </span>
+                                        </div>
+                                    </TableHeaderCell>
+                                    <TableHeaderCell min_width=76.0 attr:style="width:76px;">
+                                        <div class="table__sortable-header" style="cursor:pointer;" on:click=move |_| toggle_sort("entity")>
+                                            "Субъект"
+                                            <span class=move || get_sort_class(&sort_field.get(), "entity")>
+                                                {move || get_sort_indicator(&sort_field.get(), "entity", sort_ascending.get())}
                                             </span>
                                         </div>
                                     </TableHeaderCell>
@@ -299,6 +315,16 @@ pub fn DocumentGeneralLedgerEntries(
                                                 <TableCell attr:style="width:72px;">
                                                     <TableCellLayout>
                                                         <GlLayerBadge layer=entry.layer.as_str().to_string() />
+                                                    </TableCellLayout>
+                                                </TableCell>
+                                                <TableCell attr:style="width:76px;">
+                                                    <TableCellLayout>
+                                                        {match entry.entity.as_deref() {
+                                                            Some(code) if !code.is_empty() => {
+                                                                view! { <GlEntityBadge entity=code.to_string() /> }.into_any()
+                                                            }
+                                                            _ => view! { <span class="text-muted">"—"</span> }.into_any(),
+                                                        }}
                                                     </TableCellLayout>
                                                 </TableCell>
                                                 <TableCell>

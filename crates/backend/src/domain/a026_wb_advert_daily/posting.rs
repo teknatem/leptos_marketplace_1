@@ -696,6 +696,8 @@ mod tests {
             sale_price: None,
             dealer_price_ut: None,
             margin_pro: None,
+            currency_code: None,
+            fx_rate: None,
         };
         assert_eq!(
             line(Some(80.0), Some(100.0), Some(70.0), Some(90.0)).allocation_basis(),

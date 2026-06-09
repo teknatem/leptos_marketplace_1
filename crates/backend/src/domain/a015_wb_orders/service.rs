@@ -301,20 +301,38 @@ pub async fn fill_line_price_from_marketplace_raw(order: &mut WbOrders) {
     }
 }
 
-/// Восстановить `salePrice` из привязанного Marketplace-пейлоада, если на строке его нет.
+/// Из привязанного Marketplace-пейлоада проставить валюту заказа (`currency_code`/`fx_rate`)
+/// и пересчитать рублёвый `sale_price`.
 ///
-/// Statistics API не отдаёт `salePrice` и при ре-импорте перезаписывает `line_json`,
-/// затирая `sale_price`, ранее проставленный Marketplace API. А `base_price` для
-/// `margin_pro` у FBS-заказов держится именно на `salePrice`. Поэтому при импорте и
-/// проведении дочитываем его обратно из сохранённого пейлоада (ref переживает ре-импорт).
+/// Зачем: Statistics API не отдаёт `salePrice` и при ре-импорте затирает `line_json`, а у
+/// трансграничных заказов СНГ исходный `salePrice` приходит в валюте продажи (`currencyCode`,
+/// напр. 398 KZT). `base_price` для `margin_pro` держится на `salePrice` и обязан быть в
+/// рублях. Поэтому дочитываем значение из пейлоада (ref переживает ре-импорт) и:
+/// - проставляем валюту-маркер (только для не-рублёвых заказов, иначе None);
+/// - ПЕРЕЗАПИСЫВАЕМ `sale_price` из пейлоада с применением курса (`marketplace_field_rubles`).
+///
+/// Перезапись, а не «заполнить если пусто»: у заказов, импортированных до фикса валют,
+/// на строке лежит salePrice в исходной валюте (раздутый), и без перерасчёта перепроведение
+/// не исправляло бы `margin_pro`. FBW-заказы (без marketplace-пейлоада) — no-op.
 pub async fn fill_sale_price_from_marketplace_raw(order: &mut WbOrders) {
-    if order.line.sale_price.filter(|&v| v > 0.0).is_some() {
+    let Some(value) = marketplace_raw_json(order).await else {
         return;
-    }
-    if let Some(value) = marketplace_raw_json(order).await {
-        if let Some(sale_price) = marketplace_field_rubles(&value, "salePrice") {
-            order.line.sale_price = Some(sale_price);
+    };
+
+    let fx = marketplace_fx_rate(&value);
+    match value.get("currencyCode").and_then(|v| v.as_i64()) {
+        Some(code) if code != 643 => {
+            order.line.currency_code = Some(code);
+            order.line.fx_rate = Some(fx);
         }
+        _ => {
+            order.line.currency_code = None;
+            order.line.fx_rate = None;
+        }
+    }
+
+    if let Some(sale_price) = marketplace_field_rubles(&value, "salePrice") {
+        order.line.sale_price = Some(sale_price);
     }
 }
 
@@ -336,12 +354,33 @@ async fn marketplace_raw_json(document: &WbOrders) -> Option<serde_json::Value> 
     serde_json::from_str(&raw_json).ok()
 }
 
+/// WB exchange rate (RUB per unit of the order selling currency) from a Marketplace payload.
+///
+/// WB returns `price`/`salePrice` in the order selling currency (`currencyCode`); the RUB
+/// equivalent lives in `convertedPrice`/`convertedFinalPrice` (`convertedCurrencyCode = 643`).
+/// The rate is the ratio of a converted amount to its source amount (both minor units, so the
+/// ratio is dimensionless). Falls back to 1.0 for RUB orders or legacy payloads without
+/// converted amounts. Mirrors `wb_fx_rate` in the u504 marketplace_order processor.
+fn marketplace_fx_rate(value: &serde_json::Value) -> f64 {
+    let ratio = |num: &str, den: &str| {
+        let n = value.get(num).and_then(|v| v.as_f64())?;
+        let d = value.get(den).and_then(|v| v.as_f64())?;
+        (n > 0.0 && d > 0.0).then_some(n / d)
+    };
+    ratio("convertedPrice", "price")
+        .or_else(|| ratio("convertedFinalPrice", "finalPrice"))
+        .unwrap_or(1.0)
+}
+
+/// Read a WB selling-currency amount (kopecks) from the payload and convert it to RUB.
+/// Applies `marketplace_fx_rate`, so cross-border (KZT/BYN/AMD) amounts come out in rubles —
+/// this keeps `base_price` for `margin_pro` truthful (must be a ruble sum).
 fn marketplace_field_rubles(value: &serde_json::Value, field: &str) -> Option<f64> {
     let kopecks = value.get(field).and_then(|v| v.as_f64())?;
     if kopecks <= 0.0 {
         return None;
     }
-    Some(kopecks / 100.0)
+    Some(kopecks / 100.0 * marketplace_fx_rate(value))
 }
 
 async fn marketplace_price_rubles(document: &WbOrders) -> Option<f64> {

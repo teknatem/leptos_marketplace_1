@@ -133,6 +133,8 @@ pub async fn list_orders_fast(
                 organization_name,
                 total_dealer_amount: row.total_dealer_amount,
                 margin_pro: row.margin_pro,
+                realization_date: row.realization_date.unwrap_or_default(),
+                payment_date: row.payment_date.unwrap_or_default(),
             }
         })
         .collect();

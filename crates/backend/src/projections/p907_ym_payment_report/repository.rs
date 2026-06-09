@@ -293,6 +293,7 @@ pub async fn list_with_filters(
     transaction_source: Option<String>,
     shop_sku: Option<String>,
     order_id: Option<i64>,
+    bank_order_id: Option<i64>,
     connection_mp_ref: Option<String>,
     organization_ref: Option<String>,
     sort_by: &str,
@@ -339,6 +340,9 @@ pub async fn list_with_filters(
         }
         if let Some(oid) = order_id {
             q = q.filter(Column::OrderId.eq(oid));
+        }
+        if let Some(boid) = bank_order_id {
+            q = q.filter(Column::BankOrderId.eq(boid));
         }
         if let Some(ref conn) = connection_mp_ref {
             q = q.filter(Column::ConnectionMpRef.eq(conn));
@@ -395,6 +399,13 @@ pub async fn list_with_filters(
                 query.order_by_desc(Column::BankSum)
             } else {
                 query.order_by_asc(Column::BankSum)
+            }
+        }
+        "bank_order_id" => {
+            if sort_desc {
+                query.order_by_desc(Column::BankOrderId)
+            } else {
+                query.order_by_asc(Column::BankOrderId)
             }
         }
         _ => {
@@ -536,6 +547,29 @@ pub async fn get_by_uuid(id: &str) -> Result<Option<Model>> {
     let db = get_connection();
     let item = Entity::find().filter(Column::Id.eq(id)).one(db).await?;
     Ok(item)
+}
+
+/// Строки «Платёж/Возврат платежа покупателя» одного кабинета за день доставки
+/// (`order_delivery_date` = day). Для мини-отчёта деталей a034 (fina-детализация
+/// доставленных заказов и возвратов этого дня). `day` — "YYYY-MM-DD".
+pub async fn list_buyer_movements_by_delivery_day(
+    connection_mp_ref: &str,
+    day: &str,
+) -> Result<Vec<Model>> {
+    let db = get_connection();
+    let rows = Entity::find()
+        .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
+        .filter(Column::OrderDeliveryDate.like(format!("{}%", day)))
+        .filter(
+            Column::TransactionSource
+                .is_in(["Платёж покупателя", "Возврат платежа покупателя"]),
+        )
+        .order_by_asc(Column::TransactionSource)
+        .order_by_asc(Column::OrderId)
+        .order_by_asc(Column::TransactionDate)
+        .all(db)
+        .await?;
+    Ok(rows)
 }
 
 /// Get a single entry by record_key (legacy/internal use).

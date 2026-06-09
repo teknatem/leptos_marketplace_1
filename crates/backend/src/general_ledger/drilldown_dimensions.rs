@@ -804,6 +804,7 @@ impl DimensionSeed {
             "connection_mp_ref" => "Cab",
             "registrator_type" => "RegType",
             "layer" => "Layer",
+            "entity" => "Entity",
             "registrator_ref" => "RegRef",
             "nomenclature" => "Nom",
             "dim1_category" => "Nom01",
@@ -1133,7 +1134,7 @@ mod tests {
     fn dimension_signature_matches_profiles() {
         assert_eq!(
             dimension_signature_from_ids(COMMON_DIMENSION_IDS),
-            "Day.Cab.RegType.Layer.RegRef.Turn.Dr.Cr"
+            "Day.Cab.RegType.Layer.Entity.RegRef.Turn.Dr.Cr"
         );
         assert_eq!(
             dimension_signature_from_ids(&[

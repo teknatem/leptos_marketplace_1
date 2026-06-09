@@ -14,6 +14,8 @@ struct PersistedState {
     pub shop_sku_filter: String,
     #[serde(default)]
     pub order_id_filter: String,
+    #[serde(default)]
+    pub bank_order_id_filter: String,
     pub connection_filter: String,
     pub sort_by: String,
     pub sort_ascending: bool,
@@ -31,6 +33,7 @@ pub struct P907ListState {
     pub transaction_source_filter: String,
     pub shop_sku_filter: String,
     pub order_id_filter: String,
+    pub bank_order_id_filter: String,
     pub connection_filter: String,
 
     // Sorting
@@ -61,6 +64,7 @@ impl Default for P907ListState {
             transaction_source_filter: String::new(),
             shop_sku_filter: String::new(),
             order_id_filter: String::new(),
+            bank_order_id_filter: String::new(),
             connection_filter: String::new(),
             sort_by: "transaction_date".to_string(),
             sort_ascending: false,
@@ -100,6 +104,7 @@ pub fn persist_state(signal: RwSignal<P907ListState>) {
         transaction_source_filter: st.transaction_source_filter,
         shop_sku_filter: st.shop_sku_filter,
         order_id_filter: st.order_id_filter,
+        bank_order_id_filter: st.bank_order_id_filter,
         connection_filter: st.connection_filter,
         sort_by: st.sort_by,
         sort_ascending: st.sort_ascending,
@@ -119,6 +124,7 @@ pub fn create_state() -> RwSignal<P907ListState> {
         st.transaction_source_filter = p.transaction_source_filter;
         st.shop_sku_filter = p.shop_sku_filter;
         st.order_id_filter = p.order_id_filter;
+        st.bank_order_id_filter = p.bank_order_id_filter;
         st.connection_filter = p.connection_filter;
         st.sort_by = p.sort_by;
         st.sort_ascending = p.sort_ascending;

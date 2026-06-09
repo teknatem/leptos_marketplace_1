@@ -844,6 +844,27 @@ impl ImportExecutor {
             }
         }
 
+        // Phase 7: завершить денежный контур — перестроить проводки перечислений
+        // (Дт51/Кт7609) по банковским ордерам. Distinct bank_order_id'ов немного
+        // (десятки), поэтому перестраиваем весь диапазон — дёшево и идемпотентно.
+        match crate::projections::p907_ym_payment_report::settlement_posting::rebuild_settlements_for_range(
+            "0000-01-01",
+            "9999-12-31",
+        )
+        .await
+        {
+            Ok(n) => tracing::info!("YM settlements rebuilt: {} bank-order entries", n),
+            Err(e) => {
+                tracing::error!("YM settlement rebuild failed: {}", e);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    "Ошибка перестроения перечислений (ym_settlement)".to_string(),
+                    Some(e.to_string()),
+                );
+            }
+        }
+
         self.progress_tracker
             .set_current_item(session_id, aggregate_index, None);
         self.progress_tracker

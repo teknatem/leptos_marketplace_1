@@ -11,6 +11,26 @@ use contracts::domain::a015_wb_orders::aggregate::{
 };
 use contracts::domain::common::AggregateId;
 
+/// WB exchange rate (RUB per unit of the order selling currency).
+///
+/// WB Marketplace API returns `price`/`salePrice`/`finalPrice` in the order's selling
+/// currency (`currencyCode`), while `convertedPrice`/`convertedFinalPrice` carry the same
+/// amounts in RUB (`convertedCurrencyCode = 643`). For non-RUB markets (e.g. KZT, currencyCode
+/// 398) the raw `salePrice` is in tenge, so storing it as rubles inflates the value ~7x.
+///
+/// The rate is derived from the ratio of a converted amount to its source amount. Both are in
+/// minor units, so the ratio is dimensionless. Falls back to 1.0 for RUB orders or when no
+/// converted amounts are available (legacy `/api/v3/orders` payloads).
+fn wb_fx_rate(order: &WbMarketplaceOrderRow) -> f64 {
+    let ratio = |converted: Option<i64>, source: Option<i64>| match (converted, source) {
+        (Some(c), Some(s)) if c > 0 && s > 0 => Some(c as f64 / s as f64),
+        _ => None,
+    };
+    ratio(order.converted_price, order.price)
+        .or_else(|| ratio(order.converted_final_price, order.final_price))
+        .unwrap_or(1.0)
+}
+
 /// Process a single order from /api/v3/orders or /api/v3/orders/new.
 ///
 /// Strategy:
@@ -66,7 +86,12 @@ pub async fn process_marketplace_order(
             let _ = a015_wb_orders::service::store_marketplace_raw_payload(&document_no, &raw_json)
                 .await?;
         }
-        if let Some(price_rub) = order.price.filter(|&p| p > 0).map(|p| p as f64 / 100.0) {
+        let fx = wb_fx_rate(order);
+        if let Some(price_rub) = order
+            .price
+            .filter(|&p| p > 0)
+            .map(|p| p as f64 / 100.0 * fx)
+        {
             let _ = a015_wb_orders::service::update_line_price_if_missing(&document_no, price_rub)
                 .await;
         }
@@ -90,6 +115,15 @@ pub async fn process_marketplace_order(
         .cloned()
         .unwrap_or_default();
 
+    // Convert WB selling-currency amounts to RUB before storing (see wb_fx_rate).
+    let fx = wb_fx_rate(order);
+    // Persist the original currency only for cross-border (non-RUB) orders, so the
+    // converted RUB amounts stay auditable instead of looking unexplained in the aggregate.
+    let (currency_code, fx_rate) = match order.currency_code {
+        Some(code) if code != 643 => (Some(code as i64), Some(fx)),
+        _ => (None, None),
+    };
+
     let line = WbOrdersLine {
         // Store the numeric WB order ID so the sticker API can use it later.
         // Statistics API will try to overwrite this with srid; service.rs preserves it.
@@ -111,10 +145,15 @@ pub async fn process_marketplace_order(
         spp: None,
         finished_price: None,
         price_with_disc: None,
-        price: order.price.map(|p| p as f64 / 100.0),
-        sale_price: order.sale_price.filter(|&p| p > 0).map(|p| p as f64 / 100.0),
+        price: order.price.map(|p| p as f64 / 100.0 * fx),
+        sale_price: order
+            .sale_price
+            .filter(|&p| p > 0)
+            .map(|p| p as f64 / 100.0 * fx),
         dealer_price_ut: None,
         margin_pro: None,
+        currency_code,
+        fx_rate,
     };
 
     let order_dt = order

@@ -449,7 +449,6 @@ fn PaymentReportsSummaryCard(vm: YmOrderDetailsVm, currency: String) -> impl Int
                 .iter()
                 .filter_map(|report| report.transaction_sum)
                 .sum();
-            let total_bank_sum: f64 = reports.iter().filter_map(|report| report.bank_sum).sum();
 
             view! {
                 <CardAnimated delay_ms=120 nav_id="a013_ym_order_details_detail_payment_summary">
@@ -465,13 +464,6 @@ fn PaymentReportsSummaryCard(vm: YmOrderDetailsVm, currency: String) -> impl Int
                             label="Сумма транзакций"
                             field="sum(transaction_sum)"
                             value=Signal::derive(move || Some(total_transaction_sum))
-                            unit=currency.get_value()
-                            color_by_sign=false
-                        />
-                        <MoneyMetricRow
-                            label="Сумма ПП"
-                            field="sum(bank_sum)"
-                            value=Signal::derive(move || Some(total_bank_sum))
                             unit=currency.get_value()
                             color_by_sign=false
                         />

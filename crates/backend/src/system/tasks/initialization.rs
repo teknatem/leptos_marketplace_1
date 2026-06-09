@@ -15,7 +15,8 @@ use super::{
         Task009WbPromotionsManager, Task010WbDocumentsManager, Task011WbAdvertManager,
         Task012WbAdvertCampaignsManager, Task013YmOrdersPollingManager, Task014KbAnalyzeManager,
         Task015KbPostManager, Task016KbIntakeManager, Task017WbReturnsClaimsManager,
-        U501ImportUtManager, U502ImportOzonManager, U503ImportYandexManager,
+        Task018YmReturnsManager, Task019YmPaymentReportManager, U501ImportUtManager,
+        U502ImportOzonManager, U503ImportYandexManager,
     },
     registry::{set_global_registry, TaskManagerRegistry},
     worker::ScheduledTaskWorker,
@@ -79,6 +80,8 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
     // ---- Yandex atomic task managers ----
 
     registry.register(Task013YmOrdersPollingManager::new(ym_executor!()));
+    registry.register(Task018YmReturnsManager::new(ym_executor!()));
+    registry.register(Task019YmPaymentReportManager::new(ym_executor!()));
 
     // ---- Knowledge base task managers ----
 

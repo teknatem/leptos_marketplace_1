@@ -1,0 +1,173 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "YmSettlementRecon",
+  "entity_index": "a035",
+  "collection_name": "ym_settlement_recon",
+  "table_name": "a035_ym_settlement_recon",
+
+  "ui": {
+    "element_name": "Сверка перечислений YM",
+    "element_name_en": "YM Settlement Reconciliation",
+    "list_name": "Сверка перечислений YM",
+    "list_name_en": "YM Settlement Reconciliation",
+    "icon": "scale"
+  },
+
+  "ai": {
+    "description": "Документ-сверка одного банковского ордера YM (bank_order_id из p907_ym_payment_report). Таблица операций ордера сгруппирована по нашим оборотам (turnover_code), их сумма — «теоретическая» сумма к перечислению, которая сверяется с фактом YM (bank_sum). Создаётся командой «Сформировать ордера» (один ордер = один документ).",
+    "questions": [
+      "Сходится ли банковский ордер YM с расчётом по нашим оборотам?",
+      "Какое расхождение (эквайринг/холдбэк) между bank_sum и нашими начислениями?",
+      "Из каких оборотов складывается перечисление YM по ордеру?"
+    ],
+    "related": [
+      "p907_ym_payment_report",
+      "a006_connection_mp",
+      "a002_organization"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "YmSettlementReconId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "ID", "visible_in_list": false, "visible_in_form": false },
+      "validation": { "required": true }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "Код", "visible_in_list": true, "visible_in_form": false, "column_width": 140 },
+      "validation": { "required": true },
+      "ai_hint": "Номер банковского ордера YM."
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": { "label": "Описание", "visible_in_list": true, "visible_in_form": false, "column_width": 320 },
+      "validation": { "required": true },
+      "ai_hint": "Описание документа: ордер, дата, кабинет."
+    },
+    {
+      "name": "bank_order_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Ордер", "visible_in_list": true, "visible_in_form": false, "column_width": 140 },
+      "validation": { "required": true },
+      "ai_hint": "Номер банковского ордера YM (p907.bank_order_id)."
+    },
+    {
+      "name": "bank_order_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Дата ордера", "visible_in_list": true, "visible_in_form": false, "widget": "date", "column_width": 120 },
+      "validation": { "required": true },
+      "ai_hint": "Дата банковского ордера. Для периода: bank_order_date >= 'YYYY-MM-DD' AND bank_order_date <= 'YYYY-MM-DD'."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a006_connection_mp",
+      "ui": { "label": "Подключение (кабинет YM)", "visible_in_list": true, "visible_in_form": false, "column_width": 220 },
+      "validation": { "required": true },
+      "ai_hint": "UUID подключения кабинета YM из a006_connection_mp."
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a002_organization",
+      "ui": { "label": "Организация", "visible_in_list": false, "visible_in_form": false, "column_width": 220 },
+      "validation": { "required": true },
+      "ai_hint": "UUID организации из a002_organization."
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a005_marketplace",
+      "ui": { "label": "Маркетплейс", "visible_in_list": false, "visible_in_form": false, "column_width": 180 },
+      "validation": { "required": true },
+      "ai_hint": "UUID маркетплейса из a005_marketplace (для YM)."
+    },
+    {
+      "name": "period_from",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Период с", "visible_in_list": false, "visible_in_form": false, "widget": "date", "column_width": 120 },
+      "validation": { "required": false },
+      "ai_hint": "Начало периода покрытых ордером операций (min transaction_date)."
+    },
+    {
+      "name": "period_to",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Период по", "visible_in_list": false, "visible_in_form": false, "widget": "date", "column_width": 120 },
+      "validation": { "required": false },
+      "ai_hint": "Конец периода покрытых ордером операций (max transaction_date)."
+    },
+    {
+      "name": "bank_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Факт YM", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 140 },
+      "validation": { "required": true },
+      "ai_hint": "Факт YM — итог банковского ордера (p907.bank_sum)."
+    },
+    {
+      "name": "theoretical_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Теор. сумма", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 140 },
+      "validation": { "required": true },
+      "ai_hint": "Сумма наших оборотов по ордеру (как должно быть по нашим представлениям)."
+    },
+    {
+      "name": "deviation",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Расхождение", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 140 },
+      "validation": { "required": true },
+      "ai_hint": "theoretical_sum − bank_sum. ≈0 ⇒ ордер сходится."
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Обороты JSON", "visible_in_list": false, "visible_in_form": false, "widget": "textarea" },
+      "validation": { "required": true },
+      "ai_hint": "JSON таблицы оборотов: turnover_code, turnover_name, amount, rows_count."
+    }
+  ],
+
+  "access": {
+    "scope_id": "a035_ym_settlement_recon",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

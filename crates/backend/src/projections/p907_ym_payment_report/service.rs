@@ -59,6 +59,21 @@ async fn rebuild_from_row(
         .await?;
     }
 
+    // Таймлайн событий заказа (p915): оплата / возврат оплаты по этой строке p907.
+    crate::projections::p915_mp_order_events::repository::delete_by_registrator_refs_with_conn(
+        &txn,
+        std::slice::from_ref(&row.id),
+    )
+    .await?;
+    let order_events =
+        crate::projections::p915_mp_order_events::builder::from_ym_payment_row(&row);
+    for event in &order_events {
+        crate::projections::p915_mp_order_events::repository::insert_entry_raw_with_conn(
+            &txn, event,
+        )
+        .await?;
+    }
+
     txn.commit().await?;
 
     Ok(general_ledger_entries.len())

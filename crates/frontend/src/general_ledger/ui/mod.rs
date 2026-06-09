@@ -11,6 +11,7 @@ pub mod layers;
 pub mod list;
 pub mod matrix;
 pub mod report;
+pub mod supplier_balance;
 pub mod turnovers;
 pub mod weekly_reconciliation;
 pub mod ym_revenue_reconciliation;
@@ -28,6 +29,7 @@ pub use document_entries::{
 pub use drilldown::GlDrilldownPage;
 pub use list::GeneralLedgerPage;
 pub use report::GeneralLedgerReportPage;
+pub use supplier_balance::SupplierBalancePage;
 pub use turnovers::{GeneralLedgerTurnoverDetails, GeneralLedgerTurnoversPage};
 pub use weekly_reconciliation::WbWeeklyReconciliationPage;
 pub use ym_revenue_reconciliation::YmRevenueReconciliationPage;

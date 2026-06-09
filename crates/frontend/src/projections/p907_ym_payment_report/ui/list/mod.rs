@@ -116,6 +116,7 @@ async fn fetch_payment_report(
     transaction_source: &str,
     shop_sku: &str,
     order_id: &str,
+    bank_order_id: &str,
     connection_mp_ref: &str,
     sort_by: &str,
     sort_desc: bool,
@@ -151,6 +152,9 @@ async fn fetch_payment_report(
     }
     if !order_id.is_empty() {
         params += &format!("&order_id={}", urlencoding::encode(order_id));
+    }
+    if !bank_order_id.is_empty() {
+        params += &format!("&bank_order_id={}", urlencoding::encode(bank_order_id));
     }
     if !connection_mp_ref.is_empty() {
         params += &format!(
@@ -263,6 +267,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
         RwSignal::new(state.get_untracked().transaction_source_filter.clone());
     let shop_sku_filter = RwSignal::new(state.get_untracked().shop_sku_filter.clone());
     let order_id_filter = RwSignal::new(state.get_untracked().order_id_filter.clone());
+    let bank_order_id_filter = RwSignal::new(state.get_untracked().bank_order_id_filter.clone());
     let connection_filter = RwSignal::new(state.get_untracked().connection_filter.clone());
 
     let active_filters_count = Signal::derive(move || {
@@ -284,6 +289,9 @@ pub fn YmPaymentReportList() -> impl IntoView {
             count += 1;
         }
         if !s.order_id_filter.is_empty() {
+            count += 1;
+        }
+        if !s.bank_order_id_filter.is_empty() {
             count += 1;
         }
         if !s.connection_filter.is_empty() {
@@ -315,6 +323,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
         let source_val = st.transaction_source_filter;
         let sku_val = st.shop_sku_filter;
         let order_id_val = st.order_id_filter;
+        let bank_order_id_val = st.bank_order_id_filter;
         let conn_val = st.connection_filter;
         let sort_by_val = st.sort_by;
         let sort_desc = !st.sort_ascending;
@@ -330,6 +339,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                 &source_val,
                 &sku_val,
                 &order_id_val,
+                &bank_order_id_val,
                 &conn_val,
                 &sort_by_val,
                 sort_desc,
@@ -439,6 +449,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
             s.transaction_source_filter = transaction_source_filter.get();
             s.shop_sku_filter = shop_sku_filter.get();
             s.order_id_filter = order_id_filter.get();
+            s.bank_order_id_filter = bank_order_id_filter.get();
             s.connection_filter = connection_filter.get();
         });
         persist_state(state);
@@ -662,6 +673,19 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                 </Flex>
 
                                 <Flex vertical=true gap=FlexGap::Small>
+                                    <Label>"Банковский ордер:"</Label>
+                                    <input
+                                        type="number"
+                                        class="form__input"
+                                        placeholder="bank_order_id..."
+                                        prop:value=move || bank_order_id_filter.get()
+                                        on:input=move |ev| {
+                                            bank_order_id_filter.set(event_target_value(&ev));
+                                        }
+                                    />
+                                </Flex>
+
+                                <Flex vertical=true gap=FlexGap::Small>
                                     <Label>"Подключение:"</Label>
                                     <Select value=connection_filter>
                                         <option value="">"— все —"</option>
@@ -748,6 +772,16 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     </span>
                                 </TableHeaderCell>
 
+                                <TableHeaderCell resizable=true min_width=110.0>
+                                    "Банк. ордер"
+                                    <span class=move || get_sort_class("bank_order_id", &state.get().sort_by)
+                                        on:click=move |_| toggle_sort("bank_order_id")
+
+                                    >
+                                        {move || get_sort_indicator("bank_order_id", &state.get().sort_by, state.get().sort_ascending)}
+                                    </span>
+                                </TableHeaderCell>
+
                                 <TableHeaderCell resizable=true min_width=100.0>"Статус"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=100.0>"Источник"</TableHeaderCell>
                                 <TableHeaderCell resizable=true min_width=160.0>"Комментарий"</TableHeaderCell>
@@ -759,7 +793,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                 if is_loading.get() {
                                     return view! {
                                         <TableRow>
-                                            <TableCell attr:colspan="13">
+                                            <TableCell attr:colspan="14">
                                                 <TableCellLayout>
                                                     "Загрузка..."
                                                 </TableCellLayout>
@@ -771,7 +805,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                 if data.is_empty() {
                                     return view! {
                                         <TableRow>
-                                            <TableCell attr:colspan="13">
+                                            <TableCell attr:colspan="14">
                                                 <TableCellLayout>
                                                     "Нет данных. Выполните импорт через u503 или проверьте фильтры."
                                                 </TableCellLayout>
@@ -795,6 +829,7 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                     let comments = row.comments.clone().unwrap_or_default();
                                     let ts = row.transaction_sum;
                                     let bs = row.bank_sum;
+                                    let boid = row.bank_order_id.map(|v| v.to_string()).unwrap_or_default();
                                     let gl_rows = row.general_ledger_entries_count;
                                     let row_id = row.id.clone();
                                     let date_for_link = date_str.clone();
@@ -850,6 +885,11 @@ pub fn YmPaymentReportList() -> impl IntoView {
                                             </TableCell>
                                             <TableCellMoney value=ts />
                                             <TableCellMoney value=bs />
+                                            <TableCell>
+                                                <TableCellLayout truncate=true>
+                                                    {boid}
+                                                </TableCellLayout>
+                                            </TableCell>
                                             <TableCell>
                                                 <TableCellLayout truncate=true>
                                                     {status}

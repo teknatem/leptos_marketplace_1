@@ -6,6 +6,7 @@
 use crate::dashboards::MetadataDashboard;
 use crate::dashboards::{
     D401WbFinanceDashboard, MonthlySummaryDashboard, WbAdvertReportDashboard, WbOrderFlowDashboard,
+    YmOrderFlowDashboard,
 };
 use crate::data_view::ui::{DataViewDetail, DataViewList, FilterRegistryPage};
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;
@@ -70,7 +71,8 @@ use crate::general_ledger::ui::{
     GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerEntitiesPage,
     GeneralLedgerLayersPage, GeneralLedgerLayerTurnoverMatrixPage, GeneralLedgerPage,
     GeneralLedgerReportPage, GeneralLedgerTurnoverDetails, GeneralLedgerTurnoversPage,
-    GlAccountViewPage, GlDrilldownPage, WbWeeklyReconciliationPage, YmRevenueReconciliationPage,
+    GlAccountViewPage, GlDrilldownPage, SupplierBalancePage, WbWeeklyReconciliationPage,
+    YmRevenueReconciliationPage,
 };
 use crate::layout::global_context::AppGlobalContext;
 use crate::navigator::marketplace::MarketplaceNavigator;
@@ -86,6 +88,7 @@ use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesLi
 use crate::projections::p907_ym_payment_report::ui::details::YmPaymentReportDetail;
 use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
 use crate::domain::a034_ym_realization::{YmRealizationDetail, YmRealizationList};
+use crate::domain::a035_ym_settlement_recon::{YmSettlementReconDetail, YmSettlementReconList};
 use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
 use crate::projections::p913_wb_advert_order_attr::ui::list::WbAdvertOrderAttrList;
 use crate::projections::p914_mp_finance_turnovers::ui::list::MpFinanceTurnoverList;
@@ -903,6 +906,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "general_ledger_turnovers" => view! { <GeneralLedgerTurnoversPage /> }.into_any(),
         "general_ledger_layers" => view! { <GeneralLedgerLayersPage /> }.into_any(),
         "general_ledger_entities" => view! { <GeneralLedgerEntitiesPage /> }.into_any(),
+        "supplier_balance" => view! { <SupplierBalancePage /> }.into_any(),
         "general_ledger_matrix" => {
             view! { <GeneralLedgerLayerTurnoverMatrixPage /> }.into_any()
         }
@@ -1085,7 +1089,37 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 .strip_prefix("a034_ym_realization_details_")
                 .unwrap_or_default()
                 .to_string();
-            view! { <YmRealizationDetail id=id /> }.into_any()
+            view! {
+                <YmRealizationDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        "a035_ym_settlement_recon" => view! { <YmSettlementReconList /> }.into_any(),
+        k if k.starts_with("a035_ym_settlement_recon_details_") => {
+            let id = k
+                .strip_prefix("a035_ym_settlement_recon_details_")
+                .unwrap_or_default()
+                .to_string();
+            view! {
+                <YmSettlementReconDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
         }
         "p908_wb_goods_prices" => {
             log!("✅ Creating WbGoodsPricesList");
@@ -1212,6 +1246,42 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             view! {
                 <WbOrderFlowDashboard
                     initial_srid=srid
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        "d403_ym_order_flow" => {
+            log!("✅ Creating YmOrderFlowDashboard");
+            view! {
+                <YmOrderFlowDashboard
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        k if k.starts_with("d403_ym_order_flow_order_") => {
+            let order_id = k
+                .strip_prefix("d403_ym_order_flow_order_")
+                .unwrap()
+                .to_string();
+            let order_id = urlencoding::decode(&order_id)
+                .map(|s| s.into_owned())
+                .unwrap_or(order_id);
+            log!("✅ Creating YmOrderFlowDashboard for order_id={}", order_id);
+            view! {
+                <YmOrderFlowDashboard
+                    initial_order_id=order_id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();
                         move |_| {

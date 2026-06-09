@@ -24,6 +24,7 @@ pub async fn list_reports(
         req.transaction_source,
         req.shop_sku,
         req.order_id,
+        req.bank_order_id,
         req.connection_mp_ref,
         req.organization_ref,
         &req.sort_by,

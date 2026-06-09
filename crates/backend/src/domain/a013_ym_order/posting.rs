@@ -1,6 +1,7 @@
 use super::repository;
 use super::service::auto_fill_references;
 use anyhow::Result;
+use sea_orm::TransactionTrait;
 use uuid::Uuid;
 
 /// Провести документ (установить is_posted = true и создать проекции)
@@ -49,6 +50,29 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     crate::projections::p900_mp_sales_register::service::project_ym_order(&document, id).await?;
     crate::projections::p904_sales_data::service::project_ym_order(&document, id).await?;
 
+    // Таймлайн событий заказа (p915): дата заказа / дата доставки.
+    // a013 проводится без внешней транзакции — открываем локальную для p915.
+    {
+        let registrator_ref = id.to_string();
+        let db = crate::shared::data::db::get_connection();
+        let txn = db.begin().await?;
+        crate::projections::p915_mp_order_events::repository::delete_by_registrator_with_conn(
+            &txn,
+            "a013_ym_order",
+            &registrator_ref,
+        )
+        .await?;
+        let order_events =
+            crate::projections::p915_mp_order_events::builder::from_ym_order(&document, &registrator_ref);
+        for event in &order_events {
+            crate::projections::p915_mp_order_events::repository::insert_entry_raw_with_conn(
+                &txn, event,
+            )
+            .await?;
+        }
+        txn.commit().await?;
+    }
+
     tracing::info!(
         "Posted document a013: {}, is_error: {}",
         id,
@@ -79,6 +103,8 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
         .await?;
     crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
+    crate::projections::p915_mp_order_events::repository::delete_by_registrator_ref(&id.to_string())
+        .await?;
 
     tracing::info!("Unposted document a013: {}", id);
 

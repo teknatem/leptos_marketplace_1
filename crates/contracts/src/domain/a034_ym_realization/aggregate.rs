@@ -78,7 +78,19 @@ pub struct YmRealizationHeader {
 /// данных, чем нужно для выручки; их можно использовать в будущих проекциях.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmRealizationLine {
+    /// Номер заказа YM (`ORDER_ID` отчёта о реализации). Общий ключ для сверки с
+    /// p907 (`order_id`). `#[serde(default)]` — старый `lines_json` без поля → None.
+    #[serde(default)]
+    pub order_id: Option<String>,
     pub shop_sku: String,
+    /// Артикул продавца (`YOUR_SKU`). Совпадает с `p907.shop_sku`; используется для
+    /// резолва позиции в a007_marketplace_product.
+    #[serde(default)]
+    pub your_sku: Option<String>,
+    /// uuid a007_marketplace_product — распознанная позиция маркетплейса.
+    /// Проставляется при проведении; ключ сверки a034 ↔ p907.
+    #[serde(default)]
+    pub marketplace_product_ref: Option<String>,
     #[serde(default)]
     pub market_sku: Option<i64>,
     #[serde(default)]
@@ -112,20 +124,16 @@ pub struct YmRealizationTotals {
 }
 
 impl YmRealizationTotals {
-    pub fn from_lines(lines: &[YmRealizationLine]) -> Self {
-        let mut sales_revenue = 0.0;
-        let mut return_revenue = 0.0;
-        let mut sales_qty = 0.0;
-        let mut return_qty = 0.0;
-        for line in lines {
-            if line.is_return {
-                return_revenue += line.revenue_amount;
-                return_qty += line.quantity;
-            } else {
-                sales_revenue += line.revenue_amount;
-                sales_qty += line.quantity;
-            }
-        }
+    /// Итоги из физически разделённых коллекций: продажи и возвраты хранятся в
+    /// отдельных векторах (`sales_lines` / `return_lines`), не смешиваясь.
+    pub fn from_parts(
+        sales_lines: &[YmRealizationLine],
+        return_lines: &[YmRealizationLine],
+    ) -> Self {
+        let sales_revenue: f64 = sales_lines.iter().map(|l| l.revenue_amount).sum();
+        let sales_qty: f64 = sales_lines.iter().map(|l| l.quantity).sum();
+        let return_revenue: f64 = return_lines.iter().map(|l| l.revenue_amount).sum();
+        let return_qty: f64 = return_lines.iter().map(|l| l.quantity).sum();
         Self {
             sales_revenue,
             return_revenue,
@@ -149,7 +157,13 @@ pub struct YmRealization {
     pub base: BaseAggregate<YmRealizationId>,
     pub header: YmRealizationHeader,
     pub totals: YmRealizationTotals,
-    pub lines: Vec<YmRealizationLine>,
+    /// Строки-реализации (продажи). Физически отделены от возвратов — приходят из
+    /// отдельного файла отчёта (`delivered.csv`) и не смешиваются.
+    #[serde(default)]
+    pub sales_lines: Vec<YmRealizationLine>,
+    /// Строки-возвраты. Отдельный файл отчёта (`returned.csv`), отдельная коллекция.
+    #[serde(default)]
+    pub return_lines: Vec<YmRealizationLine>,
     pub source_meta: YmRealizationSourceMeta,
     pub is_posted: bool,
 }
@@ -157,10 +171,11 @@ pub struct YmRealization {
 impl YmRealization {
     pub fn new_for_insert(
         header: YmRealizationHeader,
-        lines: Vec<YmRealizationLine>,
+        sales_lines: Vec<YmRealizationLine>,
+        return_lines: Vec<YmRealizationLine>,
         source_meta: YmRealizationSourceMeta,
     ) -> Self {
-        let totals = YmRealizationTotals::from_lines(&lines);
+        let totals = YmRealizationTotals::from_parts(&sales_lines, &return_lines);
         let description = format!(
             "Реализация YM за {} (кабинет {})",
             header.document_date, header.connection_id
@@ -175,10 +190,16 @@ impl YmRealization {
             base,
             header,
             totals,
-            lines,
+            sales_lines,
+            return_lines,
             source_meta,
             is_posted: false,
         }
+    }
+
+    /// Суммарное число строк (продажи + возвраты).
+    pub fn lines_count(&self) -> usize {
+        self.sales_lines.len() + self.return_lines.len()
     }
 
     pub fn touch_updated(&mut self) {

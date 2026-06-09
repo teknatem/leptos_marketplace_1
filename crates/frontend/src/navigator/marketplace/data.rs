@@ -207,6 +207,15 @@ const FINANCE_LINKS: &[NavLink] = &[
         entity_type: EntityType::Projection,
     },
     NavLink {
+        tab_key: "a035_ym_settlement_recon",
+        label: "Сверка перечислений YM",
+        annotation: "Банковские ордера YM: обороты против факта (bank_sum) по каждому перечислению",
+        icon: "table",
+        scope_id: Some("a035_ym_settlement_recon"),
+        marketplaces: LinkScope::Only(YM_ONLY),
+        entity_type: EntityType::Aggregate,
+    },
+    NavLink {
         tab_key: "p914_mp_finance_turnovers",
         label: "Финансовые обороты (fina)",
         annotation: "Обороты слоя fina — зеркало проводок GL из финотчётов WB и YM (p914)",

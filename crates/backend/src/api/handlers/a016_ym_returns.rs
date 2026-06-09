@@ -40,6 +40,7 @@ pub struct ListReturnsQuery {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub return_type: Option<String>,
+    pub connection_mp_ref: Option<String>,
     pub sort_by: Option<String>,
     pub sort_desc: Option<bool>,
     pub search_return_id: Option<String>,
@@ -65,6 +66,7 @@ pub async fn list_returns(
         date_from: query.date_from.clone(),
         date_to: query.date_to.clone(),
         return_type: query.return_type.clone(),
+        connection_mp_ref: query.connection_mp_ref.clone(),
         search_return_id: query.search_return_id.clone(),
         search_order_id: query.search_order_id.clone(),
         sort_by: sort_by.clone(),
@@ -127,6 +129,14 @@ async fn calculate_totals(
             return_type
         ));
     }
+    if let Some(ref connection_mp_ref) = query.connection_mp_ref {
+        if !connection_mp_ref.is_empty() {
+            conditions.push(format!(
+                "json_extract(header_json, '$.connection_id') = '{}'",
+                connection_mp_ref
+            ));
+        }
+    }
     if let Some(ref search_return_id) = query.search_return_id {
         if !search_return_id.is_empty() {
             conditions.push(format!(
@@ -146,15 +156,17 @@ async fn calculate_totals(
 
     let where_clause = conditions.join(" AND ");
 
-    // Запрос итогов
+    // Запрос итогов.
+    // sum_amount берём из header.amount (поля state_json.total_* не существуют),
+    // sum_items — сумма count по всем строкам через json_each(lines_json).
     let totals_sql = format!(
-        "SELECT 
+        "SELECT
             COUNT(*) as total_records,
-            COALESCE(SUM(json_extract(state_json, '$.total_items')), 0) as sum_items,
-            COALESCE(SUM(json_extract(state_json, '$.total_amount')), 0.0) as sum_amount,
+            COALESCE(SUM((SELECT COALESCE(SUM(json_extract(j.value, '$.count')), 0) FROM json_each(lines_json) j)), 0) as sum_items,
+            COALESCE(SUM(json_extract(header_json, '$.amount')), 0.0) as sum_amount,
             SUM(CASE WHEN json_extract(header_json, '$.return_type') = 'RETURN' THEN 1 ELSE 0 END) as returns_count,
             SUM(CASE WHEN json_extract(header_json, '$.return_type') = 'UNREDEEMED' THEN 1 ELSE 0 END) as unredeemed_count
-        FROM a016_ym_returns 
+        FROM a016_ym_returns
         WHERE {}",
         where_clause
     );
@@ -179,6 +191,30 @@ async fn calculate_totals(
             unredeemed_count: 0,
         })
     }
+}
+
+/// Ответ резолва исходного заказа по номеру (для гиперссылки в карточке возврата)
+#[derive(Debug, Serialize)]
+pub struct SourceOrderResponse {
+    pub id: String,
+}
+
+/// Handler: найти внутренний id документа a013_ym_order по номеру заказа (order_id).
+/// Возвращает 404, если исходный заказ не загружен.
+pub async fn get_source_order(
+    axum::extract::Path(order_no): axum::extract::Path<String>,
+) -> Result<Json<SourceOrderResponse>, axum::http::StatusCode> {
+    let order = crate::domain::a013_ym_order::repository::get_by_document_no(&order_no)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to resolve source YM order {}: {}", order_no, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    Ok(Json(SourceOrderResponse {
+        id: order.base.id.as_string(),
+    }))
 }
 
 /// Handler для получения всех возвратов (без пагинации, для обратной совместимости)

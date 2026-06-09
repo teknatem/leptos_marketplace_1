@@ -26,6 +26,13 @@ pub struct YmOrderDetailsVm {
     pub nomenclatures_info: RwSignal<HashMap<String, NomenclatureInfo>>,
     pub marketplace_products_info: RwSignal<HashMap<String, MarketplaceProductInfo>>,
 
+    /// Таймлайн событий заказа из p915 (вкладка «Общие»).
+    pub order_events: RwSignal<Vec<OrderEventDto>>,
+    /// Наименования связей (вместо uuid в блоке «Связи»).
+    pub connection_name: RwSignal<Option<String>>,
+    pub organization_name: RwSignal<Option<String>>,
+    pub marketplace_name: RwSignal<Option<String>>,
+
     pub active_tab: RwSignal<&'static str>,
     pub loading: RwSignal<bool>,
     pub posting: RwSignal<bool>,
@@ -53,6 +60,11 @@ impl YmOrderDetailsVm {
 
             nomenclatures_info: RwSignal::new(HashMap::new()),
             marketplace_products_info: RwSignal::new(HashMap::new()),
+
+            order_events: RwSignal::new(Vec::new()),
+            connection_name: RwSignal::new(None),
+            organization_name: RwSignal::new(None),
+            marketplace_name: RwSignal::new(None),
 
             active_tab: RwSignal::new("general"),
             loading: RwSignal::new(false),
@@ -110,6 +122,8 @@ impl YmOrderDetailsVm {
         spawn_local(async move {
             match fetch_by_id(&id).await {
                 Ok(data) => {
+                    vm.load_general_extras(&data.header);
+                    vm.load_order_events(&data.header.document_no);
                     vm.order.set(Some(data.clone()));
                     vm.load_line_links(data.lines);
                     vm.load_projections();
@@ -151,6 +165,40 @@ impl YmOrderDetailsVm {
                 });
             }
         }
+    }
+
+    /// Загрузить наименования связей (подключение/организация/маркетплейс) по id.
+    fn load_general_extras(&self, header: &HeaderDto) {
+        let conn_id = header.connection_id.clone();
+        let org_id = header.organization_id.clone();
+        let mp_id = header.marketplace_id.clone();
+        let conn_store = self.connection_name;
+        let org_store = self.organization_name;
+        let mp_store = self.marketplace_name;
+        spawn_local(async move {
+            conn_store.set(fetch_connection_name(&conn_id).await);
+        });
+        spawn_local(async move {
+            org_store.set(fetch_organization_name(&org_id).await);
+        });
+        spawn_local(async move {
+            mp_store.set(fetch_marketplace_name(&mp_id).await);
+        });
+    }
+
+    /// Загрузить таймлайн событий заказа из p915 (отсортирован по дате).
+    fn load_order_events(&self, document_no: &str) {
+        let order_id = document_no.to_string();
+        let store = self.order_events;
+        spawn_local(async move {
+            match fetch_order_events(&order_id).await {
+                Ok(mut events) => {
+                    events.sort_by(|a, b| a.event_date.cmp(&b.event_date));
+                    store.set(events);
+                }
+                Err(e) => leptos::logging::log!("Failed to load order events: {}", e),
+            }
+        });
     }
 
     pub fn load_raw_json(&self) {
@@ -287,6 +335,8 @@ impl YmOrderDetailsVm {
         if let Ok(data) = fetch_by_id(&id).await {
             self.nomenclatures_info.set(HashMap::new());
             self.marketplace_products_info.set(HashMap::new());
+            self.load_general_extras(&data.header);
+            self.load_order_events(&data.header.document_no);
             self.load_line_links(data.lines.clone());
             self.order.set(Some(data));
         }

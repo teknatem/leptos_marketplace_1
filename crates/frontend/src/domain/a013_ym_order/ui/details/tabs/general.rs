@@ -3,18 +3,54 @@
 use super::super::view_model::YmOrderDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::card_animated::CardAnimated;
+use crate::shared::components::table::format_money;
 use crate::shared::date_utils::format_datetime;
+use contracts::projections::p915_mp_order_events::event::OrderEventType;
 use leptos::prelude::*;
 use thaw::*;
+
+/// Человекочитаемое имя документа-регистратора события (для гиперссылки).
+fn registrator_label(registrator_type: &str) -> &'static str {
+    match registrator_type {
+        "a013_ym_order" => "Заказ YM",
+        "a034_ym_realization" => "Реализация YM",
+        "p907_ym_payment_report" => "Платёж YM (p907)",
+        "a035_ym_settlement_recon" => "Сверка перечислений YM",
+        _ => "Регистратор",
+    }
+}
+
+/// Одной строкой — что именно происходит в этот момент жизненного цикла заказа.
+fn event_description(event_type: &str) -> &'static str {
+    match event_type {
+        "order_placed" => "Покупатель оформил заказ",
+        "shipment" => "Заказ отгружен со склада",
+        "delivery" => "Заказ доставлен покупателю",
+        "realization" => "Признание выручки по отчёту о реализации",
+        "goods_return" => "Покупатель вернул товар",
+        "payment" => "Покупатель оплатил заказ маркетплейсу",
+        "payment_return" => "Маркетплейс вернул оплату покупателю",
+        "supplier_payment" => "Маркетплейс перечислил оплату поставщику",
+        "supplier_payment_return" => "Маркетплейс удержал оплату при возврате товара",
+        _ => "",
+    }
+}
 
 #[component]
 pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
     let tabs_store =
         leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
 
+    // Copy-сигналы (вытаскиваем до view!, чтобы не двигать vm в несколько замыканий).
+    let order_sig = vm.order;
+    let connection_name = vm.connection_name;
+    let organization_name = vm.organization_name;
+    let marketplace_name = vm.marketplace_name;
+    let order_events = vm.order_events;
+
     view! {
         {move || {
-            let Some(order_data) = vm.order.get() else {
+            let Some(order_data) = order_sig.get() else {
                 return view! { <div>"Нет данных"</div> }.into_any();
             };
 
@@ -93,6 +129,75 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                 </Badge>
                             </Show>
                         </CardAnimated>
+
+                        // ── Таймлайн событий заказа (p915) ───────────────────
+                        {move || {
+                            let events = order_events.get();
+                            if events.is_empty() {
+                                return ().into_any();
+                            }
+                            let tabs_store = tabs_store;
+                            view! {
+                                <CardAnimated delay_ms=160 nav_id="a013_ym_order_details_general_events">
+                                    <h4 class="details-section__title">"События заказа"</h4>
+                                    <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                                        <thead>
+                                            <tr style="background: var(--color-bg-elevated); border-bottom: 1px solid var(--color-border-subtle, var(--color-border));">
+                                                <th style="color: var(--form-label-text); padding-bottom: 4px;">"Дата"</th>
+                                                <th style="color: var(--form-label-text); padding-bottom: 4px;">"Событие"</th>
+                                                <th style="color: var(--form-label-text); padding-bottom: 4px;">"Сумма"</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {events.into_iter().map(|e| {
+                                                let tabs_store = tabs_store;
+                                                let event_label = OrderEventType::from_str(&e.event_type)
+                                                    .map(|t| t.label_ru().to_string())
+                                                    .unwrap_or_else(|| e.event_type.clone());
+                                                let description = event_description(&e.event_type);
+                                                let reg_label = registrator_label(&e.registrator_type);
+                                                let amount = e.amount.map(format_money).unwrap_or_default();
+                                                let tab_key = format!("{}_details_{}", e.registrator_type, e.registrator_ref);
+                                                let tab_title = reg_label.to_string();
+                                                let has_ref = !e.registrator_ref.trim().is_empty();
+                                                // Дата доставки и оплаты поставщику — зелёным,
+                                                // возврат оплаты поставщику — красным.
+                                                let td_date = match e.event_type.as_str() {
+                                                    "delivery" | "supplier_payment" => "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: center; color: var(--color-success); font-weight: 600;",
+                                                    "supplier_payment_return" => "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: center; color: var(--color-danger); font-weight: 600;",
+                                                    _ => "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: center;",
+                                                };
+                                                let td = "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: top;";
+                                                let td_r = "padding: 5px 8px; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); text-align: right; font-variant-numeric: tabular-nums; vertical-align: top;";
+                                                view! {
+                                                    <tr>
+                                                        <td style=td_date>{e.event_date.clone()}</td>
+                                                        <td style=td>
+                                                            <div style="font-size: 1em; color: var(--color-text-primary);">{event_label}</div>
+                                                            <div style="font-size: 0.9em; color: var(--color-text-secondary); margin-top: 1px;">
+                                                                {description}
+                                                                {if has_ref {
+                                                                    view! {
+                                                                        " — "
+                                                                        <a href="#" class="table__link"
+                                                                            on:click=move |ev| { ev.prevent_default(); tabs_store.open_tab(&tab_key, &tab_title); }
+                                                                        >{reg_label}</a>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    view! { <span /> }.into_any()
+                                                                }}
+                                                            </div>
+                                                        </td>
+                                                        <td style=td_r>{amount}</td>
+                                                    </tr>
+                                                }
+                                            }).collect_view()}
+                                        </tbody>
+                                    </table>
+                                </CardAnimated>
+                            }
+                            .into_any()
+                        }}
                     </div>
 
                     // ── Правая колонка ───────────────────────────────────────
@@ -134,7 +239,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
-                                    {conn_id}
+                                    {let conn_id = conn_id.clone(); move || connection_name.get().unwrap_or_else(|| conn_id.clone())}
                                 </Button>
                             </div>
                             <div class="form__group">
@@ -148,7 +253,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
-                                    {org_id}
+                                    {let org_id = org_id.clone(); move || organization_name.get().unwrap_or_else(|| org_id.clone())}
                                 </Button>
                             </div>
                             <div class="form__group">
@@ -162,7 +267,7 @@ pub fn GeneralTab(vm: YmOrderDetailsVm) -> impl IntoView {
                                     }
                                     attr:style="width: 100%; justify-content: flex-start;"
                                 >
-                                    {mp_id}
+                                    {let mp_id = mp_id.clone(); move || marketplace_name.get().unwrap_or_else(|| mp_id.clone())}
                                 </Button>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--spacing-sm);">

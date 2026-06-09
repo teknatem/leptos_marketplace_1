@@ -88,6 +88,8 @@ pub struct YmPaymentReportListRequest {
     #[serde(default)]
     pub order_id: Option<i64>,
     #[serde(default)]
+    pub bank_order_id: Option<i64>,
+    #[serde(default)]
     pub connection_mp_ref: Option<String>,
     #[serde(default)]
     pub organization_ref: Option<String>,

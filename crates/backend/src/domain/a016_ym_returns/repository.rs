@@ -124,6 +124,23 @@ pub async fn get_by_return_id(return_id: i64) -> Result<Option<YmReturn>> {
     Ok(result.map(Into::into))
 }
 
+/// Возвраты по набору номеров заказов (`order_id`). Для сверки a034 ↔ a016:
+/// строки отчёта о реализации сопоставляются с возвратами по order_id + shop_sku.
+pub async fn list_by_order_ids(order_ids: &[i64]) -> Result<Vec<YmReturn>> {
+    if order_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let items: Vec<YmReturn> = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::OrderId.is_in(order_ids.iter().copied()))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    Ok(items)
+}
+
 pub async fn upsert_document(aggregate: &YmReturn) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
     let existing = get_by_return_id(aggregate.header.return_id).await?;
@@ -147,7 +164,9 @@ pub async fn upsert_document(aggregate: &YmReturn) -> Result<Uuid> {
             state_json: Set(state_json),
             source_meta_json: Set(source_meta_json),
             is_deleted: Set(aggregate.base.metadata.is_deleted),
-            is_posted: Set(aggregate.base.metadata.is_posted),
+            // is_posted хранится в struct-поле агрегата (а не в metadata):
+            // именно его выставляют new_for_insert/post_document/unpost_document.
+            is_posted: Set(aggregate.is_posted),
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version + 1),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -167,7 +186,7 @@ pub async fn upsert_document(aggregate: &YmReturn) -> Result<Uuid> {
             state_json: Set(state_json),
             source_meta_json: Set(source_meta_json),
             is_deleted: Set(aggregate.base.metadata.is_deleted),
-            is_posted: Set(aggregate.base.metadata.is_posted),
+            is_posted: Set(aggregate.is_posted),
             created_at: Set(Some(aggregate.base.metadata.created_at)),
             updated_at: Set(Some(aggregate.base.metadata.updated_at)),
             version: Set(aggregate.base.metadata.version),
@@ -197,6 +216,7 @@ pub struct YmReturnsListQuery {
     pub date_from: Option<String>,
     pub date_to: Option<String>,
     pub return_type: Option<String>,
+    pub connection_mp_ref: Option<String>,
     pub search_return_id: Option<String>,
     pub search_order_id: Option<String>,
     pub sort_by: String,
@@ -215,31 +235,40 @@ pub struct YmReturnsListResult {
 pub async fn list_sql(query: YmReturnsListQuery) -> Result<YmReturnsListResult> {
     let db = get_connection();
 
-    // Build WHERE clause
-    let mut conditions = vec!["is_deleted = 0".to_string()];
+    // Build WHERE clause. Колонки квалифицированы алиасом `r` (a016), т.к. ниже
+    // делается JOIN на a013_ym_order (у которого совпадают имена столбцов).
+    let mut conditions = vec!["r.is_deleted = 0".to_string()];
 
     if let Some(ref date_from) = query.date_from {
         conditions.push(format!(
-            "json_extract(state_json, '$.created_at_source') >= '{}'",
+            "json_extract(r.state_json, '$.created_at_source') >= '{}'",
             date_from
         ));
     }
     if let Some(ref date_to) = query.date_to {
         conditions.push(format!(
-            "json_extract(state_json, '$.created_at_source') <= '{}T23:59:59'",
+            "json_extract(r.state_json, '$.created_at_source') <= '{}T23:59:59'",
             date_to
         ));
     }
     if let Some(ref return_type) = query.return_type {
         conditions.push(format!(
-            "json_extract(header_json, '$.return_type') = '{}'",
+            "json_extract(r.header_json, '$.return_type') = '{}'",
             return_type
         ));
+    }
+    if let Some(ref connection_mp_ref) = query.connection_mp_ref {
+        if !connection_mp_ref.is_empty() {
+            conditions.push(format!(
+                "json_extract(r.header_json, '$.connection_id') = '{}'",
+                connection_mp_ref
+            ));
+        }
     }
     if let Some(ref search_return_id) = query.search_return_id {
         if !search_return_id.is_empty() {
             conditions.push(format!(
-                "CAST(return_id AS TEXT) LIKE '%{}%'",
+                "CAST(r.return_id AS TEXT) LIKE '%{}%'",
                 search_return_id
             ));
         }
@@ -247,7 +276,7 @@ pub async fn list_sql(query: YmReturnsListQuery) -> Result<YmReturnsListResult> 
     if let Some(ref search_order_id) = query.search_order_id {
         if !search_order_id.is_empty() {
             conditions.push(format!(
-                "CAST(order_id AS TEXT) LIKE '%{}%'",
+                "CAST(r.order_id AS TEXT) LIKE '%{}%'",
                 search_order_id
             ));
         }
@@ -255,21 +284,21 @@ pub async fn list_sql(query: YmReturnsListQuery) -> Result<YmReturnsListResult> 
 
     let where_clause = conditions.join(" AND ");
 
-    // Map sort field to SQL expression
+    // Map sort field to SQL expression (квалифицировано алиасом r)
     let sort_column = match query.sort_by.as_str() {
-        "return_id" => "return_id",
-        "order_id" => "order_id",
-        "return_type" => "json_extract(header_json, '$.return_type')",
-        "refund_status" => "json_extract(state_json, '$.refund_status')",
-        "created_at_source" => "json_extract(state_json, '$.created_at_source')",
-        "fetched_at" => "json_extract(source_meta_json, '$.fetched_at')",
-        _ => "json_extract(state_json, '$.created_at_source')",
+        "return_id" => "r.return_id",
+        "order_id" => "r.order_id",
+        "return_type" => "json_extract(r.header_json, '$.return_type')",
+        "refund_status" => "json_extract(r.state_json, '$.refund_status')",
+        "created_at_source" => "json_extract(r.state_json, '$.created_at_source')",
+        "fetched_at" => "json_extract(r.source_meta_json, '$.fetched_at')",
+        _ => "json_extract(r.state_json, '$.created_at_source')",
     };
     let sort_order = if query.sort_desc { "DESC" } else { "ASC" };
 
     // Count total
     let count_sql = format!(
-        "SELECT COUNT(*) as cnt FROM a016_ym_returns WHERE {}",
+        "SELECT COUNT(*) as cnt FROM a016_ym_returns r WHERE {}",
         where_clause
     );
     let count_stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, count_sql);
@@ -278,20 +307,26 @@ pub async fn list_sql(query: YmReturnsListQuery) -> Result<YmReturnsListResult> 
         .map(|row| row.try_get::<i64>("", "cnt").unwrap_or(0) as usize)
         .unwrap_or(0);
 
-    // Fetch paginated data
+    // Fetch paginated data.
+    // LEFT JOIN a013_ym_order по номеру заказа — для отображения даты исходного заказа.
     let select_sql = format!(
         r#"
-        SELECT 
-            id,
-            return_id,
-            order_id,
-            json_extract(header_json, '$.return_type') as return_type,
-            json_extract(state_json, '$.refund_status') as refund_status,
-            json_extract(state_json, '$.created_at_source') as created_at_source,
-            json_extract(source_meta_json, '$.fetched_at') as fetched_at,
-            lines_json,
-            is_posted
-        FROM a016_ym_returns
+        SELECT
+            r.id,
+            r.return_id,
+            r.order_id,
+            json_extract(r.header_json, '$.connection_id') as connection_id,
+            json_extract(r.header_json, '$.return_type') as return_type,
+            json_extract(r.header_json, '$.amount') as amount,
+            json_extract(r.state_json, '$.refund_status') as refund_status,
+            json_extract(r.state_json, '$.created_at_source') as created_at_source,
+            json_extract(r.source_meta_json, '$.fetched_at') as fetched_at,
+            r.lines_json,
+            r.is_posted,
+            o.creation_date as order_date
+        FROM a016_ym_returns r
+        LEFT JOIN a013_ym_order o
+            ON o.document_no = CAST(r.order_id AS TEXT) AND o.is_deleted = 0
         WHERE {}
         ORDER BY {} {}
         LIMIT {} OFFSET {}
@@ -308,6 +343,12 @@ pub async fn list_sql(query: YmReturnsListQuery) -> Result<YmReturnsListResult> 
             let id: String = row.try_get("", "id").ok()?;
             let return_id: i64 = row.try_get("", "return_id").ok()?;
             let order_id: i64 = row.try_get("", "order_id").ok()?;
+            let connection_id: String = row.try_get("", "connection_id").unwrap_or_default();
+            let order_date: String = row
+                .try_get::<Option<String>>("", "order_date")
+                .ok()
+                .flatten()
+                .unwrap_or_default();
             let return_type: String = row.try_get("", "return_type").unwrap_or_default();
             let refund_status: String = row.try_get("", "refund_status").unwrap_or_default();
             let created_at_source: String =
@@ -315,27 +356,28 @@ pub async fn list_sql(query: YmReturnsListQuery) -> Result<YmReturnsListResult> 
             let fetched_at: String = row.try_get("", "fetched_at").unwrap_or_default();
             let lines_json: String = row.try_get("", "lines_json").unwrap_or_default();
             let is_posted: bool = row.try_get::<i32>("", "is_posted").unwrap_or(0) == 1;
+            // Сумма возврата берётся из header.amount (line.price в выгрузке YM пустой)
+            let total_amount: f64 = row
+                .try_get::<Option<f64>>("", "amount")
+                .ok()
+                .flatten()
+                .unwrap_or(0.0);
 
-            // Parse lines to calculate totals
+            // Кол-во товаров считаем по строкам
             let lines: Vec<serde_json::Value> =
                 serde_json::from_str(&lines_json).unwrap_or_default();
-            let mut total_items = 0i32;
-            let mut total_amount = 0.0f64;
-
-            for line in &lines {
-                if let Some(count) = line.get("count").and_then(|c| c.as_i64()) {
-                    total_items += count as i32;
-                }
-                if let Some(price) = line.get("price").and_then(|p| p.as_f64()) {
-                    let count = line.get("count").and_then(|c| c.as_i64()).unwrap_or(1) as f64;
-                    total_amount += price * count;
-                }
-            }
+            let total_items: i32 = lines
+                .iter()
+                .filter_map(|line| line.get("count").and_then(|c| c.as_i64()))
+                .map(|c| c as i32)
+                .sum();
 
             Some(YmReturnListItemDto {
                 id,
                 return_id,
                 order_id,
+                connection_id,
+                order_date,
                 return_type,
                 refund_status,
                 total_items,

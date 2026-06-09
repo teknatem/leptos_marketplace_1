@@ -4,8 +4,9 @@ use contracts::general_ledger::{
     GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
     GlEntitiesResponse, GlLayersResponse, GlLayerTurnoverMatrixResponse, GlReportQuery,
-    GlReportResponse, GlResourceDetailResponse, WbWeeklyReconciliationQuery,
-    WbWeeklyReconciliationResponse, YmRevenueReconQuery, YmRevenueReconResponse,
+    GlReportResponse, GlResourceDetailResponse, SupplierBalanceQuery, SupplierBalanceResponse,
+    WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse, YmRevenueReconQuery,
+    YmRevenueReconResponse,
 };
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -224,6 +225,27 @@ pub async fn fetch_general_ledger_entities() -> Result<GlEntitiesResponse, Strin
         .json::<GlEntitiesResponse>()
         .await
         .map_err(|e| format!("Failed to parse GL entities response: {e}"))
+}
+
+pub async fn fetch_supplier_balance(
+    query: &SupplierBalanceQuery,
+) -> Result<SupplierBalanceResponse, String> {
+    let url = format!("{}/api/general-ledger/supplier-balance", api_base());
+    let response = Request::post(&url)
+        .json(query)
+        .map_err(|e| format!("Failed to build supplier balance request: {e}"))?
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch supplier balance: {e}"))?;
+
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    response
+        .json::<SupplierBalanceResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse supplier balance response: {e}"))
 }
 
 pub async fn fetch_gl_report(query: &GlReportQuery) -> Result<GlReportResponse, String> {

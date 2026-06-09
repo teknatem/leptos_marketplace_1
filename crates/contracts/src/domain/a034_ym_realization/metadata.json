@@ -142,13 +142,22 @@
       "ai_hint": "Нетто-выручка = продажи − возвраты. Сверяется со слоем fina (p907)."
     },
     {
-      "name": "lines_json",
+      "name": "sales_lines_json",
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Строки JSON", "visible_in_list": false, "visible_in_form": false, "widget": "textarea" },
+      "ui": { "label": "Строки-продажи JSON", "visible_in_list": false, "visible_in_form": false, "widget": "textarea" },
       "validation": { "required": true },
-      "ai_hint": "JSON детализация строк реализации по SKU."
+      "ai_hint": "JSON детализация строк-продаж (delivered) по SKU."
+    },
+    {
+      "name": "return_lines_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": { "label": "Строки-возвраты JSON", "visible_in_list": false, "visible_in_form": false, "widget": "textarea" },
+      "validation": { "required": true },
+      "ai_hint": "JSON детализация строк-возвратов (returned) по SKU."
     },
     {
       "name": "fetched_at",

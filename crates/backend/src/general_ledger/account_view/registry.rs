@@ -164,6 +164,77 @@ pub static ACCOUNT_7609_VIEW: GlAccountViewDef = GlAccountViewDef {
             turnover_code: "mp_penalty_storno",
             layer: "fina",
         },
+        // ── Зачёт предоплат YM на отгрузке (fina) ──────────────────────────
+        // Предоплата покупателя YM становится доступной к перечислению на дату
+        // отгрузки: 76YA → 7609. (Денежная нога выручки YM проходит через 62.)
+        GlAccountViewEntry {
+            turnover_code: "prepayment_settle",
+            layer: "fina",
+        },
+        GlAccountViewEntry {
+            turnover_code: "prepayment_settle_storno",
+            layer: "fina",
+        },
+    ],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Счёт 62 — «Расчёты с покупателями» (авансы/незакрытые предоплаты YM)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Кт-сальдо 62 = оплачено покупателями, но ещё не отгружено (контрактное
+// обязательство). Закрывается признанием выручки на отгрузке (Дт62/Кт9001).
+
+pub static ACCOUNT_62_VIEW: GlAccountViewDef = GlAccountViewDef {
+    account: "62",
+    title: "Расчёты с покупателями — авансы (62)",
+    main_entries: &[
+        GlAccountViewEntry {
+            turnover_code: "prepayment",
+            layer: "fina",
+        },
+        GlAccountViewEntry {
+            turnover_code: "prepayment_storno",
+            layer: "fina",
+        },
+        GlAccountViewEntry {
+            turnover_code: "customer_revenue",
+            layer: "fina",
+        },
+        GlAccountViewEntry {
+            turnover_code: "customer_revenue_storno",
+            layer: "fina",
+        },
+    ],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Счёт 76YA — «Деньги покупателей у Я.Маркет (предоплаты в пути)»
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Дт-сальдо 76YA = деньги, удержанные маркетплейсом по оплаченным, но не
+// отгруженным заказам. Закрывается зачётом в 7609 на отгрузке.
+
+pub static ACCOUNT_76YA_VIEW: GlAccountViewDef = GlAccountViewDef {
+    account: "76YA",
+    title: "Деньги покупателей у Я.Маркет — предоплаты в пути (76YA)",
+    main_entries: &[
+        GlAccountViewEntry {
+            turnover_code: "prepayment",
+            layer: "fina",
+        },
+        GlAccountViewEntry {
+            turnover_code: "prepayment_storno",
+            layer: "fina",
+        },
+        GlAccountViewEntry {
+            turnover_code: "prepayment_settle",
+            layer: "fina",
+        },
+        GlAccountViewEntry {
+            turnover_code: "prepayment_settle_storno",
+            layer: "fina",
+        },
     ],
 };
 
@@ -171,7 +242,8 @@ pub static ACCOUNT_7609_VIEW: GlAccountViewDef = GlAccountViewDef {
 // Реестр всех конфигураций
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub static ACCOUNT_VIEW_REGISTRY: &[&GlAccountViewDef] = &[&ACCOUNT_7609_VIEW];
+pub static ACCOUNT_VIEW_REGISTRY: &[&GlAccountViewDef] =
+    &[&ACCOUNT_7609_VIEW, &ACCOUNT_62_VIEW, &ACCOUNT_76YA_VIEW];
 
 /// Найти конфигурацию ведомости по номеру счёта.
 pub fn find_view(account: &str) -> Option<&'static GlAccountViewDef> {
