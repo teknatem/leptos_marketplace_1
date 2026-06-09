@@ -406,4 +406,4 @@ cargo run --bin backend
 ## Дополнительная информация
 
 - `architecture/domain-layer-architecture.md` - Полное описание domain layer
-- `architecture/project-structure.md` - Структура workspace
+- `../CLAUDE.md` и `../ARCHITECTURE.md` - структура workspace и карта объектов (генерируется из кода)
