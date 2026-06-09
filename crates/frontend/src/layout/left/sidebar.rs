@@ -85,7 +85,12 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                 SidebarItem::new(
                     "d402_wb_order_flow",
                     tab_label_for_key("d402_wb_order_flow"),
-                    "git-fork",
+                    "list-ordered",
+                ),
+                SidebarItem::new(
+                    "d403_ym_order_flow",
+                    tab_label_for_key("d403_ym_order_flow"),
+                    "list-ordered",
                 ),
             ],
             admin_only: false,
@@ -340,6 +345,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "database",
                 ),
                 SidebarItem::new(
+                    "supplier_balance",
+                    tab_label_for_key("supplier_balance"),
+                    "dollar-sign",
+                ),
+                SidebarItem::new(
                     "general_ledger_matrix",
                     tab_label_for_key("general_ledger_matrix"),
                     "table",
@@ -439,6 +449,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                 SidebarItem::new(
                     "a034_ym_realization",
                     tab_label_for_key("a034_ym_realization"),
+                    "receipt",
+                ),
+                SidebarItem::new(
+                    "a035_ym_settlement_recon",
+                    tab_label_for_key("a035_ym_settlement_recon"),
                     "receipt",
                 ),
                 SidebarItem::new(

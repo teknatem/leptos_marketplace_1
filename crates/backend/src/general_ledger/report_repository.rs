@@ -327,7 +327,9 @@ pub async fn get_ym_revenue_reconciliation(
         FROM sys_general_ledger gl
         LEFT JOIN a006_connection_mp c ON c.id = gl.connection_mp_ref
         WHERE gl.turnover_code IN ('customer_revenue', 'customer_revenue_storno')
-          AND gl.layer IN ('fina', 'ybuh')
+          -- Строго YM-сверка: ybuh (a034) — это YM по определению; на слое fina
+          -- ограничиваемся субъектом ym, иначе сюда попадёт и WB-выручка (p903 fina).
+          AND (gl.layer = 'ybuh' OR (gl.layer = 'fina' AND gl.entity = 'ym'))
           AND gl.entry_date >= ?
           AND gl.entry_date <= ?
         "#
@@ -1082,6 +1084,148 @@ async fn execute_drilldown_query(sql: &str, params: Vec<Value>) -> Result<Vec<Gl
         });
     }
     Ok(result)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Баланс к перечислению поставщику (контур entity=ym)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SUPPLIER_ENTITY: &str = "ym";
+const SUPPLIER_CASH_ACCOUNT: &str = "7609";
+const SUPPLIER_POINTS_ACCOUNT: &str = "76YB";
+
+async fn scalar_sum(sql: &str, params: Vec<Value>) -> Result<f64> {
+    let stmt = Statement::from_sql_and_values(conn().get_database_backend(), sql, params);
+    let row = conn().query_one(stmt).await?;
+    Ok(row.and_then(|r| r.try_get::<f64>("", "v").ok()).unwrap_or(0.0))
+}
+
+/// Знаковое сальдо счёта (Дт − Кт) в контуре ym до даты: `cmp` = "<" (входящее) или
+/// "<=" (исходящее). Сравнение по дате-части (substr 1..10), устойчиво к времени.
+async fn signed_balance_upto(
+    account: &str,
+    connection_mp_ref: Option<&str>,
+    cmp: &str,
+    date: &str,
+) -> Result<f64> {
+    let mut sql = String::from(
+        "SELECT COALESCE(SUM(CASE WHEN debit_account=? THEN amount \
+         WHEN credit_account=? THEN -amount ELSE 0 END), 0.0) AS v \
+         FROM sys_general_ledger WHERE entity=?",
+    );
+    let mut params = vec![
+        string_value(account),
+        string_value(account),
+        string_value(SUPPLIER_ENTITY),
+    ];
+    if let Some(c) = connection_mp_ref {
+        sql.push_str(" AND connection_mp_ref = ?");
+        params.push(string_value(c));
+    }
+    sql.push_str(&format!(" AND substr(entry_date,1,10) {cmp} ?"));
+    params.push(string_value(date));
+    scalar_sum(&sql, params).await
+}
+
+/// Сумма по одной стороне счёта (debit/credit) за период. `amount_sign`:
+/// Some(true) — только amount>0, Some(false) — только amount<0, None — все.
+/// Нужно, т.к. в конвенции YM счёт 7609 всегда на дебете: начисления (amount>0)
+/// и удержания/возвраты (amount<0) разделяются по знаку суммы, а не по стороне.
+async fn period_account_side(
+    side_col: &str, // "debit_account" | "credit_account"
+    account: &str,
+    connection_mp_ref: Option<&str>,
+    date_from: &str,
+    date_to: &str,
+    amount_sign: Option<bool>,
+) -> Result<f64> {
+    let mut sql = format!(
+        "SELECT COALESCE(SUM(amount), 0.0) AS v FROM sys_general_ledger \
+         WHERE entity=? AND {side_col}=? AND substr(entry_date,1,10) BETWEEN ? AND ?",
+    );
+    let mut params = vec![
+        string_value(SUPPLIER_ENTITY),
+        string_value(account),
+        string_value(date_from),
+        string_value(date_to),
+    ];
+    match amount_sign {
+        Some(true) => sql.push_str(" AND amount > 0"),
+        Some(false) => sql.push_str(" AND amount < 0"),
+        None => {}
+    }
+    if let Some(c) = connection_mp_ref {
+        sql.push_str(" AND connection_mp_ref = ?");
+        params.push(string_value(c));
+    }
+    scalar_sum(&sql, params).await
+}
+
+pub async fn get_supplier_balance(
+    query: &contracts::general_ledger::SupplierBalanceQuery,
+) -> Result<contracts::general_ledger::SupplierBalanceResponse> {
+    use contracts::general_ledger::SupplierBalanceResponse;
+
+    let conn_ref = query
+        .connection_mp_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    let from = query.date_from.as_str();
+    let to = query.date_to.as_str();
+
+    // Сальдо денежного счёта 7609: входящее (< from) и исходящее (<= to).
+    let opening_balance =
+        signed_balance_upto(SUPPLIER_CASH_ACCOUNT, conn_ref, "<", from).await?;
+    let closing_balance =
+        signed_balance_upto(SUPPLIER_CASH_ACCOUNT, conn_ref, "<=", to).await?;
+
+    // Разложение периода (7609 всегда на дебете в контуре ym):
+    //  начислено  = дебет 7609, amount>0 (выручка/доходы);
+    //  удержано   = дебет 7609, amount<0 (комиссии/услуги/возвраты) — отрицательное;
+    //  перечислено= кредит 7609 (оборот ym_settlement) — положительное.
+    let accrued = period_account_side(
+        "debit_account",
+        SUPPLIER_CASH_ACCOUNT,
+        conn_ref,
+        from,
+        to,
+        Some(true),
+    )
+    .await?;
+    let deductions = period_account_side(
+        "debit_account",
+        SUPPLIER_CASH_ACCOUNT,
+        conn_ref,
+        from,
+        to,
+        Some(false),
+    )
+    .await?;
+    let settled = period_account_side(
+        "credit_account",
+        SUPPLIER_CASH_ACCOUNT,
+        conn_ref,
+        from,
+        to,
+        None,
+    )
+    .await?;
+
+    let points_balance =
+        signed_balance_upto(SUPPLIER_POINTS_ACCOUNT, conn_ref, "<=", to).await?;
+
+    Ok(SupplierBalanceResponse {
+        entity: SUPPLIER_ENTITY.to_string(),
+        account: SUPPLIER_CASH_ACCOUNT.to_string(),
+        opening_balance,
+        accrued,
+        deductions,
+        settled,
+        period_net: closing_balance - opening_balance,
+        closing_balance,
+        points_balance,
+    })
 }
 
 #[cfg(test)]

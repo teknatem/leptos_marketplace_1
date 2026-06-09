@@ -21,6 +21,8 @@ pub mod task014_kb_analyze;
 pub mod task015_kb_post;
 pub mod task016_kb_intake;
 pub mod task017_wb_returns_claims;
+pub mod task018_ym_returns;
+pub mod task019_ym_payment_report;
 
 pub use u501_import_ut::U501ImportUtManager;
 pub use u502_import_ozon::U502ImportOzonManager;
@@ -43,3 +45,5 @@ pub use task014_kb_analyze::Task014KbAnalyzeManager;
 pub use task015_kb_post::Task015KbPostManager;
 pub use task016_kb_intake::Task016KbIntakeManager;
 pub use task017_wb_returns_claims::Task017WbReturnsClaimsManager;
+pub use task018_ym_returns::Task018YmReturnsManager;
+pub use task019_ym_payment_report::Task019YmPaymentReportManager;

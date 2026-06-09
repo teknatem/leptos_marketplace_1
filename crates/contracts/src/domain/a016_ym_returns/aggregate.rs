@@ -310,6 +310,11 @@ pub struct YmReturnListItemDto {
     pub id: String,
     pub return_id: i64,
     pub order_id: i64,
+    /// UUID подключения МП (a006_connection_mp)
+    pub connection_id: String,
+    /// Дата исходного заказа (a013_ym_order.creation_date по order_id); пусто если заказ не найден
+    #[serde(default)]
+    pub order_date: String,
     pub return_type: String,
     pub refund_status: String,
     pub total_items: i32,

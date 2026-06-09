@@ -821,8 +821,8 @@ pub fn WbOrderFlowDashboard(
             <div class="page__header"
                  style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;">
                 <div class="page__header-left">
-                    <span class="page__icon">{icon("activity")}</span>
-                    <h1 class="page__title">{"Схема заказа WB"}</h1>
+                    <span class="page__icon">{icon("list-ordered")}</span>
+                    <h1 class="page__title">{"Вся история (WB)"}</h1>
                 </div>
                 // Центр: поле srid + кнопка Обновить
                 <div style="display: flex; align-items: center; gap: 8px;">

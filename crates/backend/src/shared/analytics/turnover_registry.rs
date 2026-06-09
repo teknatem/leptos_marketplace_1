@@ -857,6 +857,121 @@ pub const TURNOVER_CLASSES: &[TurnoverClassDef] = &[
         generates_journal_entry: true,
         journal_comment: "Прочие расходы/удержания по операции маркетплейса без специального правила маппинга (сумма < 0). Хранится отрицательной суммой. Дт7609 / Кт9102.",
     },
+    // ─── Перечисление денежных средств маркетплейсом (слой fina) ─────────────
+    // Завершает денежный контур: выплата маркетплейса на расчётный счёт поставщика.
+    // Одна проводка на банковский ордер (bank_order_id), сумма = bank_sum.
+    // Дт51 (деньги пришли в банк) / Кт7609 (долг МП уменьшается) → сальдо 7609
+    // после этого = «доступно к перечислению».
+    TurnoverClassDef {
+        code: "ym_settlement",
+        name: "Перечисление на расчётный счёт (Я.Маркет)",
+        description: "Фактическая выплата маркетплейса поставщику на расчётный счёт (банковский ордер).",
+        llm_description: "Денежное перечисление маркетплейсом накопленного долга поставщику на банковский расчётный счёт.",
+        scope: TurnoverScope::Unlinked,
+        value_kind: ValueKind::Money,
+        agg_kind: AggKind::Sum,
+        selection_rule: SelectionRule::FactOnly,
+        sign_policy: SignPolicy::IncomePositive,
+        report_group: ReportGroup::Payout,
+        available_dimensions: GL_DIMS_COMMON,
+        aliases: &["ym_payout", "settlement"],
+        source_examples: &["p907_ym_payment_report.bank_sum (по distinct bank_order_id)"],
+        formula_hint: "amount where layer=fina; одна проводка на bank_order_id, сумма = bank_sum",
+        notes: "Завершает денежный контур ym. Источник — bank_order_id/bank_sum/bank_order_date в p907.",
+        debit_account: "51",
+        credit_account: "7609",
+        generates_journal_entry: true,
+        journal_comment: "Перечисление маркетплейсом выплаты на расчётный счёт поставщика. Сумма = bank_sum по банковскому ордеру. Дт51 / Кт7609.",
+    },
+    // ─── Разделение расчётов и реализации (предоплатная модель YM, слой fina) ──
+    // Строка «Платёж покупателя» разносится по времени: денежная нога (дата
+    // транзакции) и признание выручки (дата отгрузки) проходят через 76YA (деньги
+    // покупателей у YM «в пути») и 62 (аванс/обязательство поставки). Полный цикл
+    // оплата→отгрузка нетит 76YA и 62 в ноль; сумма всех ног = Дт7609/Кт9001.
+    TurnoverClassDef {
+        code: "prepayment",
+        name: "Предоплата покупателя (получение)",
+        description: "Денежная нога «Платёж покупателя» по дате транзакции: деньги покупателя удержаны маркетплейсом до отгрузки.",
+        llm_description: "Получение предоплаты покупателя маркетплейсом до отгрузки заказа.",
+        scope: TurnoverScope::OrderLine,
+        value_kind: ValueKind::Money,
+        agg_kind: AggKind::Sum,
+        selection_rule: SelectionRule::FactOnly,
+        sign_policy: SignPolicy::IncomePositive,
+        report_group: ReportGroup::Payout,
+        available_dimensions: GL_DIMS_COMMON,
+        aliases: &["buyer_prepayment"],
+        source_examples: &["p907_ym_payment_report: «Платёж покупателя», по дате транзакции"],
+        formula_hint: "amount where layer=fina and transaction_source='Платёж покупателя'",
+        notes: "Дебет 76YA (деньги у YM в пути), кредит 62 (обязательство поставки). Закрывается на отгрузке (prepayment_settle + customer_revenue).",
+        debit_account: "76YA",
+        credit_account: "62",
+        generates_journal_entry: true,
+        journal_comment: "Получение предоплаты покупателя маркетплейсом до отгрузки. Дт76YA / Кт62.",
+    },
+    TurnoverClassDef {
+        code: "prepayment_storno",
+        name: "Предоплата покупателя (сторно возврата)",
+        description: "Красное сторно полученной предоплаты при возврате/отмене: маркетплейс возвращает деньги покупателю.",
+        llm_description: "Сторно предоплаты покупателя при возврате платежа.",
+        scope: TurnoverScope::OrderLine,
+        value_kind: ValueKind::Money,
+        agg_kind: AggKind::Sum,
+        selection_rule: SelectionRule::FactOnly,
+        sign_policy: SignPolicy::Natural,
+        report_group: ReportGroup::Payout,
+        available_dimensions: GL_DIMS_COMMON,
+        aliases: &["buyer_prepayment_storno"],
+        source_examples: &["p907_ym_payment_report: «Возврат платежа покупателя», по дате транзакции"],
+        formula_hint: "amount where layer=fina and transaction_source='Возврат платежа покупателя'",
+        notes: "Те же счета, что у prepayment, отрицательная сумма (Дт76YA/Кт62 → эффект Дт62/Кт76YA). Эмитируется на каждый возврат.",
+        debit_account: "76YA",
+        credit_account: "62",
+        generates_journal_entry: true,
+        journal_comment: "Красное сторно предоплаты при возврате платежа покупателя. Дт76YA / Кт62, отрицательная сумма.",
+    },
+    TurnoverClassDef {
+        code: "prepayment_settle",
+        name: "Зачёт предоплаты на отгрузке",
+        description: "Перенос удержанной предоплаты в долг маркетплейса к перечислению на дату отгрузки.",
+        llm_description: "Перевод денег покупателя из «в пути» (76YA) в задолженность маркетплейса (7609) при отгрузке.",
+        scope: TurnoverScope::OrderLine,
+        value_kind: ValueKind::Money,
+        agg_kind: AggKind::Sum,
+        selection_rule: SelectionRule::FactOnly,
+        sign_policy: SignPolicy::IncomePositive,
+        report_group: ReportGroup::Payout,
+        available_dimensions: GL_DIMS_COMMON,
+        aliases: &["prepayment_release"],
+        source_examples: &["p907_ym_payment_report: «Платёж покупателя» с датой доставки, по дате доставки"],
+        formula_hint: "amount where layer=fina and transaction_source='Платёж покупателя' and order_delivery_date is not null",
+        notes: "Дебет 7609 (доступно к перечислению), кредит 76YA. Создаётся только при наличии даты доставки.",
+        debit_account: "7609",
+        credit_account: "76YA",
+        generates_journal_entry: true,
+        journal_comment: "Зачёт предоплаты в задолженность маркетплейса на дату отгрузки. Дт7609 / Кт76YA.",
+    },
+    TurnoverClassDef {
+        code: "prepayment_settle_storno",
+        name: "Зачёт предоплаты на отгрузке (сторно возврата)",
+        description: "Красное сторно зачёта предоплаты при возврате отгруженного заказа.",
+        llm_description: "Сторно перевода 76YA→7609 при возврате отгруженного заказа.",
+        scope: TurnoverScope::OrderLine,
+        value_kind: ValueKind::Money,
+        agg_kind: AggKind::Sum,
+        selection_rule: SelectionRule::FactOnly,
+        sign_policy: SignPolicy::Natural,
+        report_group: ReportGroup::Payout,
+        available_dimensions: GL_DIMS_COMMON,
+        aliases: &["prepayment_release_storno"],
+        source_examples: &["p907_ym_payment_report: «Возврат платежа покупателя» с датой доставки, по дате транзакции"],
+        formula_hint: "amount where layer=fina and transaction_source='Возврат платежа покупателя' and order_delivery_date is not null",
+        notes: "Те же счета, что у prepayment_settle, отрицательная сумма (Дт7609/Кт76YA → эффект Дт76YA/Кт7609). Только для возвратов отгруженных заказов.",
+        debit_account: "7609",
+        credit_account: "76YA",
+        generates_journal_entry: true,
+        journal_comment: "Красное сторно зачёта предоплаты при возврате отгруженного заказа. Дт7609 / Кт76YA, отрицательная сумма.",
+    },
     // ─── Storno-обороты для возвратов (oper-слой a012_wb_sales) ──────────────
     // Используются вместо базовых кодов когда document.is_customer_return = true.
     // Красное сторно: те же счета, что у оригинала, суммы отрицательные.
@@ -1117,6 +1232,28 @@ mod tests {
 
         assert_eq!(base.debit_account, "9102");
         assert_eq!(base.credit_account, "7609");
+        assert_eq!(storno.debit_account, base.debit_account);
+        assert_eq!(storno.credit_account, base.credit_account);
+    }
+
+    #[test]
+    fn prepayment_storno_uses_same_accounts_as_base_turnover() {
+        let base = get_turnover_class("prepayment").unwrap();
+        let storno = get_turnover_class("prepayment_storno").unwrap();
+
+        assert_eq!(base.debit_account, "76YA");
+        assert_eq!(base.credit_account, "62");
+        assert_eq!(storno.debit_account, base.debit_account);
+        assert_eq!(storno.credit_account, base.credit_account);
+    }
+
+    #[test]
+    fn prepayment_settle_storno_uses_same_accounts_as_base_turnover() {
+        let base = get_turnover_class("prepayment_settle").unwrap();
+        let storno = get_turnover_class("prepayment_settle_storno").unwrap();
+
+        assert_eq!(base.debit_account, "7609");
+        assert_eq!(base.credit_account, "76YA");
         assert_eq!(storno.debit_account, base.debit_account);
         assert_eq!(storno.credit_account, base.credit_account);
     }

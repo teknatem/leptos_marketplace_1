@@ -36,7 +36,7 @@ pub fn WbOrdersDetails(id: String, #[prop(into)] on_close: Callback<()>) -> impl
             if matches!(active_tab, "json" | "line") && !vm.raw_json_loaded.get() {
                 vm.load_raw_json();
             }
-            if active_tab == "line" && !vm.marketplace_raw_json_loaded.get() {
+            if matches!(active_tab, "json" | "line") && !vm.marketplace_raw_json_loaded.get() {
                 vm.load_marketplace_raw_json();
             }
             if matches!(active_tab, "links" | "line") && !vm.finance_reports_loaded.get() {
@@ -163,7 +163,7 @@ fn OrderFlowButton(vm: WbOrdersDetailsVm) -> impl IntoView {
             }
             let encoded = urlencoding::encode(&srid);
             let key = format!("d402_wb_order_flow_srid_{}", encoded);
-            tabs_store.open_tab(&key, "Схема");
+            tabs_store.open_tab(&key, "Вся история");
         }
     };
 
@@ -175,8 +175,8 @@ fn OrderFlowButton(vm: WbOrdersDetailsVm) -> impl IntoView {
                 on_click=on_click.clone()
             >
                 <span class="page-action-button__content">
-                    <span class="page-action-button__icon">{icon("activity")}</span>
-                    <span class="page-action-button__text">"Схема"</span>
+                    <span class="page-action-button__icon">{icon("list-ordered")}</span>
+                    <span class="page-action-button__text">"Вся история"</span>
                 </span>
             </Button>
         </Show>

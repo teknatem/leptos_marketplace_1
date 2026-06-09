@@ -1,0 +1,1 @@
+ALTER TABLE a035_ym_settlement_recon ADD COLUMN is_posted INTEGER NOT NULL DEFAULT 0;

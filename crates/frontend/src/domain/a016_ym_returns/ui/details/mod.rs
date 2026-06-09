@@ -8,5 +8,6 @@
 mod model;
 mod page;
 mod tabs;
+mod view_model;
 
 pub use page::YmReturnDetail;

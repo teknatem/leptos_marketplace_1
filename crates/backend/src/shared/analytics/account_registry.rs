@@ -89,7 +89,39 @@ pub const ACCOUNT_REGISTRY: &[AccountDef] = &[
         normal_balance: NormalBalance::Debit,
         parent_code: Some("76"),
         section: StatementSection::BalanceSheet,
-        description: "Взаиморасчёты с маркетплейсами (комиссии, удержания, выплаты).",
+        description: "Взаиморасчёты с маркетплейсами (комиссии, удержания, выплаты). \
+            Дебетовое сальдо контура маркетплейса = сумма, доступная к перечислению поставщику.",
+    },
+    AccountDef {
+        code: "76YB",
+        name: "Баланс баллов/промо (Яндекс.Маркет)",
+        account_type: AccountType::ActivePassive,
+        normal_balance: NormalBalance::Debit,
+        parent_code: Some("76"),
+        section: StatementSection::BalanceSheet,
+        description: "Информационный кошелёк баллов/промо маркетплейса (операции payment_status «Справочно: …баланс»). \
+            Ведётся отдельно от денежных расчётов 7609 — не является живыми деньгами к выплате.",
+    },
+    AccountDef {
+        code: "76YA",
+        name: "Деньги покупателей у Я.Маркет (предоплаты в пути)",
+        account_type: AccountType::ActivePassive,
+        normal_balance: NormalBalance::Debit,
+        parent_code: Some("76"),
+        section: StatementSection::BalanceSheet,
+        description: "Деньги покупателей, удерживаемые маркетплейсом по оплаченным, но ещё не \
+            отгруженным заказам. На отгрузке переносится на 7609 (становится доступно к перечислению \
+            поставщику). Дебетовое сальдо = предоплаты в пути; зеркалит открытое Кт-сальдо 62.",
+    },
+    AccountDef {
+        code: "51",
+        name: "Расчётный счёт",
+        account_type: AccountType::Active,
+        normal_balance: NormalBalance::Debit,
+        parent_code: None,
+        section: StatementSection::BalanceSheet,
+        description: "Денежные средства на расчётном счёте в банке. Дебетуется при перечислении \
+            маркетплейсом выплаты поставщику.",
     },
 ];
 

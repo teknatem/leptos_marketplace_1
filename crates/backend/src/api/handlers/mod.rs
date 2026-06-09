@@ -33,6 +33,7 @@ pub mod a031_kb_edit;
 pub mod a032_wb_returns_claims;
 pub mod a033_wb_day_close;
 pub mod a034_ym_realization;
+pub mod a035_ym_settlement_recon;
 
 // Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;
@@ -50,6 +51,7 @@ pub mod p911_wb_advert_by_items;
 pub mod p912_nomenclature_costs;
 pub mod p913_wb_advert_order_attr;
 pub mod p914_mp_finance_turnovers;
+pub mod p915_mp_order_events;
 
 // DataView semantic layer handlers
 pub mod bi_timeline;

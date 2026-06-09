@@ -3,6 +3,10 @@ use contracts::dashboards::d402_wb_order_flow::{
     AdvertFlowItem, ClaimFlowItem, OrderFlowItem, P903FlowItem, SaleFlowItem, SupplyFlowItem,
     WbOrderFlowResponse,
 };
+use contracts::dashboards::d403_ym_order_flow::{
+    YmOrderFlowItem, YmOrderFlowResponse, YmPaymentFlowItem, YmRealizationFlowItem,
+    YmReturnFlowItem,
+};
 use contracts::dashboards::d404_wb_advert_report::{
     WbAdvertReportLink, WbAdvertReportNode, WbAdvertReportRequest, WbAdvertReportResponse,
     WbAdvertReportTotals,
@@ -13,6 +17,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 #[derive(Deserialize)]
 pub struct WbOrderFlowQuery {
     pub srid: String,
+}
+
+#[derive(Deserialize)]
+pub struct YmOrderFlowQuery {
+    pub order_id: String,
 }
 
 #[derive(Default)]
@@ -800,6 +809,122 @@ pub async fn wb_order_flow(
         claims,
         base_nomenclature_description,
         nomenclature_description,
+    }))
+}
+
+/// GET /api/dashboards/ym-order-flow?order_id={order_no}
+///
+/// «Вся история» YM-заказа: строки реализации a034 + платёжные транзакции p907,
+/// собранные по номеру заказа.
+pub async fn ym_order_flow(
+    Query(query): Query<YmOrderFlowQuery>,
+) -> Result<Json<YmOrderFlowResponse>, axum::http::StatusCode> {
+    let order_no = query.order_id.trim().to_string();
+
+    // 0. a013: сам заказ (первое событие ленты, как в d402).
+    let order = crate::domain::a013_ym_order::repository::get_by_document_no(&order_no)
+        .await
+        .unwrap_or(None)
+        .map(|o| {
+            let qty: f64 = o.lines.iter().map(|l| l.qty).sum();
+            YmOrderFlowItem {
+                id: o.base.id.0.to_string(),
+                document_no: o.header.document_no.clone(),
+                order_date: o
+                    .state
+                    .creation_date
+                    .map(|d| d.format("%d.%m.%Y").to_string()),
+                status: Some(o.state.status_norm.clone()).filter(|s| !s.trim().is_empty()),
+                delivery_date: o
+                    .state
+                    .delivery_date
+                    .map(|d| d.format("%d.%m.%Y").to_string()),
+                qty,
+                items_total: o.header.items_total,
+                total_amount: o.header.total_amount,
+                is_posted: o.is_posted,
+            }
+        });
+
+    // 1. a034: строки официальной реализации по заказу.
+    let realizations: Vec<YmRealizationFlowItem> =
+        crate::domain::a034_ym_realization::repository::lines_by_order_id(&order_no)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|l| YmRealizationFlowItem {
+                doc_id: l.doc_id,
+                document_no: l.document_no,
+                document_date: l.document_date,
+                shop_sku: l.shop_sku,
+                offer_name: l.offer_name,
+                quantity: l.quantity,
+                revenue_amount: l.revenue_amount,
+                is_return: l.is_return,
+            })
+            .collect();
+
+    // 2. p907: платёжные транзакции по заказу (order_id хранится как i64).
+    let payments: Vec<YmPaymentFlowItem> = match order_no.parse::<i64>() {
+        Ok(oid) => {
+            let (rows, _) =
+                crate::projections::p907_ym_payment_report::repository::list_with_filters(
+                    "", "", None, None, None, None, Some(oid), None, None, None,
+                    "transaction_date", false, 1000, 0,
+                )
+                .await
+                .unwrap_or_default();
+            rows.into_iter()
+                .map(|r| YmPaymentFlowItem {
+                    id: r.id,
+                    transaction_date: r.transaction_date,
+                    transaction_type: r.transaction_type,
+                    transaction_id: r.transaction_id,
+                    transaction_sum: r.transaction_sum,
+                    bank_sum: r.bank_sum,
+                    payment_status: r.payment_status,
+                    transaction_source: r.transaction_source,
+                    shop_sku: r.shop_sku,
+                    offer_or_service_name: r.offer_or_service_name,
+                    count: r.count,
+                    comments: r.comments,
+                })
+                .collect()
+        }
+        Err(_) => Vec::new(),
+    };
+
+    // 3. a016: возвраты по этому заказу (если есть).
+    let returns: Vec<YmReturnFlowItem> = match order_no.parse::<i64>() {
+        Ok(oid) => crate::domain::a016_ym_returns::repository::list_by_order_ids(&[oid])
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| {
+                let qty: i32 = r.lines.iter().map(|l| l.count).sum();
+                YmReturnFlowItem {
+                    id: r.base.id.0.to_string(),
+                    return_id: r.header.return_id,
+                    return_type: r.header.return_type.clone(),
+                    refund_status: r.state.refund_status.clone(),
+                    created_at_source: r
+                        .state
+                        .created_at_source
+                        .map(|d| d.format("%d.%m.%Y").to_string()),
+                    amount: r.header.amount.unwrap_or(0.0),
+                    qty,
+                }
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+
+    Ok(Json(YmOrderFlowResponse {
+        order_no,
+        order,
+        realizations,
+        payments,
+        returns,
     }))
 }
 

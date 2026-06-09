@@ -66,6 +66,19 @@ pub struct YmOrderHeader {
     pub margin_pro: Option<f64>,
 }
 
+/// Деталь судьбы позиции (из items[].details Yandex Market API).
+/// Появляется, когда часть/всё количество позиции отклонено или возвращено.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderLineDetail {
+    /// Количество единиц с данным статусом (itemCount)
+    pub count: f64,
+    /// Статус единиц: REJECTED (невыкуп/отказ), RETURNED (возврат после получения)
+    pub status: String,
+    /// Дата обновления статуса как пришла из API, строкой (updateDate)
+    #[serde(default)]
+    pub update_date: Option<String>,
+}
+
 /// Строка документа (позиция)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmOrderLine {
@@ -95,7 +108,10 @@ pub struct YmOrderLine {
     /// Субсидии на уровне товара (JSON массив OrderItemSubsidyDTO)
     #[serde(default)]
     pub subsidies_json: Option<String>,
-    /// Статус товара в заказе
+    /// Сводный статус строки, выводимый из `details` (см. ниже).
+    /// None — позиция доставлена штатно (деталей нет).
+    /// Примеры: "RETURNED", "REJECTED", "RETURNED 1/2".
+    /// ВНИМАНИЕ: одноимённого поля у позиции в orders-API НЕТ — статус выводится из items[].details.
     #[serde(default)]
     pub status: Option<String>,
     /// Плановая цена (пока константа = 0)
@@ -110,6 +126,10 @@ pub struct YmOrderLine {
     /// Дилерская цена УТ (заполняется при проведении из p906)
     #[serde(default)]
     pub dealer_price_ut: Option<f64>,
+    /// Детали судьбы позиции из items[].details (частичные возвраты/отказы).
+    /// Пусто для штатно доставленных позиций.
+    #[serde(default)]
+    pub details: Vec<YmOrderLineDetail>,
 }
 
 /// Статусы и временные метки
@@ -360,4 +380,12 @@ pub struct YmOrderListDto {
     pub organization_name: Option<String>,
     pub total_dealer_amount: Option<f64>,
     pub margin_pro: Option<f64>,
+    /// Дата реализации из проекции p915_mp_order_events (событие `realization`).
+    /// Пусто, если реализация по заказу ещё не загружена/не проведена.
+    #[serde(default)]
+    pub realization_date: String,
+    /// Дата оплаты поставщику из p915_mp_order_events (событие `supplier_payment`).
+    /// Пусто, пока банковский ордер a035 по заказу не проведён.
+    #[serde(default)]
+    pub payment_date: String,
 }

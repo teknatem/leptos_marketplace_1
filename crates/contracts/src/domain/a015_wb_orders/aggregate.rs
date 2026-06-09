@@ -88,6 +88,16 @@ pub struct WbOrdersLine {
     pub dealer_price_ut: Option<f64>,
     /// Маржинальность, %
     pub margin_pro: Option<f64>,
+    /// Код валюты продажи заказа (ISO 4217 numeric) из Marketplace API `currencyCode`.
+    /// Заполняется только для трансграничных заказов СНГ (не-рубль: 398 KZT, 933 BYN,
+    /// 51 AMD …). Отсутствие поля ⇒ заказ в рублях. Суммы `price`/`sale_price` уже
+    /// пересчитаны в рубли, это поле сохраняет исходную валюту для прозрачности.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub currency_code: Option<i64>,
+    /// Курс WB (рублей за единицу `currency_code`), применённый к WB-суммам при импорте.
+    /// Вычисляется как `convertedPrice / price`. Заполняется вместе с `currency_code`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fx_rate: Option<f64>,
 }
 
 impl WbOrdersLine {

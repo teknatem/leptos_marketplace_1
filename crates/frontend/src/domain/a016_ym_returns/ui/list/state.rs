@@ -9,6 +9,7 @@ pub struct YmReturnsState {
     pub date_from: String,
     pub date_to: String,
     pub filter_type: Option<String>,
+    pub filter_connection: String,
 
     // Сортировка
     pub sort_field: String,
@@ -66,6 +67,7 @@ impl Default for YmReturnsState {
             date_from: month_start.format("%Y-%m-%d").to_string(),
             date_to: month_end.format("%Y-%m-%d").to_string(),
             filter_type: None,
+            filter_connection: String::new(),
             sort_field: "created_at_source".to_string(),
             sort_ascending: false,
             selected_ids: HashSet::new(),

@@ -34,7 +34,10 @@ pub struct Model {
     pub net_revenue: f64,
     pub header_json: String,
     pub totals_json: String,
-    pub lines_json: String,
+    /// Строки-продажи (delivered) — отдельная коллекция, не смешивается с возвратами.
+    pub sales_lines_json: String,
+    /// Строки-возвраты (returned) — отдельная коллекция.
+    pub return_lines_json: String,
     pub source_meta_json: String,
     pub fetched_at: String,
     pub is_deleted: bool,
@@ -75,7 +78,8 @@ impl From<Model> for YmRealization {
             return_qty: 0.0,
             net_qty: 0.0,
         });
-        let lines = serde_json::from_str(&m.lines_json).unwrap_or_default();
+        let sales_lines = serde_json::from_str(&m.sales_lines_json).unwrap_or_default();
+        let return_lines = serde_json::from_str(&m.return_lines_json).unwrap_or_default();
         let source_meta =
             serde_json::from_str(&m.source_meta_json).unwrap_or(YmRealizationSourceMeta {
                 source: "ym_goods_realization".to_string(),
@@ -92,7 +96,8 @@ impl From<Model> for YmRealization {
             ),
             header,
             totals,
-            lines,
+            sales_lines,
+            return_lines,
             source_meta,
             is_posted: m.is_posted,
         }
@@ -102,7 +107,8 @@ impl From<Model> for YmRealization {
 fn to_active_model(document: &YmRealization, created_at: Option<chrono::DateTime<chrono::Utc>>) -> Result<ActiveModel> {
     let header_json = serde_json::to_string(&document.header)?;
     let totals_json = serde_json::to_string(&document.totals)?;
-    let lines_json = serde_json::to_string(&document.lines)?;
+    let sales_lines_json = serde_json::to_string(&document.sales_lines)?;
+    let return_lines_json = serde_json::to_string(&document.return_lines)?;
     let source_meta_json = serde_json::to_string(&document.source_meta)?;
 
     Ok(ActiveModel {
@@ -115,13 +121,14 @@ fn to_active_model(document: &YmRealization, created_at: Option<chrono::DateTime
         connection_id: Set(document.header.connection_id.clone()),
         organization_id: Set(document.header.organization_id.clone()),
         marketplace_id: Set(document.header.marketplace_id.clone()),
-        lines_count: Set(document.lines.len() as i32),
+        lines_count: Set(document.lines_count() as i32),
         total_sales_revenue: Set(document.totals.sales_revenue),
         total_return_revenue: Set(document.totals.return_revenue),
         net_revenue: Set(document.totals.net_revenue),
         header_json: Set(header_json),
         totals_json: Set(totals_json),
-        lines_json: Set(lines_json),
+        sales_lines_json: Set(sales_lines_json),
+        return_lines_json: Set(return_lines_json),
         source_meta_json: Set(source_meta_json),
         fetched_at: Set(document.source_meta.fetched_at.clone()),
         is_deleted: Set(document.base.metadata.is_deleted),
@@ -382,6 +389,79 @@ pub async fn list_sql(query: YmRealizationListQuery) -> Result<YmRealizationList
         .collect();
 
     Ok(YmRealizationListResult { items, total })
+}
+
+/// Строка реализации a034 по заказу (для дашборда «Вся история»).
+#[derive(Clone, Debug)]
+pub struct LineByOrder {
+    pub doc_id: String,
+    pub document_no: String,
+    pub document_date: String,
+    pub shop_sku: String,
+    pub offer_name: String,
+    pub quantity: f64,
+    pub revenue_amount: f64,
+    pub is_return: bool,
+}
+
+/// Все строки реализации по номеру заказа YM (`order_id`). Продажи и возвраты
+/// хранятся в отдельных JSON-коллекциях (`sales_lines_json` / `return_lines_json`) —
+/// разворачиваем обе через `json_each` и объединяем.
+pub async fn lines_by_order_id(order_id: &str) -> Result<Vec<LineByOrder>> {
+    let db = get_connection();
+
+    let sql = "
+        SELECT
+            d.id                                       AS doc_id,
+            d.document_no                              AS document_no,
+            d.document_date                            AS document_date,
+            json_extract(li.value, '$.shop_sku')       AS shop_sku,
+            json_extract(li.value, '$.offer_name')     AS offer_name,
+            json_extract(li.value, '$.quantity')       AS quantity,
+            json_extract(li.value, '$.revenue_amount') AS revenue_amount,
+            json_extract(li.value, '$.is_return')      AS is_return
+        FROM a034_ym_realization d, json_each(d.sales_lines_json) li
+        WHERE d.is_deleted = 0
+          AND json_extract(li.value, '$.order_id') = ?
+        UNION ALL
+        SELECT
+            d.id                                       AS doc_id,
+            d.document_no                              AS document_no,
+            d.document_date                            AS document_date,
+            json_extract(li.value, '$.shop_sku')       AS shop_sku,
+            json_extract(li.value, '$.offer_name')     AS offer_name,
+            json_extract(li.value, '$.quantity')       AS quantity,
+            json_extract(li.value, '$.revenue_amount') AS revenue_amount,
+            json_extract(li.value, '$.is_return')      AS is_return
+        FROM a034_ym_realization d, json_each(d.return_lines_json) li
+        WHERE d.is_deleted = 0
+          AND json_extract(li.value, '$.order_id') = ?
+        ORDER BY document_date ASC";
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+            [order_id.into(), order_id.into()],
+        ))
+        .await?;
+
+    let items = rows
+        .into_iter()
+        .map(|row| LineByOrder {
+            doc_id: row.try_get("", "doc_id").unwrap_or_default(),
+            document_no: row.try_get("", "document_no").unwrap_or_default(),
+            document_date: row.try_get("", "document_date").unwrap_or_default(),
+            shop_sku: row.try_get("", "shop_sku").unwrap_or_default(),
+            offer_name: row.try_get("", "offer_name").unwrap_or_default(),
+            quantity: row.try_get("", "quantity").unwrap_or(0.0),
+            revenue_amount: row.try_get("", "revenue_amount").unwrap_or(0.0),
+            // json_extract возвращает 0/1 для boolean — читаем как i64.
+            is_return: row.try_get::<i64>("", "is_return").unwrap_or(0) != 0,
+        })
+        .collect();
+
+    Ok(items)
 }
 
 /// Все документы за период по кабинету (для импорта/replace), без пагинации.

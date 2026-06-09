@@ -112,6 +112,45 @@ pub async fn post_document(id: Uuid) -> Result<()> {
 
     document.is_posted = true;
     document.base.metadata.is_posted = true;
+
+    // Totals — производная от строк. Документы, импортированные до появления
+    // qty-полей, несут sales_qty/return_qty = 0 в totals_json (serde default),
+    // хотя строки содержат quantity. Пересчёт делает проводку ybuh самосогласованной
+    // и чинит количество прямо на перепроведении (без переимпорта); исправленные
+    // totals тут же сохраняются вместе с документом.
+    document.totals =
+        contracts::domain::a034_ym_realization::aggregate::YmRealizationTotals::from_parts(
+            &document.sales_lines,
+            &document.return_lines,
+        );
+
+    // Распознаём позицию маркетплейса (a007) по артикулу/SKU — общий ключ сверки с
+    // p907. Однотипно с p907 (resolve_and_persist_marketplace_refs): резолвим при
+    // каждом проведении, чтобы отражать актуальную привязку a007.
+    let connection_id = document.header.connection_id.clone();
+    for line in document
+        .sales_lines
+        .iter_mut()
+        .chain(document.return_lines.iter_mut())
+    {
+        let sku = line
+            .your_sku
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| line.shop_sku.trim());
+        line.marketplace_product_ref = if sku.is_empty() {
+            None
+        } else {
+            crate::domain::a007_marketplace_product::service::resolve_marketplace_product_ref(
+                &connection_id,
+                sku,
+                Some(line.shop_sku.trim()),
+            )
+            .await?
+        };
+    }
+
     document.before_write();
 
     let registrator_ref = id.to_string();
@@ -149,6 +188,22 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         crate::projections::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
     }
 
+    // Таймлайн событий заказа (p915): реализация / возврат товара по строкам документа.
+    crate::projections::p915_mp_order_events::repository::delete_by_registrator_with_conn(
+        &txn,
+        REGISTRATOR_TYPE,
+        &registrator_ref,
+    )
+    .await?;
+    let order_events =
+        crate::projections::p915_mp_order_events::builder::from_ym_realization(&document, &registrator_ref);
+    for event in &order_events {
+        crate::projections::p915_mp_order_events::repository::insert_entry_raw_with_conn(
+            &txn, event,
+        )
+        .await?;
+    }
+
     txn.commit().await?;
     Ok(())
 }
@@ -167,6 +222,12 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     let txn = db.begin().await?;
     repository::update_document_with_conn(&txn, &document).await?;
     crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
+        &txn,
+        REGISTRATOR_TYPE,
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p915_mp_order_events::repository::delete_by_registrator_with_conn(
         &txn,
         REGISTRATOR_TYPE,
         &registrator_ref,

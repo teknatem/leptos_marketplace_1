@@ -29,7 +29,11 @@ struct FileSpec {
     is_return: bool,
     /// Колонки даты по приоритету (пер-строчный fallback).
     date: &'static [&'static str],
+    /// Колонка номера заказа (общий ключ сверки с p907).
+    order: &'static [&'static str],
     shop_sku: &'static [&'static str],
+    /// Артикул продавца (YOUR_SKU) — для резолва позиции в a007.
+    your_sku: &'static [&'static str],
     offer_name: &'static [&'static str],
     quantity: &'static [&'static str],
     /// Колонка суммы с НДС и всеми скидками (выручка по цене покупателя).
@@ -42,7 +46,9 @@ const SPECS: &[FileSpec] = &[
         filename: "delivered.csv",
         is_return: false,
         date: &["DELIVERY_DATE", "TRANSFERRED_TO_DELIVERY_DATE", "ORDER_CREATION_DATE"],
+        order: &["ORDER_ID"],
         shop_sku: &["SHOP_SKU", "YOUR_SKU"],
+        your_sku: &["YOUR_SKU"],
         offer_name: &["OFFER_NAME"],
         quantity: &["DELIVERED_COUNT", "TRANSFERRED_TO_DELIVERY_COUNT"],
         revenue: &["DELIVERED_PRICE_SUM_WITH_VAT_AND_DISCOUNTS"],
@@ -56,7 +62,9 @@ const SPECS: &[FileSpec] = &[
             "DELIVERY_DATE",
             "ORDER_CREATION_DATE",
         ],
+        order: &["ORDER_ID"],
         shop_sku: &["SHOP_SKU", "YOUR_SKU"],
+        your_sku: &["YOUR_SKU"],
         offer_name: &["OFFER_NAME"],
         quantity: &["RETURNED_COUNT", "DELIVERED_COUNT"],
         revenue: &["RETURN_PRICE_SUM_WITH_VAT_AND_DISCOUNTS"],
@@ -66,6 +74,13 @@ const SPECS: &[FileSpec] = &[
 pub struct ParsedRealization {
     pub documents: Vec<YmRealization>,
     pub skipped: i32,
+}
+
+/// Строки одного дня, разнесённые по типу (продажи / возвраты).
+#[derive(Default)]
+struct DayLines {
+    sales: Vec<YmRealizationLine>,
+    returns: Vec<YmRealizationLine>,
 }
 
 /// Очистка денежной строки YM: убираем пробелы/неразрывные пробелы (разделители
@@ -100,7 +115,9 @@ pub fn parse_realization_files(
     let fetched_at = chrono::Utc::now().to_rfc3339();
 
     let mut skipped = 0i32;
-    let mut by_day: BTreeMap<String, Vec<YmRealizationLine>> = BTreeMap::new();
+    // Продажи и возвраты разносятся в отдельные коллекции уже на парсинге —
+    // приходят из разных файлов (delivered/returned) и не смешиваются.
+    let mut by_day: BTreeMap<String, DayLines> = BTreeMap::new();
 
     for spec in SPECS {
         let Some((_, content)) = files
@@ -131,7 +148,8 @@ pub fn parse_realization_files(
         };
         let mut document = YmRealization::new_for_insert(
             header,
-            lines,
+            lines.sales,
+            lines.returns,
             YmRealizationSourceMeta {
                 source: "ym_goods_realization".to_string(),
                 fetched_at: fetched_at.clone(),
@@ -155,7 +173,7 @@ fn parse_file(
     csv_text: &str,
     month_first: &str,
     month_last: &str,
-    by_day: &mut BTreeMap<String, Vec<YmRealizationLine>>,
+    by_day: &mut BTreeMap<String, DayLines>,
     skipped: &mut i32,
 ) {
     let text = csv_text.trim_start_matches('\u{FEFF}');
@@ -188,6 +206,8 @@ fn parse_file(
                 .position(|h| h.trim().eq_ignore_ascii_case(name))
         })
         .collect();
+    let idx_order = idx_of(spec.order);
+    let idx_your_sku = idx_of(spec.your_sku);
     let idx_shop_sku = idx_of(spec.shop_sku);
     let idx_offer_name = idx_of(spec.offer_name);
     let idx_quantity = idx_of(spec.quantity);
@@ -222,7 +242,10 @@ fn parse_file(
         let revenue = get(idx_revenue).and_then(|v| parse_money(&v)).unwrap_or(0.0);
 
         let line = YmRealizationLine {
+            order_id: get(idx_order),
             shop_sku: get(idx_shop_sku).unwrap_or_default(),
+            your_sku: get(idx_your_sku),
+            marketplace_product_ref: None,
             market_sku: None,
             offer_name: get(idx_offer_name).unwrap_or_default(),
             quantity: get(idx_quantity).and_then(|v| parse_money(&v)).unwrap_or(0.0),
@@ -230,6 +253,11 @@ fn parse_file(
             revenue_amount: revenue.abs(),
             is_return: spec.is_return,
         };
-        by_day.entry(day).or_default().push(line);
+        let bucket = by_day.entry(day).or_default();
+        if spec.is_return {
+            bucket.returns.push(line);
+        } else {
+            bucket.sales.push(line);
+        }
     }
 }

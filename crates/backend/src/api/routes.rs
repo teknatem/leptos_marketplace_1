@@ -41,6 +41,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a025_routes())
         .merge(a026_routes())
         .merge(a034_routes())
+        .merge(a035_routes())
         .merge(a027_routes())
         .merge(a028_routes())
         .merge(a029_routes())
@@ -72,6 +73,7 @@ pub fn configure_business_routes() -> Router {
         .merge(p912_routes())
         .merge(p913_routes())
         .merge(p914_routes())
+        .merge(p915_routes())
         // System views with scopes
         .merge(quality_routes())
         .merge(dashboard_routes())
@@ -578,6 +580,10 @@ fn a016_routes() -> Router {
             get(handlers::a016_ym_returns::list_returns),
         )
         .route(
+            "/api/a016/ym-returns/source-order/:order_no",
+            get(handlers::a016_ym_returns::get_source_order),
+        )
+        .route(
             "/api/a016/ym-returns/:id",
             get(handlers::a016_ym_returns::get_return_detail),
         )
@@ -841,6 +847,30 @@ fn a034_routes() -> Router {
             "/api/a034/ym-realization/:id/journal",
             get(handlers::a034_ym_realization::get_general_ledger_entries),
         )
+        .route(
+            "/api/a034/ym-realization/:id/payment-detail",
+            get(handlers::a034_ym_realization::get_payment_detail),
+        )
+        .route(
+            "/api/a034/ym-realization/:id/reconciliation-sales",
+            get(handlers::a034_ym_realization::get_reconciliation_sales),
+        )
+        .route(
+            "/api/a034/ym-realization/:id/reconciliation-returns",
+            get(handlers::a034_ym_realization::get_reconciliation_returns),
+        )
+        .route(
+            "/api/a034/ym-realization/:id/delivery-orders",
+            get(handlers::a034_ym_realization::get_delivery_orders),
+        )
+        .route(
+            "/api/a034/ym-realization/:id/fetch-missing-orders",
+            post(handlers::a034_ym_realization::fetch_missing_orders),
+        )
+        .route(
+            "/api/a034/ym-realization/:id/reconciliation-summary",
+            get(handlers::a034_ym_realization::get_reconciliation_summary),
+        )
         // Revenue reconciliation report (fina/p907 vs ybuh/a034) — read-only,
         // scoped to a034 so operators with a034 access can reach it without
         // requiring the broader `general_ledger` system-view scope.
@@ -851,6 +881,39 @@ fn a034_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a034_ym_realization", req, next).await
+            },
+        ))
+}
+
+fn a035_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a035/ym-settlement-recon/list",
+            get(handlers::a035_ym_settlement_recon::list_paginated),
+        )
+        .route(
+            "/api/a035/ym-settlement-recon/generate",
+            post(handlers::a035_ym_settlement_recon::generate),
+        )
+        .route(
+            "/api/a035/ym-settlement-recon/:id",
+            get(handlers::a035_ym_settlement_recon::get_by_id),
+        )
+        .route(
+            "/api/a035/ym-settlement-recon/:id/recompute",
+            post(handlers::a035_ym_settlement_recon::recompute),
+        )
+        .route(
+            "/api/a035/ym-settlement-recon/:id/post",
+            post(handlers::a035_ym_settlement_recon::post_document),
+        )
+        .route(
+            "/api/a035/ym-settlement-recon/:id/unpost",
+            post(handlers::a035_ym_settlement_recon::unpost_document),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a035_ym_settlement_recon", req, next).await
             },
         ))
 }
@@ -1629,6 +1692,23 @@ fn p914_routes() -> Router {
         ))
 }
 
+fn p915_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/p915/order-events",
+            get(handlers::p915_mp_order_events::list),
+        )
+        .route(
+            "/api/p915/order-events/by-order/:order_id",
+            get(handlers::p915_mp_order_events::by_order),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope_read("p915_mp_order_events", req, next).await
+            },
+        ))
+}
+
 // ============================================================================
 // Indicators
 // ============================================================================
@@ -1646,6 +1726,10 @@ fn dashboard_routes() -> Router {
         .route(
             "/api/dashboards/wb-order-flow",
             get(handlers::dashboards::wb_order_flow),
+        )
+        .route(
+            "/api/dashboards/ym-order-flow",
+            get(handlers::dashboards::ym_order_flow),
         )
         .route(
             "/api/dashboards/wb-advert-report",
@@ -1926,6 +2010,10 @@ fn general_ledger_routes() -> Router {
         .route(
             "/api/general-ledger/entities",
             axum::routing::get(handlers::general_ledger::list_entities),
+        )
+        .route(
+            "/api/general-ledger/supplier-balance",
+            axum::routing::post(handlers::general_ledger::supplier_balance),
         )
         .route(
             "/api/general-ledger/layer-turnover-matrix",

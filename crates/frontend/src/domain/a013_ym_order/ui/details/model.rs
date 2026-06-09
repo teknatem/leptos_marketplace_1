@@ -77,6 +77,17 @@ pub struct LineDto {
     pub nomenclature_ref: Option<String>,
     #[serde(default)]
     pub dealer_price_ut: Option<f64>,
+    /// Детали судьбы позиции (частичные возвраты/отказы)
+    #[serde(default)]
+    pub details: Vec<LineDetailDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LineDetailDto {
+    pub count: f64,
+    pub status: String,
+    #[serde(default)]
+    pub update_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,6 +271,69 @@ pub async fn fetch_payment_reports_by_order(
     let resp: PaymentReportListResponse =
         serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
     Ok(resp.items)
+}
+
+/// Событие заказа из проекции p915_mp_order_events (для таймлайна на вкладке «Общие»).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderEventDto {
+    #[serde(default)]
+    pub event_date: String,
+    #[serde(default)]
+    pub event_type: String,
+    #[serde(default)]
+    pub amount: Option<f64>,
+    #[serde(default)]
+    pub registrator_type: String,
+    #[serde(default)]
+    pub registrator_ref: String,
+}
+
+/// События заказа из p915 по номеру заказа (document_no). Уже отсортированы по дате.
+pub async fn fetch_order_events(order_id: &str) -> Result<Vec<OrderEventDto>, String> {
+    let url = format!("{}/api/p915/order-events/by-order/{}", api_base(), order_id);
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch order events: {}", e))?;
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    serde_json::from_str(&text).map_err(|e| format!("Failed to parse order events: {}", e))
+}
+
+/// Наименование агрегата по id: GET url → поле `description` (фолбэк `code`).
+/// Пустой/нерезолвящийся ответ → None.
+async fn fetch_entity_name(url: &str) -> Option<String> {
+    let response = Request::get(url).send().await.ok()?;
+    if response.status() != 200 {
+        return None;
+    }
+    let text = response.text().await.ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let pick = |key: &str| {
+        json.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    };
+    pick("description").or_else(|| pick("code"))
+}
+
+pub async fn fetch_connection_name(id: &str) -> Option<String> {
+    fetch_entity_name(&format!("{}/api/connection_mp/{}", api_base(), id)).await
+}
+
+pub async fn fetch_organization_name(id: &str) -> Option<String> {
+    fetch_entity_name(&format!("{}/api/organization/{}", api_base(), id)).await
+}
+
+pub async fn fetch_marketplace_name(id: &str) -> Option<String> {
+    fetch_entity_name(&format!("{}/api/marketplace/{}", api_base(), id)).await
 }
 
 pub async fn fetch_nomenclature(id: &str) -> Result<NomenclatureInfo, String> {

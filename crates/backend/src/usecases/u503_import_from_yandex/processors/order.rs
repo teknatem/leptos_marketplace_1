@@ -3,9 +3,39 @@ use crate::domain::a013_ym_order;
 use anyhow::Result;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a013_ym_order::aggregate::{
-    YmOrder, YmOrderHeader, YmOrderLine, YmOrderSourceMeta, YmOrderState,
+    YmOrder, YmOrderHeader, YmOrderLine, YmOrderLineDetail, YmOrderSourceMeta, YmOrderState,
 };
 use contracts::domain::common::AggregateId;
+
+/// Вывести сводный статус строки из деталей позиции (items[].details).
+/// Возвращает None, если деталей нет (позиция доставлена штатно).
+/// Примеры результата: "RETURNED", "REJECTED", "RETURNED 1/2" (частично).
+pub fn derive_line_status(details: &[YmOrderLineDetail], qty: f64) -> Option<String> {
+    if details.is_empty() {
+        return None;
+    }
+    // Группируем количества по статусу, сохраняя порядок появления.
+    let mut groups: Vec<(String, f64)> = Vec::new();
+    for d in details {
+        if let Some(g) = groups.iter_mut().find(|(s, _)| *s == d.status) {
+            g.1 += d.count;
+        } else {
+            groups.push((d.status.clone(), d.count));
+        }
+    }
+    let parts: Vec<String> = groups
+        .iter()
+        .map(|(status, count)| {
+            // Частичный охват: показываем "STATUS n/qty".
+            if qty > 0.0 && *count > 0.0 && *count < qty {
+                format!("{} {:.0}/{:.0}", status, count, qty)
+            } else {
+                status.clone()
+            }
+        })
+        .collect();
+    Some(parts.join(", "))
+}
 
 /// Normalize Yandex Market order status
 pub fn normalize_ym_status(status: &str) -> String {
@@ -90,12 +120,32 @@ pub async fn process_order(
                 .as_ref()
                 .and_then(|s| serde_json::to_string(s).ok());
 
+            // Судьба позиции приходит в items[].details, а не в items[].status
+            // (последнего поля в orders-API нет). Выводим из деталей.
+            let qty = item.count as f64;
+            let details: Vec<YmOrderLineDetail> = item
+                .details
+                .as_ref()
+                .map(|ds| {
+                    ds.iter()
+                        .filter_map(|d| {
+                            d.item_status.as_ref().map(|status| YmOrderLineDetail {
+                                count: d.item_count.unwrap_or(0.0),
+                                status: status.clone(),
+                                update_date: d.update_date.clone(),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let status = derive_line_status(&details, qty);
+
             YmOrderLine {
                 line_id: item.id.to_string(),
                 shop_sku: item.shop_sku.clone().unwrap_or_default(),
                 offer_id: item.offer_id.clone().unwrap_or_default(),
                 name: item.name.clone().unwrap_or_default(),
-                qty: item.count as f64,
+                qty,
                 price_list,
                 discount_total: item.subsidy,
                 price_effective,
@@ -103,11 +153,12 @@ pub async fn process_order(
                 currency_code: order_details.currency.clone(),
                 buyer_price: item.buyer_price,
                 subsidies_json,
-                status: item.status.clone(),
+                status,
                 price_plan: Some(0.0),
                 marketplace_product_ref: None,
                 nomenclature_ref: None,
                 dealer_price_ut: None,
+                details,
             }
         })
         .collect();

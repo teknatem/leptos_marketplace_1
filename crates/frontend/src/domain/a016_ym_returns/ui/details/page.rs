@@ -1,272 +1,306 @@
-//! YM Returns Detail - Main Page Component
+//! Main page component for YM Returns details (MVVM Standard, mirrors a015_wb_orders)
 
-use super::model::YmReturnDetailDto;
 use super::tabs::{GeneralTab, JsonTab, LinesTab, ProjectionsTab};
-use gloo_net::http::Request;
-use leptos::logging::log;
-use leptos::prelude::*;
-
-use crate::shared::api_utils::api_base;
+use super::view_model::YmReturnDetailsVm;
+use crate::layout::global_context::AppGlobalContext;
+use crate::shared::icons::icon;
 use crate::shared::page_frame::PageFrame;
+use crate::system::favorites::ui::FavoriteButton;
+use leptos::prelude::*;
+use thaw::*;
 
 #[component]
 pub fn YmReturnDetail(id: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
-    let (return_data, set_return_data) = signal::<Option<YmReturnDetailDto>>(None);
-    let (raw_json_from_ym, set_raw_json_from_ym) = signal::<Option<String>>(None);
-    let (projections, set_projections) = signal::<Option<serde_json::Value>>(None);
-    let (projections_loading, set_projections_loading) = signal(false);
-    let (loading, set_loading) = signal(true);
-    let (error, set_error) = signal::<Option<String>>(None);
-    let (active_tab, set_active_tab) = signal("general");
+    let vm = YmReturnDetailsVm::new();
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+    let stored_id = StoredValue::new(id.clone());
 
-    // Sort state for lines table
-    let (lines_sort_column, set_lines_sort_column) = signal::<Option<&'static str>>(None);
-    let (lines_sort_asc, set_lines_sort_asc) = signal(true);
+    vm.load(id);
 
-    // Sort state for projections table
-    let (proj_sort_column, set_proj_sort_column) = signal::<Option<&'static str>>(None);
-    let (proj_sort_asc, set_proj_sort_asc) = signal(true);
-
-    // Load return details
-    Effect::new(move || {
-        let id = id.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            set_loading.set(true);
-            set_error.set(None);
-
-            let url = format!("{}/api/a016/ym-returns/{}", api_base(), id);
-
-            match Request::get(&url).send().await {
-                Ok(response) => {
-                    let status = response.status();
-                    if status == 200 {
-                        match response.text().await {
-                            Ok(text) => {
-                                match serde_json::from_str::<YmReturnDetailDto>(&text) {
-                                    Ok(data) => {
-                                        let raw_payload_ref =
-                                            data.source_meta.raw_payload_ref.clone();
-                                        let return_id = data.id.clone();
-                                        set_return_data.set(Some(data));
-                                        set_loading.set(false);
-
-                                        // Async load raw JSON
-                                        wasm_bindgen_futures::spawn_local(async move {
-                                            let raw_url = format!(
-                                                "{}/api/a016/raw/{}",
-                                                api_base(),
-                                                raw_payload_ref
-                                            );
-                                            match Request::get(&raw_url).send().await {
-                                                Ok(resp) => {
-                                                    if resp.status() == 200 {
-                                                        if let Ok(text) = resp.text().await {
-                                                            if let Ok(json_value) =
-                                                                serde_json::from_str::<
-                                                                    serde_json::Value,
-                                                                >(
-                                                                    &text
-                                                                )
-                                                            {
-                                                                if let Ok(formatted) =
-                                                                    serde_json::to_string_pretty(
-                                                                        &json_value,
-                                                                    )
-                                                                {
-                                                                    set_raw_json_from_ym
-                                                                        .set(Some(formatted));
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    log!("Failed to load raw JSON: {:?}", e);
-                                                }
-                                            }
-                                        });
-
-                                        // Async load projections
-                                        wasm_bindgen_futures::spawn_local(async move {
-                                            set_projections_loading.set(true);
-                                            let projections_url = format!(
-                                                "{}/api/a016/ym-returns/{}/projections",
-                                                api_base(),
-                                                return_id
-                                            );
-                                            match Request::get(&projections_url).send().await {
-                                                Ok(resp) => {
-                                                    if resp.status() == 200 {
-                                                        if let Ok(text) = resp.text().await {
-                                                            if let Ok(proj_data) =
-                                                                serde_json::from_str::<
-                                                                    serde_json::Value,
-                                                                >(
-                                                                    &text
-                                                                )
-                                                            {
-                                                                set_projections
-                                                                    .set(Some(proj_data));
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    log!("Failed to load projections: {:?}", e);
-                                                }
-                                            }
-                                            set_projections_loading.set(false);
-                                        });
-                                    }
-                                    Err(e) => {
-                                        log!("Failed to parse return: {:?}", e);
-                                        set_error.set(Some(format!("Failed to parse: {}", e)));
-                                        set_loading.set(false);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                log!("Failed to read response: {:?}", e);
-                                set_error.set(Some(format!("Failed to read response: {}", e)));
-                                set_loading.set(false);
-                            }
-                        }
-                    } else {
-                        set_error.set(Some(format!("Server error: {}", status)));
-                        set_loading.set(false);
-                    }
-                }
-                Err(e) => {
-                    log!("Failed to fetch return: {:?}", e);
-                    set_error.set(Some(format!("Failed to fetch: {}", e)));
-                    set_loading.set(false);
-                }
+    // Синхронизация заголовка вкладки
+    Effect::new({
+        let vm = vm.clone();
+        move || {
+            if vm.return_data.get().is_some() {
+                let tab_key = format!("a016_ym_returns_details_{}", stored_id.get_value());
+                let tab_title = vm.title().get();
+                tabs_store.update_tab_title(&tab_key, &tab_title);
             }
-        });
+        }
     });
+
+    // Ленивая загрузка raw JSON при переходе на вкладку JSON
+    Effect::new({
+        let vm = vm.clone();
+        move || {
+            if vm.active_tab.get() == "json" && !vm.raw_json_loaded.get() {
+                vm.load_raw_json();
+            }
+        }
+    });
+
+    let vm_header = vm.clone();
+    let vm_tabs = vm.clone();
+    let vm_content = vm.clone();
 
     view! {
         <PageFrame page_id="a016_ym_returns--detail" category="detail">
-            <div class="page__header">
-                <div class="page__header-left">
-                    <h2>"Yandex Market Return"</h2>
-                </div>
-                <div class="page__header-right">
-                    <button class="button button--secondary" on:click=move |_| on_close.run(())>
-                        "✕ Закрыть"
-                    </button>
-                </div>
-            </div>
+            <Header
+                vm=vm_header
+                favorite_target_id=stored_id.get_value()
+                on_close=on_close
+            />
+
+            <TabBar vm=vm_tabs />
 
             <div class="page__content">
                 {move || {
-                    if loading.get() {
+                    if vm.loading.get() {
                         view! {
-                            <div style="text-align: center; padding: var(--spacing-2xl);">
-                                <p style="font-size: var(--font-size-sm);">"Загрузка..."</p>
+                            <Flex gap=FlexGap::Small style="align-items: center; padding: var(--spacing-4xl); justify-content: center;">
+                                <Spinner />
+                                <span>"Загрузка..."</span>
+                            </Flex>
+                        }
+                        .into_any()
+                    } else if let Some(err) = vm.error.get() {
+                        view! {
+                            <div style="padding: var(--spacing-lg); background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: var(--radius-sm); color: var(--color-error); margin: var(--spacing-lg);">
+                                <strong>"Ошибка: "</strong>{err}
                             </div>
                         }
-                            .into_any()
-                    } else if let Some(err) = error.get() {
+                        .into_any()
+                    } else if vm.return_data.get().is_some() {
                         view! {
-                            <div style="padding: var(--spacing-lg); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-sm); color: var(--color-error-text); margin: var(--spacing-lg); font-size: var(--font-size-sm);">
-                                <strong>"Ошибка: "</strong>
-                                {err}
-                            </div>
+                            <TabContent vm=vm_content.clone() />
                         }
-                            .into_any()
-                    } else if let Some(data) = return_data.get() {
-                        view! {
-                            <div>
-                                <div class="detail-tabs">
-                                    <button
-                                        class="detail-tab"
-                                        class:active=move || active_tab.get() == "general"
-                                        on:click=move |_| set_active_tab.set("general")
-                                    >
-                                        "Общие данные"
-                                    </button>
-                                    <button
-                                        class="detail-tab"
-                                        class:active=move || active_tab.get() == "lines"
-                                        on:click=move |_| set_active_tab.set("lines")
-                                    >
-                                        "Товары"
-                                    </button>
-                                    <button
-                                        class="detail-tab"
-                                        class:active=move || active_tab.get() == "projections"
-                                        on:click=move |_| set_active_tab.set("projections")
-                                    >
-                                        {move || {
-                                            let count = projections
-                                                .get()
-                                                .as_ref()
-                                                .map(|p| {
-                                                    p["p904_sales_data"]
-                                                        .as_array()
-                                                        .map(|a| a.len())
-                                                        .unwrap_or(0)
-                                                })
-                                                .unwrap_or(0);
-                                            format!("Проекции ({})", count)
-                                        }}
-
-                                    </button>
-                                    <button
-                                        class="detail-tab"
-                                        class:active=move || active_tab.get() == "json"
-                                        on:click=move |_| set_active_tab.set("json")
-                                    >
-                                        "Raw JSON"
-                                    </button>
-                                </div>
-
-                                <div style="padding-top: var(--spacing-lg);">
-                                    {move || {
-                                        let tab = active_tab.get();
-                                        match tab.as_ref() {
-                                            "general" => view! { <GeneralTab data=data.clone() /> }.into_any(),
-                                            "lines" => {
-                                                view! {
-                                                    <LinesTab
-                                                        lines=data.lines.clone()
-                                                        sort_column=lines_sort_column.into()
-                                                        set_sort_column=set_lines_sort_column
-                                                        sort_asc=lines_sort_asc.into()
-                                                        set_sort_asc=set_lines_sort_asc
-                                                    />
-                                                }
-                                                    .into_any()
-                                            }
-                                            "projections" => {
-                                                view! {
-                                                    <ProjectionsTab
-                                                        projections=projections.into()
-                                                        projections_loading=projections_loading.into()
-                                                        sort_column=proj_sort_column.into()
-                                                        set_sort_column=set_proj_sort_column
-                                                        sort_asc=proj_sort_asc.into()
-                                                        set_sort_asc=set_proj_sort_asc
-                                                    />
-                                                }
-                                                    .into_any()
-                                            }
-                                            "json" => view! { <JsonTab raw_json=raw_json_from_ym.into() /> }.into_any(),
-                                            _ => view! { <div>"Unknown tab"</div> }.into_any(),
-                                        }
-                                    }}
-
-                                </div>
-                            </div>
-                        }
-                            .into_any()
+                        .into_any()
                     } else {
-                view! { <div>"No data"</div> }.into_any()
-            }
-        }}
-
-        </div>
+                        view! { <div>"Нет данных"</div> }.into_any()
+                    }
+                }}
+            </div>
         </PageFrame>
+    }
+}
+
+#[component]
+fn Header(
+    vm: YmReturnDetailsVm,
+    favorite_target_id: String,
+    on_close: Callback<()>,
+) -> impl IntoView {
+    let is_posted = vm.is_posted();
+    let title = vm.title();
+    let return_data = vm.return_data;
+    let tab_key = format!("a016_ym_returns_details_{}", favorite_target_id);
+
+    view! {
+        <div class="page__header">
+            <div class="page__header-left">
+                <FavoriteButton
+                    target_kind="a016_ym_returns_details".to_string()
+                    target_id=favorite_target_id
+                    target_title=title
+                    tab_key=tab_key
+                />
+                <h1 class="page__title">{move || title.get()}</h1>
+                <Show when=move || return_data.get().is_some()>
+                    {move || {
+                        let posted = is_posted.get();
+                        view! {
+                            <Badge
+                                appearance=BadgeAppearance::Filled
+                                color=if posted { BadgeColor::Success } else { BadgeColor::Warning }
+                            >
+                                {if posted { "Проведен" } else { "Не проведен" }}
+                            </Badge>
+                        }
+                    }}
+                </Show>
+            </div>
+            <div class="page__header-right">
+                <PostButtons vm=vm.clone() />
+
+                <Button
+                    appearance=ButtonAppearance::Subtle
+                    size=ButtonSize::Medium
+                    on_click=move |_| on_close.run(())
+                >
+                    <span class="page-action-button__content">
+                        <span class="page-action-button__icon page-action-button__icon--close">{icon("x")}</span>
+                        <span class="page-action-button__text">"Закрыть"</span>
+                    </span>
+                </Button>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn PostButtons(vm: YmReturnDetailsVm) -> impl IntoView {
+    let posting = vm.posting;
+    let return_data = vm.return_data;
+    let is_posted = vm.is_posted();
+
+    let on_post = {
+        let vm = vm.clone();
+        Callback::new(move |_: ()| vm.post())
+    };
+    let on_unpost = {
+        let vm = vm.clone();
+        Callback::new(move |_: ()| vm.unpost())
+    };
+
+    view! {
+        <Show when=move || return_data.get().is_some()>
+            <Button
+                appearance=ButtonAppearance::Subtle
+                size=ButtonSize::Medium
+                on_click=move |_| on_post.run(())
+                disabled=Signal::derive(move || posting.get())
+            >
+                <span class="page-action-button__content">
+                    <span class="page-action-button__icon">
+                        {move || {
+                            if posting.get() {
+                                view! { <span class="page-action-button__spinner"></span> }.into_any()
+                            } else {
+                                view! { <>{icon("refresh-cw")}</> }.into_any()
+                            }
+                        }}
+                    </span>
+                    <span class="page-action-button__text page-action-button__text--post">"Post"</span>
+                </span>
+            </Button>
+            <Show when=move || is_posted.get()>
+                <Button
+                    appearance=ButtonAppearance::Subtle
+                    size=ButtonSize::Medium
+                    on_click=move |_| on_unpost.run(())
+                    disabled=Signal::derive(move || posting.get())
+                >
+                    <span class="page-action-button__content">
+                        <span class="page-action-button__icon">{icon("x")}</span>
+                        <span class="page-action-button__text">"Unpost"</span>
+                    </span>
+                </Button>
+            </Show>
+        </Show>
+    }
+}
+
+#[component]
+fn TabBar(vm: YmReturnDetailsVm) -> impl IntoView {
+    let active_tab = vm.active_tab;
+    let projections_count = vm.projections_count();
+
+    view! {
+        <div class="page__tabs">
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "general"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("general")
+                }
+            >
+                {icon("file-text")} "Общие"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "lines"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("lines")
+                }
+            >
+                {icon("list")} "Товары"
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "projections"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("projections")
+                }
+            >
+                {icon("layers")} "Проекции"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "projections" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || projections_count.get().to_string()}
+                </Badge>
+            </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "json"
+                on:click=move |_| vm.set_tab("json")
+            >
+                {icon("code")} "JSON"
+            </button>
+        </div>
+    }
+}
+
+#[component]
+fn TabContent(vm: YmReturnDetailsVm) -> impl IntoView {
+    let active_tab = vm.active_tab;
+
+    // UI-состояние сортировки таблиц (только для этого компонента)
+    let (lines_sort_column, set_lines_sort_column) = signal::<Option<&'static str>>(None);
+    let (lines_sort_asc, set_lines_sort_asc) = signal(true);
+    let (proj_sort_column, set_proj_sort_column) = signal::<Option<&'static str>>(None);
+    let (proj_sort_asc, set_proj_sort_asc) = signal(true);
+
+    let vm_general = vm.clone();
+    let return_data = vm.return_data;
+    let projections = vm.projections;
+    let projections_loading = vm.projections_loading;
+    let raw_json = vm.raw_json;
+
+    view! {
+        {move || match active_tab.get() {
+            "general" => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+            "lines" => {
+                let lines = return_data.get().map(|d| d.lines).unwrap_or_default();
+                view! {
+                    <LinesTab
+                        lines=lines
+                        sort_column=lines_sort_column.into()
+                        set_sort_column=set_lines_sort_column
+                        sort_asc=lines_sort_asc.into()
+                        set_sort_asc=set_lines_sort_asc
+                    />
+                }
+                .into_any()
+            }
+            "projections" => view! {
+                <ProjectionsTab
+                    projections=projections.into()
+                    projections_loading=projections_loading.into()
+                    sort_column=proj_sort_column.into()
+                    set_sort_column=set_proj_sort_column
+                    sort_asc=proj_sort_asc.into()
+                    set_sort_asc=set_proj_sort_asc
+                />
+            }
+            .into_any(),
+            "json" => view! { <JsonTab raw_json=raw_json.into() /> }.into_any(),
+            _ => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+        }}
     }
 }

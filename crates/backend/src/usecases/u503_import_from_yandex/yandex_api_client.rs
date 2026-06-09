@@ -792,6 +792,24 @@ pub struct YmOrderLineItem {
     /// Субсидии на уровне товара
     #[serde(default)]
     pub subsidies: Option<Vec<YmOrderItemSubsidy>>,
+    /// Детали судьбы позиции (частичные отказы/возвраты).
+    /// Присутствует только когда часть/всё количество отклонено или возвращено.
+    #[serde(default)]
+    pub details: Option<Vec<YmOrderItemDetail>>,
+}
+
+/// Деталь по позиции из items[].details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmOrderItemDetail {
+    /// Количество единиц с данным статусом
+    #[serde(rename = "itemCount", default)]
+    pub item_count: Option<f64>,
+    /// Статус единиц: REJECTED, RETURNED, ...
+    #[serde(rename = "itemStatus", default)]
+    pub item_status: Option<String>,
+    /// Дата обновления статуса (строкой, формат DD-MM-YYYY)
+    #[serde(rename = "updateDate", default)]
+    pub update_date: Option<String>,
 }
 
 /// Субсидия на уровне заказа
@@ -976,7 +994,7 @@ impl YandexApiClient {
     ) -> Result<Vec<YmReturnItem>> {
         let mut all_returns = Vec::new();
         let mut page_token: Option<String> = None;
-        let page_size = 50;
+        let page_size = 100; // max allowed by Yandex Market API
         let mut page_count = 0;
 
         loop {
@@ -1052,14 +1070,16 @@ impl YandexApiClient {
         );
 
         // Build query parameters
+        // Per Yandex Market API: dates are YYYY-MM-DD, page size is `limit`,
+        // pagination token is `pageToken` (NOT `page_token`/`pageSize`).
         let mut query_params: Vec<(&str, String)> = vec![
-            ("fromDate", date_from.format("%d-%m-%Y").to_string()),
-            ("toDate", date_to.format("%d-%m-%Y").to_string()),
-            ("pageSize", page_size.to_string()),
+            ("fromDate", date_from.format("%Y-%m-%d").to_string()),
+            ("toDate", date_to.format("%Y-%m-%d").to_string()),
+            ("limit", page_size.to_string()),
         ];
 
         if let Some(ref token) = page_token {
-            query_params.push(("page_token", token.clone()));
+            query_params.push(("pageToken", token.clone()));
         }
 
         self.log_to_file(&format!(

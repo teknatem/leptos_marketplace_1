@@ -1,0 +1,698 @@
+﻿# ARCHITECTURE
+
+> **GENERATED file - do not edit by hand.** Source of truth is the code.
+> Regenerate: `powershell -File tools/gen_architecture.ps1`
+> Project object map (aggregates, projections, use-cases, chart of accounts, turnovers, API).
+
+## Aggregates (a0XX)
+
+| Index | Entity | Table | Description | Related |
+|-------|--------|-------|-------------|---------|
+| `a001` | Подключение 1С | `a001_connection_1c_database` | Настройки подключения к базе данных 1С:Управление торговлей. Используется для импорта справочников (номенклатура, организации, контрагенты)… | u501_import_from_ut, a002_organization, a003_counterparty, a004_nomenclature |
+| `a002` | Организация | `a002_organization` | Юридические лица и ИП, от имени которых ведётся торговля на маркетплейсах. Импортируются из 1С:УТ. Используются для группировки продаж и фин… | a001_connection_1c, a006_connection_mp, a012_wb_sales |
+| `a003` | Контрагент | `a003_counterparty` | Контрагенты (поставщики, покупатели, партнёры), импортируемые из 1С:Управление торговлей. Поддерживает иерархическую структуру (папки). Соде… | a001_connection_1c, u501_import_from_ut, a023_purchase_of_goods |
+| `a004` | Номенклатура | `a004_nomenclature` | Справочник товаров и категорий из 1С:УТ. Является иерархическим — записи с is_folder=1 это папки-категории, is_folder=0 это конкретные товар… | a001_connection_1c, a007_marketplace_product, a012_wb_sales, a013_ym_order |
+| `a005` | Маркетплейс | `a005_marketplace` | Справочник торговых площадок: Wildberries, Ozon, Яндекс.Маркет. Системные записи, создаются при инициализации. Используется как справочник т… | a006_connection_mp |
+| `a006` | Подключение маркетплейса | `a006_connection_mp` | Подключения к торговым площадкам — один магазин на WB, Ozon или Яндекс.Маркет. Содержит API-ключи и идентификаторы магазинов. Используется к… | a002_organization, a005_marketplace, a012_wb_sales, a013_ym_order |
+| `a007` | Товар маркетплейса | `a007_marketplace_product` | A007 — канонический регистр сопоставления позиции маркетплейса с номенклатурой 1С. Ключ идентификации всегда рассматривается в пределах conn… | a004_nomenclature, a005_marketplace, a006_connection_mp, a008_marketplace_sales |
+| `a008` | Продажа маркетплейса | `a008_marketplace_sales` | Запись о продаже товара на маркетплейсе: дата начисления, количество, выручка и тип операции (продажа, возврат, комиссия). Основной источник… | a006_connection_mp, a007_marketplace_product, a005_marketplace, a002_organization |
+| `a009` | Возврат OZON | `a009_ozon_returns` | Возврат товара с OZON. Содержит информацию о дате возврата, причине, типе (полный/частичный), идентификаторах заказа и отправления, а также… | a006_connection_mp, a005_marketplace, a002_organization |
+| `a010` | Документ OZON FBS | `a010_ozon_fbs_posting` | Отправление OZON по схеме FBS (Fulfillment by Seller — продавец хранит и доставляет сам). Содержит номер отправления, строки товаров, статус… | a006_connection_mp, a005_marketplace, a014_ozon_transactions |
+| `a011` | Документ OZON FBO | `a011_ozon_fbo_posting` | Отправление OZON по схеме FBO (Fulfillment by OZON — OZON хранит и доставляет). Содержит номер отправления, строки товаров, статус и временн… | a006_connection_mp, a005_marketplace, a014_ozon_transactions |
+| `a012` | WB Sales | `a012_wb_sales` | Продажи и возвраты с Wildberries. Каждая запись — одна транзакция из отчёта WB (sale или return). Содержит финансовые показатели: выручку, к… | a004_nomenclature, a006_connection_mp, a002_organization |
+| `a013` | Заказ Яндекс.Маркет | `a013_ym_order` | Заказы с Яндекс.Маркет (YM). Каждая запись — один заказ, может содержать несколько товарных позиций (строк). Данные загружаются через YM API… | a004_nomenclature, a006_connection_mp, a002_organization |
+| `a014` | Транзакция OZON | `a014_ozon_transactions` | Финансовая транзакция OZON из раздела финансов. Содержит тип операции, суммы начислений, комиссий и доставки. Является основным источником д… | a006_connection_mp, a005_marketplace, a010_ozon_fbs_posting, a011_ozon_fbo_posting |
+| `a015` | Документ WB Заказы | `a015_wb_orders` | Заказ Wildberries (один заказ = одна строка). Содержит артикул продавца, nmId, штрихкод, категорию, цены со скидками, статус, дату заказа и… | a006_connection_mp, a005_marketplace, a007_marketplace_product, a004_nomenclature |
+| `a016` | Возврат Yandex Market | `a016_ym_returns` | Возврат товара с Yandex Market. Содержит ID возврата и заказа, тип операции (RETURN или UNREDEEMED — невыкуп), статус возврата денег, строки… | a006_connection_mp, a005_marketplace, a013_ym_order |
+| `a017` | Агент LLM | `a017_llm_agent` | Настройки подключения к провайдерам LLM (OpenAI, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_tokens) и систем… | a018_llm_chat, a019_llm_artifact |
+| `a018` | Чат LLM | `a018_llm_chat` | Сессии чатов с LLM агентами. Содержит историю диалогов с языковыми моделями, включая сообщения пользователя и ответы ассистента. Каждый чат… | a017_llm_agent, a019_llm_artifact |
+| `a019` | Артефакт LLM | `a019_llm_artifact` | SQL-запросы и другие артефакты, созданные LLM агентами в процессе работы с чатами. Каждый артефакт связан с конкретным чатом и агентом, соде… | a017_llm_agent, a018_llm_chat |
+| `a020` | Акция WB | `a020_wb_promotion` | Календарные акции Wildberries. Каждая запись — одна акция из WB Calendar API с датами проведения и списком товаров (nmId). Данные загружаютс… | a006_connection_mp, a002_organization, a007_marketplace_product |
+| `a021` | Выпуск продукции | `a021_production_output` | Документ Выпуск продукции из 1С:Управление торговлей. Содержит номер и дату документа, артикул и количество произведённой продукции, сумму с… | a001_connection_1c, a004_nomenclature, u501_import_from_ut |
+| `a022` | Вариант комплектации | `a022_kit_variant` | Вариант комплектации номенклатуры из 1С:Управление торговлей. Описывает состав набора (kit) — какая номенклатура и в каком количестве входит… | a004_nomenclature, a001_connection_1c, a021_production_output |
+| `a023` | Приобретение товаров | `a023_purchase_of_goods` | Документ Приобретение товаров и услуг из 1С:Управление торговлей. Содержит номер и дату документа, контрагента-поставщика и строки с товарам… | a001_connection_1c, a003_counterparty, a004_nomenclature, u501_import_from_ut |
+| `a024` | BI Индикатор | `a024_bi_indicator` | Индикаторы BI-дашбордов. Каждый индикатор содержит спецификацию источника данных (DataSpec), типизированные параметры (Params), настройки от… | a019_llm_artifact |
+| `a025` | BI Дашборд | `a025_bi_dashboard` | BI-дашборды. Каждый дашборд объединяет набор BI-индикаторов (a024), сгруппированных по категориям в дерево. Содержит глобальные фильтры, оце… | a024_bi_indicator |
+| `a026` | Статистика рекламы WB | `a026_wb_advert_daily` | Ежедневная статистика рекламных кампаний Wildberries. Одна запись — один кабинет WB, одна дата и один advert_id. Содержит показы, клики, зак… | a006_connection_mp, a002_organization, a030_wb_advert_campaign, p911_wb_advert_by_items |
+| `a027` | Документ WB | `a027_wb_documents` | Заголовки отчетных документов Wildberries из API documents/list. Содержит serviceName, категорию, доступные форматы, время создания и призна… | a006_connection_mp, a002_organization, a005_marketplace |
+| `a028` | missing cost registry | | _(no metadata.json)_ | |
+| `a029` | wb supply | | _(no metadata.json)_ | |
+| `a030` | wb advert campaign | | _(no metadata.json)_ | |
+| `a031` | kb edit | | _(no metadata.json)_ | |
+| `a032` | Заявка на возврат WB | `a032_wb_returns_claims` | Заявка покупателя на возврат товара WB. Загружается из feedbacks-api.wildberries.ru/api/v1/claims. Содержит ID заявки, nmId, название товара… | a006_connection_mp, a005_marketplace, a012_wb_sales, a015_wb_orders |
+| `a033` | wb day close | | _(no metadata.json)_ | |
+| `a034` | Реализация YM | `a034_ym_realization` | Официальный «Отчёт о реализации» Yandex Market, импортируемый как суточный документ (один кабинет, одна дата). Содержит выручку по покупател… | a006_connection_mp, a002_organization, p907_ym_payment_report |
+| `a035` | Сверка перечислений YM | `a035_ym_settlement_recon` | Документ-сверка одного банковского ордера YM (bank_order_id из p907_ym_payment_report). Таблица операций ордера сгруппирована по нашим оборо… | p907_ym_payment_report, a006_connection_mp, a002_organization |
+
+## Projections (p9XX)
+
+| Code | Name |
+|------|------|
+| `p900` | mp sales register |
+| `p901` | nomenclature barcodes |
+| `p902` | ozon finance realization |
+| `p903` | wb finance report |
+| `p904` | sales data |
+| `p905` | wb commission history |
+| `p906` | nomenclature prices |
+| `p907` | ym payment report |
+| `p908` | wb goods prices |
+| `p909` | mp order line turnovers |
+| `p910` | mp unlinked turnovers |
+| `p911` | wb advert by items |
+| `p912` | nomenclature costs |
+| `p913` | wb advert order attr |
+| `p914` | mp finance turnovers |
+| `p915` | mp order events |
+
+## Use-cases (u5XX)
+
+| Code | Name |
+|------|------|
+| `u501` | import from ut |
+| `u502` | import from ozon |
+| `u503` | import from yandex |
+| `u504` | import from wildberries |
+| `u505` | match nomenclature |
+| `u506` | import from lemanapro |
+| `u507` | import from erp |
+| `u508` | repost documents |
+
+## Data schemes (dsXX)
+
+| Code | Name |
+|------|------|
+| `ds01` | wb finance report |
+| `ds02` | mp sales register |
+| `ds03` | p904 sales |
+
+## Dashboards (d4XX)
+
+| Code | Name |
+|------|------|
+| `d400` | monthly summary |
+
+## Scheduled tasks (task0XX)
+
+| Code | Name |
+|------|------|
+| `task001` | wb orders fbs polling |
+| `task002` | wb orders stats hourly |
+| `task003` | wb products |
+| `task004` | wb sales |
+| `task005` | wb supplies |
+| `task006` | wb finance |
+| `task007` | wb commissions |
+| `task008` | wb prices |
+| `task009` | wb promotions |
+| `task010` | wb documents |
+| `task011` | wb advert |
+| `task012` | wb advert campaigns |
+| `task013` | ym orders polling |
+| `task014` | kb analyze |
+| `task015` | kb post |
+| `task016` | kb intake |
+| `task017` | wb returns claims |
+| `task018` | ym returns |
+| `task019` | ym payment report |
+
+## Chart of accounts (account_registry)
+
+| Account | Name | Parent | Section |
+|---------|------|--------|---------|
+| `62` | Расчёты с покупателями |  | BalanceSheet |
+| `44` | Расходы на продажу |  | ProfitLoss |
+| `4401` | Расходы на продажу — маркетплейс | 44 | ProfitLoss |
+| `41` | Товары |  | BalanceSheet |
+| `90` | Продажи |  | ProfitLoss |
+| `9001` | Выручка от продаж | 90 | ProfitLoss |
+| `9002` | Себестоимость продаж | 90 | ProfitLoss |
+| `91` | Прочие доходы и расходы |  | ProfitLoss |
+| `76` | Расчёты с прочими дебиторами и кредиторами |  | BalanceSheet |
+| `7609` | Расчёты с маркетплейсом | 76 | BalanceSheet |
+| `76YB` | Баланс баллов/промо (Яндекс.Маркет) | 76 | BalanceSheet |
+| `76YA` | Деньги покупателей у Я.Маркет (предоплаты в пути) | 76 | BalanceSheet |
+| `51` | Расчётный счёт |  | BalanceSheet |
+
+## Turnover classes (turnover_registry)
+
+| Code | Name | Debit | Credit | Entry |
+|------|------|-------|--------|-------|
+| `qty_ordered` | Количество заказано |  |  |  |
+| `qty_sold` | Количество продано |  |  |  |
+| `qty_returned` | Количество возвращено |  |  |  |
+| `customer_revenue` | Выручка от покупателя | 7609 | 9001 | ✓ |
+| `customer_revenue_pl` | Выручка по прайслисту | 7609 | 9001 | ✓ |
+| `customer_return` | Возврат покупателя | 7609 | 9001 | ✓ |
+| `seller_payout` | Выплата продавцу |  |  |  |
+| `mp_commission` | Комиссия маркетплейса | 4401 | 7609 | ✓ |
+| `mp_commission_adjustment` | Корректировка комиссии WB | 4402 | 7609 | ✓ |
+| `mp_commission_adjustment_nm` | Корректировка комиссии WB (с номенклатурой) | 4402 | 7609 | ✓ |
+| `mp_acquiring` | Эквайринг маркетплейса | 4403 | 7609 | ✓ |
+| `mp_logistics` | Логистика маркетплейса | 4404 | 7609 | ✓ |
+| `mp_rebill_logistic_cost` | Возмещение расходов по перевозке | 4404 | 7609 | ✓ |
+| `mp_rebill_logistic_cost_nm` | Возмещение расходов по перевозке (с номенклатурой) | 4404 | 7609 | ✓ |
+| `mp_ppvz_reward` | Возмещение за выдачу и возврат товаров на ПВЗ | 4404 | 7609 | ✓ |
+| `mp_ppvz_reward_nm` | Возмещение за выдачу и возврат товаров на ПВЗ (с номенклатурой) | 4404 | 7609 | ✓ |
+| `mp_storage` | Хранение маркетплейса | 4404 | 7609 | ✓ |
+| `mp_penalty` | Штраф маркетплейса | 9102 | 7609 | ✓ |
+| `mp_penalty_storno` | Штраф маркетплейса (сторно) | 9102 | 7609 | ✓ |
+| `mp_rebill_logistic_cost_legacy` | Возмещение издержек по перевозке и складским операциям | 4404 | 7609 | ✓ |
+| `item_cost` | Себестоимость | 9002 | 41 | ✓ |
+| `spp_discount` | Скидка SPP (продажа) | 7609 | 9001 | ✓ |
+| `spp_discount_storno` | Скидка SPP (возврат) | 7609 | 9001 | ✓ |
+| `wb_extra_discount` | Доп. скидка WB сверх СПП (продажа) | 7609 | 9001 | ✓ |
+| `wb_extra_discount_storno` | Доп. скидка WB сверх СПП (сторно возврат) | 7609 | 9001 | ✓ |
+| `wb_coinvestment` | Соинвестирование WB (продажа) | 7609 | 91 | ✓ |
+| `wb_coinvestment_storno` | Соинвестирование WB (возврат) | 7609 | 91 | ✓ |
+| `advert_clicks_no_order` | Рекламные расходы по номенклатуре | 9102 | 7609 | ✓ |
+| `advert_clicks_order_accrual` | Резерв рекламных расходов по заказу | 9601 | 7609 | ✓ |
+| `advert_clicks_order_expense` | Рекламные расходы при реализации | 9102 | 9601 | ✓ |
+| `advertising` | Реклама |  |  |  |
+| `acceptance` | Приемка | 4401 | 7609 | ✓ |
+| `adjustment_income` | Корректировка дохода |  |  |  |
+| `voluntary_return_compensation` | Добровольная компенсация при возврате | 7609 | 91 | ✓ |
+| `adjustment_expense` | Корректировка расхода |  |  |  |
+| `other_income` | Прочие доходы | 7609 | 91 | ✓ |
+| `other_expense` | Прочие расходы | 7609 | 9102 | ✓ |
+| `ym_settlement` | Перечисление на расчётный счёт (Я.Маркет) | 51 | 7609 | ✓ |
+| `prepayment` | Предоплата покупателя (получение) | 76YA | 62 | ✓ |
+| `prepayment_storno` | Предоплата покупателя (сторно возврата) | 76YA | 62 | ✓ |
+| `prepayment_settle` | Зачёт предоплаты на отгрузке | 7609 | 76YA | ✓ |
+| `prepayment_settle_storno` | Зачёт предоплаты на отгрузке (сторно возврата) | 7609 | 76YA | ✓ |
+| `qty_sold_storno` | Количество продано (сторно возврат) |  |  |  |
+| `customer_revenue_storno` | Выручка от покупателя (сторно возврат) | 7609 | 9001 |  |
+| `customer_revenue_pl_storno` | Выручка по прайслисту (сторно возврат) | 7609 | 9001 | ✓ |
+| `mp_commission_storno` | Комиссия маркетплейса (сторно возврат) | 4401 | 7609 | ✓ |
+| `mp_acquiring_storno` | Эквайринг маркетплейса (сторно возврат) | 4403 | 7609 | ✓ |
+| `seller_payout_storno` | Выплата продавцу (сторно возврат) |  |  |  |
+| `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
+| `commission_percent` | Процент комиссии |  |  |  |
+
+## API routes (349)
+
+### `/a004`
+- `GET` /api/a004/nomenclature
+
+### `/a007`
+- `GET` /api/a007/marketplace-product
+
+### `/a009`
+- `POST` /api/a009/ozon-returns/:id/post
+- `POST` /api/a009/ozon-returns/:id/unpost
+
+### `/a010`
+- `GET` /api/a010/ozon-fbs-posting
+- `GET` /api/a010/ozon-fbs-posting/:id
+- `POST` /api/a010/ozon-fbs-posting/:id/post
+- `POST` /api/a010/ozon-fbs-posting/:id/unpost
+- `POST` /api/a010/ozon-fbs-posting/post-period
+- `GET` /api/a010/raw/:ref_id
+
+### `/a011`
+- `GET` /api/a011/ozon-fbo-posting
+- `GET` /api/a011/ozon-fbo-posting/:id
+- `POST` /api/a011/ozon-fbo-posting/:id/post
+- `POST` /api/a011/ozon-fbo-posting/:id/unpost
+- `POST` /api/a011/ozon-fbo-posting/post-period
+
+### `/a012`
+- `GET` /api/a012/raw/:ref_id
+- `GET` /api/a012/wb-sales
+- `GET` /api/a012/wb-sales/:id
+- `GET` /api/a012/wb-sales/:id/advert-attribution
+- `GET` /api/a012/wb-sales/:id/journal
+- `POST` /api/a012/wb-sales/:id/post
+- `GET` /api/a012/wb-sales/:id/projections
+- `POST` /api/a012/wb-sales/:id/refresh-dealer-price
+- `POST` /api/a012/wb-sales/:id/unpost
+- `POST` /api/a012/wb-sales/batch-post
+- `POST` /api/a012/wb-sales/batch-unpost
+- `POST` /api/a012/wb-sales/migrate-sale-id
+- `POST` /api/a012/wb-sales/post-period
+- `GET` /api/a012/wb-sales/search-by-srid
+
+### `/a013`
+- `GET` /api/a013/raw/:ref_id
+- `GET` /api/a013/ym-order
+- `GET` /api/a013/ym-order/:id
+- `POST` /api/a013/ym-order/:id/post
+- `GET` /api/a013/ym-order/:id/projections
+- `POST` /api/a013/ym-order/:id/unpost
+- `POST` /api/a013/ym-order/batch-post
+- `POST` /api/a013/ym-order/batch-unpost
+- `GET` /api/a013/ym-order/list
+- `POST` /api/a013/ym-order/post-period
+
+### `/a014`
+- `POST` /api/a014/ozon-transactions/:id/post
+- `GET` /api/a014/ozon-transactions/:id/projections
+- `POST` /api/a014/ozon-transactions/:id/unpost
+
+### `/a015`
+- `GET` /api/a015/raw/:ref_id
+- `GET` /api/a015/wb-orders
+- `GET` /api/a015/wb-orders/:id
+- `POST` /api/a015/wb-orders/:id/delete
+- `POST` /api/a015/wb-orders/:id/post
+- `POST` /api/a015/wb-orders/:id/unpost
+- `GET` /api/a015/wb-orders/search-by-srid
+
+### `/a016`
+- `GET` /api/a016/raw/:ref_id
+- `GET` /api/a016/ym-returns
+- `GET` /api/a016/ym-returns/:id
+- `POST` /api/a016/ym-returns/:id/post
+- `GET` /api/a016/ym-returns/:id/projections
+- `POST` /api/a016/ym-returns/:id/unpost
+- `POST` /api/a016/ym-returns/batch-post
+- `POST` /api/a016/ym-returns/batch-unpost
+- `POST` /api/a016/ym-returns/post-period
+- `GET` /api/a016/ym-returns/source-order/:order_no
+
+### `/a017-llm-agent`
+- `GET POST` /api/a017-llm-agent
+- `GET DELETE` /api/a017-llm-agent/:id
+- `POST` /api/a017-llm-agent/:id/fetch-models
+- `POST` /api/a017-llm-agent/:id/test
+- `GET` /api/a017-llm-agent/list
+- `GET` /api/a017-llm-agent/primary
+
+### `/a018-llm-chat`
+- `GET POST` /api/a018-llm-chat
+- `GET DELETE` /api/a018-llm-chat/:id
+- `GET POST` /api/a018-llm-chat/:id/messages
+- `POST` /api/a018-llm-chat/:id/upload
+- `GET` /api/a018-llm-chat/jobs/:job_id
+- `GET` /api/a018-llm-chat/list
+- `GET` /api/a018-llm-chat/with-stats
+
+### `/a019-llm-artifact`
+- `GET POST` /api/a019-llm-artifact
+- `GET DELETE` /api/a019-llm-artifact/:id
+- `GET` /api/a019-llm-artifact/chat/:chat_id
+- `GET` /api/a019-llm-artifact/list
+
+### `/a020`
+- `GET` /api/a020/raw/:ref_id
+- `GET` /api/a020/wb-promotions
+- `GET` /api/a020/wb-promotions/:id
+- `POST` /api/a020/wb-promotions/:id/post
+- `POST` /api/a020/wb-promotions/:id/unpost
+
+### `/a021`
+- `GET` /api/a021/production-output/:id
+- `POST` /api/a021/production-output/:id/post
+- `POST` /api/a021/production-output/:id/unpost
+- `GET` /api/a021/production-output/list
+
+### `/a022`
+- `GET` /api/a022/kit-variant/:id
+- `GET` /api/a022/kit-variant/list
+
+### `/a023`
+- `GET` /api/a023/purchase-of-goods/:id
+- `POST` /api/a023/purchase-of-goods/:id/post
+- `POST` /api/a023/purchase-of-goods/:id/unpost
+- `GET` /api/a023/purchase-of-goods/list
+
+### `/a024-bi-indicator`
+- `GET POST` /api/a024-bi-indicator
+- `GET DELETE` /api/a024-bi-indicator/:id
+- `POST` /api/a024-bi-indicator/:id/compute
+- `GET` /api/a024-bi-indicator/:id/drilldown
+- `POST` /api/a024-bi-indicator/compute-batch
+- `POST` /api/a024-bi-indicator/generate-view
+- `GET` /api/a024-bi-indicator/list
+- `GET` /api/a024-bi-indicator/owner/:user_id
+- `GET` /api/a024-bi-indicator/public
+- `POST` /api/a024-bi-indicator/resolve-batch
+- `POST` /api/a024-bi-indicator/testdata
+- `POST` /api/a024-bi-indicator/upsert
+
+### `/a025-bi-dashboard`
+- `GET POST` /api/a025-bi-dashboard
+- `GET DELETE` /api/a025-bi-dashboard/:id
+- `GET` /api/a025-bi-dashboard/list
+- `GET` /api/a025-bi-dashboard/owner/:user_id
+- `GET` /api/a025-bi-dashboard/public
+- `POST` /api/a025-bi-dashboard/testdata
+- `POST` /api/a025-bi-dashboard/upsert
+
+### `/a026`
+- `GET` /api/a026/wb-advert-daily/:id
+- `GET` /api/a026/wb-advert-daily/:id/journal
+- `POST` /api/a026/wb-advert-daily/:id/post
+- `GET` /api/a026/wb-advert-daily/:id/projections
+- `POST` /api/a026/wb-advert-daily/:id/unpost
+- `GET` /api/a026/wb-advert-daily/list
+- `GET` /api/a026/wb-advert-daily/report.csv
+
+### `/a027`
+- `GET` /api/a027/wb-documents/:id
+- `GET` /api/a027/wb-documents/:id/download/:extension
+- `POST` /api/a027/wb-documents/:id/extract-weekly-report
+- `PUT` /api/a027/wb-documents/:id/manual
+- `POST` /api/a027/wb-documents/:id/post
+- `GET` /api/a027/wb-documents/list
+
+### `/a028`
+- `GET PUT` /api/a028/missing-cost-registry/:id
+- `POST` /api/a028/missing-cost-registry/:id/post
+- `POST` /api/a028/missing-cost-registry/:id/unpost
+- `GET` /api/a028/missing-cost-registry/list
+
+### `/a029`
+- `GET` /api/a029/raw/:ref_id
+- `GET` /api/a029/wb-supply
+- `GET` /api/a029/wb-supply/:id
+- `POST` /api/a029/wb-supply/:id/delete
+- `GET` /api/a029/wb-supply/:id/orders
+- `GET` /api/a029/wb-supply/:id/stickers
+- `GET` /api/a029/wb-supply/by-order/:order_id
+- `GET` /api/a029/wb-supply/by-wb-id/:wb_id
+
+### `/a030`
+- `GET` /api/a030/wb-advert-campaign/:id
+- `GET` /api/a030/wb-advert-campaign/:id/advert-stats
+- `GET` /api/a030/wb-advert-campaign/:id/nm-positions
+- `GET` /api/a030/wb-advert-campaign/list
+
+### `/a031-kb-edit`
+- `GET POST` /api/a031-kb-edit
+- `GET PUT DELETE` /api/a031-kb-edit/:id
+- `POST` /api/a031-kb-edit/:id/approve
+- `POST` /api/a031-kb-edit/:id/cancel
+- `GET` /api/a031-kb-edit/list
+
+### `/a032`
+- `GET` /api/a032/wb-returns-claims
+- `GET` /api/a032/wb-returns-claims/:id
+
+### `/a033`
+- `GET POST` /api/a033/wb-day-close
+- `GET` /api/a033/wb-day-close/:id
+- `GET` /api/a033/wb-day-close/:id/advert-live
+- `POST` /api/a033/wb-day-close/:id/archive-and-recreate
+- `POST` /api/a033/wb-day-close/:id/recalculate
+- `POST` /api/a033/wb-day-close/:id/repost-problematic-a012
+- `GET` /api/a033/wb-day-close/by-day/:connection_id/:business_date
+- `POST` /api/a033/wb-day-close/compare
+
+### `/a034`
+- `GET` /api/a034/ym-realization/:id
+- `GET` /api/a034/ym-realization/:id/delivery-orders
+- `POST` /api/a034/ym-realization/:id/fetch-missing-orders
+- `GET` /api/a034/ym-realization/:id/journal
+- `GET` /api/a034/ym-realization/:id/payment-detail
+- `POST` /api/a034/ym-realization/:id/post
+- `GET` /api/a034/ym-realization/:id/reconciliation-returns
+- `GET` /api/a034/ym-realization/:id/reconciliation-sales
+- `GET` /api/a034/ym-realization/:id/reconciliation-summary
+- `POST` /api/a034/ym-realization/:id/unpost
+- `GET` /api/a034/ym-realization/list
+
+### `/a035`
+- `GET` /api/a035/ym-settlement-recon/:id
+- `POST` /api/a035/ym-settlement-recon/:id/post
+- `POST` /api/a035/ym-settlement-recon/:id/recompute
+- `POST` /api/a035/ym-settlement-recon/:id/unpost
+- `POST` /api/a035/ym-settlement-recon/generate
+- `GET` /api/a035/ym-settlement-recon/list
+
+### `/bi-timeline`
+- `GET` /api/bi-timeline/indicators
+- `POST` /api/bi-timeline/series
+
+### `/connection_1c`
+- `GET POST` /api/connection_1c
+- `GET DELETE` /api/connection_1c/:id
+- `GET` /api/connection_1c/list
+- `POST` /api/connection_1c/test
+- `POST` /api/connection_1c/testdata
+
+### `/connection_mp`
+- `GET POST` /api/connection_mp
+- `GET DELETE` /api/connection_mp/:id
+- `POST` /api/connection_mp/seller_info
+- `POST` /api/connection_mp/test
+
+### `/counterparty`
+- `GET POST` /api/counterparty
+- `GET DELETE` /api/counterparty/:id
+
+### `/d400`
+- `GET` /api/d400/monthly_summary
+- `GET` /api/d400/periods
+
+### `/d401`
+- `GET POST` /api/d401/configs
+- `GET PUT DELETE` /api/d401/configs/:id
+- `POST` /api/d401/execute
+- `POST` /api/d401/generate-sql
+- `GET` /api/d401/schemas
+- `GET` /api/d401/schemas/:id
+- `GET` /api/d401/schemas/:schema_id/fields/:field_id/values
+
+### `/dashboards`
+- `GET POST` /api/dashboards/d402/configs
+- `GET PUT DELETE` /api/dashboards/d402/configs/:id
+- `POST` /api/dashboards/d402/execute
+- `POST` /api/dashboards/d402/generate-sql
+- `GET` /api/dashboards/d402/schemas
+- `GET` /api/dashboards/d402/schemas/:id
+- `GET` /api/dashboards/d402/schemas/:schema_id/fields/:field_id/values
+- `GET` /api/dashboards/wb-advert-report
+- `GET` /api/dashboards/wb-order-flow
+- `GET` /api/dashboards/ym-order-flow
+
+### `/data-view`
+- `GET` /api/data-view
+- `GET` /api/data-view/:id
+- `POST` /api/data-view/:id/compute
+- `POST` /api/data-view/:id/drilldown
+- `POST` /api/data-view/:id/drilldown-capabilities
+
+### `/debug`
+- `GET` /api/debug/tool-test
+
+### `/drilldown`
+- `POST` /api/drilldown/execute
+
+### `/ds01`
+- `GET POST` /api/ds01/configs
+- `GET PUT DELETE` /api/ds01/configs/:id
+- `POST` /api/ds01/execute
+- `POST` /api/ds01/generate-sql
+- `GET` /api/ds01/schemas
+- `GET` /api/ds01/schemas/:id
+- `GET` /api/ds01/schemas/:schema_id/fields/:field_id/values
+
+### `/ds02`
+- `GET POST` /api/ds02/configs
+- `GET PUT DELETE` /api/ds02/configs/:id
+- `POST` /api/ds02/execute
+- `POST` /api/ds02/generate-sql
+- `GET` /api/ds02/schemas
+- `GET` /api/ds02/schemas/:id
+- `GET` /api/ds02/schemas/:schema_id/fields/:field_id/values
+
+### `/ext`
+- `GET` /api/ext/v1/wb-supplies
+- `GET` /api/ext/v1/wb-supplies/:id
+
+### `/general-ledger`
+- `GET` /api/general-ledger
+- `GET` /api/general-ledger/:id
+- `GET` /api/general-ledger/:id/resource-details
+- `POST` /api/general-ledger/account-view
+- `GET` /api/general-ledger/dimensions
+- `POST` /api/general-ledger/drilldown
+- `GET` /api/general-ledger/drilldown/:id
+- `GET` /api/general-ledger/drilldown/:id/data
+- `GET` /api/general-ledger/entities
+- `GET` /api/general-ledger/layers
+- `GET` /api/general-ledger/layer-turnover-matrix
+- `POST` /api/general-ledger/report
+- `GET` /api/general-ledger/report/dimensions
+- `POST` /api/general-ledger/report/drilldown
+- `POST` /api/general-ledger/supplier-balance
+- `GET` /api/general-ledger/turnovers
+- `GET` /api/general-ledger/turnovers/:code
+
+### `/llm-knowledge`
+- `GET` /api/llm-knowledge
+- `GET` /api/llm-knowledge/:id
+
+### `/marketplace`
+- `GET POST` /api/marketplace
+- `GET DELETE` /api/marketplace/:id
+- `POST` /api/marketplace/testdata
+
+### `/marketplace_product`
+- `GET POST` /api/marketplace_product
+- `GET DELETE` /api/marketplace_product/:id
+- `POST` /api/marketplace_product/testdata
+
+### `/marketplace_sales`
+- `GET POST` /api/marketplace_sales
+- `GET DELETE` /api/marketplace_sales/:id
+
+### `/nomenclature`
+- `GET POST` /api/nomenclature
+- `GET DELETE` /api/nomenclature/:id
+- `GET` /api/nomenclature/dimensions
+- `POST` /api/nomenclature/import-excel
+- `GET` /api/nomenclature/search
+- `GET` /api/nomenclature/search-by-barcode
+
+### `/organization`
+- `GET POST` /api/organization
+- `GET DELETE` /api/organization/:id
+- `POST` /api/organization/testdata
+
+### `/ozon_returns`
+- `GET POST` /api/ozon_returns
+- `GET DELETE` /api/ozon_returns/:id
+
+### `/ozon_transactions`
+- `GET` /api/ozon_transactions
+- `GET DELETE` /api/ozon_transactions/:id
+- `GET` /api/ozon_transactions/by-posting/:posting_number
+
+### `/p900`
+- `POST` /api/p900/backfill-product-refs
+- `GET` /api/p900/sales-register
+- `GET` /api/p900/sales-register/:marketplace/:document_no/:line_id
+- `GET` /api/p900/stats/by-date
+- `GET` /api/p900/stats/by-marketplace
+
+### `/p901`
+- `GET` /api/p901/barcode/:barcode
+- `GET` /api/p901/barcodes
+- `GET` /api/p901/nomenclature/:nomenclature_ref/barcodes
+
+### `/p902`
+- `GET` /api/p902/finance-realization
+- `GET` /api/p902/finance-realization/:posting_number/:sku/:operation_type
+- `GET` /api/p902/stats
+
+### `/p903`
+- `GET` /api/p903/finance-report
+- `GET` /api/p903/finance-report/by-id/:id
+- `POST` /api/p903/finance-report/by-id/:id/post
+- `GET` /api/p903/finance-report/by-id/:id/raw
+- `GET` /api/p903/finance-report/export
+- `GET` /api/p903/finance-report/operation-kinds
+- `GET` /api/p903/finance-report/search-by-srid
+
+### `/p904`
+- `GET` /api/p904/sales-data
+
+### `/p905-commission`
+- `POST` /api/p905-commission
+- `GET PUT DELETE` /api/p905-commission/:id
+- `GET` /api/p905-commission/list
+- `POST` /api/p905-commission/sync
+
+### `/p906`
+- `POST` /api/p906/import-excel
+- `GET` /api/p906/nomenclature-prices
+- `GET` /api/p906/periods
+
+### `/p907`
+- `GET` /api/p907/payment-report
+- `GET` /api/p907/payment-report/:id
+- `GET` /api/p907/payment-report/:id/finance-turnovers
+- `POST` /api/p907/payment-report/:id/post
+- `GET` /api/p907/payment-report/filter-options
+- `POST` /api/p907/payment-report/migrate-keys
+- `POST` /api/p907/payment-report/repost-all
+
+### `/p908`
+- `GET` /api/p908/goods-prices
+- `GET` /api/p908/goods-prices/:nm_id
+
+### `/p912`
+- `GET` /api/p912/nomenclature-costs
+
+### `/p913`
+- `GET` /api/p913/wb-advert-order-attr
+
+### `/p914`
+- `GET` /api/p914/mp-finance-turnovers
+
+### `/p915`
+- `GET` /api/p915/order-events
+- `GET` /api/p915/order-events/by-order/:order_id
+
+### `/projections`
+- `GET` /api/projections/p900/:registrator_ref
+
+### `/quality`
+- `GET POST` /api/quality/checks
+- `POST` /api/quality/checks/:id/cleanup
+- `GET` /api/quality/checks/:id/details
+- `GET` /api/quality/checks/:id/groups
+- `POST` /api/quality/checks/:id/repost
+- `GET` /api/quality/checks/:id/rows
+- `GET` /api/quality/checks/:id/sources
+
+### `/refs`
+- `GET` /api/refs/resolve
+
+### `/reports`
+- `GET` /api/reports/wb-weekly-reconciliation
+- `GET` /api/reports/ym-revenue-reconciliation
+
+### `/sys-drilldown`
+- `POST` /api/sys-drilldown
+- `GET` /api/sys-drilldown/:id
+- `GET` /api/sys-drilldown/:id/data
+
+### `/u501`
+- `GET` /api/u501/import/:session_id/progress
+- `POST` /api/u501/import/start
+
+### `/u502`
+- `GET` /api/u502/import/:session_id/progress
+- `POST` /api/u502/import/start
+
+### `/u503`
+- `GET` /api/u503/import/:session_id/progress
+- `POST` /api/u503/import/start
+
+### `/u504`
+- `GET` /api/u504/import/:session_id/progress
+- `POST` /api/u504/import/start
+
+### `/u505`
+- `GET` /api/u505/match/:session_id/progress
+- `POST` /api/u505/match/start
+
+### `/u506`
+- `GET` /api/u506/import/:session_id/progress
+- `POST` /api/u506/import/start
+
+### `/u507`
+- `GET` /api/u507/import/:session_id/progress
+- `POST` /api/u507/import/start
+
+### `/u508`
+- `GET` /api/u508/repost/:session_id/progress
+- `POST` /api/u508/repost/aggregate/start
+- `GET` /api/u508/repost/aggregates
+- `GET` /api/u508/repost/projections
+- `POST` /api/u508/repost/start
+
+### `/universal-dashboard`
+- `GET POST` /api/universal-dashboard/configs
+- `GET PUT DELETE` /api/universal-dashboard/configs/:id
+- `POST` /api/universal-dashboard/execute
+- `POST` /api/universal-dashboard/generate-sql
+- `GET` /api/universal-dashboard/schemas
+- `GET` /api/universal-dashboard/schemas/:id
+- `POST` /api/universal-dashboard/schemas/:id/validate
+- `GET` /api/universal-dashboard/schemas/:schema_id/fields/:field_id/values
+- `POST` /api/universal-dashboard/schemas/validate-all
+

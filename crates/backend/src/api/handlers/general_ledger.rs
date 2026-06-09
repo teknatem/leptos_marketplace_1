@@ -17,8 +17,9 @@ use contracts::general_ledger::{
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
     GlEntitiesResponse, GlEntityDto, GlLayerDto, GlLayersResponse, GlLayerTurnoverMatrixResponse,
     GlMatrixCell, GlMatrixDimension, GlMatrixLayer, GlMatrixProjection, GlMatrixTurnover,
-    GlReportQuery, GlReportResponse, GlResourceDetailResponse, WbWeeklyReconciliationQuery,
-    WbWeeklyReconciliationResponse, GL_ENTITY_CLASSES, GL_LAYER_CLASSES,
+    GlReportQuery, GlReportResponse, GlResourceDetailResponse, SupplierBalanceQuery,
+    SupplierBalanceResponse, WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
+    GL_ENTITY_CLASSES, GL_LAYER_CLASSES,
 };
 
 #[derive(Debug, Deserialize)]
@@ -430,6 +431,19 @@ pub async fn list_entities() -> Result<Json<GlEntitiesResponse>, axum::http::Sta
     let total = items.len();
 
     Ok(Json(GlEntitiesResponse { items, total }))
+}
+
+/// Баланс к перечислению поставщику (контур ym): сальдо 7609 + кошелёк баллов 76YB.
+pub async fn supplier_balance(
+    Json(query): Json<SupplierBalanceQuery>,
+) -> Result<Json<SupplierBalanceResponse>, axum::http::StatusCode> {
+    report_repository::get_supplier_balance(&query)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("supplier_balance error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

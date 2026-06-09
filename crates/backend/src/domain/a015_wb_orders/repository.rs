@@ -830,6 +830,8 @@ pub struct WbOrdersListRow {
     pub is_realization: Option<bool>,
     pub warehouse_type: Option<String>,
     pub income_id: Option<i64>,
+    /// Код валюты продажи (ISO 4217 numeric), только для трансграничных заказов СНГ.
+    pub currency_code: Option<i64>,
     pub marketplace_product_ref: Option<String>,
     pub nomenclature_ref: Option<String>,
     pub base_nomenclature_ref: Option<String>,
@@ -927,6 +929,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
         "dealer_price_ut" => "w.dealer_price_ut",
         "finished_price" => "json_extract(w.line_json, '$.finished_price')",
         "total_price" => "json_extract(w.line_json, '$.total_price')",
+        "currency_code" => "json_extract(w.line_json, '$.currency_code')",
         "organization_name" => "org.description",
         "base_nomenclature_article" => "base_nom.article",
         "base_nomenclature_description" => "base_nom.description",
@@ -954,6 +957,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
             json_extract(w.state_json, '$.is_supply') as is_supply,
             json_extract(w.state_json, '$.is_realization') as is_realization,
             json_extract(w.warehouse_json, '$.warehouse_type') as warehouse_type,
+            json_extract(w.line_json, '$.currency_code') as currency_code,
             CASE WHEN json_extract(w.source_meta_json, '$.income_id') > 0
                  THEN json_extract(w.source_meta_json, '$.income_id')
                  ELSE NULL END as income_id,
@@ -1014,6 +1018,7 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
                     .map(|v| v != 0),
                 warehouse_type: row.try_get("", "warehouse_type").ok(),
                 income_id: row.try_get::<i64>("", "income_id").ok(),
+                currency_code: row.try_get::<i64>("", "currency_code").ok(),
                 marketplace_product_ref: row.try_get("", "marketplace_product_ref").ok(),
                 nomenclature_ref: row.try_get("", "nomenclature_ref").ok(),
                 base_nomenclature_ref: row.try_get("", "base_nomenclature_ref").ok(),

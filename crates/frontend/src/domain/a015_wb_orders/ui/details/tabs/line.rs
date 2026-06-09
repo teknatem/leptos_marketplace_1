@@ -26,6 +26,32 @@ fn json_kopecks_to_rubles(value: &Value, key: &str) -> Option<f64> {
     json_number(value, key).map(|v| v / 100.0)
 }
 
+/// WB exchange rate (RUB per unit of the order selling currency), derived from the ratio of a
+/// converted amount to its source amount. See backend `wb_fx_rate` for the rationale. Returns
+/// 1.0 for RUB orders or when no converted amounts are present.
+fn wb_fx_rate(value: &Value) -> f64 {
+    let ratio = |num: &str, den: &str| match (json_number(value, num), json_number(value, den)) {
+        (Some(n), Some(d)) if n > 0.0 && d > 0.0 => Some(n / d),
+        _ => None,
+    };
+    ratio("convertedPrice", "price")
+        .or_else(|| ratio("convertedFinalPrice", "finalPrice"))
+        .unwrap_or(1.0)
+}
+
+/// ISO 4217 numeric currency code → short label, for the WB markets in scope.
+fn currency_label(code: i64) -> &'static str {
+    match code {
+        643 => "RUB",
+        398 => "KZT",
+        933 => "BYN",
+        51 => "AMD",
+        417 => "KGS",
+        860 => "UZS",
+        _ => "?",
+    }
+}
+
 fn format_money(value: Option<f64>) -> String {
     match value {
         Some(v) => format!("{:.2}", v),
@@ -248,16 +274,46 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                 };
             }
 
-            let price = json_kopecks_to_rubles(&raw_value, "price");
-            let final_price = json_kopecks_to_rubles(&raw_value, "finalPrice");
-            let sale_price = json_kopecks_to_rubles(&raw_value, "salePrice");
-            let scan_price = json_kopecks_to_rubles(&raw_value, "scanPrice");
+            // WB amounts arrive in the order selling currency (currencyCode); convert them to
+            // RUB via the WB rate so the displayed "rub" unit is truthful.
+            let fx = wb_fx_rate(&raw_value);
+            let price = json_kopecks_to_rubles(&raw_value, "price").map(|v| v * fx);
+            let final_price = json_kopecks_to_rubles(&raw_value, "finalPrice").map(|v| v * fx);
+            let sale_price = json_kopecks_to_rubles(&raw_value, "salePrice").map(|v| v * fx);
+            let scan_price = json_kopecks_to_rubles(&raw_value, "scanPrice").map(|v| v * fx);
+
+            let currency_code = json_number(&raw_value, "currencyCode").map(|v| v as i64);
+            let is_foreign = currency_code.map(|c| c != 643).unwrap_or(false);
+            let has_rate = (fx - 1.0).abs() > f64::EPSILON;
+            // Unit shown in the table: RUB once converted; the source currency when the rate is
+            // unavailable and amounts are still in the original currency.
+            let unit: String = if is_foreign && !has_rate {
+                currency_code.map(currency_label).unwrap_or("rub").to_lowercase()
+            } else {
+                "rub".to_string()
+            };
+            let (unit_sale, unit_price, unit_final, unit_scan) =
+                (unit.clone(), unit.clone(), unit.clone(), unit.clone());
+            let hint: String = if is_foreign {
+                let cur = currency_code.map(currency_label).unwrap_or("?");
+                if has_rate {
+                    format!(
+                        "Заказ оформлен в валюте {cur}. Суммы Marketplace API пересчитаны в рубли по курсу WB {fx:.4} (convertedPrice/price)."
+                    )
+                } else {
+                    format!(
+                        "Заказ оформлен в валюте {cur}, но курс WB недоступен — суммы показаны в исходной валюте {cur}, не в рублях."
+                    )
+                }
+            } else {
+                "Это исходные поля Marketplace API. Цены WB приходят в копейках, здесь показаны в рублях без переноса в поля Statistics API.".to_string()
+            };
 
             view! {
                 <CardAnimated delay_ms=40 nav_id="a015_wb_orders_details_line_marketplace_amounts">
                     <h4 class="details-section__title">"Marketplace API: /api/v3/orders"</h4>
                     <div class="form__hint" style="margin-bottom: var(--spacing-sm);">
-                        "Это исходные поля Marketplace API. Цены WB приходят в копейках, здесь показаны в рублях без переноса в поля Statistics API."
+                        {hint}
                     </div>
                     <Table>
                         <TableHeader>
@@ -280,7 +336,7 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                         </TableCellLayout></TableCell>
                         <TableCell><TableCellLayout><code>"salePrice"</code></TableCellLayout></TableCell>
                         <TableCell attr:style="text-align: right;"><TableCellLayout>{format_money(sale_price)}</TableCellLayout></TableCell>
-                        <TableCell><TableCellLayout>"rub"</TableCellLayout></TableCell>
+                        <TableCell><TableCellLayout>{unit_sale}</TableCellLayout></TableCell>
                     </TableRow>
                     <TableRow>
                                 <TableCell><TableCellLayout>
@@ -292,7 +348,7 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 </TableCellLayout></TableCell>
                                 <TableCell><TableCellLayout><code>"price"</code></TableCellLayout></TableCell>
                                 <TableCell attr:style="text-align: right;"><TableCellLayout>{format_money(price)}</TableCellLayout></TableCell>
-                                <TableCell><TableCellLayout>"rub"</TableCellLayout></TableCell>
+                                <TableCell><TableCellLayout>{unit_price}</TableCellLayout></TableCell>
                             </TableRow>
                             <TableRow>
                                 <TableCell><TableCellLayout>
@@ -304,7 +360,7 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 </TableCellLayout></TableCell>
                                 <TableCell><TableCellLayout><code>"finalPrice"</code></TableCellLayout></TableCell>
                                 <TableCell attr:style="text-align: right;"><TableCellLayout>{format_money(final_price)}</TableCellLayout></TableCell>
-                                <TableCell><TableCellLayout>"rub"</TableCellLayout></TableCell>
+                                <TableCell><TableCellLayout>{unit_final}</TableCellLayout></TableCell>
                             </TableRow>
                             <TableRow>
                                 <TableCell><TableCellLayout>
@@ -316,7 +372,7 @@ fn MarketplaceApiAmountsCard(vm: WbOrdersDetailsVm) -> impl IntoView {
                                 </TableCellLayout></TableCell>
                                 <TableCell><TableCellLayout><code>"scanPrice"</code></TableCellLayout></TableCell>
                                 <TableCell attr:style="text-align: right;"><TableCellLayout>{format_money(scan_price)}</TableCellLayout></TableCell>
-                                <TableCell><TableCellLayout>"rub"</TableCellLayout></TableCell>
+                                <TableCell><TableCellLayout>{unit_scan}</TableCellLayout></TableCell>
                             </TableRow>
                         </TableBody>
                     </Table>

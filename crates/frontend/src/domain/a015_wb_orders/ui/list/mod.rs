@@ -70,6 +70,65 @@ fn format_time(iso_date: &str) -> String {
     "—".to_string()
 }
 
+/// Короткая метка валюты заказа (ISO 4217 numeric → код). Пусто для рублёвых
+/// заказов (currency_code не сохраняется для RUB), код — для трансграничных СНГ.
+fn currency_label(code: Option<i64>) -> &'static str {
+    match code {
+        Some(398) => "KZT",
+        Some(933) => "BYN",
+        Some(51) => "AMD",
+        Some(643) => "RUB",
+        Some(_) => "?",
+        None => "",
+    }
+}
+
+/// Разобрать один элемент ответа списка в DTO. Используется и при загрузке страницы,
+/// и при полной выгрузке в CSV.
+fn parse_order_item(item: &serde_json::Value) -> Option<WbOrdersDto> {
+    let id = item.get("id")?.as_str()?.to_string();
+    let document_no = item.get("document_no")?.as_str()?.to_string();
+    let str_field = |key: &str| {
+        item.get(key)
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    };
+    Some(WbOrdersDto {
+        id,
+        document_no,
+        line_id: str_field("line_id"),
+        order_date: item
+            .get("document_date")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        supplier_article: item
+            .get("supplier_article")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        brand: str_field("brand"),
+        qty: item.get("qty")?.as_f64()?,
+        margin_pro: item.get("margin_pro").and_then(|v| v.as_f64()),
+        dealer_price_ut: item.get("dealer_price_ut").and_then(|v| v.as_f64()),
+        finished_price: item.get("finished_price").and_then(|v| v.as_f64()),
+        total_price: item.get("total_price").and_then(|v| v.as_f64()),
+        is_cancel: item.get("is_cancel")?.as_bool().unwrap_or(false),
+        is_supply: item.get("is_supply").and_then(|v| v.as_bool()),
+        is_realization: item.get("is_realization").and_then(|v| v.as_bool()),
+        warehouse_type: str_field("warehouse_type"),
+        income_id: item.get("income_id").and_then(|v| v.as_i64()),
+        currency_code: item.get("currency_code").and_then(|v| v.as_i64()),
+        has_wb_sales: item.get("has_wb_sales").and_then(|v| v.as_bool()),
+        organization_name: str_field("organization_name"),
+        marketplace_article: str_field("marketplace_article"),
+        nomenclature_code: str_field("nomenclature_code"),
+        nomenclature_article: str_field("nomenclature_article"),
+        base_nomenclature_article: str_field("base_nomenclature_article"),
+        base_nomenclature_description: str_field("base_nomenclature_description"),
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WbOrdersDto {
     pub id: String,
@@ -88,6 +147,7 @@ pub struct WbOrdersDto {
     pub is_realization: Option<bool>,
     pub warehouse_type: Option<String>,
     pub income_id: Option<i64>,
+    pub currency_code: Option<i64>,
     pub has_wb_sales: Option<bool>,
     pub organization_name: Option<String>,
     pub marketplace_article: Option<String>,
@@ -178,6 +238,12 @@ impl Sortable for WbOrdersDto {
                 (None, Some(_)) => Ordering::Greater,
                 (None, None) => Ordering::Equal,
             },
+            "currency_code" => match (&self.currency_code, &other.currency_code) {
+                (Some(a), Some(b)) => a.cmp(b),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => Ordering::Equal,
+            },
             _ => Ordering::Equal,
         }
     }
@@ -206,6 +272,9 @@ pub fn WbOrdersList() -> impl IntoView {
     // Batch post/unpost state
     let (posting_in_progress, set_posting_in_progress) = signal(false);
     let (_, set_operation_notification) = signal(None::<String>);
+
+    // CSV export (full dataset, not just current page)
+    let (exporting, set_exporting) = signal(false);
 
     const FORM_KEY: &str = "a015_wb_orders";
 
@@ -278,103 +347,8 @@ pub fn WbOrdersList() -> impl IntoView {
 
                                 let parsed_orders: Vec<WbOrdersDto> = paginated
                                     .items
-                                    .into_iter()
-                                    .filter_map(|item| {
-                                        let id = item.get("id")?.as_str()?.to_string();
-                                        let document_no =
-                                            item.get("document_no")?.as_str()?.to_string();
-                                        let line_id = item
-                                            .get("line_id")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-                                        let order_date = item
-                                            .get("document_date")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string();
-                                        let supplier_article = item
-                                            .get("supplier_article")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string();
-                                        let brand = item
-                                            .get("brand")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-                                        let qty = item.get("qty")?.as_f64()?;
-                                        let margin_pro =
-                                            item.get("margin_pro").and_then(|v| v.as_f64());
-                                        let dealer_price_ut =
-                                            item.get("dealer_price_ut").and_then(|v| v.as_f64());
-                                        let finished_price =
-                                            item.get("finished_price").and_then(|v| v.as_f64());
-                                        let total_price =
-                                            item.get("total_price").and_then(|v| v.as_f64());
-                                        let is_cancel =
-                                            item.get("is_cancel")?.as_bool().unwrap_or(false);
-                                        let is_supply =
-                                            item.get("is_supply").and_then(|v| v.as_bool());
-                                        let is_realization =
-                                            item.get("is_realization").and_then(|v| v.as_bool());
-                                        let warehouse_type = item
-                                            .get("warehouse_type")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-                                        let income_id =
-                                            item.get("income_id").and_then(|v| v.as_i64());
-                                        let has_wb_sales =
-                                            item.get("has_wb_sales").and_then(|v| v.as_bool());
-                                        let organization_name = item
-                                            .get("organization_name")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-                                        let marketplace_article = item
-                                            .get("marketplace_article")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-                                        let nomenclature_code = item
-                                            .get("nomenclature_code")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-                                        let nomenclature_article = item
-                                            .get("nomenclature_article")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-                                        let base_nomenclature_article = item
-                                            .get("base_nomenclature_article")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-                                        let base_nomenclature_description = item
-                                            .get("base_nomenclature_description")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from);
-
-                                        Some(WbOrdersDto {
-                                            id,
-                                            document_no,
-                                            line_id,
-                                            order_date,
-                                            supplier_article,
-                                            brand,
-                                            qty,
-                                            margin_pro,
-                                            dealer_price_ut,
-                                            finished_price,
-                                            total_price,
-                                            is_cancel,
-                                            is_supply,
-                                            is_realization,
-                                            warehouse_type,
-                                            income_id,
-                                            has_wb_sales,
-                                            organization_name,
-                                            marketplace_article,
-                                            nomenclature_code,
-                                            nomenclature_article,
-                                            base_nomenclature_article,
-                                            base_nomenclature_description,
-                                        })
-                                    })
+                                    .iter()
+                                    .filter_map(parse_order_item)
                                     .collect();
 
                                 log!("Successfully parsed {} orders", parsed_orders.len());
@@ -690,16 +664,45 @@ pub fn WbOrdersList() -> impl IntoView {
                             appearance=ButtonAppearance::Subtle
                             size=ButtonSize::Medium
                             on_click=move |_| {
-                                let data = state.get().orders;
-                                if let Err(e) = export_to_csv(&data) {
-                                    log!("Failed to export: {}", e);
-                                }
+                                // Полная выгрузка по текущим фильтрам/сортировке, а не только
+                                // текущая страница: дёргаем сервер с большим лимитом.
+                                let date_from = state.with_untracked(|s| s.date_from.clone());
+                                let date_to = state.with_untracked(|s| s.date_to.clone());
+                                let org_id = state.with_untracked(|s| s.selected_organization_id.clone());
+                                let search_query_val = state.with_untracked(|s| s.search_query.clone());
+                                let sort_field = state.with_untracked(|s| s.sort_field.clone());
+                                let sort_ascending = state.with_untracked(|s| s.sort_ascending);
+                                let show_cancelled_val = show_cancelled.get_untracked();
+                                set_exporting.set(true);
+                                spawn_local(async move {
+                                    match fetch_all_orders_for_export(
+                                        date_from,
+                                        date_to,
+                                        org_id,
+                                        search_query_val,
+                                        sort_field,
+                                        sort_ascending,
+                                        show_cancelled_val,
+                                    )
+                                    .await
+                                    {
+                                        Ok(data) => {
+                                            if let Err(e) = export_to_csv(&data) {
+                                                log!("Failed to export: {}", e);
+                                            }
+                                        }
+                                        Err(e) => log!("Failed to fetch full export: {}", e),
+                                    }
+                                    set_exporting.set(false);
+                                });
                             }
-                            disabled=Signal::derive(move || loading.get() || state.get().orders.is_empty())
+                            disabled=Signal::derive(move || loading.get() || exporting.get() || state.get().total_count == 0)
                         >
                             <span class="page-action-button__content">
                                 <span class="page-action-button__icon">{icon("download")}</span>
-                                <span class="page-action-button__text">"Excel (csv)"</span>
+                                <span class="page-action-button__text">
+                                    {move || if exporting.get() { "Выгрузка..." } else { "Excel (csv)" }}
+                                </span>
                             </span>
                         </Button>
                         <RunTaskButton
@@ -855,7 +858,7 @@ pub fn WbOrdersList() -> impl IntoView {
                 <div class="table-wrapper">
                     <TableCrosshairHighlight table_id=TABLE_ID.to_string() />
 
-                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1220px;">
+                    <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1272px;">
                         <TableHeader>
                             <TableRow>
                                 <TableHeaderCheckbox
@@ -946,6 +949,15 @@ pub fn WbOrdersList() -> impl IntoView {
                                         "Итоговая цена"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "finished_price"))>
                                             {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "finished_price", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=52.0 class="resizable" attr:style="width: 6ch; max-width: 6ch;">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("currency_code")>
+                                        "Вал."
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "currency_code"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "currency_code", state.with(|s| s.sort_ascending))}
                                         </span>
                                     </div>
                                 </TableHeaderCell>
@@ -1064,6 +1076,23 @@ pub fn WbOrdersList() -> impl IntoView {
                                                 color_by_sign=false
                                             />
 
+                                            <TableCell attr:style="width: 6ch; max-width: 6ch;">
+                                                <TableCellLayout>
+                                                    {
+                                                        let label = currency_label(order.currency_code);
+                                                        if label.is_empty() {
+                                                            view! { <span class="text-muted">"—"</span> }.into_any()
+                                                        } else {
+                                                            view! {
+                                                                <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Danger>
+                                                                    {label}
+                                                                </Badge>
+                                                            }.into_any()
+                                                        }
+                                                    }
+                                                </TableCellLayout>
+                                            </TableCell>
+
                                             <TableCell>
                                                 <TableCellLayout>
                                                     {
@@ -1135,6 +1164,52 @@ pub fn WbOrdersList() -> impl IntoView {
     }
 }
 
+/// Полная выгрузка заказов по текущим фильтрам/сортировке (все страницы) для CSV.
+async fn fetch_all_orders_for_export(
+    date_from: String,
+    date_to: String,
+    org_id: Option<String>,
+    search_query: String,
+    sort_field: String,
+    sort_ascending: bool,
+    show_cancelled: bool,
+) -> Result<Vec<WbOrdersDto>, String> {
+    let cache_buster = js_sys::Date::now() as i64;
+    let mut url = format!(
+        "{}/api/a015/wb-orders?date_from={}&date_to={}&limit={}&offset=0&sort_by={}&sort_desc={}&show_cancelled={}&_ts={}",
+        api_base(),
+        date_from,
+        date_to,
+        10_000_000,
+        sort_field,
+        !sort_ascending,
+        show_cancelled,
+        cache_buster
+    );
+    if let Some(org_id) = org_id {
+        if !org_id.is_empty() {
+            url.push_str(&format!("&organization_id={}", org_id));
+        }
+    }
+    if !search_query.is_empty() {
+        url.push_str(&format!("&search_query={}", search_query));
+    }
+
+    let response = Request::get(&url)
+        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch: {}", e))?;
+    if !response.ok() {
+        return Err(format!("Server error: {}", response.status()));
+    }
+    let paginated = response
+        .json::<PaginatedResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse: {}", e))?;
+    Ok(paginated.items.iter().filter_map(parse_order_item).collect())
+}
+
 /// Загрузка списка организаций
 async fn fetch_organizations() -> Result<Vec<Organization>, String> {
     let opts = RequestInit::new();
@@ -1196,7 +1271,7 @@ async fn load_saved_settings(form_key: &str) -> Result<Option<serde_json::Value>
 fn export_to_csv(data: &[WbOrdersDto]) -> Result<(), String> {
     let mut csv = String::from("\u{FEFF}");
 
-    csv.push_str("Номер заказа;Дата заказа;Организация;Артикул продавца;Артикул МП;Артикул 1С;Артикул база;Наименование база;Бренд;Маржа, %;Дил. цена УТ;Итоговая цена;Отменён\n");
+    csv.push_str("Номер заказа;Дата заказа;Организация;Артикул продавца;Артикул МП;Артикул 1С;Артикул база;Наименование база;Бренд;Маржа, %;Дил. цена УТ;Итоговая цена;Валюта;Отменён\n");
 
     for order in data {
         let order_date = format_date(&order.order_date);
@@ -1240,9 +1315,14 @@ fn export_to_csv(data: &[WbOrdersDto]) -> Result<(), String> {
             .map(|a| format!("{:.2}", a).replace(".", ","))
             .unwrap_or_else(|| "—".to_string());
         let is_cancel_str = if order.is_cancel { "Да" } else { "Нет" };
+        // Пусто для RUB → показываем явно "RUB", иначе код валюты (KZT/BYN/AMD).
+        let currency_str = match currency_label(order.currency_code) {
+            "" => "RUB",
+            label => label,
+        };
 
         csv.push_str(&format!(
-            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};\"{}\"\n",
+            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};\"{}\";\"{}\"\n",
             order.document_no.replace('\"', "\"\""),
             order_date,
             org_name.replace('\"', "\"\""),
@@ -1255,6 +1335,7 @@ fn export_to_csv(data: &[WbOrdersDto]) -> Result<(), String> {
             margin_str,
             dealer_price_str,
             finished_price_str,
+            currency_str,
             is_cancel_str
         ));
     }

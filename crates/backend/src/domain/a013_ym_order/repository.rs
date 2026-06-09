@@ -125,6 +125,9 @@ pub mod items {
                 marketplace_product_ref: m.marketplace_product_ref,
                 nomenclature_ref: m.nomenclature_ref,
                 dealer_price_ut: m.dealer_price_ut,
+                // Таблица items не хранит details — они мерджатся из lines_json
+                // в get_by_id_with_items, поэтому здесь пусто.
+                details: Vec::new(),
             }
         }
     }
@@ -468,7 +471,18 @@ pub async fn get_by_id_with_items(id: Uuid) -> Result<Option<YmOrder>> {
         // Заменяем строки из JSON на строки из табличной части
         let items = get_items(&id.to_string()).await?;
         if !items.is_empty() {
-            order.lines = items;
+            // details не хранятся в items-таблице — переносим их из lines_json по line_id,
+            // иначе последующий upsert затёр бы их в lines_json.
+            let json_lines = std::mem::take(&mut order.lines);
+            order.lines = items
+                .into_iter()
+                .map(|mut item| {
+                    if let Some(jl) = json_lines.iter().find(|l| l.line_id == item.line_id) {
+                        item.details = jl.details.clone();
+                    }
+                    item
+                })
+                .collect();
         }
         Ok(Some(order))
     } else {
@@ -506,6 +520,8 @@ pub struct YmOrderListRow {
     pub organization_id: Option<String>,
     pub total_dealer_amount: Option<f64>,
     pub margin_pro: Option<f64>,
+    pub realization_date: Option<String>,
+    pub payment_date: Option<String>,
 }
 
 /// Параметры запроса для списка
@@ -601,22 +617,35 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
         "subsidies_total" => "subsidies_total",
         "total_dealer_amount" => "total_dealer_amount",
         "margin_pro" => "margin_pro",
+        "realization_date" => "realization_date",
+        "payment_date" => "payment_date",
         _ => "delivery_date",
     };
     let order_dir = if query.sort_desc { "DESC" } else { "ASC" };
 
+    // Дата реализации — из проекции p915_mp_order_events (событие `realization`).
+    // p915.order_id хранит document_no заказа; берём максимальную дату на случай
+    // нескольких строк реализации.
+    let realization_subquery = "(SELECT MAX(e.event_date) FROM p915_mp_order_events e \
+         WHERE e.order_id = a013_ym_order.document_no AND e.event_type = 'realization')";
+    // Дата оплаты поставщику — событие `supplier_payment` (создаётся при проведении a035).
+    let payment_subquery = "(SELECT MAX(e.event_date) FROM p915_mp_order_events e \
+         WHERE e.order_id = a013_ym_order.document_no AND e.event_type = 'supplier_payment')";
+
     // Query data
     let data_sql = format!(
-        r#"SELECT 
+        r#"SELECT
             id, document_no, status_changed_at, creation_date, delivery_date,
             campaign_id, status_norm, total_qty, total_amount, total_amount_api,
             lines_count, delivery_total, subsidies_total, is_posted, is_error,
-            organization_id, total_dealer_amount, margin_pro
-        FROM a013_ym_order 
+            organization_id, total_dealer_amount, margin_pro,
+            {} AS realization_date,
+            {} AS payment_date
+        FROM a013_ym_order
         WHERE {}
         ORDER BY {} {} NULLS LAST
         LIMIT {} OFFSET {}"#,
-        where_clause, order_column, order_dir, query.limit, query.offset
+        realization_subquery, payment_subquery, where_clause, order_column, order_dir, query.limit, query.offset
     );
 
     let rows = db
@@ -654,9 +683,167 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
                 organization_id: row.try_get("", "organization_id").ok(),
                 total_dealer_amount: row.try_get("", "total_dealer_amount").ok(),
                 margin_pro: row.try_get("", "margin_pro").ok(),
+                realization_date: row.try_get("", "realization_date").ok(),
+                payment_date: row.try_get("", "payment_date").ok(),
             })
         })
         .collect();
 
     Ok(YmOrderListResult { items, total })
+}
+
+/// Строка позиции заказа, доставленного в конкретный день (для сверки a034 и
+/// отчёта «Заказы по дате доставки»). Сумма = `buyer_price * qty`.
+#[derive(Debug, Clone)]
+pub struct DeliveredOrderLine {
+    pub order_no: String,
+    pub status_norm: Option<String>,
+    pub delivery_date: Option<String>,
+    pub shop_sku: String,
+    pub name: String,
+    pub qty: f64,
+    pub buyer_price: f64,
+    pub marketplace_product_ref: Option<String>,
+}
+
+/// Все строки заказов кабинета `connection_id` с датой доставки = `day`
+/// ("YYYY-MM-DD"). Позиции хранятся как JSON в `lines_json`, разворачиваем через
+/// `json_each`. Включаются заказы независимо от статуса (статус — в `status_norm`).
+pub async fn list_lines_by_delivery_day(
+    connection_id: &str,
+    day: &str,
+) -> Result<Vec<DeliveredOrderLine>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = conn();
+
+    let sql = "
+        SELECT
+            d.document_no                                       AS order_no,
+            d.status_norm                                       AS status_norm,
+            d.delivery_date                                     AS delivery_date,
+            json_extract(li.value, '$.shop_sku')                AS shop_sku,
+            json_extract(li.value, '$.name')                    AS name,
+            json_extract(li.value, '$.qty')                     AS qty,
+            json_extract(li.value, '$.buyer_price')             AS buyer_price,
+            json_extract(li.value, '$.marketplace_product_ref') AS marketplace_product_ref
+        FROM a013_ym_order d, json_each(d.lines_json) li
+        WHERE d.is_deleted = 0
+          AND d.connection_id = ?
+          AND d.delivery_date LIKE ?
+        ORDER BY d.document_no ASC";
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+            [connection_id.into(), format!("{}%", day).into()],
+        ))
+        .await?;
+
+    let items = rows.into_iter().map(row_to_delivered_line).collect();
+
+    Ok(items)
+}
+
+fn row_to_delivered_line(row: sea_orm::QueryResult) -> DeliveredOrderLine {
+    DeliveredOrderLine {
+        order_no: row.try_get("", "order_no").unwrap_or_default(),
+        status_norm: row.try_get("", "status_norm").ok(),
+        delivery_date: row
+            .try_get::<Option<String>>("", "delivery_date")
+            .unwrap_or(None),
+        shop_sku: row.try_get("", "shop_sku").unwrap_or_default(),
+        name: row.try_get("", "name").unwrap_or_default(),
+        qty: row.try_get("", "qty").unwrap_or(0.0),
+        buyer_price: row.try_get("", "buyer_price").unwrap_or(0.0),
+        marketplace_product_ref: row
+            .try_get::<Option<String>>("", "marketplace_product_ref")
+            .unwrap_or(None),
+    }
+}
+
+/// Все строки заказов по их номерам (`document_no`), независимо от даты доставки.
+/// Для «Сверки возвратов» a034: возврат сверяется с исходным заказом по `order_id`.
+pub async fn list_lines_by_order_nos(order_nos: &[String]) -> Result<Vec<DeliveredOrderLine>> {
+    use sea_orm::{ConnectionTrait, Statement, Value};
+
+    if order_nos.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let db = conn();
+    let placeholders = vec!["?"; order_nos.len()].join(", ");
+    let sql = format!(
+        "SELECT
+            d.document_no                                       AS order_no,
+            d.status_norm                                       AS status_norm,
+            d.delivery_date                                     AS delivery_date,
+            json_extract(li.value, '$.shop_sku')                AS shop_sku,
+            json_extract(li.value, '$.name')                    AS name,
+            json_extract(li.value, '$.qty')                     AS qty,
+            json_extract(li.value, '$.buyer_price')             AS buyer_price,
+            json_extract(li.value, '$.marketplace_product_ref') AS marketplace_product_ref
+        FROM a013_ym_order d, json_each(d.lines_json) li
+        WHERE d.is_deleted = 0
+          AND d.document_no IN ({})
+        ORDER BY d.document_no ASC",
+        placeholders
+    );
+    let values: Vec<Value> = order_nos.iter().map(|s| s.clone().into()).collect();
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            &sql,
+            values,
+        ))
+        .await?;
+
+    let items = rows.into_iter().map(row_to_delivered_line).collect();
+
+    Ok(items)
+}
+
+/// Даты доставки (`delivery_date`) по номерам заказов (`document_no`). Для сверки
+/// a034: показать дату доставки заказа даже когда она не совпадает с датой документа
+/// (заказ доставлен в другой день). Возвращает map `document_no -> delivery_date`.
+pub async fn delivery_dates_by_order_nos(
+    order_nos: &[String],
+) -> Result<std::collections::HashMap<String, String>> {
+    use sea_orm::{ConnectionTrait, Statement, Value};
+    use std::collections::HashMap;
+
+    let mut out: HashMap<String, String> = HashMap::new();
+    if order_nos.is_empty() {
+        return Ok(out);
+    }
+
+    let db = conn();
+    let placeholders = vec!["?"; order_nos.len()].join(", ");
+    let sql = format!(
+        "SELECT document_no, delivery_date FROM a013_ym_order \
+         WHERE is_deleted = 0 AND document_no IN ({})",
+        placeholders
+    );
+    let values: Vec<Value> = order_nos.iter().map(|s| s.clone().into()).collect();
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            &sql,
+            values,
+        ))
+        .await?;
+
+    for row in rows {
+        let doc_no: String = row.try_get("", "document_no").unwrap_or_default();
+        if let Ok(Some(date)) = row.try_get::<Option<String>>("", "delivery_date") {
+            if !doc_no.is_empty() {
+                out.insert(doc_no, date);
+            }
+        }
+    }
+
+    Ok(out)
 }

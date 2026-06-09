@@ -114,6 +114,7 @@ fn Header(vm: YmOrderDetailsVm, on_close: Callback<()>) -> impl IntoView {
                 </Show>
             </div>
             <div class="page__header-right">
+                <OrderHistoryButton vm=vm.clone() />
                 <PostButtons vm=vm.clone() />
                 <Button
                     appearance=ButtonAppearance::Secondary
@@ -124,6 +125,42 @@ fn Header(vm: YmOrderDetailsVm, on_close: Callback<()>) -> impl IntoView {
                 </Button>
             </div>
         </div>
+    }
+}
+
+// ── Вся история ────────────────────────────────────────────────────────────────
+
+#[component]
+fn OrderHistoryButton(vm: YmOrderDetailsVm) -> impl IntoView {
+    let order = vm.order;
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+
+    let on_click = move |_| {
+        if let Some(o) = order.get_untracked() {
+            let order_no = o.header.document_no.clone();
+            if order_no.is_empty() {
+                return;
+            }
+            let encoded = urlencoding::encode(&order_no);
+            let key = format!("d403_ym_order_flow_order_{}", encoded);
+            tabs_store.open_tab(&key, "Вся история");
+        }
+    };
+
+    view! {
+        <Show when=move || order.get().is_some()>
+            <Button
+                appearance=ButtonAppearance::Subtle
+                size=ButtonSize::Medium
+                on_click=on_click.clone()
+            >
+                <span class="page-action-button__content">
+                    <span class="page-action-button__icon">{icon("list-ordered")}</span>
+                    <span class="page-action-button__text">"Вся история"</span>
+                </span>
+            </Button>
+        </Show>
     }
 }
 

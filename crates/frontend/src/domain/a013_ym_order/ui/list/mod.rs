@@ -68,6 +68,8 @@ impl Sortable for YmOrderListDto {
             "status_changed_at" => self.status_changed_at.cmp(&other.status_changed_at),
             "creation_date" => self.creation_date.cmp(&other.creation_date),
             "delivery_date" => self.delivery_date.cmp(&other.delivery_date),
+            "realization_date" => self.realization_date.cmp(&other.realization_date),
+            "payment_date" => self.payment_date.cmp(&other.payment_date),
             "campaign_id" => self
                 .campaign_id
                 .to_lowercase()
@@ -129,6 +131,9 @@ pub fn YmOrderList() -> impl IntoView {
 
     // Batch operation state
     let (posting_in_progress, set_posting_in_progress) = signal(false);
+
+    // CSV export (full dataset, not just current page)
+    let (exporting, set_exporting) = signal(false);
 
     // Organizations
     let (organizations, set_organizations) = signal::<Vec<Organization>>(Vec::new());
@@ -544,6 +549,49 @@ pub fn YmOrderList() -> impl IntoView {
                     <Space>
                         <Button
                             appearance=ButtonAppearance::Subtle
+                            on_click=move |_| {
+                                // Полная выгрузка по текущим фильтрам/сортировке (все страницы).
+                                let date_from = state.with_untracked(|s| s.date_from.clone());
+                                let date_to = state.with_untracked(|s| s.date_to.clone());
+                                let org_id = state.with_untracked(|s| s.selected_organization_id.clone());
+                                let search_order_no = state.with_untracked(|s| s.search_order_no.clone());
+                                let filter_status = state.with_untracked(|s| s.filter_status.clone());
+                                let sort_field = state.with_untracked(|s| s.sort_field.clone());
+                                let sort_ascending = state.with_untracked(|s| s.sort_ascending);
+                                set_exporting.set(true);
+                                spawn_local(async move {
+                                    match fetch_all_orders_for_export(
+                                        date_from,
+                                        date_to,
+                                        org_id,
+                                        search_order_no,
+                                        filter_status,
+                                        sort_field,
+                                        sort_ascending,
+                                    )
+                                    .await
+                                    {
+                                        Ok(data) => {
+                                            if let Err(e) = export_to_csv(&data) {
+                                                log!("Failed to export: {}", e);
+                                            }
+                                        }
+                                        Err(e) => log!("Failed to fetch full export: {}", e),
+                                    }
+                                    set_exporting.set(false);
+                                });
+                            }
+                            disabled=Signal::derive(move || exporting.get() || state.get().total_count == 0)
+                        >
+                            <span class="page-action-button__content">
+                                <span class="page-action-button__icon">{icon("download")}</span>
+                                <span class="page-action-button__text">
+                                    {move || if exporting.get() { "Выгрузка..." } else { "Excel (csv)" }}
+                                </span>
+                            </span>
+                        </Button>
+                        <Button
+                            appearance=ButtonAppearance::Subtle
                             on_click=move |e| restore_settings(e)
                         >
                             {icon("refresh")}
@@ -811,6 +859,24 @@ pub fn YmOrderList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
+                                <TableHeaderCell resizable=false min_width=120.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("realization_date")>
+                                        "Дата реализации"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "realization_date"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "realization_date", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=120.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("payment_date")>
+                                        "Дата оплаты"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "payment_date"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "payment_date", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
                                 <TableHeaderCell resizable=false min_width=150.0 class="resizable">
                                     "Организация"
                                 </TableHeaderCell>
@@ -829,15 +895,6 @@ pub fn YmOrderList() -> impl IntoView {
                                         "Ошибка"
                                         <span class=move || state.with(|s| get_sort_class(&s.sort_field, "is_error"))>
                                             {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "is_error", state.with(|s| s.sort_ascending))}
-                                        </span>
-                                    </div>
-                                </TableHeaderCell>
-
-                                <TableHeaderCell resizable=false min_width=70.0 class="resizable">
-                                    <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("lines_count")>
-                                        "Строк"
-                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "lines_count"))>
-                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "lines_count", state.with(|s| s.sort_ascending))}
                                         </span>
                                     </div>
                                 </TableHeaderCell>
@@ -906,6 +963,16 @@ pub fn YmOrderList() -> impl IntoView {
                                     let document_no_text = order.document_no.clone();
                                     let formatted_creation_date = format_date(&order.creation_date);
                                     let formatted_delivery_date = format_date(&order.delivery_date);
+                                    let formatted_realization_date = if order.realization_date.is_empty() {
+                                        "—".to_string()
+                                    } else {
+                                        format_date(&order.realization_date)
+                                    };
+                                    let formatted_payment_date = if order.payment_date.is_empty() {
+                                        "—".to_string()
+                                    } else {
+                                        format_date(&order.payment_date)
+                                    };
 
                                     view! {
                                         <TableRow>
@@ -944,6 +1011,18 @@ pub fn YmOrderList() -> impl IntoView {
                                             </TableCell>
 
                                             <TableCell>
+                                                <TableCellLayout>
+                                                    {formatted_realization_date}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout>
+                                                    {formatted_payment_date}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
                                                 <TableCellLayout truncate=true>
                                                     {order.organization_name.clone().unwrap_or_else(|| "—".to_string())}
                                                 </TableCellLayout>
@@ -958,12 +1037,6 @@ pub fn YmOrderList() -> impl IntoView {
                                             <TableCell>
                                                 <TableCellLayout>
                                                     {if order.is_error { "Да" } else { "—" }}
-                                                </TableCellLayout>
-                                            </TableCell>
-
-                                            <TableCell>
-                                                <TableCellLayout>
-                                                    {order.lines_count.to_string()}
                                                 </TableCellLayout>
                                             </TableCell>
 
@@ -1098,6 +1171,143 @@ async fn save_settings_to_database(
     if !resp.ok() {
         return Err(format!("HTTP {}", resp.status()));
     }
+
+    Ok(())
+}
+
+/// Полная выгрузка заказов по текущим фильтрам/сортировке (все страницы) для CSV.
+#[allow(clippy::too_many_arguments)]
+async fn fetch_all_orders_for_export(
+    date_from: String,
+    date_to: String,
+    org_id: Option<String>,
+    search_order_no: String,
+    filter_status: String,
+    sort_field: String,
+    sort_ascending: bool,
+) -> Result<Vec<YmOrderListDto>, String> {
+    let mut url = format!(
+        "{}/api/a013/ym-order/list?limit={}&offset=0&sort_by={}&sort_desc={}",
+        api_base(),
+        10_000_000,
+        sort_field,
+        !sort_ascending
+    );
+    if !date_from.is_empty() {
+        url.push_str(&format!("&date_from={}", date_from));
+    }
+    if !date_to.is_empty() {
+        url.push_str(&format!("&date_to={}", date_to));
+    }
+    if let Some(org_id) = org_id {
+        if !org_id.is_empty() {
+            url.push_str(&format!("&organization_id={}", org_id));
+        }
+    }
+    if !search_order_no.is_empty() {
+        url.push_str(&format!("&search_document_no={}", search_order_no));
+    }
+    if !filter_status.is_empty() {
+        url.push_str(&format!("&status_norm={}", filter_status));
+    }
+
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch: {}", e))?;
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    let paginated: PaginatedResponse =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))?;
+    Ok(paginated.items)
+}
+
+/// Экспорт заказов YM в CSV для Excel.
+fn export_to_csv(data: &[YmOrderListDto]) -> Result<(), String> {
+    use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
+
+    let money = |v: f64| format!("{:.2}", v).replace('.', ",");
+    let opt_money = |v: Option<f64>| {
+        v.map(|x| format!("{:.2}", x).replace('.', ","))
+            .unwrap_or_default()
+    };
+
+    let mut csv = String::from("\u{FEFF}");
+    csv.push_str("Order №;Кампания;Дата заказа;Дата доставки;Дата реализации;Дата оплаты;Организация;Статус;Ошибка;Кол-во;Сумма;Доставка;Субсидии;Дилер. сумма УТ;Маржа, %;Проведён\n");
+
+    for o in data {
+        let realization = if o.realization_date.is_empty() {
+            String::new()
+        } else {
+            format_date(&o.realization_date)
+        };
+        let payment = if o.payment_date.is_empty() {
+            String::new()
+        } else {
+            format_date(&o.payment_date)
+        };
+        let org_name = o.organization_name.as_deref().unwrap_or("");
+        let margin_str = o
+            .margin_pro
+            .map(|v| format!("{:.1}", v).replace('.', ","))
+            .unwrap_or_default();
+
+        csv.push_str(&format!(
+            "\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";\"{}\";{};{};{};{};{};{};\"{}\"\n",
+            o.document_no.replace('\"', "\"\""),
+            o.campaign_id.replace('\"', "\"\""),
+            format_date(&o.creation_date),
+            format_date(&o.delivery_date),
+            realization,
+            payment,
+            org_name.replace('\"', "\"\""),
+            o.status_norm.replace('\"', "\"\""),
+            if o.is_error { "Да" } else { "Нет" },
+            format!("{:.0}", o.total_qty),
+            money(o.total_amount),
+            opt_money(o.delivery_total),
+            money(o.subsidies_total),
+            opt_money(o.total_dealer_amount),
+            margin_str,
+            if o.is_posted { "Да" } else { "Нет" },
+        ));
+    }
+
+    let blob_parts = js_sys::Array::new();
+    blob_parts.push(&wasm_bindgen::JsValue::from_str(&csv));
+
+    let blob_props = BlobPropertyBag::new();
+    blob_props.set_type("text/csv;charset=utf-8;");
+
+    let blob = Blob::new_with_str_sequence_and_options(&blob_parts, &blob_props)
+        .map_err(|e| format!("Failed to create blob: {:?}", e))?;
+
+    let url = Url::create_object_url_with_blob(&blob)
+        .map_err(|e| format!("Failed to create URL: {:?}", e))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let document = window.document().ok_or_else(|| "no document".to_string())?;
+
+    let a = document
+        .create_element("a")
+        .map_err(|e| format!("Failed to create element: {:?}", e))?
+        .dyn_into::<HtmlAnchorElement>()
+        .map_err(|e| format!("Failed to cast to anchor: {:?}", e))?;
+
+    a.set_href(&url);
+    let filename = format!(
+        "ym_orders_{}.csv",
+        chrono::Utc::now().format("%Y%m%d_%H%M%S")
+    );
+    a.set_download(&filename);
+    a.click();
+
+    Url::revoke_object_url(&url).map_err(|e| format!("Failed to revoke URL: {:?}", e))?;
 
     Ok(())
 }

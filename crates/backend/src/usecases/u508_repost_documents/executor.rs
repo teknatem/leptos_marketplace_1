@@ -53,7 +53,7 @@ impl RepostExecutor {
                 key: P907_PAYMENT_REPORT.to_string(),
                 label: "p907 — YM Payment Report".to_string(),
                 description:
-                    "Локальная пересборка general ledger по сохранённым строкам p907_ym_payment_report".to_string(),
+                    "Пересборка general ledger по всем строкам p907 за период (включая перечисления Дт51/Кт7609 по банковским ордерам) и событий оплаты p915".to_string(),
             },
         ]
     }
@@ -96,7 +96,7 @@ impl RepostExecutor {
             AggregateOption {
                 key: A034_YM_REALIZATION.to_string(),
                 label: "a034 — YM Realization".to_string(),
-                description: "Перепроведение документов a034_ym_realization с пересборкой GL-проводок слоя ybuh".to_string(),
+                description: "Перепроведение документов a034_ym_realization с пересборкой GL-проводок слоя ybuh и событий реализации/возврата p915".to_string(),
             },
         ]
     }
@@ -285,6 +285,22 @@ impl RepostExecutor {
                         (index + 1) as i32,
                         reposted,
                         Some(current_item),
+                    );
+                }
+
+                // Перечисления (Дт51/Кт7609) строятся одной проводкой на банковский
+                // ордер — отдельно от построчного GL, поэтому перестраиваем их за тот
+                // же период здесь же: один репост p907 покрывает все записи периода.
+                if let Err(error) =
+                    crate::projections::p907_ym_payment_report::settlement_posting::rebuild_settlements_for_range(
+                        &request.date_from,
+                        &request.date_to,
+                    )
+                    .await
+                {
+                    self.progress_tracker.add_error(
+                        session_id,
+                        format!("Failed to rebuild {} settlements: {}", P907_PAYMENT_REPORT, error),
                     );
                 }
 
@@ -509,7 +525,7 @@ impl RepostExecutor {
 
             join_set.spawn(async move {
                 let _permit = permit;
-                let result = dispatch_aggregate_repost(&agg_key, aggregate_id).await;
+                let result = dispatch_aggregate_repost_with_retry(&agg_key, aggregate_id).await;
                 let proc_count = processed_ref.fetch_add(1, Ordering::Relaxed) + 1;
                 let repo_count = match result {
                     Ok(()) => reposted_ref.fetch_add(1, Ordering::Relaxed) + 1,
@@ -771,6 +787,48 @@ async fn dispatch_repost(registrator_type: &str, registrator_id: Uuid) -> Result
             "Unsupported registrator_type: {}",
             registrator_type
         )),
+    }
+}
+
+/// Признак ошибки блокировки SQLite (`SQLITE_BUSY` = 5, `SQLITE_BUSY_SNAPSHOT` = 517).
+///
+/// `busy_timeout` сериализует ожидание write-lock, но НЕ помогает при конфликте
+/// снапшота: SeaORM открывает все транзакции как `BEGIN DEFERRED`, поэтому txn
+/// становится читателем на первом SELECT и не может «дорасти» до писателя, если
+/// другое соединение успело закоммититься. Единственное корректное лечение —
+/// откатить и повторить транзакцию целиком.
+fn is_database_locked(error: &anyhow::Error) -> bool {
+    let message = format!("{:#}", error);
+    message.contains("database is locked")
+        || message.contains("(code: 5)")
+        || message.contains("(code: 517)")
+}
+
+/// Перепроведение одного документа с повторами при блокировке SQLite.
+///
+/// При CONCURRENCY > 1 параллельные писатели гарантированно ловят конфликты
+/// снапшота; джиттер в backoff декоррелирует воркеры, чтобы они не повторяли
+/// попытку синхронно.
+async fn dispatch_aggregate_repost_with_retry(
+    aggregate_key: &str,
+    aggregate_id: Uuid,
+) -> Result<()> {
+    const MAX_ATTEMPTS: u32 = 8;
+
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        match dispatch_aggregate_repost(aggregate_key, aggregate_id).await {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < MAX_ATTEMPTS && is_database_locked(&error) => {
+                // Backoff с джиттером: базовая задержка растёт с попыткой,
+                // джиттер берём из младших бит UUID (без внешних зависимостей).
+                let base_ms = 20u64 * attempt as u64;
+                let jitter_ms = (aggregate_id.as_u128() as u64 % 40) + 1;
+                tokio::time::sleep(std::time::Duration::from_millis(base_ms + jitter_ms)).await;
+            }
+            Err(error) => return Err(error),
+        }
     }
 }
 
