@@ -27,6 +27,9 @@ fn default_overlap_days() -> i64 {
 fn default_chunk_days() -> i64 {
     14
 }
+fn default_resync_days() -> i64 {
+    45
+}
 
 #[derive(Deserialize)]
 struct Config {
@@ -38,6 +41,13 @@ struct Config {
     overlap_days: i64,
     #[serde(default = "default_chunk_days")]
     chunk_days: i64,
+    /// Глубокий трейлинг-буфер дозагрузки (дни). В steady-state (когда задача догнала
+    /// сегодня) каждый прогон перегружает последние N дней, чтобы поймать ретроактивно
+    /// заполненные поля старых строк p907 (bank_order_id/act_id появляются спустя
+    /// недели-месяцы). united-netting не имеет фильтра по дате изменения, поэтому только
+    /// повторная загрузка с запасом ловит такие правки. 0 — отключить буфер.
+    #[serde(default = "default_resync_days")]
+    resync_days: i64,
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +75,9 @@ static METADATA: TaskMetadata = TaskMetadata {
         "Финансовые данные приходят с задержкой; overlap_days (по умолчанию 3) компенсирует это",
         "chunk_days (по умолчанию 14) — максимальный диапазон за один запуск",
         "Сброс watermark в UI запускает догон с work_start_date порциями chunk_days",
+        "resync_days (по умолчанию 45): в steady-state каждый прогон перегружает последние N дней — \
+         ловит ретроактивные правки старых строк (bank_order_id/act_id), т.к. в united-netting \
+         нет фильтра по дате изменения",
     ],
     config_fields: &[
         TaskConfigField {
@@ -106,6 +119,17 @@ static METADATA: TaskMetadata = TaskMetadata {
             default_value: Some("14"),
             min_value: Some(1),
             max_value: Some(90),
+        },
+        TaskConfigField {
+            key: "resync_days",
+            label: "Глубокий буфер дозагрузки (дн)",
+            hint: "В steady-state каждый прогон перегружает последние N дней — ловит \
+                   ретроактивно заполненные bank_order_id/act_id. 0 — отключить",
+            field_type: TaskConfigFieldType::Integer,
+            required: false,
+            default_value: Some("45"),
+            min_value: Some(0),
+            max_value: Some(365),
         },
     ],
     max_duration_seconds: 7200,
@@ -154,18 +178,30 @@ impl TaskManager for Task019YmPaymentReportManager {
                 anyhow::anyhow!("Marketplace connection not found: {}", connection_id)
             })?;
 
-        let (date_from, date_to) = super::config_helpers::compute_date_window(
+        let (mut date_from, date_to) = super::config_helpers::compute_date_window(
             task,
             &cfg.work_start_date,
             cfg.overlap_days,
             cfg.chunk_days,
         );
 
+        // Глубокий трейлинг-буфер: когда задача догнала сегодня (steady-state), всегда
+        // перегружаем последние resync_days дней, чтобы поймать ретроактивно заполненные
+        // поля (bank_order_id/act_id) старых строк. Во время порционного бэкфилла
+        // (date_to < today) буфер не применяется — идёт обычная догрузка по chunk_days.
+        let today = chrono::Utc::now().date_naive();
+        if date_to >= today && cfg.resync_days > 0 {
+            let work_start = chrono::NaiveDate::parse_from_str(&cfg.work_start_date, "%Y-%m-%d")
+                .unwrap_or_else(|_| chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+            let deep = (today - chrono::Duration::days(cfg.resync_days)).max(work_start);
+            date_from = date_from.min(deep);
+        }
+
         logger.write_log(
             session_id,
             &format!(
-                "task019 YM Payment Report: {} → {}; connection_id={}",
-                date_from, date_to, cfg.connection_id
+                "task019 YM Payment Report: {} → {}; connection_id={} (resync_days={})",
+                date_from, date_to, cfg.connection_id, cfg.resync_days
             ),
         )?;
 
@@ -175,6 +211,7 @@ impl TaskManager for Task019YmPaymentReportManager {
             date_from,
             date_to,
             mode: ImportMode::Background,
+            incremental_by_update: false,
         };
 
         self.executor

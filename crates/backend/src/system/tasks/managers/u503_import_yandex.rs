@@ -47,6 +47,7 @@ static METADATA: TaskMetadata = TaskMetadata {
     constraints: &[
         "Требует OAuth-токена и campaign_id в конфигурации подключения",
         "Заказы доступны не ранее чем через 30 минут после создания в системе Яндекса",
+        "Заказы фильтруются по дате создания; окно режется на под-интервалы ≤30 дней (лимит YM)",
         "Финансовые данные доступны с задержкой до 1 дня",
         "Период за один запуск: сегодня − lookback_days … сегодня",
     ],
@@ -141,6 +142,9 @@ impl TaskManager for U503ImportYandexManager {
             mode: ImportMode::Background,
             date_from,
             date_to: today,
+            // Полный бэкфилл: фильтр заказов по дате создания. Перебор магазинов
+            // бизнеса (если задан БизнесАккаунтID) выполняется автоматически в executor.
+            incremental_by_update: false,
         };
 
         self.executor

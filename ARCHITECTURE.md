@@ -189,7 +189,7 @@
 | `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
 | `commission_percent` | Процент комиссии |  |  |  |
 
-## API routes (349)
+## API routes (353)
 
 ### `/a004`
 - `GET` /api/a004/nomenclature
@@ -626,6 +626,11 @@
 - `GET` /api/p915/order-events
 - `GET` /api/p915/order-events/by-order/:order_id
 
+### `/plugin`
+- `GET POST` /api/plugin
+- `POST` /api/plugin/:id/data
+- `GET POST DELETE` /api/plugin/all
+
 ### `/projections`
 - `GET` /api/projections/p900/:registrator_ref
 
@@ -695,4 +700,7 @@
 - `POST` /api/universal-dashboard/schemas/:id/validate
 - `GET` /api/universal-dashboard/schemas/:schema_id/fields/:field_id/values
 - `POST` /api/universal-dashboard/schemas/validate-all
+
+### `/ym`
+- `POST` /api/ym/consolidate-connections
 

@@ -455,60 +455,116 @@ pub struct YandexPrice {
     pub currency: String,
 }
 
+/// Поле даты, по которому YM фильтрует заказы в `GET /campaigns/{id}/orders`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderDateField {
+    /// `fromDate`/`toDate` — фильтр по дате оформления (создания) заказа.
+    /// Подходит для полного бэкфилла за период.
+    Creation,
+    /// `updatedAtFrom`/`updatedAtTo` — фильтр по дате/времени обновления заказа
+    /// (смена статуса). Подходит для инкрементальной синхронизации статусов:
+    /// ловит и новые заказы, и изменения по ранее созданным.
+    Updated,
+}
+
+/// Разбивает период `[from, to]` (включительно) на под-интервалы длиной не более
+/// `max_days` календарных дней. YM ограничивает диапазон фильтра заказов 30 днями,
+/// поэтому длинные периоды (бэкфилл на 60–90 дней) нужно резать на под-окна.
+fn split_date_range(
+    from: chrono::NaiveDate,
+    to: chrono::NaiveDate,
+    max_days: i64,
+) -> Vec<(chrono::NaiveDate, chrono::NaiveDate)> {
+    let mut out = Vec::new();
+    if to < from {
+        return out;
+    }
+    let mut start = from;
+    while start <= to {
+        let end = std::cmp::min(to, start + chrono::Duration::days(max_days - 1));
+        out.push((start, end));
+        start = end + chrono::Duration::days(1);
+    }
+    out
+}
+
 impl YandexApiClient {
-    /// Получить список заказов через Yandex Market API с пагинацией
+    /// Получить список заказов через Yandex Market API с пагинацией.
     /// GET /campaigns/{campaignId}/orders
-    /// Parameters:
-    /// - date_from: начало периода (фильтр по statusUpdateDate)
-    /// - date_to: конец периода (фильтр по statusUpdateDate)
+    ///
+    /// `date_field` выбирает поле фильтрации:
+    /// - `Creation` → `fromDate`/`toDate` (дата оформления);
+    /// - `Updated`  → `updatedAtFrom`/`updatedAtTo` (дата обновления/смены статуса).
+    ///
+    /// Период автоматически режется на под-окна ≤ 30 дней (лимит YM); заказы
+    /// дедуплицируются по `id` (последняя версия побеждает).
     pub async fn fetch_orders(
         &self,
         connection: &ConnectionMP,
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
+        date_field: OrderDateField,
     ) -> Result<Vec<YmOrderItem>> {
-        let mut all_orders = Vec::new();
-        let mut page = 1;
+        const MAX_WINDOW_DAYS: i64 = 30;
         let page_size = 50;
 
-        loop {
-            let response = self
-                .fetch_orders_page(connection, date_from, date_to, page, page_size)
-                .await?;
+        // Сохраняем порядок первого появления id, но всегда держим последнюю версию.
+        let mut by_id: std::collections::HashMap<i64, YmOrderItem> =
+            std::collections::HashMap::new();
+        let mut id_order: Vec<i64> = Vec::new();
 
-            let orders_count = response.orders.len();
-            all_orders.extend(response.orders);
+        for (win_from, win_to) in split_date_range(date_from, date_to, MAX_WINDOW_DAYS) {
+            let mut page = 1;
+            loop {
+                let response = self
+                    .fetch_orders_page(connection, win_from, win_to, date_field, page, page_size)
+                    .await?;
 
-            self.log_to_file(&format!(
-                "Fetched page {} with {} orders (total so far: {})",
-                page,
-                orders_count,
-                all_orders.len()
-            ));
+                let orders_count = response.orders.len();
+                for o in response.orders {
+                    if !by_id.contains_key(&o.id) {
+                        id_order.push(o.id);
+                    }
+                    by_id.insert(o.id, o);
+                }
 
-            // Check if there are more pages
-            if let Some(pager) = response.pager {
-                if let Some(pages_count) = pager.pages_count {
-                    if page >= pages_count {
-                        break;
+                self.log_to_file(&format!(
+                    "Fetched page {} [{}..{}] with {} orders (unique so far: {})",
+                    page,
+                    win_from,
+                    win_to,
+                    orders_count,
+                    by_id.len()
+                ));
+
+                // Check if there are more pages
+                if let Some(pager) = response.pager {
+                    if let Some(pages_count) = pager.pages_count {
+                        if page >= pages_count {
+                            break;
+                        }
                     }
                 }
-            }
 
-            // Stop if we got less than page_size orders (last page)
-            if orders_count < page_size as usize {
-                break;
-            }
+                // Stop if we got less than page_size orders (last page)
+                if orders_count < page_size as usize {
+                    break;
+                }
 
-            page += 1;
+                page += 1;
 
-            // Safety limit to prevent infinite loops
-            if page > 100 {
-                tracing::warn!("Reached maximum page limit (100), stopping pagination");
-                break;
+                // Safety limit to prevent infinite loops
+                if page > 100 {
+                    tracing::warn!("Reached maximum page limit (100), stopping pagination");
+                    break;
+                }
             }
         }
 
+        let all_orders: Vec<YmOrderItem> = id_order
+            .into_iter()
+            .filter_map(|id| by_id.remove(&id))
+            .collect();
         self.log_to_file(&format!("Total orders fetched: {}", all_orders.len()));
         Ok(all_orders)
     }
@@ -519,6 +575,7 @@ impl YandexApiClient {
         connection: &ConnectionMP,
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
+        date_field: OrderDateField,
         page: i32,
         page_size: i32,
     ) -> Result<YmOrdersResponse> {
@@ -537,27 +594,33 @@ impl YandexApiClient {
             campaign_id
         );
 
-        #[derive(Debug, Serialize)]
-        struct QueryParams {
-            #[serde(rename = "fromDate")]
-            pub from_date: String,
-            #[serde(rename = "toDate")]
-            pub to_date: String,
-            pub page: i32,
-            #[serde(rename = "pageSize")]
-            pub page_size: i32,
-        }
-
-        let query = QueryParams {
-            from_date: date_from.format("%d-%m-%Y").to_string(),
-            to_date: date_to.format("%d-%m-%Y").to_string(),
-            page,
-            page_size,
+        // Параметры даты зависят от выбранного поля фильтрации.
+        // Creation: fromDate/toDate в формате DD-MM-YYYY.
+        // Updated:  updatedAtFrom/updatedAtTo в ISO 8601 со смещением МСК (+03:00),
+        //           по границам суток окна.
+        let mut query: Vec<(&str, String)> = match date_field {
+            OrderDateField::Creation => vec![
+                ("fromDate", date_from.format("%d-%m-%Y").to_string()),
+                ("toDate", date_to.format("%d-%m-%Y").to_string()),
+            ],
+            OrderDateField::Updated => vec![
+                (
+                    "updatedAtFrom",
+                    format!("{}T00:00:00+03:00", date_from.format("%Y-%m-%d")),
+                ),
+                (
+                    "updatedAtTo",
+                    format!("{}T23:59:59+03:00", date_to.format("%Y-%m-%d")),
+                ),
+            ],
         };
+        query.push(("page", page.to_string()));
+        query.push(("pageSize", page_size.to_string()));
 
         self.log_to_file(&format!(
-            "=== REQUEST PAGE {} ===\nGET {}\n{}\nQuery: {:?}",
+            "=== REQUEST PAGE {} ({:?}) ===\nGET {}\n{}\nQuery: {:?}",
             page,
+            date_field,
             url,
             self.auth_log_label(connection),
             query
@@ -698,6 +761,119 @@ impl YandexApiClient {
             }
         }
     }
+
+    /// Получить список магазинов (кампаний), доступных по токену подключения.
+    /// GET /campaigns
+    ///
+    /// Для API-Key возвращает магазины кабинета, на который выпущен токен.
+    /// Каждая кампания содержит `business.id` — это позволяет отобрать только
+    /// магазины нужного бизнеса (двухуровневая модель «бизнес → магазин»).
+    pub async fn fetch_campaigns(&self, connection: &ConnectionMP) -> Result<Vec<YmCampaign>> {
+        if connection.api_key.trim().is_empty() {
+            anyhow::bail!("Yandex Market API token is required");
+        }
+
+        let url = "https://api.partner.market.yandex.ru/campaigns";
+        let page_size = 50;
+        let mut all = Vec::new();
+        let mut page = 1;
+
+        loop {
+            let query: Vec<(&str, String)> = vec![
+                ("page", page.to_string()),
+                ("pageSize", page_size.to_string()),
+            ];
+
+            self.log_to_file(&format!(
+                "=== REQUEST CAMPAIGNS PAGE {} ===\nGET {}\n{}\nQuery: {:?}",
+                page,
+                url,
+                self.auth_log_label(connection),
+                query
+            ));
+
+            let request = self.client.get(url).query(&query);
+            let response = self
+                .apply_auth(request, connection)?
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to fetch campaigns: {}", e))?;
+
+            let status = response.status();
+            self.log_to_file(&format!("Response status: {}", status));
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                self.log_to_file(&format!("ERROR Response body:\n{}", body));
+                anyhow::bail!(
+                    "Yandex Market Campaigns API failed with status {}: {}",
+                    status,
+                    body
+                );
+            }
+
+            let body = response.text().await?;
+            let parsed: YmCampaignsResponse = serde_json::from_str(&body).map_err(|e| {
+                self.log_to_file(&format!("Failed to parse campaigns JSON: {}", e));
+                anyhow::anyhow!("Failed to parse campaigns response: {}", e)
+            })?;
+
+            let count = parsed.campaigns.len();
+            all.extend(parsed.campaigns);
+
+            if let Some(pager) = parsed.pager {
+                if let Some(pages_count) = pager.pages_count {
+                    if page >= pages_count {
+                        break;
+                    }
+                }
+            }
+            if count < page_size as usize {
+                break;
+            }
+            page += 1;
+            if page > 100 {
+                tracing::warn!("Reached maximum campaigns page limit (100), stopping");
+                break;
+            }
+        }
+
+        self.log_to_file(&format!("Total campaigns fetched: {}", all.len()));
+        Ok(all)
+    }
+}
+
+// ============================================================================
+// Campaigns structures (GET /campaigns)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmCampaignsResponse {
+    #[serde(default)]
+    pub campaigns: Vec<YmCampaign>,
+    #[serde(default)]
+    pub pager: Option<YmOrdersPager>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmCampaign {
+    pub id: i64,
+    #[serde(default)]
+    pub business: Option<YmCampaignBusiness>,
+    #[serde(rename = "clientId", default)]
+    pub client_id: Option<i64>,
+    #[serde(default)]
+    pub domain: Option<String>,
+    /// Модель работы магазина: FBS / FBY / DBS / LAAS. Используется как
+    /// `fulfillment_type` заказа (измерение, заменяющее «магазин» в аналитике YM).
+    #[serde(rename = "placementType", default)]
+    pub placement_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YmCampaignBusiness {
+    pub id: i64,
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 // ============================================================================
@@ -983,9 +1159,10 @@ pub struct YmReturnPhoto {
 impl YandexApiClient {
     /// Получить список возвратов через Yandex Market API с пагинацией (token-based)
     /// GET /v2/campaigns/{campaignId}/returns
-    /// Parameters:
-    /// - date_from: начало периода (фильтр по дате обновления)
-    /// - date_to: конец периода (фильтр по дате обновления)
+    /// Parameters (подтверждено докой YM):
+    /// - date_from: начало периода — фильтр по дате ОБНОВЛЕНИЯ возврата (не создания)
+    /// - date_to: конец периода — фильтр по дате ОБНОВЛЕНИЯ возврата
+    ///   Поэтому поздние изменения статусов возврата сами попадают в окно загрузки.
     pub async fn fetch_returns(
         &self,
         connection: &ConnectionMP,

@@ -87,3 +87,9 @@ pub mod llm_knowledge;
 
 // Универсальный резолвер представлений ссылок (*_ref)
 pub mod refs;
+
+// Plugins subsystem (admin-only)
+pub mod plugins;
+
+// YM-обслуживание: консолидация подключений к модели «подключение = бизнес» (admin-only)
+pub mod ym_consolidation;

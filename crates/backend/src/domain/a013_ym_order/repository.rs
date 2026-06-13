@@ -36,6 +36,9 @@ pub struct Model {
     pub delivery_date: Option<String>,
     #[sea_orm(nullable)]
     pub campaign_id: Option<String>,
+    /// Модель работы магазина (placementType кампании): FBS / FBY / DBS / LAAS.
+    #[sea_orm(nullable)]
+    pub fulfillment_type: Option<String>,
     #[sea_orm(nullable)]
     pub status_norm: Option<String>,
     #[sea_orm(nullable)]
@@ -266,6 +269,7 @@ fn calculate_denormalized_fields(aggregate: &YmOrder) -> DenormalizedFields {
         creation_date: aggregate.state.creation_date.map(|dt| dt.to_rfc3339()),
         delivery_date: aggregate.state.delivery_date.map(|dt| dt.to_rfc3339()),
         campaign_id: Some(aggregate.header.campaign_id.clone()),
+        fulfillment_type: aggregate.header.fulfillment_type.clone(),
         status_norm: Some(aggregate.state.status_norm.clone()),
         total_qty: Some(total_qty),
         total_amount: Some(total_amount),
@@ -285,6 +289,7 @@ struct DenormalizedFields {
     creation_date: Option<String>,
     delivery_date: Option<String>,
     campaign_id: Option<String>,
+    fulfillment_type: Option<String>,
     status_norm: Option<String>,
     total_qty: Option<f64>,
     total_amount: Option<f64>,
@@ -330,6 +335,7 @@ pub async fn upsert_document(aggregate: &YmOrder) -> Result<Uuid> {
             creation_date: Set(denorm.creation_date),
             delivery_date: Set(denorm.delivery_date),
             campaign_id: Set(denorm.campaign_id),
+            fulfillment_type: Set(denorm.fulfillment_type),
             status_norm: Set(denorm.status_norm),
             total_qty: Set(denorm.total_qty),
             total_amount: Set(denorm.total_amount),
@@ -366,6 +372,7 @@ pub async fn upsert_document(aggregate: &YmOrder) -> Result<Uuid> {
             creation_date: Set(denorm.creation_date),
             delivery_date: Set(denorm.delivery_date),
             campaign_id: Set(denorm.campaign_id),
+            fulfillment_type: Set(denorm.fulfillment_type),
             status_norm: Set(denorm.status_norm),
             total_qty: Set(denorm.total_qty),
             total_amount: Set(denorm.total_amount),

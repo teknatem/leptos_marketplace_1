@@ -689,6 +689,11 @@ pub fn Sidebar() -> impl IntoView {
                     })
                 })
                 .collect_view()}
+
+            // Плагины — динамическая группа (admin-only)
+            {is_admin_untracked.then(|| view! {
+                <crate::plugins::PluginsSidebarGroup />
+            })}
         </div>
     }
 }

@@ -99,6 +99,7 @@ pub async fn process_order(
     connection: &ConnectionMP,
     organization_id: &str,
     order_details: &YmOrderItem,
+    fulfillment_type: Option<String>,
 ) -> Result<bool> {
     let order_id_str = order_details.id.to_string();
 
@@ -202,6 +203,7 @@ pub async fn process_order(
             .supplier_id
             .clone()
             .unwrap_or_else(|| "unknown".to_string()),
+        fulfillment_type,
         total_amount: order_details.total,
         currency: order_details.currency.clone(),
         items_total: order_details.items_total,

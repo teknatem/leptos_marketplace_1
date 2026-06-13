@@ -1200,6 +1200,9 @@ pub async fn fetch_missing_orders(
                     &connection,
                     &organization_id,
                     &details,
+                    // Точечный дозабор по orderId — placementType кампании здесь
+                    // неизвестен; fulfillment_type заполнится при штатном импорте.
+                    None,
                 )
                 .await
                 {
