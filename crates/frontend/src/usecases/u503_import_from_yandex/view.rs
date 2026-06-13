@@ -190,6 +190,9 @@ fn ServiceRow(
                 date_from: parsed_date_from,
                 date_to: parsed_date_to,
                 mode: ImportMode::Interactive,
+                // Ручной импорт = полный бэкфилл за период. Перебор магазинов бизнеса
+                // (если задан БизнесАккаунтID) выполняется автоматически на бэкенде.
+                incremental_by_update: false,
             };
 
             match api::start_import(request).await {

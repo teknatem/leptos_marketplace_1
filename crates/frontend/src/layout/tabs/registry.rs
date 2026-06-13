@@ -769,6 +769,14 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             .into_any()
         }
 
+        // Plugins subsystem — надстройка над платформой
+        "plugins" => view! { <crate::plugins::PluginList /> }.into_any(),
+        // Открытие конкретного плагина (ключ вкладки plugin__<id>)
+        k if k.starts_with("plugin__") => {
+            let id = k.strip_prefix("plugin__").unwrap().to_string();
+            view! { <crate::plugins::PluginHost plugin_id=id /> }.into_any()
+        }
+
         // a024: BI Indicators
         "a024_bi_indicator" => view! { <BiIndicatorList /> }.into_any(),
         k if k.starts_with("a024_bi_indicator_details_") => {

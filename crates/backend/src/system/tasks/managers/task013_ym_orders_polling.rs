@@ -19,9 +19,13 @@ static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task013_ym_orders_polling",
     display_name: "YM Заказы — адаптивный поллер",
     description: "Каждые 5 минут загружает заказы Yandex Market через Partner API. \
-        Работает в двух режимах: FAST (короткое окно за сегодня и вчера, если последний запуск \
-        был недавно) и EXTENDED (окно от последнего запуска с перекрытием при задержке или простое). \
-        Данные сохраняются в a013_ym_order.",
+        Фильтрует по дате ОБНОВЛЕНИЯ заказа (updatedAtFrom/updatedAtTo), поэтому ловит и новые \
+        заказы, и смену статуса по ранее созданным. Работает в двух режимах: FAST (короткое окно \
+        за сегодня и вчера, если последняя успешная загрузка была недавно) и EXTENDED (окно от \
+        последней успешной загрузки с перекрытием при задержке или простое). Модель «подключение = бизнес»: если \
+        у подключения задан БизнесАккаунтID, задание автоматически обходит все магазины \
+        бизнеса через GET /campaigns; иначе — один магазин по supplier_id. placementType \
+        кампании сохраняется в заказе как fulfillment_type. Данные сохраняются в a013_ym_order.",
     external_apis: &[ExternalApiInfo {
         name: "Yandex Market Partner API",
         base_url: "https://api.partner.market.yandex.ru/",
@@ -29,11 +33,13 @@ static METADATA: TaskMetadata = TaskMetadata {
     }],
     constraints: &[
         "Требует подключение Yandex Market с API Key или OAuth 2.0 и campaign_id/supplier_id",
+        "Фильтр по дате обновления (updatedAt); окно режется на под-интервалы ≤30 дней (лимит YM)",
         "FAST mode: date_from = сегодня-1, date_to = сегодня — минимальный объём данных",
-        "EXTENDED mode: date_from = last_run_at - overlap_minutes — покрывает период простоя",
-        "Порог переключения FAST→EXTENDED: mode_threshold_minutes (по умолчанию 6 мин)",
-        "overlap_minutes (по умолчанию 30) — запас назад от last_run_at для надёжности",
+        "EXTENDED mode: date_from = last_successful_run_at - overlap_minutes — покрывает период простоя",
+        "Порог переключения FAST→EXTENDED: mode_threshold_minutes (по умолчанию 6 мин), считается от последней успешной загрузки",
+        "overlap_minutes (по умолчанию 30) — запас назад от last_successful_run_at для надёжности",
         "fallback_lookback_hours (по умолчанию 24) — глубина при первом запуске",
+        "БизнесАккаунтID задан — один прогон покрывает все магазины бизнеса (иначе только supplier_id)",
     ],
     config_fields: &[
         TaskConfigField {
@@ -143,12 +149,15 @@ impl TaskManager for Task013YmOrdersPollingManager {
         let today = now.date_naive();
         let threshold = Duration::minutes(config.mode_threshold_minutes);
 
-        let elapsed = task.last_run_at.map(|last| now - last);
+        // Якорь окна — последняя УСПЕШНАЯ загрузка (last_successful_run_at), а не последняя
+        // попытка (last_run_at двигается и при ошибке). После серии ошибок восстановление
+        // догоняет все обновления с момента последнего успеха (фильтр по updatedAt).
+        let elapsed = task.last_successful_run_at.map(|last| now - last);
         let is_extended = elapsed.map_or(true, |e| e > threshold);
 
         let (date_from, mode_label) = if is_extended {
             let from_dt = task
-                .last_run_at
+                .last_successful_run_at
                 .map(|last| last - Duration::minutes(config.overlap_minutes))
                 .unwrap_or_else(|| now - Duration::hours(config.fallback_lookback_hours));
             let from_date = from_dt.date_naive();
@@ -178,6 +187,9 @@ impl TaskManager for Task013YmOrdersPollingManager {
             date_from,
             date_to: today,
             mode: ImportMode::Background,
+            // Поллер синхронизирует статусы — фильтруем по дате обновления.
+            // Перебор магазинов бизнеса выполняется автоматически в executor.
+            incremental_by_update: true,
         };
 
         self.executor

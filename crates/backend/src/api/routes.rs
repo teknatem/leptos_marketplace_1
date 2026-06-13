@@ -83,6 +83,53 @@ pub fn configure_business_routes() -> Router {
         .merge(kb_read_routes())
         .merge(refs_routes())
         .merge(misc_routes())
+        // Plugins subsystem (admin-only)
+        .merge(plugin_routes())
+        // YM maintenance (admin-only)
+        .merge(ym_maintenance_routes())
+}
+
+// ============================================================================
+// YM-обслуживание — консолидация подключений к модели «подключение = бизнес» (admin-only)
+// ============================================================================
+
+fn ym_maintenance_routes() -> Router {
+    use crate::system::auth::middleware::require_admin;
+
+    Router::new()
+        .route(
+            "/api/ym/consolidate-connections",
+            post(handlers::ym_consolidation::consolidate_ym_connections),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move { require_admin(req, next).await },
+        ))
+}
+
+// ============================================================================
+// Plugins subsystem — надстройка над платформой (admin-only)
+// ============================================================================
+
+fn plugin_routes() -> Router {
+    use crate::system::auth::middleware::require_admin;
+
+    Router::new()
+        .route(
+            "/api/plugin",
+            get(handlers::plugins::list).post(handlers::plugins::upsert),
+        )
+        .route("/api/plugin/all", get(handlers::plugins::list_all))
+        .route("/api/plugin/validate", post(handlers::plugins::validate))
+        .route("/api/plugin/testdata", post(handlers::plugins::testdata))
+        .route(
+            "/api/plugin/:id",
+            get(handlers::plugins::get_by_id).delete(handlers::plugins::delete),
+        )
+        .route("/api/plugin/:id/data", post(handlers::plugins::run_data))
+        .route("/api/plugin/:id/run", post(handlers::plugins::run_script))
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move { require_admin(req, next).await },
+        ))
 }
 
 // ============================================================================

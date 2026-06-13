@@ -1,7 +1,7 @@
 use super::{
     processors::{order, payment_report, product, realization, returns},
     progress_tracker::ProgressTracker,
-    yandex_api_client::YandexApiClient,
+    yandex_api_client::{OrderDateField, YandexApiClient},
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
@@ -173,11 +173,17 @@ impl ImportExecutor {
                         .await?;
                 }
                 "a013_ym_order" => {
+                    let date_field = if request.incremental_by_update {
+                        OrderDateField::Updated
+                    } else {
+                        OrderDateField::Creation
+                    };
                     self.import_ym_orders(
                         session_id,
                         connection,
                         request.date_from,
                         request.date_to,
+                        date_field,
                     )
                     .await?;
                 }
@@ -353,6 +359,73 @@ impl ImportExecutor {
         Ok(())
     }
 
+    /// Определить список магазинов (campaign_id + placement_type) для campaign-уровневых
+    /// обменов YM (заказы, возвраты). Модель «подключение = бизнес»: если задан
+    /// `business_account_id`, перечисляем все кампании бизнеса через `GET /campaigns`
+    /// и отбираем принадлежащие этому бизнесу. Если бизнес не задан или вызов не удался —
+    /// откатываемся на единственный `supplier_id` подключения (placement_type неизвестен).
+    ///
+    /// `aggregate_index` — для отнесения возможной ошибки к нужному агрегату в прогрессе.
+    async fn resolve_campaigns(
+        &self,
+        session_id: &str,
+        aggregate_index: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Vec<(String, Option<String>)> {
+        let fallback: Vec<(String, Option<String>)> = connection
+            .supplier_id
+            .clone()
+            .into_iter()
+            .map(|id| (id, None))
+            .collect();
+
+        // Бизнес не задан → подключение покрывает один магазин (legacy).
+        let biz = match connection
+            .business_account_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(s) => s.to_string(),
+            None => return fallback,
+        };
+        let biz_id = biz.parse::<i64>().ok();
+
+        match self.api_client.fetch_campaigns(connection).await {
+            Ok(list) => {
+                let campaigns: Vec<(String, Option<String>)> = list
+                    .iter()
+                    .filter(|c| match (biz_id, c.business.as_ref()) {
+                        // Если бизнес задан числом — берём только его магазины; иначе все.
+                        (Some(b), Some(cb)) => cb.id == b,
+                        _ => true,
+                    })
+                    .map(|c| (c.id.to_string(), c.placement_type.clone()))
+                    .collect();
+
+                if campaigns.is_empty() {
+                    tracing::warn!(
+                        "YM: GET /campaigns вернул 0 подходящих магазинов; fallback на supplier_id"
+                    );
+                    fallback
+                } else {
+                    tracing::info!("YM: обмен по {} магазину(ам) бизнеса", campaigns.len());
+                    campaigns
+                }
+            }
+            Err(e) => {
+                tracing::error!("YM: не удалось получить список магазинов: {}", e);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    format!("Не удалось получить список магазинов (GET /campaigns): {}", e),
+                    None,
+                );
+                fallback
+            }
+        }
+    }
+
     /// Импорт заказов Yandex Market
     async fn import_ym_orders(
         &self,
@@ -360,6 +433,7 @@ impl ImportExecutor {
         connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
         date_from: chrono::NaiveDate,
         date_to: chrono::NaiveDate,
+        date_field: OrderDateField,
     ) -> Result<()> {
         use crate::domain::a002_organization;
 
@@ -393,74 +467,103 @@ impl ImportExecutor {
             }
         };
 
-        // 2. Fetch orders from API with date period
-        let orders = self
-            .api_client
-            .fetch_orders(connection, date_from, date_to)
-            .await?;
+        // 2. Determine which stores (campaigns) to import (fan-out по бизнесу).
+        let campaigns = self
+            .resolve_campaigns(session_id, aggregate_index, connection)
+            .await;
+        if campaigns.is_empty() {
+            anyhow::bail!(
+                "Не задан магазин: у подключения нет supplier_id и GET /campaigns не вернул кампаний"
+            );
+        }
 
-        tracing::info!("Received {} orders from YM API", orders.len());
+        // 3. Import each store with a per-campaign connection clone so that both the
+        //    orders fetch and process_order (campaign_id in header) use the right id.
+        //    placement_type кампании пишем в заказ как fulfillment_type.
+        for (campaign_id, placement_type) in &campaigns {
+            let mut conn = connection.clone();
+            conn.supplier_id = Some(campaign_id.clone());
 
-        // 3. Process each order
-        for order_item in orders {
-            let order_id_str = order_item.id.to_string();
-            self.progress_tracker.set_current_item(
-                session_id,
-                aggregate_index,
-                Some(format!("YM Order {}", order_id_str)),
+            let orders = self
+                .api_client
+                .fetch_orders(&conn, date_from, date_to, date_field)
+                .await?;
+
+            tracing::info!(
+                "Received {} orders from YM API (campaign {}, placement {:?})",
+                orders.len(),
+                campaign_id,
+                placement_type
             );
 
-            // Fetch detailed order info to get realDeliveryDate
-            let order_details = match self
-                .api_client
-                .fetch_order_details(connection, order_item.id)
-                .await
-            {
-                Ok(details) => details,
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to fetch details for order {}: {}, using basic data",
-                        order_id_str,
-                        e
-                    );
-                    order_item.clone() // Use original order if details fetch fails
-                }
-            };
+            for order_item in orders {
+                let order_id_str = order_item.id.to_string();
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("YM Order {}", order_id_str)),
+                );
 
-            match order::process_order(connection, &organization_id, &order_details).await {
-                Ok(is_new) => {
-                    total_processed += 1;
-                    if is_new {
-                        total_inserted += 1;
-                    } else {
-                        total_updated += 1;
+                // Fetch detailed order info to get realDeliveryDate
+                let order_details = match self
+                    .api_client
+                    .fetch_order_details(&conn, order_item.id)
+                    .await
+                {
+                    Ok(details) => details,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to fetch details for order {}: {}, using basic data",
+                            order_id_str,
+                            e
+                        );
+                        order_item.clone() // Use original order if details fetch fails
+                    }
+                };
+
+                match order::process_order(
+                    &conn,
+                    &organization_id,
+                    &order_details,
+                    placement_type.clone(),
+                )
+                .await
+                {
+                    Ok(is_new) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to process YM order {}: {}", order_id_str, e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process order {}", order_id_str),
+                            Some(e.to_string()),
+                        );
                     }
                 }
-                Err(e) => {
-                    tracing::error!("Failed to process YM order {}: {}", order_id_str, e);
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        format!("Failed to process order {}", order_id_str),
-                        Some(e.to_string()),
-                    );
-                }
-            }
 
-            self.progress_tracker.update_aggregate(
-                session_id,
-                aggregate_index,
-                total_processed,
-                None,
-                total_inserted,
-                total_updated,
-            );
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    None,
+                    total_inserted,
+                    total_updated,
+                );
+            }
         }
 
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
         tracing::info!(
-            "YM orders import completed: processed={}, inserted={}, updated={}",
+            "YM orders import completed: stores={}, processed={}, inserted={}, updated={}",
+            campaigns.len(),
             total_processed,
             total_inserted,
             total_updated
@@ -512,57 +615,76 @@ impl ImportExecutor {
             }
         };
 
-        // 2. Fetch returns from API with date period
-        let returns = self
-            .api_client
-            .fetch_returns(connection, date_from, date_to)
-            .await?;
+        // 2. Determine which stores (campaigns) to import (fan-out по бизнесу).
+        let campaigns = self
+            .resolve_campaigns(session_id, aggregate_index, connection)
+            .await;
+        if campaigns.is_empty() {
+            anyhow::bail!(
+                "Не задан магазин: у подключения нет supplier_id и GET /campaigns не вернул кампаний"
+            );
+        }
 
-        tracing::info!("Received {} returns from YM API", returns.len());
+        // 3. Fetch + process returns per store (per-campaign connection clone).
+        for (campaign_id, _placement_type) in &campaigns {
+            let mut conn = connection.clone();
+            conn.supplier_id = Some(campaign_id.clone());
 
-        // 3. Process each return
-        for return_item in returns {
-            let return_id_str = return_item.id.to_string();
-            self.progress_tracker.set_current_item(
-                session_id,
-                aggregate_index,
-                Some(format!("YM Return {}", return_id_str)),
+            let returns = self
+                .api_client
+                .fetch_returns(&conn, date_from, date_to)
+                .await?;
+
+            tracing::info!(
+                "Received {} returns from YM API (campaign {})",
+                returns.len(),
+                campaign_id
             );
 
-            match returns::process_return(connection, &organization_id, &return_item).await {
-                Ok(is_new) => {
-                    total_processed += 1;
-                    if is_new {
-                        total_inserted += 1;
-                    } else {
-                        total_updated += 1;
+            for return_item in returns {
+                let return_id_str = return_item.id.to_string();
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!("YM Return {}", return_id_str)),
+                );
+
+                match returns::process_return(&conn, &organization_id, &return_item).await {
+                    Ok(is_new) => {
+                        total_processed += 1;
+                        if is_new {
+                            total_inserted += 1;
+                        } else {
+                            total_updated += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to process YM return {}: {}", return_id_str, e);
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!("Failed to process return {}", return_id_str),
+                            Some(e.to_string()),
+                        );
                     }
                 }
-                Err(e) => {
-                    tracing::error!("Failed to process YM return {}: {}", return_id_str, e);
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        format!("Failed to process return {}", return_id_str),
-                        Some(e.to_string()),
-                    );
-                }
-            }
 
-            self.progress_tracker.update_aggregate(
-                session_id,
-                aggregate_index,
-                total_processed,
-                None,
-                total_inserted,
-                total_updated,
-            );
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    total_processed,
+                    None,
+                    total_inserted,
+                    total_updated,
+                );
+            }
         }
 
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
         tracing::info!(
-            "YM returns import completed: processed={}, inserted={}, updated={}",
+            "YM returns import completed: stores={}, processed={}, inserted={}, updated={}",
+            campaigns.len(),
             total_processed,
             total_inserted,
             total_updated

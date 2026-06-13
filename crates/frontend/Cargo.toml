@@ -28,3 +28,12 @@ serde-wasm-bindgen = "0.6"
 gloo-timers = { version = "0.3", features = ["futures"] }
 gloo-net = "0.5"
 urlencoding = "2.1"
+
+# rhai — интерпретатор плагинов. Фича `wasm-bindgen` нужна только для wasm-таргета
+# (getrandom/time); для host-сборки её включать нельзя (rhai даёт compile_error).
+# Target-specific объявление + resolver v2 не пускают фичу в host-граф.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+rhai = { version = "1", features = ["serde", "wasm-bindgen"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rhai = { version = "1", features = ["serde"] }

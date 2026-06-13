@@ -1388,6 +1388,51 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         scope_id: None,
         mode: PolicyMode::AuthOnly,
     },
+    // ========================================================================
+    // Plugins subsystem — надстройка над платформой (admin-only)
+    // ========================================================================
+    RoutePolicy {
+        method: "*",
+        path: "/api/plugin",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/plugin/all",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/plugin/validate",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/plugin/testdata",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/plugin/:id",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/plugin/:id/data",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/plugin/:id/run",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
 ];
 
 /// Look up the policy entries for a given scope_id.

@@ -45,6 +45,11 @@ pub struct YmOrderHeader {
     pub marketplace_id: String,
     /// ID кампании в Yandex Market
     pub campaign_id: String,
+    /// Модель работы магазина (placementType кампании): FBS / FBY / DBS / LAAS.
+    /// Измерение, заменяющее «магазин» в аналитике YM. None — если бизнес/кампании
+    /// не резолвились (legacy single-store импорт по supplier_id).
+    #[serde(default)]
+    pub fulfillment_type: Option<String>,
     /// Общая сумма заказа из API (total)
     pub total_amount: Option<f64>,
     /// Валюта заказа

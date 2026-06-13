@@ -359,7 +359,7 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">{"Client ID"}</label>
+                        <label class="form__label">{"Campaign ID / supplier_id"}</label>
                         <input
                             class="form__input"
                             type="text"
@@ -376,13 +376,15 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                                     });
                                 }
                             }
-                            placeholder="Ozon, Яндекс"
+                            placeholder="Яндекс: ID кампании · WB: override base URL"
                         />
-                        <small class="help-text help-text--tiny">{"Ozon, Яндекс"}</small>
+                        <small class="help-text help-text--tiny">
+                            {"Яндекс: ID кампании (магазин по умолчанию; при заданном Business ID задания обходят все магазины бизнеса). WB: override базового URL (если начинается с http)."}
+                        </small>
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">{"App ID"}</label>
+                        <label class="form__label">{"Client-Id (Ozon)"}</label>
                         <input
                             class="form__input"
                             type="text"
@@ -399,13 +401,13 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                                     });
                                 }
                             }
-                            placeholder="Ozon"
+                            placeholder="Ozon: заголовок Client-Id"
                         />
-                        <small class="help-text help-text--tiny">{"Ozon"}</small>
+                        <small class="help-text help-text--tiny">{"Ozon: значение заголовка Client-Id."}</small>
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">{"Business ID"}</label>
+                        <label class="form__label">{"Business ID (Яндекс)"}</label>
                         <input
                             class="form__input"
                             type="text"
@@ -422,13 +424,13 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                                     });
                                 }
                             }
-                            placeholder="Яндекс"
+                            placeholder="Яндекс: ID бизнеса"
                         />
-                        <small class="help-text help-text--tiny">{"Яндекс"}</small>
+                        <small class="help-text help-text--tiny">{"Яндекс: ID бизнеса — основной идентификатор кабинета (модель «подключение = бизнес»)."}</small>
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">{"Stats Key"}</label>
+                        <label class="form__label">{"Stats-токен (WB)"}</label>
                         <input
                             class="form__input"
                             type="text"
@@ -445,8 +447,9 @@ pub fn GeneralTab(vm: ConnectionMPDetailsVm) -> impl IntoView {
                                     });
                                 }
                             }
-                            placeholder="Опционально"
+                            placeholder="WB: токен Statistics API (опц.)"
                         />
+                        <small class="help-text help-text--tiny">{"WB: отдельный токен Statistics API."}</small>
                     </div>
 
                     <div class="form__group">

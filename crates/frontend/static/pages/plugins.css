@@ -1,0 +1,648 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Стили подсистемы Plugins.
+
+   Загружается глобально из index.html, но ВСЕ правила scoped под корневой
+   класс страницы (`.plugins-page` — реестр; `.plugin-host` — страница плагина),
+   поэтому применяются только там. Общие токены берём из themes/core.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────  Реестр (список)  ───────────────────────── */
+
+.plugins-page {
+  padding: 20px 24px;
+}
+
+.plugins-page__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plugins-page__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+}
+
+.plugins-page__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.plugins-page__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* ── Кнопки ───────────────────────────────────────────────────────────── */
+
+.plugins-btn {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated, var(--color-bg-secondary));
+  color: var(--color-text-primary);
+  padding: 8px 14px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, transform 0.05s;
+  white-space: nowrap;
+}
+
+.plugins-btn:hover {
+  background: var(--color-hover-bg, var(--color-bg-tertiary));
+  border-color: var(--color-border-light, var(--color-border));
+}
+
+.plugins-btn:active {
+  transform: translateY(1px);
+}
+
+.plugins-btn--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-btn-primary-text, #fff);
+}
+
+.plugins-btn--primary:hover {
+  background: var(--color-primary-hover, var(--color-primary-dark, var(--color-primary)));
+  border-color: var(--color-primary-hover, var(--color-primary));
+}
+
+.plugins-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
+.plugins-btn--ghost {
+  background: transparent;
+}
+
+/* ── Таблица ──────────────────────────────────────────────────────────── */
+
+.plugins-table-wrap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+  background: var(--color-surface, var(--color-bg-elevated));
+}
+
+.plugins-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.plugins-table thead th {
+  text-align: left;
+  padding: 11px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary, var(--color-bg-muted));
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plugins-table tbody td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--color-border-subtle, var(--color-border-lighter, var(--color-border)));
+  color: var(--color-text-primary);
+  vertical-align: middle;
+}
+
+.plugins-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.plugins-table tbody tr:hover {
+  background: var(--color-hover-bg, var(--color-bg-tertiary));
+}
+
+.plugins-table__title {
+  font-weight: 600;
+}
+
+.plugins-table__muted {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plugins-table__action-col {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── Код-чип / runtime-чип ────────────────────────────────────────────── */
+
+.plugins-code {
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: var(--color-code-bg, var(--color-bg-muted));
+  padding: 2px 7px;
+  border-radius: var(--radius-sm, 5px);
+  white-space: nowrap;
+}
+
+.plugins-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-muted, var(--color-bg-tertiary));
+  border: 1px solid var(--color-border);
+  padding: 2px 8px;
+  border-radius: var(--radius-full, 999px);
+}
+
+/* ── Бейдж статуса ────────────────────────────────────────────────────── */
+
+.plugins-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: var(--radius-full, 999px);
+  text-transform: capitalize;
+  border: 1px solid transparent;
+}
+
+.plugins-badge--active {
+  color: var(--color-success, #16a34a);
+  background: color-mix(in srgb, var(--color-success, #16a34a) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-success, #16a34a) 30%, transparent);
+}
+
+.plugins-badge--draft {
+  color: var(--color-warning, #d97706);
+  background: color-mix(in srgb, var(--color-warning, #d97706) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning, #d97706) 30%, transparent);
+}
+
+.plugins-badge--disabled {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-muted, var(--color-bg-tertiary));
+  border-color: var(--color-border);
+}
+
+/* ── Точка вкл/выкл ───────────────────────────────────────────────────── */
+
+.plugins-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.plugins-dot--on {
+  background: var(--color-success, #16a34a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success, #16a34a) 20%, transparent);
+}
+
+.plugins-dot--off {
+  background: var(--color-text-tertiary, var(--color-text-secondary));
+  opacity: 0.5;
+}
+
+/* ── Ссылка «Открыть» ─────────────────────────────────────────────────── */
+
+.plugins-link {
+  color: var(--color-link, var(--color-primary));
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.plugins-link:hover {
+  color: var(--color-link-hover, var(--color-primary-hover, var(--color-primary)));
+  text-decoration: underline;
+}
+
+/* ── Состояния ────────────────────────────────────────────────────────── */
+
+.plugins-page__state {
+  padding: 24px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.plugins-alert {
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.plugins-alert--error {
+  color: var(--color-error, var(--color-danger, #dc2626));
+  background: color-mix(in srgb, var(--color-error, #dc2626) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error, #dc2626) 30%, transparent);
+}
+
+.plugins-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 56px 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--color-surface, var(--color-bg-elevated));
+}
+
+.plugins-empty__icon {
+  font-size: 40px;
+  margin-bottom: 10px;
+}
+
+.plugins-empty__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 6px;
+}
+
+.plugins-empty__hint {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  max-width: 420px;
+}
+
+/* ─────────────────────────  Страница плагина (host)  ───────────────────── */
+
+.plugin-host {
+  padding: 20px 24px;
+}
+
+.plugin-host__header {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plugin-host__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.plugin-host__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.plugin-host__chip {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--colorBrandForeground1, var(--color-primary));
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  padding: 2px 9px;
+  border-radius: var(--radius-full, 999px);
+}
+
+.plugin-host__code {
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__desc {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  max-width: 720px;
+}
+
+.plugin-host__toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.plugin-host__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plugin-host__field-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__input {
+  padding: 7px 10px;
+  border: 1px solid var(--color-border-input, var(--color-border));
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-bg-input, var(--colorNeutralBackground1));
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
+.plugin-host__input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.plugin-host__run {
+  appearance: none;
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text, #fff);
+  padding: 8px 18px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s, transform 0.05s;
+}
+
+.plugin-host__run:hover {
+  background: var(--color-primary-hover, var(--color-primary-dark, var(--color-primary)));
+}
+
+.plugin-host__run:active {
+  transform: translateY(1px);
+}
+
+.plugin-host__run:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.plugin-host__card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+  background: var(--color-surface, var(--color-bg-elevated));
+}
+
+.plugin-host__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.plugin-host__table thead th {
+  text-align: left;
+  padding: 11px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary, var(--color-bg-muted));
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plugin-host__table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border-subtle, var(--color-border-lighter, var(--color-border)));
+  color: var(--color-text-primary);
+}
+
+.plugin-host__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.plugin-host__table tbody tr:hover {
+  background: var(--color-hover-bg, var(--color-bg-tertiary));
+}
+
+.plugin-host__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-host__state {
+  padding: 20px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.plugin-host__alert {
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.plugin-host__alert--error {
+  color: var(--color-error, var(--color-danger, #dc2626));
+  background: color-mix(in srgb, var(--color-error, #dc2626) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error, #dc2626) 30%, transparent);
+}
+
+/* ── Серверная кнопка ─────────────────────────────────────────────────── */
+
+.plugin-host__run--server {
+  background: var(--color-bg-elevated, var(--color-bg-secondary));
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.plugin-host__run--server:hover {
+  background: var(--color-hover-bg, var(--color-bg-tertiary));
+}
+
+.plugin-host__hidden {
+  display: none !important;
+}
+
+/* ── Вкладки / редакторы кода ─────────────────────────────────────────── */
+
+.plugin-host__tabs {
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 16px;
+}
+
+.plugin-host__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plugin-host__editor-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plugin-host__editor-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__editor {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 12px 14px;
+  background: var(--color-code-bg, #1e1e1e);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  color: var(--color-text-primary);
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.plugin-host__editor:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.plugin-host__save-msg {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  align-self: center;
+}
+
+/* ── Консоль ──────────────────────────────────────────────────────────── */
+
+.plugin-host__console {
+  margin: 16px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  background: var(--color-code-bg, #1e1e1e);
+}
+
+.plugin-host__console-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--color-bg-secondary, var(--color-bg-muted));
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plugin-host__console-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__console-clear {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 2px 9px;
+  border-radius: var(--radius-full, 999px);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.plugin-host__console-clear:hover {
+  background: var(--color-hover-bg, var(--color-bg-tertiary));
+  color: var(--color-text-primary);
+}
+
+.plugin-host__console-body {
+  padding: 10px 14px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.plugin-host__console-line {
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Просмотр кода ────────────────────────────────────────────────────── */
+
+.plugin-host__code-toggle {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 3px 10px;
+  border-radius: var(--radius-full, 999px);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.plugin-host__code-toggle:hover {
+  background: var(--color-hover-bg, var(--color-bg-tertiary));
+  color: var(--color-text-primary);
+}
+
+.plugin-host__code-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.plugin-host__code-section {
+  margin-bottom: 6px;
+}
+
+.plugin-host__code-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+
+.plugin-host__code-block {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--color-code-bg, var(--color-bg-muted, #1e1e1e));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 360px;
+}

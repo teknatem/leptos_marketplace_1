@@ -47,8 +47,10 @@ static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task018_ym_returns",
     display_name: "YM Возвраты",
     description: "Загружает возвраты Yandex Market через Partner API \
-        (GET /v2/campaigns/{campaignId}/returns). Окно загрузки управляется watermark: \
-        грузит порциями chunk_days дней с перекрытием overlap_days и догоняет до сегодня. \
+        (GET /v2/campaigns/{campaignId}/returns). API фильтрует по дате ОБНОВЛЕНИЯ возврата \
+        (fromDate/toDate = дата обновления), поэтому поздние изменения статусов сами попадают \
+        в окно. Окно загрузки управляется watermark от последней успешной загрузки: грузит \
+        порциями chunk_days дней с перекрытием overlap_days и догоняет до сегодня. \
         Upsert идемпотентен по return_id, поэтому повторная загрузка перекрывающихся окон \
         безопасна. Данные сохраняются в a016_ym_returns.",
     external_apis: &[ExternalApiInfo {
@@ -172,6 +174,7 @@ impl TaskManager for Task018YmReturnsManager {
             date_from,
             date_to,
             mode: ImportMode::Background,
+            incremental_by_update: false,
         };
 
         self.executor
