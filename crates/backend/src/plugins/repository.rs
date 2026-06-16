@@ -10,6 +10,41 @@ use sea_orm::prelude::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use std::collections::HashMap;
 
+const RESOURCE_STORAGE_FORMAT: &str = "plugin_bundle_resources_v1";
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct StoredResources {
+    #[serde(default)]
+    format: String,
+    #[serde(default)]
+    assets: HashMap<String, String>,
+    #[serde(default)]
+    sql_resources: HashMap<String, String>,
+}
+
+fn decode_resources(json: &str) -> (HashMap<String, String>, HashMap<String, String>) {
+    let value = serde_json::from_str::<serde_json::Value>(json).unwrap_or_default();
+    if value.get("format").and_then(serde_json::Value::as_str) == Some(RESOURCE_STORAGE_FORMAT) {
+        let stored = serde_json::from_value::<StoredResources>(value).unwrap_or_default();
+        return (stored.assets, stored.sql_resources);
+    }
+
+    // Before SQL resources were introduced, assets_json contained the asset map directly.
+    (
+        serde_json::from_str::<HashMap<String, String>>(json).unwrap_or_default(),
+        HashMap::new(),
+    )
+}
+
+fn encode_resources(bundle: &PluginBundle) -> String {
+    serde_json::to_string(&StoredResources {
+        format: RESOURCE_STORAGE_FORMAT.to_string(),
+        assets: bundle.assets.clone(),
+        sql_resources: bundle.sql_resources.clone(),
+    })
+    .unwrap_or_else(|_| "{}".into())
+}
+
 mod plugin {
     use sea_orm::entity::prelude::*;
     use serde::{Deserialize, Serialize};
@@ -60,8 +95,7 @@ impl From<plugin::Model> for PluginDefinition {
         let params: Vec<ParamSpec> = serde_json::from_str(&m.params_json).unwrap_or_default();
         let data: DataBinding = serde_json::from_str(&m.data_json).unwrap_or_default();
         let view_spec: ViewSpec = serde_json::from_str(&m.view_spec_json).unwrap_or_default();
-        let assets: HashMap<String, String> =
-            serde_json::from_str(&m.assets_json).unwrap_or_default();
+        let (assets, sql_resources) = decode_resources(&m.assets_json);
 
         let bundle = PluginBundle {
             manifest,
@@ -71,6 +105,7 @@ impl From<plugin::Model> for PluginDefinition {
             server_script: m.server_script,
             view_spec,
             styles: m.styles,
+            sql_resources,
             assets,
         };
 
@@ -104,7 +139,7 @@ fn to_active(def: &PluginDefinition, is_insert: bool) -> plugin::ActiveModel {
         server_script: Set(b.server_script.clone()),
         view_spec_json: Set(serde_json::to_string(&b.view_spec).unwrap_or_else(|_| "{}".into())),
         styles: Set(b.styles.clone()),
-        assets_json: Set(serde_json::to_string(&b.assets).unwrap_or_else(|_| "{}".into())),
+        assets_json: Set(encode_resources(b)),
         owner_user_id: Set(def.owner_user_id.clone()),
         created_by_agent_id: Set(def.created_by_agent_id.clone()),
         is_enabled: Set(def.is_enabled),
@@ -128,6 +163,37 @@ pub async fn list_all(db: &DatabaseConnection) -> Result<Vec<PluginDefinition>, 
     Ok(models.into_iter().map(Into::into).collect())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decodes_legacy_asset_map() {
+        let (assets, sql_resources) = decode_resources(r#"{"logo.svg":"data:image/svg+xml,..."}"#);
+        assert_eq!(
+            assets.get("logo.svg").map(String::as_str),
+            Some("data:image/svg+xml,...")
+        );
+        assert!(sql_resources.is_empty());
+    }
+
+    #[test]
+    fn decodes_versioned_resources() {
+        let json = serde_json::json!({
+            "format": RESOURCE_STORAGE_FORMAT,
+            "assets": { "logo.svg": "logo" },
+            "sql_resources": { "report": "SELECT 1" }
+        })
+        .to_string();
+        let (assets, sql_resources) = decode_resources(&json);
+        assert_eq!(assets.get("logo.svg").map(String::as_str), Some("logo"));
+        assert_eq!(
+            sql_resources.get("report").map(String::as_str),
+            Some("SELECT 1")
+        );
+    }
+}
+
 pub async fn list_enabled(db: &DatabaseConnection) -> Result<Vec<PluginDefinition>, DbErr> {
     let models = plugin::Entity::find()
         .filter(plugin::Column::IsDeleted.eq(false))
@@ -144,6 +210,20 @@ pub async fn find_by_id(
 ) -> Result<Option<PluginDefinition>, DbErr> {
     let model = plugin::Entity::find_by_id(id.to_string()).one(db).await?;
     Ok(model.filter(|m| !m.is_deleted).map(Into::into))
+}
+
+/// Поиск плагина по бизнес-коду (`manifest.code`) — ключ переносимости между
+/// экземплярами и основа upsert-by-code / будущего импорта.
+pub async fn find_by_code(
+    db: &DatabaseConnection,
+    code: &str,
+) -> Result<Option<PluginDefinition>, DbErr> {
+    let model = plugin::Entity::find()
+        .filter(plugin::Column::IsDeleted.eq(false))
+        .filter(plugin::Column::Code.eq(code.to_string()))
+        .one(db)
+        .await?;
+    Ok(model.map(Into::into))
 }
 
 pub async fn insert(db: &DatabaseConnection, def: &PluginDefinition) -> Result<(), DbErr> {

@@ -44,6 +44,8 @@ pub enum AgentType {
     General,
     /// Администратор базы знаний: анализирует пробелы и готовит обновления KB
     KbAdmin,
+    /// Разработчик плагинов: создаёт/правит/тестирует JS-плагины из чата
+    PluginAdmin,
 }
 
 impl AgentType {
@@ -52,6 +54,7 @@ impl AgentType {
             "system_admin" => AgentType::SystemAdmin,
             "general" => AgentType::General,
             "kb_admin" => AgentType::KbAdmin,
+            "plugin_admin" => AgentType::PluginAdmin,
             _ => AgentType::BusinessAnalyst,
         }
     }
@@ -62,6 +65,7 @@ impl AgentType {
             AgentType::SystemAdmin => "system_admin",
             AgentType::General => "general",
             AgentType::KbAdmin => "kb_admin",
+            AgentType::PluginAdmin => "plugin_admin",
         }
     }
 
@@ -71,6 +75,7 @@ impl AgentType {
             AgentType::SystemAdmin => "Системный администратор",
             AgentType::General => "Общий",
             AgentType::KbAdmin => "Администратор базы знаний",
+            AgentType::PluginAdmin => "Разработчик плагинов",
         }
     }
 }

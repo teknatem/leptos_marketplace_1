@@ -1,20 +1,18 @@
-//! Подсистема **Plugins** — надстройка (extension layer) над платформой.
+//! Shared contracts for the plugin subsystem.
 //!
-//! Плагин — самодостаточный интерпретируемый артефакт (`PluginBundle`): манифест,
-//! параметры, привязка к данным, опциональные Rhai-скрипты (client/server), описание
-//! вывода (`ViewSpec`) и стили. Загружается и исполняется в рантайме без пересборки.
-//!
-//! Это НЕ агрегат `a0XX`, а отдельная верхнеуровневая ветка, следующая базовым
-//! конвенциям агрегатов (CRUD, JSON-хранение, soft-delete, MVVM на фронте).
-//!
-//! Терминология (универсальная, по месту исполнения):
-//! - `PluginRuntime` = `Client` | `Server` | `Hybrid` — где исполняется код.
-//! - функциональная категория плагина НЕ фиксирована.
+//! A plugin is a self-contained interpreted artifact (`PluginBundle`) with a
+//! manifest, parameters, data binding, client/server JavaScript modules, view
+//! metadata, styles, and assets. It is stored and executed without rebuilding
+//! the application.
 
 pub mod bundle;
+pub mod runs;
 
 pub use bundle::{
-    DataBinding, ParamSpec, ParamType, PluginBundle, PluginDefinition, PluginListItem,
-    PluginManifest, PluginRunContext, PluginRuntime, PluginStatus, PluginUpsert, ViewSpec, Widget,
-    WidgetKind,
+    is_read_only_sql, DataBinding, ParamSpec, ParamType, PluginBundle, PluginDefinition,
+    PluginError, PluginInvokeRequest, PluginListItem, PluginManifest, PluginRunContext,
+    PluginRuntime, PluginStatus, PluginUpsert, PluginValidateReport, ViewSpec, Widget, WidgetKind,
+};
+pub use runs::{
+    PluginHealth, PluginRunBrief, PluginRunRecord, PluginRunSummary, PluginStats, StageCount,
 };

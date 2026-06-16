@@ -449,6 +449,7 @@ fn agent_type_color(agent_type: &AgentType) -> &'static str {
         AgentType::SystemAdmin => "#8b5cf6",
         AgentType::General => "#059669",
         AgentType::KbAdmin => "#0f766e",
+        AgentType::PluginAdmin => "#d97706",
     }
 }
 

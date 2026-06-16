@@ -40,6 +40,9 @@ const SYSTEM_ADMIN_PROMPT: &str = include_str!("prompts/system_admin_agent.md");
 /// Системный промпт для администратора базы знаний (диалог/анализ).
 const KB_ADMIN_PROMPT: &str = include_str!("prompts/kb_admin_analyze.md");
 
+/// Системный промпт для разработчика плагинов.
+const PLUGIN_ADMIN_PROMPT: &str = include_str!("prompts/plugin_admin_agent.md");
+
 /// Максимальное число не-системных сообщений в контексте (sliding window)
 const MAX_HISTORY_MESSAGES: usize = 20;
 
@@ -325,6 +328,7 @@ pub async fn send_message(
     let fallback_prompt = match agent.agent_type {
         AgentType::SystemAdmin => SYSTEM_ADMIN_PROMPT,
         AgentType::KbAdmin => KB_ADMIN_PROMPT,
+        AgentType::PluginAdmin => PLUGIN_ADMIN_PROMPT,
         _ => DEFAULT_SYSTEM_PROMPT,
     };
     let system_prompt = agent.system_prompt.as_deref().unwrap_or(fallback_prompt);

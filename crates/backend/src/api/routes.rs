@@ -121,12 +121,19 @@ fn plugin_routes() -> Router {
         .route("/api/plugin/all", get(handlers::plugins::list_all))
         .route("/api/plugin/validate", post(handlers::plugins::validate))
         .route("/api/plugin/testdata", post(handlers::plugins::testdata))
+        .route("/api/plugin/import", post(handlers::plugins::import))
+        .route(
+            "/api/plugin/runs/summary",
+            get(handlers::plugins::runs_summary),
+        )
         .route(
             "/api/plugin/:id",
             get(handlers::plugins::get_by_id).delete(handlers::plugins::delete),
         )
+        .route("/api/plugin/:id/export", get(handlers::plugins::export))
+        .route("/api/plugin/:id/stats", get(handlers::plugins::stats))
         .route("/api/plugin/:id/data", post(handlers::plugins::run_data))
-        .route("/api/plugin/:id/run", post(handlers::plugins::run_script))
+        .route("/api/plugin/:id/invoke", post(handlers::plugins::invoke))
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move { require_admin(req, next).await },
         ))

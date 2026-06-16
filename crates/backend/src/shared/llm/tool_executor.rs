@@ -7,6 +7,7 @@
 use super::admin_tools::{admin_tool_definitions, execute_admin_tool};
 use super::kb_admin_tools::{execute_kb_admin_tool, kb_admin_tool_definitions};
 use super::knowledge_base::KNOWLEDGE_BASE;
+use super::plugin_tools::{execute_plugin_tool, plugin_tool_definitions, PLUGIN_TOOL_NAMES};
 use super::metadata_registry::METADATA_REGISTRY;
 use super::types::{ToolCall, ToolDefinition};
 use contracts::domain::a017_llm_agent::aggregate::AgentType;
@@ -48,6 +49,15 @@ pub fn tool_definitions_for(agent_type: &AgentType) -> Vec<ToolDefinition> {
             let mut tools = shared;
             tools.extend(kb_admin_tool_definitions());
             tools.push(execute_query_tool_definition());
+            tools
+        }
+        AgentType::PluginAdmin => {
+            // Интроспекция БД (list_entities/get_entity_schema/get_join_hint/execute_query)
+            // переиспользуется из analyst-набора — агент изучает схему и тестирует SELECT
+            // до вставки в sql_resources.
+            let mut tools = shared;
+            tools.extend(analyst_tool_definitions());
+            tools.extend(plugin_tool_definitions());
             tools
         }
     }
@@ -320,6 +330,31 @@ pub async fn execute_tool_call(
             serde_json::json!({
                 "error": format!(
                     "Tool '{}' is only available for KbAdmin and General agents.",
+                    call.name
+                )
+            })
+        };
+        let is_ok = result.get("error").is_none();
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    // Plugin developer tools — dispatch to plugin_tools module
+    if PLUGIN_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result = if matches!(agent_type, AgentType::PluginAdmin | AgentType::General) {
+            execute_plugin_tool(&call.name, &call.arguments, agent_id).await
+        } else {
+            serde_json::json!({
+                "error": format!(
+                    "Tool '{}' is only available for PluginAdmin and General agents.",
                     call.name
                 )
             })

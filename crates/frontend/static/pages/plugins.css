@@ -492,6 +492,14 @@
   gap: 14px;
 }
 
+.plugin-host__iframe {
+  width: 100%;
+  min-height: 720px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--color-bg-secondary, #f6f7fb);
+}
+
 .plugin-host__editor-block {
   display: flex;
   flex-direction: column;
@@ -525,6 +533,79 @@
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.plugin-code-editor {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  background: #282c34;
+}
+
+.plugin-code-editor--large .cm-editor {
+  min-height: 420px;
+}
+
+.plugin-code-editor--medium .cm-editor {
+  min-height: 260px;
+}
+
+.plugin-code-editor--sql .cm-editor {
+  min-height: 360px;
+}
+
+.plugin-code-editor .cm-editor {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.plugin-code-editor .cm-scroller {
+  min-height: inherit;
+  max-height: 680px;
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+}
+
+.plugin-code-editor .cm-editor.cm-focused {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+  outline-offset: -1px;
+}
+
+.plugin-host__resource-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.plugin-host__resource-select,
+.plugin-host__resource-name,
+.plugin-host__resource-action {
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: 0 10px;
+}
+
+.plugin-host__resource-action {
+  cursor: pointer;
+}
+
+.plugin-host__resource-action--danger {
+  color: var(--color-error);
+}
+
+.plugin-host__resource-action:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+@media (max-width: 900px) {
+  .plugin-host__resource-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .plugin-host__save-msg {
@@ -645,4 +726,191 @@
   word-break: break-word;
   overflow-x: auto;
   max-height: 360px;
+}
+
+/* ── Контекст запуска (период) ────────────────────────────────────────── */
+
+.plugin-host__context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.plugin-host__context-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__context-field input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-bg-elevated, var(--color-bg-secondary));
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.plugin-host__context-hint {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+/* ── Серверный runner ─────────────────────────────────────────────────── */
+
+.plugin-host__runner-report {
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.plugin-host__runner-line {
+  padding: 2px 0;
+  color: var(--color-text-primary);
+}
+
+.plugin-host__runner-key {
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__runner-errors {
+  margin-top: 6px;
+  color: var(--color-error, var(--color-danger, #dc2626));
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.plugin-host__runner-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.plugin-host__runner-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__runner-args {
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-bg-elevated, var(--color-bg-secondary));
+  color: var(--color-text-primary);
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+.plugin-host__runner-output {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--color-code-bg, var(--color-bg-muted, #1e1e1e));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 420px;
+}
+
+.plugin-host__export {
+  margin-left: auto;
+}
+
+/* ── Импорт / экспорт в реестре ───────────────────────────────────────── */
+
+.plugins-import {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.plugins-import__input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.plugins-alert--info {
+  color: var(--color-info, var(--color-primary, #2563eb));
+  background: color-mix(in srgb, var(--color-info, #2563eb) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-info, #2563eb) 30%, transparent);
+}
+
+.plugins-link--muted {
+  margin-left: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* ── Здоровье плагина (статистика / отклонения) ───────────────────────── */
+
+.plugins-health {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.plugins-health--ok {
+  color: #067647;
+  background: color-mix(in srgb, #067647 14%, transparent);
+}
+
+.plugins-health--warn {
+  color: #b54708;
+  background: color-mix(in srgb, #b54708 16%, transparent);
+}
+
+.plugins-health--crit {
+  color: var(--color-error, #b42318);
+  background: color-mix(in srgb, var(--color-error, #b42318) 16%, transparent);
+}
+
+.plugins-health--nodata {
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-text-secondary, #667085) 12%, transparent);
+}
+
+.plugin-host__stats {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plugin-host__stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.plugin-host__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
 }

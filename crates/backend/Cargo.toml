@@ -38,4 +38,5 @@ regex = "1"
 ammonia = "3"
 maplit = "1"
 cron = "0.12"
-rhai = { version = "1", features = ["sync", "serde"] }
+rquickjs = { version = "0.12", features = ["futures", "parallel"] }
+rquickjs-serde = "0.6"
