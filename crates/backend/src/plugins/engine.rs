@@ -1,197 +1,496 @@
-//! Серверный Rhai-движок плагинов.
+//! Server-side JavaScript runtime for plugins.
 //!
-//! Исполняет `server_script` плагина в песочнице (лимиты операций/глубины/строк).
-//! Скрипту доступны host-функции с **полным доступом** к данным системы (admin-only):
-//! - `host_read(sql)` — выполнить SELECT, вернуть массив строк (карт колонка→значение);
-//! - `host_exec(sql)` — выполнить мутацию (INSERT/UPDATE/DELETE), вернуть число изменённых строк;
-//! - `host_query(view_id, group_by)` — drilldown по DataView, вернуть массив строк;
-//! - `log(msg)` — запись в server-лог.
-//!
-//! В скрипте доступна переменная `ctx` (карта: date_from/date_to/connection_mp_refs/params).
-//! Скрипт возвращает значение, которое сериализуется в JSON и отдаётся клиенту.
-//!
-//! Async-БД вызывается из синхронного Rhai через `Handle::block_on` внутри `spawn_blocking`.
+//! A plugin server script is an ES module. Exported async functions are invoked with
+//! `(args, host)`, where `host.db.query(sql, params)` provides parameterized read access
+//! to the application database and `host.log.*` writes to the invocation log.
 
-use contracts::plugins::{PluginDefinition, PluginRunContext};
-use rhai::{Dynamic, Engine, Scope};
-use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
+use contracts::plugins::{
+    PluginDefinition, PluginError, PluginInvokeRequest, PluginValidateReport,
+};
+use rquickjs::{
+    prelude::{Async, Func},
+    promise::MaybePromise,
+    AsyncContext, AsyncRuntime, CatchResultExt, CaughtError, Function, Module, Object, Value,
+};
+use sea_orm::{DatabaseBackend, FromQueryResult, Statement, Value as DbValue};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-const MAX_OPERATIONS: u64 = 5_000_000;
-const MAX_STRING_SIZE: usize = 2_000_000;
-const MAX_ARRAY_SIZE: usize = 200_000;
 const READ_ROW_LIMIT: usize = 5_000;
+
+/// Жёсткий лимит времени исполнения одного вызова плагина.
+const EXEC_TIMEOUT: Duration = Duration::from_secs(5);
+/// Лимит памяти JS-рантайма (дефолтный аллокатор QuickJS — лимит действует).
+const MEMORY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
+/// Лимит стека JS-рантайма (защита от бесконечной рекурсии).
+const MAX_STACK_SIZE: usize = 1024 * 1024;
+
+/// Построить ошибку плагина из пойманного JS-исключения, сохранив stack.
+fn js_error(stage: &str, caught: &CaughtError) -> PluginError {
+    match caught {
+        CaughtError::Exception(exception) => PluginError::new(
+            stage,
+            exception
+                .message()
+                .unwrap_or_else(|| exception.to_string()),
+        )
+        .with_stack(exception.stack()),
+        other => PluginError::new(stage, other.to_string()),
+    }
+}
+
+/// Если исполнение было прервано по таймауту — переразметить этап ошибки в `timeout`.
+fn relabel_timeout(deadline: Instant, mut error: PluginError) -> PluginError {
+    if Instant::now() >= deadline {
+        error.stage = "timeout".to_string();
+        error.message = format!(
+            "Превышен лимит времени исполнения плагина ({} с)",
+            EXEC_TIMEOUT.as_secs()
+        );
+        error.stack = None;
+    }
+    error
+}
+
+/// Создать JS-рантайм с лимитами времени, памяти и стека.
+///
+/// Возвращает рантайм и дедлайн (для пост-классификации ошибки как `timeout`).
+async fn limited_runtime() -> anyhow::Result<(AsyncRuntime, Instant)> {
+    let runtime = AsyncRuntime::new()
+        .map_err(|error| anyhow::anyhow!("Failed to create JavaScript runtime: {error}"))?;
+    let deadline = Instant::now() + EXEC_TIMEOUT;
+    runtime.set_memory_limit(MEMORY_LIMIT_BYTES).await;
+    runtime.set_max_stack_size(MAX_STACK_SIZE).await;
+    runtime
+        .set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)))
+        .await;
+    Ok((runtime, deadline))
+}
 
 fn db() -> &'static sea_orm::DatabaseConnection {
     crate::shared::data::db::get_connection()
 }
 
-/// Выполнить SELECT и вернуть строки как JSON (имена колонок → значения).
-async fn read_sql(sql: &str) -> Result<Vec<serde_json::Value>, String> {
-    let trimmed = sql.trim();
-    let upper = trimmed.to_uppercase();
-    if !(upper.starts_with("SELECT") || upper.starts_with("WITH")) {
-        return Err("host_read разрешает только SELECT/WITH".to_string());
+fn json_param_to_db(value: serde_json::Value) -> Result<DbValue, String> {
+    match value {
+        serde_json::Value::Null => Ok(DbValue::String(None)),
+        serde_json::Value::Bool(value) => Ok(DbValue::Bool(Some(value))),
+        serde_json::Value::Number(value) => {
+            if let Some(value) = value.as_i64() {
+                Ok(DbValue::BigInt(Some(value)))
+            } else if let Some(value) = value.as_u64() {
+                Ok(DbValue::BigUnsigned(Some(value)))
+            } else if let Some(value) = value.as_f64() {
+                Ok(DbValue::Double(Some(value)))
+            } else {
+                Err("Unsupported numeric SQL parameter".to_string())
+            }
+        }
+        serde_json::Value::String(value) => Ok(DbValue::String(Some(Box::new(value)))),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+            Err("SQL parameters must be scalar JSON values".to_string())
+        }
     }
-    let stmt = Statement::from_string(DatabaseBackend::Sqlite, trimmed.to_string());
+}
+
+async fn read_sql(
+    sql: &str,
+    params: Vec<serde_json::Value>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let trimmed = sql.trim();
+    let upper = trimmed.to_ascii_uppercase();
+    if !(upper.starts_with("SELECT") || upper.starts_with("WITH")) {
+        return Err("host.db.query allows only SELECT/WITH statements".to_string());
+    }
+
+    let values = params
+        .into_iter()
+        .map(json_param_to_db)
+        .collect::<Result<Vec<_>, _>>()?;
+    let stmt = Statement::from_sql_and_values(DatabaseBackend::Sqlite, trimmed, values);
     let rows = serde_json::Value::find_by_statement(stmt)
         .all(db())
         .await
-        .map_err(|e| format!("SQL error: {}", e))?;
+        .map_err(|error| format!("SQL error: {error}"))?;
+
     Ok(rows.into_iter().take(READ_ROW_LIMIT).collect())
 }
 
-/// Выполнить мутацию, вернуть число затронутых строк.
-async fn exec_sql(sql: &str) -> Result<u64, String> {
-    let stmt = Statement::from_string(DatabaseBackend::Sqlite, sql.trim().to_string());
-    let res = db()
-        .execute(stmt)
+async fn host_db_query(sql: String, params_json: String) -> rquickjs::Result<String> {
+    let params: Vec<serde_json::Value> = serde_json::from_str(&params_json).map_err(|error| {
+        rquickjs::Error::new_from_js_message(
+            "JSON",
+            "SQL parameters",
+            format!("Invalid parameter array: {error}"),
+        )
+    })?;
+    let rows = read_sql(&sql, params)
         .await
-        .map_err(|e| format!("SQL error: {}", e))?;
-    Ok(res.rows_affected())
+        .map_err(|error| rquickjs::Error::new_into_js_message("database", "JavaScript", error))?;
+    serde_json::to_string(&rows).map_err(|error| {
+        rquickjs::Error::new_into_js_message("database result", "JSON", error.to_string())
+    })
 }
 
-/// Drilldown по DataView → строки JSON.
-async fn query_view(
-    view_id: &str,
-    group_by: &str,
-    ctx: &PluginRunContext,
-) -> Result<Vec<serde_json::Value>, String> {
-    use crate::data_view::DataViewRegistry;
-    use contracts::shared::data_view::ViewContext;
+const HOST_FACTORY: &str = r#"
+(() => ({
+  db: Object.freeze({
+    query: async (sql, params = []) => {
+      const json = await __hostDbQuery(String(sql), JSON.stringify(params));
+      return JSON.parse(json);
+    },
+    queryResource: async (name, params = []) => {
+      const key = String(name);
+      const sql = __hostSqlResources[key];
+      if (typeof sql !== "string") {
+        throw new Error(`SQL resource '${key}' is not defined`);
+      }
+      const json = await __hostDbQuery(sql, JSON.stringify(params));
+      return JSON.parse(json);
+    }
+  }),
+  log: Object.freeze({
+    info: (...values) => __hostLog(values.map(formatLogValue).join(" ")),
+    warn: (...values) => __hostLog("[warn] " + values.map(formatLogValue).join(" ")),
+    error: (...values) => __hostLog("[error] " + values.map(formatLogValue).join(" "))
+  })
+}))()
 
-    let view_ctx = ViewContext {
-        date_from: ctx.date_from.clone().unwrap_or_default(),
-        date_to: ctx.date_to.clone().unwrap_or_default(),
-        period2_from: None,
-        period2_to: None,
-        connection_mp_refs: ctx.connection_mp_refs.clone(),
-        params: ctx.params.clone(),
-    };
-    let registry = DataViewRegistry::new();
-    let resp = registry
-        .compute_drilldown(view_id, &view_ctx, group_by, &[])
+function formatLogValue(value) {
+  if (typeof value === "string") return value;
+  try { return JSON.stringify(value); } catch (_) { return String(value); }
+}
+"#;
+
+/// Invoke one exported server function and return its JSON result plus captured log lines.
+pub async fn invoke_server_method(
+    def: PluginDefinition,
+    request: PluginInvokeRequest,
+) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
+    let script = def
+        .bundle
+        .server_script
+        .ok_or_else(|| anyhow::anyhow!("Plugin has no server_script"))?;
+    let sql_resources = def.bundle.sql_resources;
+    if request.method.trim().is_empty() {
+        return Err(anyhow::anyhow!("Plugin method must not be empty"));
+    }
+
+    let method = request.method;
+    let args = request.args;
+    let context = request.context;
+    let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let logs_for_runtime = logs.clone();
+
+    let (runtime, deadline) = limited_runtime().await?;
+    let js_context = AsyncContext::full(&runtime)
         .await
-        .map_err(|e| format!("DataView '{}' error: {}", view_id, e))?;
+        .map_err(|error| anyhow::anyhow!("Failed to create JavaScript context: {error}"))?;
 
-    Ok(resp
-        .rows
-        .into_iter()
-        .map(|r| {
-            serde_json::json!({
-                "group_key": r.group_key,
-                "label": r.label,
-                "value1": r.value1,
-                "value2": r.value2,
-                "delta_pct": r.delta_pct,
-            })
+    let result: Result<serde_json::Value, PluginError> = js_context
+        .async_with(async move |ctx| {
+            let globals = ctx.globals();
+            globals
+                .set("__hostDbQuery", Func::from(Async(host_db_query)))
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            let sql_resources_value = rquickjs_serde::to_value(ctx.clone(), sql_resources)
+                .map_err(|error| PluginError::new("module_eval", error.to_string()))?;
+            globals
+                .set("__hostSqlResources", sql_resources_value)
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+
+            let log_fn = move |message: String| {
+                logs_for_runtime.lock().unwrap().push(message);
+            };
+            globals
+                .set("__hostLog", Func::from(log_fn))
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+
+            let declared = Module::declare(ctx.clone(), "plugin-server.js", script)
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            let (module, evaluation) = declared
+                .eval()
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            evaluation
+                .into_future::<()>()
+                .await
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+
+            let function: Function = module
+                .get(method.as_str())
+                .catch(&ctx)
+                .map_err(|_| {
+                    PluginError::new(
+                        "missing_export",
+                        format!("Server method '{method}' is not exported"),
+                    )
+                })?;
+            let args_value = rquickjs_serde::to_value(ctx.clone(), args)
+                .map_err(|error| PluginError::new("invoke", error.to_string()))?;
+            let context_value = rquickjs_serde::to_value(ctx.clone(), context)
+                .map_err(|error| PluginError::new("invoke", error.to_string()))?;
+            let host: Object = ctx
+                .eval(HOST_FACTORY)
+                .catch(&ctx)
+                .map_err(|error| js_error("invoke", &error))?;
+            host.set("context", context_value)
+                .catch(&ctx)
+                .map_err(|error| js_error("invoke", &error))?;
+
+            let promise: MaybePromise = function
+                .call((args_value, host))
+                .catch(&ctx)
+                .map_err(|error| js_error("invoke", &error))?;
+            let value: Value = promise
+                .into_future()
+                .await
+                .catch(&ctx)
+                .map_err(|error| js_error("runtime", &error))?;
+            rquickjs_serde::from_value(value)
+                .map_err(|error| PluginError::new("deserialize", error.to_string()))
         })
-        .collect())
+        .await;
+
+    runtime.idle().await;
+    let captured = logs.lock().unwrap().clone();
+    result
+        .map(|value| (value, captured))
+        .map_err(|error| anyhow::Error::new(relabel_timeout(deadline, error)))
 }
 
-fn json_rows_to_dynamic(rows: Result<Vec<serde_json::Value>, String>) -> Dynamic {
-    match rows {
-        Ok(list) => rhai::serde::to_dynamic(list).unwrap_or(Dynamic::UNIT),
-        Err(e) => {
-            let mut map = rhai::Map::new();
-            map.insert("error".into(), e.into());
-            Dynamic::from_map(map)
+/// Скомпилировать серверный ES-модуль и перечислить экспортированные функции
+/// **без вызова** какой-либо из них. Используется `POST /api/plugin/validate`
+/// для быстрой петли обратной связи (в т.ч. при доработке плагина из чата).
+pub async fn validate_server_script(script: &str) -> PluginValidateReport {
+    let (runtime, deadline) = match limited_runtime().await {
+        Ok(value) => value,
+        Err(error) => {
+            return PluginValidateReport {
+                ok: false,
+                server_exports: vec![],
+                errors: vec![PluginError::new("module_eval", error.to_string())],
+            }
         }
+    };
+    let js_context = match AsyncContext::full(&runtime).await {
+        Ok(value) => value,
+        Err(error) => {
+            return PluginValidateReport {
+                ok: false,
+                server_exports: vec![],
+                errors: vec![PluginError::new("module_eval", error.to_string())],
+            }
+        }
+    };
+
+    let script = script.to_string();
+    let result: Result<Vec<String>, PluginError> = js_context
+        .async_with(async move |ctx| {
+            // Stub-глобалы: модуль компилируется и исполняется на верхнем уровне,
+            // но без доступа к БД и без записи в журнал.
+            let globals = ctx.globals();
+            globals
+                .set("__hostDbQuery", Func::from(|_: String, _: String| "[]".to_string()))
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            globals
+                .set("__hostLog", Func::from(|_: String| {}))
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+
+            let declared = Module::declare(ctx.clone(), "plugin-server.js", script)
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            let (module, evaluation) = declared
+                .eval()
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            evaluation
+                .into_future::<()>()
+                .await
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+
+            let namespace = module
+                .namespace()
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            let mut exports = namespace
+                .keys::<String>()
+                .collect::<rquickjs::Result<Vec<String>>>()
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            exports.sort();
+            Ok(exports)
+        })
+        .await;
+
+    runtime.idle().await;
+    match result {
+        Ok(server_exports) => PluginValidateReport {
+            ok: true,
+            server_exports,
+            errors: vec![],
+        },
+        Err(error) => PluginValidateReport {
+            ok: false,
+            server_exports: vec![],
+            errors: vec![relabel_timeout(deadline, error)],
+        },
     }
 }
 
-/// Запустить `server_script` плагина. Возвращает (JSON-результат, строки вывода `print`).
-pub async fn run_server_script(
-    def: PluginDefinition,
-    ctx: PluginRunContext,
-) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
-    // Инлайн-override (отредактированный код) имеет приоритет над сохранённым.
-    let script = ctx
-        .script_override
-        .clone()
-        .or_else(|| def.bundle.server_script.clone())
-        .ok_or_else(|| anyhow::anyhow!("У плагина нет server_script"))?;
-    let function = ctx.function.clone();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use contracts::plugins::{
+        DataBinding, PluginBundle, PluginManifest, PluginRunContext, PluginRuntime, PluginStatus,
+        ViewSpec,
+    };
 
-    let handle = tokio::runtime::Handle::current();
-
-    let result: Result<(serde_json::Value, Vec<String>), String> =
-        tokio::task::spawn_blocking(move || {
-        let mut engine = Engine::new();
-        engine.set_max_operations(MAX_OPERATIONS);
-        engine.set_max_expr_depths(64, 64);
-        engine.set_max_string_size(MAX_STRING_SIZE);
-        engine.set_max_array_size(MAX_ARRAY_SIZE);
-
-        // Захват вывода print/debug (sync-фича rhai требует Send+Sync → Arc<Mutex>).
-        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        {
-            let logs = logs.clone();
-            engine.on_print(move |s| {
-                logs.lock().unwrap().push(s.to_string());
-            });
-        }
-        {
-            let logs = logs.clone();
-            engine.on_debug(move |s, _src, _pos| {
-                logs.lock().unwrap().push(format!("[debug] {}", s));
-            });
-        }
-
-        // host_read(sql) -> Array
-        {
-            let h = handle.clone();
-            engine.register_fn("host_read", move |sql: &str| -> Dynamic {
-                json_rows_to_dynamic(h.block_on(read_sql(sql)))
-            });
-        }
-        // host_exec(sql) -> i64
-        {
-            let h = handle.clone();
-            engine.register_fn("host_exec", move |sql: &str| -> i64 {
-                h.block_on(exec_sql(sql)).map(|n| n as i64).unwrap_or(-1)
-            });
-        }
-        // host_query(view_id, group_by) -> Array
-        {
-            let h = handle.clone();
-            let ctx_for_query = ctx.clone();
-            engine.register_fn(
-                "host_query",
-                move |view_id: &str, group_by: &str| -> Dynamic {
-                    json_rows_to_dynamic(
-                        h.block_on(query_view(view_id, group_by, &ctx_for_query)),
-                    )
+    fn test_plugin(script: &str) -> PluginDefinition {
+        PluginDefinition {
+            id: "test".to_string(),
+            bundle: PluginBundle {
+                manifest: PluginManifest {
+                    code: "TEST".to_string(),
+                    title: "Test".to_string(),
+                    runtime: PluginRuntime::Server,
+                    api_version: "2".to_string(),
+                    description: None,
+                    capabilities: vec![],
                 },
-            );
+                params: vec![],
+                data: DataBinding::default(),
+                client_script: None,
+                server_script: Some(script.to_string()),
+                view_spec: ViewSpec::default(),
+                styles: None,
+                sql_resources: Default::default(),
+                assets: Default::default(),
+            },
+            status: PluginStatus::Active,
+            is_enabled: true,
+            owner_user_id: None,
+            created_by_agent_id: None,
+            version: 1,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         }
-        // Контекст в скрипте: переменная `ctx`.
-        let mut scope = Scope::new();
-        let ctx_json = serde_json::to_value(&ctx).unwrap_or(serde_json::Value::Null);
-        let ctx_dyn = rhai::serde::to_dynamic(ctx_json).unwrap_or(Dynamic::UNIT);
-        scope.push_dynamic("ctx", ctx_dyn);
+    }
 
-        // Компилируем; либо вызываем именованную функцию, либо исполняем тело.
-        let ast = match engine.compile(&script) {
-            Ok(a) => a,
-            Err(e) => return Err(format!("Ошибка компиляции: {}", e)),
+    #[tokio::test]
+    async fn invokes_async_export_and_captures_log() {
+        let def = test_plugin(
+            r#"
+export async function echo(args, host) {
+  host.log.info("echo", args.value);
+  return { value: args.value, contextValue: host.context.params.test };
+}
+"#,
+        );
+        let request = PluginInvokeRequest {
+            method: "echo".to_string(),
+            args: serde_json::json!({ "value": 42 }),
+            context: PluginRunContext {
+                params: [("test".to_string(), "ok".to_string())]
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
         };
-        let eval_result = match &function {
-            Some(fname) => engine.call_fn::<Dynamic>(&mut scope, &ast, fname.as_str(), ()),
-            None => engine.eval_ast_with_scope::<Dynamic>(&mut scope, &ast),
+
+        let (result, logs) = invoke_server_method(def, request).await.unwrap();
+        assert_eq!(
+            result,
+            serde_json::json!({ "value": 42, "contextValue": "ok" })
+        );
+        assert_eq!(logs, vec!["echo 42"]);
+    }
+
+    #[tokio::test]
+    async fn reports_unknown_sql_resource() {
+        let def = test_plugin(
+            r#"
+export async function run(_args, host) {
+  return await host.db.queryResource("missing");
+}
+"#,
+        );
+        let request = PluginInvokeRequest {
+            method: "run".to_string(),
+            args: serde_json::Value::Null,
+            context: PluginRunContext::default(),
         };
-        let captured = logs.lock().unwrap().clone();
 
-        match eval_result {
-            Ok(out) => {
-                let json: serde_json::Value =
-                    rhai::serde::from_dynamic(&out).unwrap_or(serde_json::Value::Null);
-                Ok((json, captured))
-            }
-            Err(e) => Err(e.to_string()),
-        }
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("Ошибка исполнения (join): {}", e))?;
+        let error = invoke_server_method(def, request).await.unwrap_err();
+        assert!(error.to_string().contains("SQL resource 'missing'"));
+    }
 
-    result.map_err(|e| anyhow::anyhow!("Ошибка скрипта: {}", e))
+    #[tokio::test]
+    async fn times_out_on_infinite_loop() {
+        let def = test_plugin("export function spin() { while (true) {} }");
+        let request = PluginInvokeRequest {
+            method: "spin".to_string(),
+            args: serde_json::Value::Null,
+            context: PluginRunContext::default(),
+        };
+
+        let error = invoke_server_method(def, request).await.unwrap_err();
+        let detail = error
+            .downcast_ref::<PluginError>()
+            .expect("error should carry PluginError");
+        assert_eq!(detail.stage, "timeout");
+    }
+
+    #[tokio::test]
+    async fn invoke_error_has_stage_and_stack() {
+        let def = test_plugin(
+            r#"
+export function boom() {
+  throw new Error("kaboom");
+}
+"#,
+        );
+        let request = PluginInvokeRequest {
+            method: "boom".to_string(),
+            args: serde_json::Value::Null,
+            context: PluginRunContext::default(),
+        };
+
+        let error = invoke_server_method(def, request).await.unwrap_err();
+        let detail = error
+            .downcast_ref::<PluginError>()
+            .expect("error should carry PluginError");
+        assert_eq!(detail.stage, "invoke");
+        assert!(detail.message.contains("kaboom"));
+        assert!(detail.stack.is_some(), "expected a JS stack trace");
+    }
+
+    #[tokio::test]
+    async fn validate_lists_exports() {
+        let report = validate_server_script(
+            r#"
+export async function alpha(args, host) { return 1; }
+export function beta() { return 2; }
+"#,
+        )
+        .await;
+        assert!(report.ok, "errors: {:?}", report.errors);
+        assert_eq!(report.server_exports, vec!["alpha", "beta"]);
+    }
+
+    #[tokio::test]
+    async fn validate_reports_syntax_error() {
+        let report = validate_server_script("export async function broken( {").await;
+        assert!(!report.ok);
+        assert_eq!(report.errors.first().map(|e| e.stage.as_str()), Some("module_eval"));
+    }
 }

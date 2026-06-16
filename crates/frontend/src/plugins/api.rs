@@ -1,7 +1,10 @@
 //! HTTP-клиент подсистемы Plugins. Относительные URL проксируются на бэкенд;
 //! Authorization-заголовок добавляется глобальным fetch-перехватчиком.
 
-use contracts::plugins::{PluginDefinition, PluginListItem, PluginRunContext, PluginUpsert};
+use contracts::plugins::{
+    PluginBundle, PluginDefinition, PluginInvokeRequest, PluginListItem, PluginRunBrief,
+    PluginRunContext, PluginStats, PluginUpsert, PluginValidateReport,
+};
 use contracts::shared::drilldown::DrilldownResponse;
 use gloo_net::http::Request;
 
@@ -116,14 +119,11 @@ pub async fn get_by_id(id: &str) -> Result<PluginDefinition, String> {
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
-/// Исполнить server_script плагина (Rhai на сервере). Возвращает JSON-результат.
-pub async fn run_script(
-    id: &str,
-    ctx: &PluginRunContext,
-) -> Result<serde_json::Value, String> {
-    let url = format!("{}/{}/run", API_BASE, id);
+/// Вызвать экспортированную функцию серверного ES-модуля плагина.
+pub async fn invoke(id: &str, request: &PluginInvokeRequest) -> Result<serde_json::Value, String> {
+    let url = format!("{}/{}/invoke", API_BASE, id);
     let resp = Request::post(&url)
-        .json(ctx)
+        .json(request)
         .map_err(|e| format!("Failed to serialize: {}", e))?
         .send()
         .await
@@ -142,11 +142,100 @@ pub async fn run_script(
         .map_err(|e| format!("Failed to parse response: {}", e))
 }
 
-/// Выполнить декларативную привязку данных плагина (DataView drilldown).
-pub async fn run_data(
+/// Проверить bundle без сохранения (компиляция + экспорты + SQL).
+pub async fn validate(bundle: &PluginBundle) -> Result<PluginValidateReport, String> {
+    let url = format!("{}/validate", API_BASE);
+    let resp = Request::post(&url)
+        .json(bundle)
+        .map_err(|e| format!("Failed to serialize: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+    resp.json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Вызвать серверный метод и вернуть ПОЛНОЕ тело ответа (как при успехе, так и при
+/// ошибке: `{ ok, result, logs }` либо `{ error, error_detail }`). Сетевые ошибки → Err.
+pub async fn invoke_raw(
     id: &str,
-    ctx: &PluginRunContext,
-) -> Result<DrilldownResponse, String> {
+    request: &PluginInvokeRequest,
+) -> Result<serde_json::Value, String> {
+    let url = format!("{}/{}/invoke", API_BASE, id);
+    let resp = Request::post(&url)
+        .json(request)
+        .map_err(|e| format!("Failed to serialize: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Статистика запусков плагина (сводка + последние запуски) за окно `days` дней.
+pub async fn get_stats(id: &str, days: i64) -> Result<PluginStats, String> {
+    let url = format!("{}/{}/stats?days={}", API_BASE, id, days);
+    let resp = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+    resp.json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Краткие сводки запусков по всем плагинам (для реестра).
+pub async fn runs_summary(days: i64) -> Result<Vec<PluginRunBrief>, String> {
+    let url = format!("{}/runs/summary?days={}", API_BASE, days);
+    let resp = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+    if !resp.ok() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+    resp.json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Импортировать плагин из zip-архива (сырые байты тела). Возвращает тело ответа
+/// `{ ok, id, code, validate }`.
+pub async fn import_archive(bytes: Vec<u8>) -> Result<serde_json::Value, String> {
+    let url = format!("{}/import", API_BASE);
+    let array = js_sys::Uint8Array::from(bytes.as_slice());
+    let resp = Request::post(&url)
+        .header("Content-Type", "application/zip")
+        .body(array)
+        .map_err(|e| format!("Failed to build request: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+    let ok = resp.ok();
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    if !ok {
+        let msg = body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Импорт не удался");
+        return Err(msg.to_string());
+    }
+    Ok(body)
+}
+
+/// Выполнить декларативную привязку данных плагина (DataView drilldown).
+pub async fn run_data(id: &str, ctx: &PluginRunContext) -> Result<DrilldownResponse, String> {
     let url = format!("{}/{}/data", API_BASE, id);
     let resp = Request::post(&url)
         .json(ctx)

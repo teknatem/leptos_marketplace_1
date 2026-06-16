@@ -39,6 +39,27 @@
     <!-- SheetJS library for Excel parsing (self-hosted mini build, read-only — see static/) -->
     <script src="static/xlsx.mini.min.js"></script>
     <script>
+        // CodeMirror is loaded only when a plugin source editor is mounted.
+        window.loadPluginCodeEditor = (function() {
+            let loading = null;
+            return function() {
+                if (window.PluginCodeEditor) return Promise.resolve();
+                if (loading) return loading;
+                loading = new Promise(function(resolve, reject) {
+                    const script = document.createElement('script');
+                    script.src = 'static/plugin-editor.js';
+                    script.onload = resolve;
+                    script.onerror = function() {
+                        loading = null;
+                        reject(new Error('Failed to load plugin editor'));
+                    };
+                    document.head.appendChild(script);
+                });
+                return loading;
+            };
+        })();
+    </script>
+    <script>
         // Excel parser helper function
         window.parseExcelFile = function(arrayBuffer) {
             try {

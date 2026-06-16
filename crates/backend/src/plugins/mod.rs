@@ -1,12 +1,10 @@
-//! Подсистема **Plugins** (backend) — надстройка над платформой.
+//! Backend implementation of the plugin subsystem.
 //!
-//! Отдельная верхнеуровневая ветка (сиблинг к `domain/`, `dashboards/` …),
-//! следующая базовым конвенциям агрегатов: `repository` (SeaORM-доступ к таблице
-//! `plugin`), `service` (CRUD + валидация + тестовые данные).
-//!
-//! Фаза 1 — декларативные плагины (без Rhai). Движок (`engine/`), host-API
-//! (`host_api`), `representation` и `change_token` добавляются в следующих фазах.
+//! Exported `server_script` functions run in QuickJS and receive a small host
+//! API for database queries and invocation logging.
 
 pub mod engine;
+pub mod package;
 pub mod repository;
+pub mod runs;
 pub mod service;

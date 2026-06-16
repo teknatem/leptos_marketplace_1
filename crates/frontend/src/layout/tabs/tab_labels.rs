@@ -114,9 +114,9 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "d400_monthly_summary" => "Сводка за месяц",
         "d401_metadata_dashboard" => "Метаданные",
         "d401_wb_finance" => "WB Finance",
-        "d402_wb_order_flow" => "Вся история",
+        "d402_wb_order_flow" => "WB История заказов",
         k if k.starts_with("d402_wb_order_flow_srid_") => "Вся история",
-        "d403_ym_order_flow" => "Вся история",
+        "d403_ym_order_flow" => "YM История заказов",
         k if k.starts_with("d403_ym_order_flow_order_") => "Вся история",
 
         "sys_users" => "Пользователи",

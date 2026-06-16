@@ -2,9 +2,20 @@
   "name": "leptos-marketplace-ui",
   "private": true,
   "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build:plugin-editor": "esbuild crates/frontend/js/plugin-editor.js --bundle --minify --format=iife --target=es2020 --outfile=crates/frontend/static/plugin-editor.js"
+  },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
+    "esbuild": "^0.28.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17"
+  },
+  "dependencies": {
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "codemirror": "^6.0.2"
   }
 }

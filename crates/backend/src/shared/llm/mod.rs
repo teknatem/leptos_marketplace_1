@@ -3,6 +3,7 @@ pub mod kb_admin_tools;
 pub mod knowledge_base;
 pub mod metadata_registry;
 pub mod openai_provider;
+pub mod plugin_tools;
 pub mod tool_executor;
 pub mod types;
 

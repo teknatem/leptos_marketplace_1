@@ -4,10 +4,10 @@
 [database]
 # Use absolute path outside of target/ to prevent data loss on cargo clean
 # Adjust the path if needed for your environment
-path = "E:/dev/rust/2/data/app.db"
+path = "C:/rust/data/app.db"
 
 # Alternative: relative path from project root (not recommended for production)
-# path = "data/app.db"
+# path = "C:/rust/data/app.db"
 
 [scheduled_tasks]
 enabled = false

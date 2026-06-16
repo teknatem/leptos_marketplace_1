@@ -1,14 +1,10 @@
-//! Подсистема **Plugins** (frontend) — надстройка над платформой.
+//! Frontend implementation of the plugin subsystem.
 //!
-//! Отдельная верхнеуровневая ветка. `PluginHost` (движок) монтируется один раз и
-//! по ключу вкладки `plugin__<id>` рендерит страницу плагина; список плагинов в
-//! меню строится динамически из `GET /api/plugin`.
-//!
-//! Фаза 1 — декларативный табличный отчёт на DataView (без Rhai). Клиентский
-//! Rhai-движок и редактор кода добавляются в следующих фазах.
+//! Client JavaScript runs in an isolated iframe and calls exported server
+//! functions through the parent window's `postMessage` bridge.
 
 pub mod api;
-pub mod engine;
+pub mod editor;
 pub mod host;
 pub mod list;
 pub mod menu;

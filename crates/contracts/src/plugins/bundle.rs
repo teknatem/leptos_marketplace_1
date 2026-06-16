@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 /// Где исполняется код плагина (универсальная замена «Report/Processor»).
 ///
-/// - `Client` — Rhai-логика и рендер целиком в браузере (WASM).
-/// - `Server` — Rhai-логика на бэкенде (в т.ч. мутации) через `/api/plugin/:id/run`.
+/// - `Client` — JavaScript-логика и рендер целиком в браузере.
+/// - `Server` — JavaScript-логика на бэкенде через `/api/plugin/:id/invoke`.
 /// - `Hybrid` — есть и `client_script`, и `server_script`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -115,6 +115,11 @@ pub struct ParamSpec {
 // DataBinding — декларативная привязка к DataView
 // ============================================================================
 
+/// ⚠️ RESERVED / не основной путь. Декларативная привязка к DataView (drilldown
+/// через `/api/plugin/:id/data`). Канонический путь вывода плагина —
+/// `client_script` + `server_script` + `sql_resources` (см. [`PluginBundle`]).
+/// Поле сохраняется ради совместимости и редко используется; новый код опирайся
+/// на JS-путь.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DataBinding {
     /// ID DataView (напр. "dv001_revenue") для compute/drilldown.
@@ -131,6 +136,11 @@ pub struct DataBinding {
 // ============================================================================
 // ViewSpec / Widget — описание вывода (совместимо по смыслу с a024 view_spec)
 // ============================================================================
+//
+// ⚠️ RESERVED / не основной путь. `ViewSpec`/`Widget`/`custom_html` сейчас не
+// рендерятся хостом (всюду `ViewSpec::default()`), серверная санитизация HTML не
+// реализована. Канонический путь вывода — `client_script` строит UI сам. Не
+// заполняй эти поля без явной необходимости.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -175,7 +185,8 @@ pub struct PluginManifest {
     pub api_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Декларация capabilities (defense-in-depth; полный доступ — admin-only).
+    /// ⚠️ RESERVED. Декларация capabilities (defense-in-depth) — пока не
+    /// enforced'ится движком; носит справочный характер.
     #[serde(default)]
     pub capabilities: Vec<String>,
 }
@@ -188,27 +199,54 @@ fn default_api_version() -> String {
 // Bundle — самодостаточный артефакт
 // ============================================================================
 
+/// Самодостаточный переносимый артефакт плагина.
+///
+/// **Канонический путь** (используй его): `client_script` (UI в iframe) +
+/// `server_script` (логика в QuickJS) + `sql_resources` (именованные SELECT) +
+/// `styles`. Поля `data` (DataBinding), `view_spec`, `manifest.capabilities` —
+/// RESERVED и в основном потоке не задействованы.
+///
+/// Единица переноса между экземплярами — именно `PluginBundle`; идентичность —
+/// `manifest.code`. Локальное состояние живёт в [`PluginDefinition`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginBundle {
     pub manifest: PluginManifest,
     #[serde(default)]
     pub params: Vec<ParamSpec>,
+    /// ⚠️ RESERVED — см. [`DataBinding`].
     #[serde(default)]
     pub data: DataBinding,
-    /// Rhai-скрипт, исполняемый в браузере (для `Client`/`Hybrid`).
+    /// ES-модуль, исполняемый в изолированном iframe (для `Client`/`Hybrid`).
+    /// Должен экспортировать `mount(root, host)`; `unmount()` опционален.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_script: Option<String>,
-    /// Rhai-скрипт, исполняемый на сервере (для `Server`/`Hybrid`).
+    /// ES-модуль, исполняемый QuickJS на сервере (для `Server`/`Hybrid`).
+    /// Экспортированные функции вызываются через `/api/plugin/:id/invoke`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_script: Option<String>,
+    /// ⚠️ RESERVED — см. [`ViewSpec`] (хостом не рендерится).
     #[serde(default)]
     pub view_spec: ViewSpec,
     /// CSS плагина (scoped под `.plugin-<code>` при инжекте).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub styles: Option<String>,
+    /// Именованные SQL-запросы серверной части.
+    ///
+    /// Скрипт получает к ним доступ через `host.db.queryResource(name, params)`.
+    #[serde(default)]
+    pub sql_resources: HashMap<String, String>,
     /// Вложения (имя → содержимое / data-URL).
     #[serde(default)]
     pub assets: HashMap<String, String>,
+}
+
+/// Является ли SQL читающим (только `SELECT`/`WITH`).
+///
+/// Та же проверка применяется движком в `host.db.query`/`queryResource`; держим её
+/// в контракте, чтобы запрещённый SQL отсекался ещё до сохранения бандла.
+pub fn is_read_only_sql(sql: &str) -> bool {
+    let upper = sql.trim().to_ascii_uppercase();
+    upper.starts_with("SELECT") || upper.starts_with("WITH")
 }
 
 impl PluginBundle {
@@ -220,10 +258,122 @@ impl PluginBundle {
         if self.manifest.title.trim().is_empty() {
             return Err("Название плагина не может быть пустым".into());
         }
+        if self.manifest.runtime.runs_on_client() && self.client_script.is_none() {
+            return Err("Runtime client/hybrid требует client_script".into());
+        }
         if self.manifest.runtime.runs_on_server() && self.server_script.is_none() {
             return Err("Runtime server/hybrid требует server_script".into());
         }
+        if self
+            .sql_resources
+            .iter()
+            .any(|(name, sql)| name.trim().is_empty() || sql.trim().is_empty())
+        {
+            return Err("Имя и текст SQL-ресурса не могут быть пустыми".into());
+        }
+        if let Some((name, _)) = self
+            .sql_resources
+            .iter()
+            .find(|(_, sql)| !is_read_only_sql(sql))
+        {
+            return Err(format!(
+                "SQL-ресурс '{name}' должен начинаться с SELECT или WITH (разрешено только чтение)"
+            ));
+        }
         Ok(())
+    }
+}
+
+// ============================================================================
+// Ошибки исполнения / отчёт валидации (для движка, фронта и LLM-инструментов)
+// ============================================================================
+
+/// Структурированная ошибка исполнения плагина.
+///
+/// `stage` указывает этап сбоя для самоисправления (в т.ч. LLM-агентом):
+/// `module_eval` | `missing_export` | `invoke` | `runtime` | `sql` | `deserialize` | `timeout`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginError {
+    pub stage: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack: Option<String>,
+}
+
+impl PluginError {
+    pub fn new(stage: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            stage: stage.into(),
+            message: message.into(),
+            stack: None,
+        }
+    }
+
+    pub fn with_stack(mut self, stack: Option<String>) -> Self {
+        self.stack = stack.filter(|s| !s.trim().is_empty());
+        self
+    }
+}
+
+impl std::fmt::Display for PluginError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.stage, self.message)
+    }
+}
+
+impl std::error::Error for PluginError {}
+
+/// Результат проверки бандла без сохранения и без вызова функций плагина.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PluginValidateReport {
+    pub ok: bool,
+    /// Имена функций, экспортированных серверным ES-модулем.
+    #[serde(default)]
+    pub server_exports: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<PluginError>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn server_bundle(sql_name: &str, sql: &str) -> PluginBundle {
+        PluginBundle {
+            manifest: PluginManifest {
+                code: "T".into(),
+                title: "T".into(),
+                runtime: PluginRuntime::Server,
+                api_version: "2".into(),
+                description: None,
+                capabilities: vec![],
+            },
+            params: vec![],
+            data: DataBinding::default(),
+            client_script: None,
+            server_script: Some("export function run() {}".into()),
+            view_spec: ViewSpec::default(),
+            styles: None,
+            sql_resources: [(sql_name.to_string(), sql.to_string())]
+                .into_iter()
+                .collect(),
+            assets: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn accepts_read_only_sql() {
+        assert!(server_bundle("ok", "WITH x AS (SELECT 1) SELECT * FROM x")
+            .validate()
+            .is_ok());
+    }
+
+    #[test]
+    fn rejects_non_select_resource() {
+        let error = server_bundle("danger", "DELETE FROM a004_nomenclature")
+            .validate()
+            .unwrap_err();
+        assert!(error.contains("danger"), "got: {error}");
     }
 }
 
@@ -298,14 +448,16 @@ pub struct PluginRunContext {
     /// Прочие параметры формы (key → value).
     #[serde(default)]
     pub params: HashMap<String, String>,
-    /// Имя серверной функции для вызова (call_server("name") с клиента).
-    /// Если задано — движок исполняет server_script (определяет функции) и вызывает её.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub function: Option<String>,
-    /// Инлайн-исходник server_script вместо сохранённого в БД — для запуска
-    /// отредактированного кода без сохранения (быстрая итерация).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub script_override: Option<String>,
+}
+
+/// Вызов экспортированной функции серверного ES-модуля плагина.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginInvokeRequest {
+    pub method: String,
+    #[serde(default)]
+    pub args: serde_json::Value,
+    #[serde(default)]
+    pub context: PluginRunContext,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
