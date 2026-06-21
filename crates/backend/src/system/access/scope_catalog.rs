@@ -604,6 +604,16 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         read_label: "Просмотр дашбордов",
         all_label: "Просмотр дашбордов",
     },
+    ScopeDescriptor {
+        scope_id: "sys_s3_files",
+        scope_type: ScopeType::System,
+        label: "S3 файлы",
+        description: "Управление файлами в Yandex Object Storage",
+        icon: "download-cloud",
+        category: "system",
+        read_label: "Просмотр S3-файлов",
+        all_label: "Загрузка, скачивание и удаление S3-файлов",
+    },
 ];
 
 /// Find a scope descriptor by its scope_id.

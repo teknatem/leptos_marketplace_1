@@ -9,9 +9,10 @@ pub mod bundle;
 pub mod runs;
 
 pub use bundle::{
-    is_read_only_sql, DataBinding, ParamSpec, ParamType, PluginBundle, PluginDefinition,
-    PluginError, PluginInvokeRequest, PluginListItem, PluginManifest, PluginRunContext,
-    PluginRuntime, PluginStatus, PluginUpsert, PluginValidateReport, ViewSpec, Widget, WidgetKind,
+    is_read_only_sql, is_valid_plugin_code, is_valid_resource_name, DataBinding, ParamSpec,
+    ParamType, PluginBundle, PluginDefinition, PluginError, PluginInvokeRequest, PluginListItem,
+    PluginManifest, PluginRunContext, PluginRuntime, PluginStatus, PluginUpsert,
+    PluginValidateReport, ViewSpec, Widget, WidgetKind,
 };
 pub use runs::{
     PluginHealth, PluginRunBrief, PluginRunRecord, PluginRunSummary, PluginStats, StageCount,

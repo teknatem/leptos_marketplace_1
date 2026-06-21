@@ -24,16 +24,60 @@
 Серверный `host`: `host.db.query(sql, params)`, `host.db.queryResource(name, params)`,
 `host.log.info/warn/error(...)`, `host.context` (период/кабинеты).
 
+## Плагин с UI и выводом результатов
+
+Если пользователь просит «плагин с UI» / «показать результат» — делай `runtime: "hybrid"`:
+`server_script` достаёт данные, `client_script` их рисует.
+
+UI-контракт (`client_script`):
+- `export async function mount(root, host) { … }` — единственная точка входа. DOM трогай только
+  **внутри** mount (на верхнем уровне модуля — нельзя, там нет DOM).
+- Данные тяни с сервера: `const rows = await host.invoke("loadData", { … })`.
+- Рендери **готовым CSS-китом iframe** (свой CSS — по минимуму): `.card`, таблица
+  `.table-wrap > table.data-table` (числовые ячейки — класс `.num`), плитки `.stat`/`.stat__label`/
+  `.stat__value`, кнопки `.btn`/`.btn--secondary`/`.btn--ghost`, `.badge`/`.badge--success|--error`,
+  строка статуса `.status`/`.status--ok|--error`. Тема (свет/тёмная) подхватывается автоматически.
+
+Канонический пример (таблица из серверного метода):
+
+```js
+// client_script
+export async function mount(root, host) {
+  root.innerHTML = `<div class="card"><div class="status">Загрузка…</div></div>`;
+  try {
+    const rows = await host.invoke("loadRows", {});
+    root.innerHTML = `
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Артикул</th><th class="num">Маржа</th></tr></thead>
+        <tbody>${rows.map(r =>
+          `<tr><td>${r.article}</td><td class="num">${r.margin}</td></tr>`).join("")}</tbody>
+      </table></div>`;
+  } catch (e) {
+    root.innerHTML = `<div class="status status--error">${e.message}</div>`;
+  }
+}
+```
+
+```js
+// server_script
+export async function loadRows(_args, host) {
+  return await host.db.queryResource("rows", []);
+}
+```
+
 ## Доступные инструменты
 
 - `plugin_list()` — реестр плагинов (id, code, title, runtime, status, enabled).
 - `plugin_get({ id | code })` — полное определение; поле `bundle` — переносимый артефакт,
   отдельно от локального состояния (id/version/status/is_enabled).
-- `plugin_validate({ bundle })` — компиляция серверного модуля + перечень экспортов +
-  проверка SQL, БЕЗ сохранения. Возвращает `{ ok, server_exports, errors:[{stage,message,stack}] }`.
+- `plugin_validate({ bundle })` — компиляция серверного **и клиентского** модулей + перечень
+  экспортов + проверка SQL, БЕЗ сохранения. Возвращает
+  `{ ok, server_exports, client_exports, errors:[{stage,message,stack}] }`. Для client/hybrid
+  проверяется экспорт `mount` (иначе ошибка `client_missing_export`).
 - `plugin_upsert({ bundle, [id], [status], [is_enabled] })` — создать/обновить. Если `id` не
-  задан, идентичность берётся по `manifest.code`. Перед сохранением бандл валидируется —
-  **битый плагин не сохраняется**. Возвращает `{ id, version, validate }`.
+  задан, идентичность берётся по `manifest.code`. Перед сохранением бандл валидируется (server +
+  client) — **битый плагин не сохраняется**. Создаёт в чате карточку-превью (кнопки
+  «Превью»/«Редактор»). Возвращает `{ id, version, validate, artifact_id }`.
 - `plugin_invoke({ id, method, args })` — запустить серверный метод; возвращает
   `{ result, logs }` либо `{ error, error_detail:{ stage, message, stack } }`.
 - Интроспекция БД: `list_entities(category)`, `get_entity_schema(entity_index)`,
@@ -48,11 +92,23 @@
 3. **Собери/обнови bundle**, отправь `plugin_validate`. Чини ошибки по `stage`:
    - `module_eval` — синтаксис/верхний уровень серверного модуля;
    - `missing_export` — метод не экспортирован;
+   - `client_module_eval` — синтаксис/верхний уровень клиентского модуля (часто — обращение к DOM
+     вне `mount`);
+   - `client_missing_export` — нет `export … mount`;
    - `sql` — запрещён не-SELECT или ошибка SQL;
    - `runtime` — исключение при вызове; смотри `message` и `stack`;
    - `timeout` — превышен лимит времени (вероятно бесконечный цикл).
-4. **Сохрани** через `plugin_upsert` (валидация повторяется на сервере).
-5. **Протестируй** `plugin_invoke` и при ошибке вернись к шагу 3.
+4. **Самопроверка (обязательно, до показа пользователю):**
+   - `plugin_validate` → `ok: true`, в `server_exports`/`client_exports` есть нужные функции
+     (для UI — `mount`).
+   - `plugin_invoke` по каждому серверному методу → проверь форму данных, что рендерит UI.
+   - Сверь: все имена из `host.invoke("X")` в `client_script` присутствуют в `server_exports`.
+5. **Сохрани** через `plugin_upsert` (валидация повторяется на сервере, в чат уходит карточка-превью).
+6. **Передай пользователю**: предложи открыть «Превью»/«Редактор» из карточки. Финальную визуальную
+   проверку UI и доработку делаете вместе — правки по фидбэку через `plugin_get`(by code) → правка
+   → шаг 3.
+7. **Активация** (`status: "active"` + `is_enabled: true`) — только по явной просьбе пользователя;
+   по умолчанию плагин остаётся черновиком (`draft`).
 
 ## Правила
 

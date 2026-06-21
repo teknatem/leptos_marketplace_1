@@ -1,22 +1,49 @@
+use crate::domain::a018_llm_chat::ui::pending_first_message_key;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
-use crate::shared::modal_stack::ModalStackService;
 use contracts::domain::a017_llm_agent::aggregate::{AgentType, LlmAgent};
 use contracts::domain::a018_llm_chat::aggregate::LlmChatListItem;
 use leptos::prelude::*;
 use thaw::*;
 
+/// Сформировать заголовок чата из первого вопроса пользователя.
+/// Берёт первую непустую строку и обрезает до разумной длины.
+fn derive_title(question: &str) -> String {
+    let first_line = question
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim();
+    if first_line.is_empty() {
+        return "Новый чат".to_string();
+    }
+    const MAX_CHARS: usize = 70;
+    let chars: Vec<char> = first_line.chars().collect();
+    if chars.len() > MAX_CHARS {
+        let truncated: String = chars.into_iter().take(MAX_CHARS).collect();
+        format!("{}…", truncated.trim_end())
+    } else {
+        first_line.to_string()
+    }
+}
+
 #[component]
 #[allow(non_snake_case)]
 pub fn LlmChatList() -> impl IntoView {
-    let modal_stack =
-        use_context::<ModalStackService>().expect("ModalStackService not found in context");
     let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
 
     let (items, set_items) = signal::<Vec<LlmChatListItem>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
-    let show_create_modal = RwSignal::new(false);
+
+    // Состояние быстрого создания чата (один вопрос — остальное опционально).
+    let question = RwSignal::new(String::new());
+    let (agents, set_agents) = signal::<Vec<LlmAgent>>(Vec::new());
+    let (selected_agent_id, set_selected_agent_id) = signal(String::new());
+    let model = RwSignal::new(String::new());
+    let advanced_open = RwSignal::new(false);
+    let (is_creating, set_is_creating) = signal(false);
+    let (create_error, set_create_error) = signal::<Option<String>>(None);
 
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
@@ -30,9 +57,24 @@ pub fn LlmChatList() -> impl IntoView {
         });
     };
 
-    let handle_create_new = move || {
-        show_create_modal.set(true);
-    };
+    // Загрузить агентов и выбрать агента по умолчанию (основной, иначе первый).
+    Effect::new(move |_| {
+        wasm_bindgen_futures::spawn_local(async move {
+            match fetch_agents().await {
+                Ok(v) => {
+                    if selected_agent_id.get_untracked().is_empty() {
+                        if let Some(default) = v.iter().find(|a| a.is_primary).or_else(|| v.first())
+                        {
+                            set_selected_agent_id.set(default.to_string_id());
+                            model.set(default.model_name.clone());
+                        }
+                    }
+                    set_agents.set(v);
+                }
+                Err(e) => set_create_error.set(Some(e)),
+            }
+        });
+    });
 
     let handle_open_chat = move |id: String, description: String| {
         use crate::layout::tabs::{detail_tab_label, pick_identifier};
@@ -61,6 +103,47 @@ pub fn LlmChatList() -> impl IntoView {
         fetch();
     };
 
+    // Быстрое создание: достаточно вопроса. Агент/модель — опционально (по умолчанию).
+    let handle_create = move || {
+        let q = question.get();
+        if q.trim().is_empty() {
+            set_create_error.set(Some("Введите вопрос или тему для LLM".to_string()));
+            return;
+        }
+        let agent_id = selected_agent_id.get();
+        if agent_id.trim().is_empty() {
+            set_create_error.set(Some(
+                "Нет доступного LLM-агента. Сначала создайте агента.".to_string(),
+            ));
+            return;
+        }
+        let model_name = model.get();
+        let desc = derive_title(&q);
+
+        set_is_creating.set(true);
+        set_create_error.set(None);
+        wasm_bindgen_futures::spawn_local(async move {
+            match create_chat(&desc, &agent_id, &model_name).await {
+                Ok(chat_id) => {
+                    // Передать вопрос странице деталей чата для авто-отправки.
+                    tabs_store.set_form_state(
+                        pending_first_message_key(&chat_id),
+                        serde_json::Value::String(q.clone()),
+                    );
+                    question.set(String::new());
+                    advanced_open.set(false);
+                    set_is_creating.set(false);
+                    handle_open_chat(chat_id, desc.clone());
+                    fetch();
+                }
+                Err(e) => {
+                    set_create_error.set(Some(e));
+                    set_is_creating.set(false);
+                }
+            }
+        });
+    };
+
     fetch();
 
     view! {
@@ -68,9 +151,20 @@ pub fn LlmChatList() -> impl IntoView {
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
                 <h1 style="font-size: 24px; font-weight: bold;">{"LLM Чаты"}</h1>
                 <Space>
-                    <Button appearance=ButtonAppearance::Primary on_click=move |_| handle_create_new()>
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=move |_| advanced_open.update(|v| *v = !*v)
+                    >
+                        {icon("settings")}
+                        {move || if advanced_open.get() { " Скрыть настройки" } else { " Настройки" }}
+                    </Button>
+                    <Button
+                        appearance=ButtonAppearance::Primary
+                        disabled=is_creating
+                        on_click=move |_| handle_create()
+                    >
                         {icon("plus")}
-                        " Новый чат"
+                        {move || if is_creating.get() { " Создание..." } else { " Создать чат" }}
                     </Button>
                     <Button appearance=ButtonAppearance::Secondary on_click=move |_| fetch()>
                         {icon("refresh")}
@@ -78,6 +172,58 @@ pub fn LlmChatList() -> impl IntoView {
                     </Button>
                 </Space>
             </Flex>
+
+            // ── Быстрое создание чата: достаточно вопроса ──────────────────────────
+            <div style="margin-top: 16px; padding: 16px; background: var(--colorNeutralBackground2); border: 1px solid var(--colorNeutralStroke2); border-radius: 12px;">
+                <Textarea
+                    value=question
+                    placeholder="Спросите LLM — например: «Выручка WB за май» или «Собери плагин для отчёта по остаткам». Ctrl+Enter — создать чат."
+                    attr:style="width: 100%; min-height: 64px; max-height: 200px; resize: vertical;"
+                    disabled=is_creating
+                    on:keydown=move |ev: web_sys::KeyboardEvent| {
+                        if ev.key() == "Enter" && ev.ctrl_key() {
+                            ev.prevent_default();
+                            handle_create();
+                        }
+                    }
+                />
+
+                <Show when=move || advanced_open.get()>
+                    <Flex attr:style="margin-top: 12px; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+                        <div style="display: flex; flex-direction: column; gap: 4px; width: 240px;">
+                            <label class="form__label" style="font-size: 12px; margin: 0;">"Агент"</label>
+                            <select
+                                style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%;"
+                                prop:value=move || selected_agent_id.get()
+                                on:change=move |ev| {
+                                    let selected_id = event_target_value(&ev);
+                                    set_selected_agent_id.set(selected_id.clone());
+                                    if let Some(agent) = agents.get().iter().find(|a| a.to_string_id() == selected_id) {
+                                        model.set(agent.model_name.clone());
+                                    }
+                                }
+                            >
+                                <For each=move || agents.get() key=|agent| agent.to_string_id() let:agent>
+                                    {{
+                                        let id = agent.to_string_id();
+                                        let type_label = agent_type_short_label(&agent.agent_type);
+                                        let desc = format!("{} · {}", agent.base.description.clone(), type_label);
+                                        view! { <option value=id>{desc}</option> }
+                                    }}
+                                </For>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 4px; width: 200px;">
+                            <label class="form__label" style="font-size: 12px; margin: 0;">"Модель"</label>
+                            <Input value=model placeholder="gpt-4o" attr:style="width: 100%;" />
+                        </div>
+                    </Flex>
+                </Show>
+
+                {move || create_error.get().map(|e| view! {
+                    <div style="margin-top: 12px; color: var(--color-error);">{e}</div>
+                })}
+            </div>
             <div style="margin-top: 16px;">
                 {move || error.get().map(|e| view! {
                     <div style="padding: 12px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px; display: flex; align-items: center; gap: 8px;">
@@ -170,276 +316,10 @@ pub fn LlmChatList() -> impl IntoView {
                     }).collect_view()}
                 </TableBody>
             </Table>
-
-            <Show when=move || show_create_modal.get()>
-                {move || {
-                    modal_stack.push_with_frame(
-                        Some("max-width: min(600px, 95vw); width: min(600px, 95vw);".to_string()),
-                        Some("llm-chat-create-modal".to_string()),
-                        move |handle| {
-                            view! {
-                                <CreateChatModal
-                                    on_saved=Callback::new({
-                                        let handle = handle.clone();
-                                        move |chat_id: String| {
-                                            handle.close();
-                                            handle_open_chat(chat_id, String::new());
-                                            fetch();
-                                        }
-                                    })
-                                    on_cancel=Callback::new({
-                                        let handle = handle.clone();
-                                        move |_| handle.close()
-                                    })
-                                />
-                            }
-                            .into_any()
-                        },
-                    );
-
-                    show_create_modal.set(false);
-                    view! { <></> }
-                }}
-            </Show>
         </div>
     }
 }
 
-#[component]
-#[allow(non_snake_case)]
-fn CreateChatModal(on_saved: Callback<String>, on_cancel: Callback<()>) -> impl IntoView {
-    let (agents, set_agents) = signal::<Vec<LlmAgent>>(Vec::new());
-    let new_chat_desc = RwSignal::new(String::new());
-    let (selected_agent_id, set_selected_agent_id) = signal(String::new());
-    let new_chat_model = RwSignal::new(String::new());
-    let (available_models, set_available_models) = signal::<Vec<serde_json::Value>>(Vec::new());
-    let is_models_dropdown_open = RwSignal::new(false);
-    let (error, set_error) = signal::<Option<String>>(None);
-    let (is_saving, set_is_saving) = signal(false);
-
-    // Load agents
-    Effect::new(move |_| {
-        wasm_bindgen_futures::spawn_local(async move {
-            match fetch_agents().await {
-                Ok(v) => {
-                    if selected_agent_id.get().is_empty() {
-                        if let Some(first) = v.first() {
-                            set_selected_agent_id.set(first.to_string_id());
-                            new_chat_model.set(first.model_name.clone());
-
-                            if let Some(models_json) = &first.available_models {
-                                if let Ok(models) =
-                                    serde_json::from_str::<Vec<serde_json::Value>>(models_json)
-                                {
-                                    set_available_models.set(models);
-                                }
-                            }
-                        }
-                    }
-                    set_agents.set(v);
-                }
-                Err(e) => set_error.set(Some(e)),
-            }
-        });
-    });
-
-    let handle_save = move || {
-        let desc = new_chat_desc.get();
-        let agent_id = selected_agent_id.get();
-        let model = new_chat_model.get();
-
-        if desc.trim().is_empty() {
-            set_error.set(Some("Введите название чата".to_string()));
-            return;
-        }
-        if agent_id.trim().is_empty() {
-            set_error.set(Some("Выберите агента".to_string()));
-            return;
-        }
-
-        set_is_saving.set(true);
-        wasm_bindgen_futures::spawn_local(async move {
-            match create_chat(&desc, &agent_id, &model).await {
-                Ok(chat_id) => {
-                    on_saved.run(chat_id);
-                }
-                Err(e) => {
-                    set_error.set(Some(e));
-                    set_is_saving.set(false);
-                }
-            }
-        });
-    };
-
-    view! {
-        <div style="padding: 20px;">
-            <h2 style="font-size: 18px; font-weight: bold; margin-bottom: 16px;">
-                "Создать новый чат"
-            </h2>
-
-            {move || error.get().map(|e| view! {
-                <div style="padding: 12px; margin-bottom: 16px; background: var(--color-error-50); border: 1px solid var(--color-error-100); border-radius: 8px;">
-                    <span style="color: var(--color-error);">{e}</span>
-                </div>
-            })}
-
-            <div style="display: flex; flex-direction: column; gap: 16px;">
-                <div>
-                    <label class="form__label">"Название чата"</label>
-                    <Input value=new_chat_desc placeholder="Например: Анализ продаж" />
-                </div>
-
-                <div>
-                    <label class="form__label">"Агент"</label>
-                    <select
-                        style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%;"
-                        prop:value=move || selected_agent_id.get()
-                        on:change=move |ev| {
-                            let selected_id = event_target_value(&ev);
-                            set_selected_agent_id.set(selected_id.clone());
-
-                            if let Some(agent) = agents.get().iter().find(|a| a.to_string_id() == selected_id) {
-                                new_chat_model.set(agent.model_name.clone());
-
-                                if let Some(models_json) = &agent.available_models {
-                                    if let Ok(models) = serde_json::from_str::<Vec<serde_json::Value>>(models_json) {
-                                        set_available_models.set(models);
-                                    } else {
-                                        set_available_models.set(Vec::new());
-                                    }
-                                } else {
-                                    set_available_models.set(Vec::new());
-                                }
-                                is_models_dropdown_open.set(false);
-                            }
-                        }
-                    >
-                        <For each=move || agents.get() key=|agent| agent.to_string_id() let:agent>
-                            {{
-                                let id = agent.to_string_id();
-                                let type_label = agent.agent_type.display_name();
-                                let desc = format!("{} [{}]", agent.base.description.clone(), type_label);
-                                view! { <option value=id>{desc}</option> }
-                            }}
-                        </For>
-                    </select>
-                    {move || {
-                        let sid = selected_agent_id.get();
-                        agents.get().iter().find(|a| a.to_string_id() == sid).map(|agent| {
-                            let at = agent.agent_type.clone();
-                            view! {
-                                <div style="margin-top: 6px;">
-                                    {agent_type_badge(&at)}
-                                </div>
-                            }
-                        })
-                    }}
-                </div>
-
-                <div>
-                    <label class="form__label">"Модель"</label>
-                    <div style="position: relative;">
-                        <Input
-                            value=new_chat_model
-                            placeholder="gpt-4o"
-                            attr:style="width: 100%; padding-right: 0px;"
-                        >
-                            <InputSuffix slot>
-                                <div style="display: flex; gap: 0px;">
-                                    <Show when=move || !available_models.get().is_empty()>
-                                        <Button
-                                            appearance=ButtonAppearance::Subtle
-                                            shape=ButtonShape::Square
-                                            size=ButtonSize::Small
-                                            on_click=move |_| {
-                                                let is_open = is_models_dropdown_open.get();
-                                                is_models_dropdown_open.set(!is_open);
-                                            }
-                                            attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
-                                            attr:title="Выбрать из списка"
-                                        >
-                                            "▼"
-                                        </Button>
-                                    </Show>
-                                </div>
-                            </InputSuffix>
-                        </Input>
-
-                        {move || {
-                            if !is_models_dropdown_open.get() || available_models.get().is_empty() {
-                                return view! { <></> }.into_any();
-                            }
-
-                            let current = new_chat_model.get().to_lowercase();
-                            let opts = available_models
-                                .get()
-                                .into_iter()
-                                .filter_map(|m| {
-                                    m.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
-                                })
-                                .filter(|model_id| {
-                                    if current.trim().is_empty() {
-                                        true
-                                    } else {
-                                        model_id.to_lowercase().contains(&current)
-                                    }
-                                })
-                                .take(50)
-                                .collect::<Vec<_>>();
-
-                            view! {
-                                <div style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); z-index: 1000;">
-                                    {if opts.is_empty() {
-                                        view! {
-                                            <div style="padding: 8px 12px; color: var(--color-text-tertiary);">
-                                                "Нет совпадений"
-                                            </div>
-                                        }
-                                            .into_any()
-                                    } else {
-                                        opts.into_iter()
-                                            .map(|opt| {
-                                                let opt2 = opt.clone();
-                                                view! {
-                                                    <div
-                                                        style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--color-border-light);"
-                                                        on:mousedown=move |_| {
-                                                            new_chat_model.set(opt2.clone());
-                                                            is_models_dropdown_open.set(false);
-                                                        }
-                                                    >
-                                                        {opt}
-                                                    </div>
-                                                }
-                                            })
-                                            .collect_view()
-                                            .into_any()
-                                    }}
-                                </div>
-                            }
-                                .into_any()
-                        }}
-                    </div>
-                </div>
-
-                <Flex justify=FlexJustify::End style="gap: 8px; margin-top: 8px;">
-                    <Button appearance=ButtonAppearance::Secondary on_click=move |_| on_cancel.run(())>
-                        {icon("close")}
-                        " Отмена"
-                    </Button>
-                    <Button
-                        appearance=ButtonAppearance::Primary
-                        disabled=is_saving
-                        on_click=move |_| handle_save()
-                    >
-                        {icon("save")}
-                        {move || if is_saving.get() { " Создание..." } else { " Создать" }}
-                    </Button>
-                </Flex>
-            </div>
-        </div>
-    }
-}
 
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
 
@@ -453,15 +333,31 @@ fn agent_type_color(agent_type: &AgentType) -> &'static str {
     }
 }
 
+/// Короткая подпись типа агента — чтобы бейдж в таблице не обрезался.
+fn agent_type_short_label(agent_type: &AgentType) -> &'static str {
+    match agent_type {
+        AgentType::BusinessAnalyst => "Аналитик",
+        AgentType::SystemAdmin => "Система",
+        AgentType::General => "Общий",
+        AgentType::KbAdmin => "База знаний",
+        AgentType::PluginAdmin => "Плагины",
+    }
+}
+
 fn agent_type_badge(agent_type: &AgentType) -> impl IntoView {
-    let label = agent_type.display_name();
+    let label = agent_type_short_label(agent_type);
     let color = agent_type_color(agent_type);
+    let full = agent_type.display_name();
     view! {
-        <span style=format!(
-            "display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; \
-             font-weight: 600; color: #fff; background: {}; white-space: nowrap;",
-            color
-        )>
+        <span
+            title=full
+            style=format!(
+                "display: inline-block; max-width: 100%; padding: 1px 8px; border-radius: 10px; \
+                 font-size: 11px; font-weight: 600; line-height: 18px; color: #fff; background: {}; \
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle;",
+                color
+            )
+        >
             {label}
         </span>
     }

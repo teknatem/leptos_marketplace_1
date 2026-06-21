@@ -40,6 +40,8 @@ pub enum ArtifactType {
     SqlQuery,
     /// Drilldown-отчёт, созданный LLM. session_id хранится в query_params JSON.
     DrilldownReport,
+    /// Плагин, созданный/обновлённый агентом. plugin_id/code/title — в query_params JSON.
+    Plugin,
 }
 
 impl ArtifactType {
@@ -47,6 +49,7 @@ impl ArtifactType {
         match s {
             "sql_query" => Ok(ArtifactType::SqlQuery),
             "drilldown_report" => Ok(ArtifactType::DrilldownReport),
+            "plugin" => Ok(ArtifactType::Plugin),
             _ => Err(format!("Unknown artifact type: {}", s)),
         }
     }
@@ -55,6 +58,7 @@ impl ArtifactType {
         match self {
             ArtifactType::SqlQuery => "sql_query",
             ArtifactType::DrilldownReport => "drilldown_report",
+            ArtifactType::Plugin => "plugin",
         }
     }
 }

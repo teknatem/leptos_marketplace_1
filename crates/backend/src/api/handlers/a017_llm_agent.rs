@@ -25,7 +25,6 @@ pub struct LlmAgentPaginatedResponse {
     pub total_pages: usize,
 }
 
-/// GET /api/a017-llm-agent
 pub async fn list_all() -> Result<Json<Vec<LlmAgent>>, axum::http::StatusCode> {
     match a017_llm_agent::service::list_all().await {
         Ok(v) => Ok(Json(v)),
@@ -33,7 +32,6 @@ pub async fn list_all() -> Result<Json<Vec<LlmAgent>>, axum::http::StatusCode> {
     }
 }
 
-/// GET /api/a017-llm-agent/list
 pub async fn list_paginated(
     Query(params): Query<LlmAgentListParams>,
 ) -> Result<Json<LlmAgentPaginatedResponse>, axum::http::StatusCode> {
@@ -60,7 +58,6 @@ pub async fn list_paginated(
     }
 }
 
-/// GET /api/a017-llm-agent/:id
 pub async fn get_by_id(Path(id): Path<String>) -> Result<Json<LlmAgent>, axum::http::StatusCode> {
     match a017_llm_agent::service::get_by_id(&id).await {
         Ok(Some(v)) => Ok(Json(v)),
@@ -69,7 +66,6 @@ pub async fn get_by_id(Path(id): Path<String>) -> Result<Json<LlmAgent>, axum::h
     }
 }
 
-/// DELETE /api/a017-llm-agent/:id
 pub async fn delete(Path(id): Path<String>) -> Result<(), axum::http::StatusCode> {
     match a017_llm_agent::service::delete(&id).await {
         Ok(()) => Ok(()),
@@ -77,12 +73,10 @@ pub async fn delete(Path(id): Path<String>) -> Result<(), axum::http::StatusCode
     }
 }
 
-/// POST /api/a017-llm-agent
 pub async fn upsert(
     Json(dto): Json<a017_llm_agent::service::LlmAgentDto>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     if dto.id.is_some() {
-        // Update
         match a017_llm_agent::service::update(dto).await {
             Ok(_) => Ok(Json(json!({"success": true}))),
             Err(e) => {
@@ -91,7 +85,6 @@ pub async fn upsert(
             }
         }
     } else {
-        // Create
         match a017_llm_agent::service::create(dto).await {
             Ok(id) => Ok(Json(json!({"success": true, "id": id.to_string()}))),
             Err(e) => {
@@ -102,7 +95,6 @@ pub async fn upsert(
     }
 }
 
-/// GET /api/a017-llm-agent/primary
 pub async fn get_primary() -> Result<Json<LlmAgent>, axum::http::StatusCode> {
     match a017_llm_agent::service::get_primary().await {
         Ok(Some(v)) => Ok(Json(v)),
@@ -111,100 +103,62 @@ pub async fn get_primary() -> Result<Json<LlmAgent>, axum::http::StatusCode> {
     }
 }
 
-/// POST /api/a017-llm-agent/:id/test
-/// Тест подключения к LLM провайдеру
 pub async fn test_connection(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    use crate::shared::llm::{openai_provider::OpenAiProvider, LlmProvider};
-    use contracts::domain::a017_llm_agent::aggregate::LlmProviderType;
+    use crate::shared::llm::provider_factory;
 
-    // Получаем агента
     let agent = match a017_llm_agent::service::get_by_id(&id).await {
         Ok(Some(v)) => v,
         Ok(None) => return Err(axum::http::StatusCode::NOT_FOUND),
         Err(_) => return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
     };
 
-    // Создаём провайдер и тестируем подключение
-    let result: Result<serde_json::Value, ()> = match agent.provider_type {
-        LlmProviderType::OpenAI => {
-            let provider = OpenAiProvider::new_with_endpoint(
-                agent.api_endpoint.clone(),
-                agent.api_key.clone(),
-                agent.model_name.clone(),
-                agent.temperature,
-                agent.max_tokens,
-            );
-
-            match provider.test_connection().await {
-                Ok(()) => Ok(json!({
-                    "success": true,
-                    "message": format!("Successfully connected to {} ({})", agent.model_name, agent.provider_type.as_str()),
-                    "provider": agent.provider_type.as_str(),
-                    "model": agent.model_name
-                })),
-                Err(e) => Ok(json!({
-                    "success": false,
-                    "message": format!("Connection failed: {}", e),
-                    "provider": agent.provider_type.as_str(),
-                    "model": agent.model_name
-                })),
-            }
-        }
-        _ => Ok(json!({
-            "success": false,
-            "message": format!("Provider {} not yet implemented", agent.provider_type.as_str()),
-            "provider": agent.provider_type.as_str(),
-            "model": agent.model_name
-        })),
-    };
-
-    match result {
-        Ok(response) => Ok(Json(response)),
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-    }
-}
-
-/// POST /api/a017-llm-agent/:id/fetch-models
-/// Загрузка списка доступных моделей из API провайдера
-pub async fn fetch_models(
-    Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    use crate::shared::llm::openai_provider::OpenAiProvider;
-    use contracts::domain::a017_llm_agent::aggregate::LlmProviderType;
-
-    // Получаем агента
-    let agent = match a017_llm_agent::service::get_by_id(&id).await {
-        Ok(Some(v)) => v,
-        Ok(None) => return Err(axum::http::StatusCode::NOT_FOUND),
-        Err(_) => return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-    };
-
-    // Загружаем модели через провайдер
-    let models = match agent.provider_type {
-        LlmProviderType::OpenAI => {
-            let provider = OpenAiProvider::new_with_endpoint(
-                agent.api_endpoint.clone(),
-                agent.api_key.clone(),
-                agent.model_name.clone(),
-                agent.temperature,
-                agent.max_tokens,
-            );
-
-            provider.list_models().await
-        }
-        _ => {
+    let provider = match provider_factory::create_provider(&agent, None) {
+        Ok(provider) => provider,
+        Err(e) => {
             return Ok(Json(json!({
                 "success": false,
-                "message": "Provider not supported"
+                "message": format!("Connection failed: {}", e),
+                "provider": agent.provider_type.as_str(),
+                "model": agent.model_name
             })));
         }
     };
 
-    match models {
+    match provider.test_connection().await {
+        Ok(()) => Ok(Json(json!({
+            "success": true,
+            "message": format!(
+                "Successfully connected to {} ({})",
+                agent.model_name,
+                agent.provider_type.as_str()
+            ),
+            "provider": agent.provider_type.as_str(),
+            "model": agent.model_name
+        }))),
+        Err(e) => Ok(Json(json!({
+            "success": false,
+            "message": format!("Connection failed: {}", e),
+            "provider": agent.provider_type.as_str(),
+            "model": agent.model_name
+        }))),
+    }
+}
+
+pub async fn fetch_models(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    use crate::shared::llm::provider_factory;
+
+    let agent = match a017_llm_agent::service::get_by_id(&id).await {
+        Ok(Some(v)) => v,
+        Ok(None) => return Err(axum::http::StatusCode::NOT_FOUND),
+        Err(_) => return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    match provider_factory::list_models(&agent).await {
         Ok(model_list) => {
-            // Сохраняем в БД
             let json_str = serde_json::to_string(&model_list).unwrap_or_default();
             let mut updated_agent = agent.clone();
             updated_agent.available_models = Some(json_str);

@@ -4,9 +4,11 @@
 //! Агент отображается по имени (agent_name из API), а не по UUID.
 
 use super::artifact_card::ArtifactCard;
-use super::model::{fetch_chat, fetch_messages, poll_until_done, send_message};
+use super::model::{fetch_chat, fetch_chat_context, fetch_messages, poll_until_done, send_message};
 use super::tool_calls_trace::ToolCallsTrace;
 use super::view_model::LlmChatDetailsVm;
+use crate::domain::a018_llm_chat::ui::pending_first_message_key;
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::knowledge_base::links::KbLinkedText;
 use crate::shared::page_frame::PageFrame;
@@ -23,6 +25,9 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     let vm = LlmChatDetailsVm::new();
     let chat_id = id.clone();
     let messages_container_ref = NodeRef::<leptos::html::Div>::new();
+    let context_pkgs = RwSignal::new(
+        Vec::<contracts::domain::a018_llm_chat::context::ContextPackageSummary>::new(),
+    );
 
     // Scroll to bottom helper
     let scroll_to_bottom = {
@@ -35,35 +40,6 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
             }
         }
     };
-
-    // Load chat and messages
-    Effect::new({
-        let chat_id = chat_id.clone();
-        let scroll_to_bottom = scroll_to_bottom.clone();
-        move |_| {
-            let chat_id = chat_id.clone();
-            let scroll_to_bottom = scroll_to_bottom.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                // Load chat
-                match fetch_chat(&chat_id).await {
-                    Ok(chat) => {
-                        vm.chat.set(Some(chat));
-                    }
-                    Err(e) => vm.error.set(Some(e)),
-                }
-
-                // Load messages
-                match fetch_messages(&chat_id).await {
-                    Ok(msgs) => {
-                        vm.messages.set(msgs);
-                        vm.error.set(None);
-                        scroll_to_bottom();
-                    }
-                    Err(e) => vm.error.set(Some(e)),
-                }
-            });
-        }
-    });
 
     // Send message handler - using Callback to avoid move issues
     let handle_send = Callback::new({
@@ -141,6 +117,59 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
         }
     });
 
+    // Load chat and messages; затем, если чат только что создан со страницы списка,
+    // автоматически отправить первый вопрос пользователя (handle_send покажет
+    // оптимистичное сообщение, индикатор набора и подгрузит ответ).
+    Effect::new({
+        let chat_id = chat_id.clone();
+        let scroll_to_bottom = scroll_to_bottom.clone();
+        let ctx = use_context::<AppGlobalContext>();
+        move |_| {
+            let chat_id = chat_id.clone();
+            let scroll_to_bottom = scroll_to_bottom.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                // Load chat
+                match fetch_chat(&chat_id).await {
+                    Ok(chat) => {
+                        vm.chat.set(Some(chat));
+                    }
+                    Err(e) => vm.error.set(Some(e)),
+                }
+
+                // Load messages
+                match fetch_messages(&chat_id).await {
+                    Ok(msgs) => {
+                        vm.messages.set(msgs);
+                        vm.error.set(None);
+                        scroll_to_bottom();
+                    }
+                    Err(e) => vm.error.set(Some(e)),
+                }
+
+                // Load attached page-context packages (for the context chip strip).
+                if let Ok(pkgs) = fetch_chat_context(&chat_id).await {
+                    context_pkgs.set(pkgs);
+                }
+
+                // Авто-отправка первого вопроса для только что созданного чата.
+                if let Some(ctx) = ctx {
+                    let key = pending_first_message_key(&chat_id);
+                    let pending = ctx
+                        .get_form_state(&key)
+                        .and_then(|v| v.as_str().map(|s| s.to_string()));
+                    if let Some(pending) = pending {
+                        // Одноразово: очистить, чтобы не переотправлять при ремоунте вкладки.
+                        ctx.set_form_state(key, serde_json::Value::Null);
+                        if !pending.trim().is_empty() {
+                            vm.new_message.set(pending);
+                            handle_send.run(());
+                        }
+                    }
+                }
+            });
+        }
+    });
+
     view! {
         <PageFrame page_id="a018_llm_chat--detail" category=PAGE_CAT_DETAIL class="a018-llm-chat-detail">
             <div class="page__header">
@@ -198,6 +227,33 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         })
                 }}
 
+                // Context chips: прикреплённые страницы (контекст), переданный из шапки.
+                {move || {
+                    let pkgs = context_pkgs.get();
+                    if pkgs.is_empty() {
+                        return view! { <></> }.into_any();
+                    }
+                    view! {
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                            {pkgs.into_iter().map(|p| {
+                                view! {
+                                    <span
+                                        title=p.page_key.clone()
+                                        style="display: inline-flex; align-items: center; gap: 6px; \
+                                               max-width: 320px; padding: 4px 10px; border-radius: 14px; \
+                                               font-size: 12px; background: var(--colorNeutralBackground3); \
+                                               border: 1px solid var(--colorNeutralStroke2); \
+                                               white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                                    >
+                                        {icon("paperclip")}
+                                        {format!(" {}", p.title)}
+                                    </span>
+                                }
+                            }).collect_view()}
+                        </div>
+                    }.into_any()
+                }}
+
                 // Messages area
                 <div
                 node_ref=messages_container_ref
@@ -217,6 +273,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         let model = msg.model_name.clone();
                         let conf = msg.confidence;
                         let duration = msg.duration_ms;
+                        let intent = msg.intent.clone();
                         let artifact_id = msg.artifact_id.as_ref().map(|id| id.as_string());
                         let tool_trace = msg.tool_trace.clone();
                         view! {
@@ -237,6 +294,19 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                                     <KbLinkedText text=msg.content.clone() />
                                     {move || {
                                         let mut meta_parts = Vec::new();
+                                        if let Some(i) = &intent {
+                                            let label = match i.as_str() {
+                                                "func_help" => "🧭 функционал",
+                                                "data_query" => "📊 данные",
+                                                "bi_authoring" => "📈 BI-сборка",
+                                                "plugin_dev" => "🧩 плагин",
+                                                "sys_admin" => "🛠 система",
+                                                "kb_curation" => "📚 база знаний",
+                                                "meta_smalltalk" => "💬 диалог",
+                                                other => other,
+                                            };
+                                            meta_parts.push(label.to_string());
+                                        }
                                         if let Some(t) = tokens {
                                             meta_parts.push(format!("🎫 {} tokens", t));
                                         }

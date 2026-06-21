@@ -28,7 +28,7 @@
   font-size: 22px;
   font-weight: 700;
   color: var(--color-text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .plugins-page__subtitle {
@@ -71,7 +71,7 @@
 .plugins-btn--primary {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: var(--color-btn-primary-text, #fff);
+  color: var(--btn-primary-text, #fff);
 }
 
 .plugins-btn--primary:hover {
@@ -93,7 +93,7 @@
 
 .plugins-table-wrap {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg, 8px);
   overflow: hidden;
   background: var(--color-surface, var(--color-bg-elevated));
 }
@@ -184,15 +184,15 @@
 }
 
 .plugins-badge--active {
-  color: var(--color-success, #16a34a);
-  background: color-mix(in srgb, var(--color-success, #16a34a) 14%, transparent);
-  border-color: color-mix(in srgb, var(--color-success, #16a34a) 30%, transparent);
+  color: var(--badge-success-text, var(--color-success));
+  background: var(--badge-success-bg, color-mix(in srgb, var(--color-success) 14%, transparent));
+  border-color: var(--badge-success-border, color-mix(in srgb, var(--color-success) 30%, transparent));
 }
 
 .plugins-badge--draft {
-  color: var(--color-warning, #d97706);
-  background: color-mix(in srgb, var(--color-warning, #d97706) 14%, transparent);
-  border-color: color-mix(in srgb, var(--color-warning, #d97706) 30%, transparent);
+  color: var(--badge-warning-text, var(--color-warning));
+  background: var(--badge-warning-bg, color-mix(in srgb, var(--color-warning) 14%, transparent));
+  border-color: var(--badge-warning-border, color-mix(in srgb, var(--color-warning) 30%, transparent));
 }
 
 .plugins-badge--disabled {
@@ -263,7 +263,7 @@
   text-align: center;
   padding: 56px 24px;
   border: 1px dashed var(--color-border);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg, 8px);
   background: var(--color-surface, var(--color-bg-elevated));
 }
 
@@ -288,12 +288,15 @@
 /* ─────────────────────────  Страница плагина (host)  ───────────────────── */
 
 .plugin-host {
-  padding: 20px 24px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .plugin-host__header {
-  margin-bottom: 16px;
-  padding-bottom: 14px;
+  flex: 0 0 auto;
+  padding: 16px 24px 14px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -361,9 +364,9 @@
 
 .plugin-host__input {
   padding: 7px 10px;
-  border: 1px solid var(--color-border-input, var(--color-border));
+  border: 1px solid var(--form-input-border, var(--color-border));
   border-radius: var(--radius-md, 8px);
-  background: var(--color-bg-input, var(--colorNeutralBackground1));
+  background: var(--form-input-bg, var(--color-surface));
   color: var(--color-text-primary);
   font-size: 13px;
 }
@@ -376,19 +379,19 @@
 
 .plugin-host__run {
   appearance: none;
-  border: 1px solid var(--color-primary);
-  background: var(--color-primary);
-  color: var(--color-btn-primary-text, #fff);
+  border: 1px solid transparent;
+  background: var(--btn-primary-bg, var(--color-primary));
+  color: var(--btn-primary-text, #fff);
   padding: 8px 18px;
   border-radius: var(--radius-md, 8px);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-base, 13px);
+  font-weight: var(--font-weight-semibold, 600);
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s, transform 0.05s;
 }
 
 .plugin-host__run:hover {
-  background: var(--color-primary-hover, var(--color-primary-dark, var(--color-primary)));
+  background: var(--btn-primary-hover, var(--color-primary));
 }
 
 .plugin-host__run:active {
@@ -402,7 +405,7 @@
 
 .plugin-host__card {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg, 8px);
   overflow: hidden;
   background: var(--color-surface, var(--color-bg-elevated));
 }
@@ -466,13 +469,13 @@
 /* ── Серверная кнопка ─────────────────────────────────────────────────── */
 
 .plugin-host__run--server {
-  background: var(--color-bg-elevated, var(--color-bg-secondary));
-  color: var(--color-text-primary);
+  background: var(--btn-ghost-bg, transparent);
+  color: var(--btn-ghost-text, var(--color-text-primary));
   border-color: var(--color-border);
 }
 
 .plugin-host__run--server:hover {
-  background: var(--color-hover-bg, var(--color-bg-tertiary));
+  background: var(--btn-ghost-hover, var(--color-hover-bg));
 }
 
 .plugin-host__hidden {
@@ -482,22 +485,157 @@
 /* ── Вкладки / редакторы кода ─────────────────────────────────────────── */
 
 .plugin-host__tabs {
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--color-border);
-  margin-bottom: 16px;
+  padding: 0 24px;
 }
 
 .plugin-host__pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 24px;
+}
+
+/* Вкладка «Приложение»: iframe во всю ширину/высоту, без внутренних отступов. */
+.plugin-host__pane--frame {
+  padding: 0;
+  overflow: hidden;
+}
+
+.plugin-host__frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Тулбар/журналы во фрейме — со своими отступами; iframe — full-bleed. */
+.plugin-host__frame .plugin-host__toolbar {
+  margin: 0;
+  padding: 10px 16px;
+}
+
+.plugin-host__frame .plugin-host__console,
+.plugin-host__frame .plugin-host__events,
+.plugin-host__frame .plugin-host__state {
+  margin: 0 16px 12px;
+}
+
+.plugin-host__events {
+  border-left: 3px solid var(--color-primary, #2563eb);
+}
+
+.plugin-host__logs {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
 .plugin-host__iframe {
+  flex: 1 1 auto;
   width: 100%;
-  min-height: 720px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg, 12px);
-  background: var(--color-bg-secondary, #f6f7fb);
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--color-bg-primary);
+}
+
+/* ── Узкий заголовок страницы просмотра (PluginView) ──────────────────── */
+
+.plugin-host__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plugin-host--view .plugin-host__title {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50vw;
+}
+
+.plugin-host__bar-spacer {
+  flex: 1 1 auto;
+}
+
+.plugin-host__run--active {
+  background: var(--btn-ghost-hover, var(--color-hover-bg));
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ── Сцена: iframe на всё место + выдвижной журнал поверх ─────────────── */
+
+.plugin-host__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.plugin-host__drawer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface, var(--color-bg-secondary));
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+  z-index: 5;
+}
+
+.plugin-host__drawer-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plugin-host__drawer-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__drawer-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.plugin-host__drawer-close:hover {
+  color: var(--color-text-primary);
+}
+
+.plugin-host__drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
 }
 
 .plugin-host__editor-block {
@@ -539,7 +677,7 @@
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md, 8px);
-  background: #282c34;
+  background: var(--color-code-bg, var(--color-bg-secondary));
 }
 
 .plugin-code-editor--large .cm-editor {
@@ -731,11 +869,12 @@
 /* ── Контекст запуска (период) ────────────────────────────────────────── */
 
 .plugin-host__context {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 12px;
+  padding: 12px 24px;
 }
 
 .plugin-host__context-field {
@@ -816,6 +955,44 @@
   resize: vertical;
 }
 
+.plugin-host__runner-args--context {
+  min-height: 132px;
+}
+
+.plugin-host__method-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.plugin-host__method-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface, var(--color-bg-elevated));
+}
+
+.plugin-host__method-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plugin-host__method-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
 .plugin-host__runner-output {
   margin: 0;
   padding: 12px 14px;
@@ -874,18 +1051,18 @@
 }
 
 .plugins-health--ok {
-  color: #067647;
-  background: color-mix(in srgb, #067647 14%, transparent);
+  color: var(--badge-success-text, var(--color-success));
+  background: var(--badge-success-bg, color-mix(in srgb, var(--color-success) 14%, transparent));
 }
 
 .plugins-health--warn {
-  color: #b54708;
-  background: color-mix(in srgb, #b54708 16%, transparent);
+  color: var(--badge-warning-text, var(--color-warning));
+  background: var(--badge-warning-bg, color-mix(in srgb, var(--color-warning) 16%, transparent));
 }
 
 .plugins-health--crit {
-  color: var(--color-error, #b42318);
-  background: color-mix(in srgb, var(--color-error, #b42318) 16%, transparent);
+  color: var(--badge-error-text, var(--color-error));
+  background: var(--badge-error-bg, color-mix(in srgb, var(--color-error) 16%, transparent));
 }
 
 .plugins-health--nodata {

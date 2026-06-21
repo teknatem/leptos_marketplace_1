@@ -252,9 +252,39 @@ pub fn LlmAgentDetails(
 
                     <div class="form__group">
                         <label class="form__label">"Провайдер"</label>
-                        <Input value=vm.provider_type placeholder="OpenAI" />
+                        <select
+                            style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%; background: var(--color-surface); color: var(--color-text);"
+                            prop:value=move || vm.provider_type.get()
+                            on:change=move |ev| {
+                                let provider = event_target_value(&ev);
+                                let previous_endpoint = vm.api_endpoint.get();
+                                let previous_model = vm.model_name.get();
+                                vm.provider_type.set(provider.clone());
+
+                                if provider == "OpenRouter" {
+                                    vm.api_endpoint.set("https://openrouter.ai/api/v1".to_string());
+                                    if previous_model.trim().is_empty() || previous_model == "gpt-4o" {
+                                        vm.model_name.set("openai/gpt-4o".to_string());
+                                    }
+                                } else if provider == "OpenAI" {
+                                    if previous_endpoint.trim().is_empty()
+                                        || previous_endpoint == "https://openrouter.ai/api/v1"
+                                    {
+                                        vm.api_endpoint.set("https://api.openai.com/v1".to_string());
+                                    }
+                                    if previous_model.trim().is_empty() || previous_model == "openai/gpt-4o" {
+                                        vm.model_name.set("gpt-4o".to_string());
+                                    }
+                                }
+                            }
+                        >
+                            <option value="OpenAI">"OpenAI"</option>
+                            <option value="OpenRouter">"OpenRouter"</option>
+                            <option value="Anthropic">"Anthropic"</option>
+                            <option value="Ollama">"Ollama"</option>
+                        </select>
                         <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                            "OpenAI, Anthropic, Ollama"
+                            "OpenAI, OpenRouter, Anthropic, Ollama"
                         </div>
                     </div>
 

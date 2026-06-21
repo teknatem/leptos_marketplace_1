@@ -84,6 +84,7 @@ impl AgentType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum LlmProviderType {
     OpenAI,
+    OpenRouter,
     Anthropic,
     Ollama,
 }
@@ -92,6 +93,7 @@ impl LlmProviderType {
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "OpenAI" => Ok(LlmProviderType::OpenAI),
+            "OpenRouter" => Ok(LlmProviderType::OpenRouter),
             "Anthropic" => Ok(LlmProviderType::Anthropic),
             "Ollama" => Ok(LlmProviderType::Ollama),
             _ => Err(format!("Unknown provider type: {}", s)),
@@ -101,6 +103,7 @@ impl LlmProviderType {
     pub fn as_str(&self) -> &'static str {
         match self {
             LlmProviderType::OpenAI => "OpenAI",
+            LlmProviderType::OpenRouter => "OpenRouter",
             LlmProviderType::Anthropic => "Anthropic",
             LlmProviderType::Ollama => "Ollama",
         }

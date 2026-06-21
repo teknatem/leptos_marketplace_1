@@ -13,6 +13,16 @@
 # случайные SQLite-файлы в разных директориях.
 path = "E:/dev/rust/leptos_marketplace_1/data/app.db"
 
+[s3]
+# Manual S3 file manager. Keep disabled until bucket and credentials are configured.
+enabled = false
+endpoint = "https://storage.yandexcloud.net"
+region = "ru-central1"
+bucket = ""
+access_key_id = ""
+secret_access_key = ""
+max_upload_mb = 512
+
 # ============================================================
 # Альтернативные варианты конфигурации
 # ============================================================
@@ -32,7 +42,8 @@ path = "E:/dev/rust/leptos_marketplace_1/data/app.db"
 # ============================================================
 # Как это работает
 # ============================================================
-# 
+#
+
 # 1. При запуске программа ищет config.toml:
 #    - Сначала рядом с backend.exe (для production)
 #    - Если не найден - использует встроенный default

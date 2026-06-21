@@ -1,268 +1,39 @@
-//! Host for JavaScript plugin micro-applications.
+//! Страница разработки плагина (`plugin_dev__<id>`).
 //!
-//! Client code runs as an ES module in a sandboxed iframe. Its `host.invoke()` calls are
-//! forwarded through `postMessage` to the authenticated Leptos application and then to the
-//! backend `/api/plugin/:id/invoke` endpoint.
+//! Вкладки: «Приложение» (рантайм через [`PluginFrame`]), «Сервер» (runner вызовов),
+//! «Статистика» (запуски/отклонения), «Код» (редакторы + сохранение/экспорт).
+//! Рабочая версия для конечного пользователя — [`crate::plugins::PluginView`].
 
+pub(crate) mod model;
+
+use self::model::{
+    build_current_bundle, commit_selected_sql, default_run_context, first_sql_resource,
+    format_invoke_body, health_badge, parse_context, pretty_context, sorted_resource_names,
+};
+use crate::layout::global_context::AppGlobalContext;
 use crate::plugins::api;
 use crate::plugins::editor::CodeEditor;
 use contracts::plugins::{
-    PluginBundle, PluginDefinition, PluginHealth, PluginInvokeRequest, PluginRunContext,
-    PluginStats, PluginUpsert, PluginValidateReport,
+    PluginDefinition, PluginInvokeRequest, PluginStats, PluginUpsert, PluginValidateReport,
 };
-use js_sys::{Function, Reflect};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde_json::json;
 use std::collections::HashMap;
 use thaw::{Tab, TabList};
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::HtmlIFrameElement;
 
-struct MessageListenerGuard {
-    window: web_sys::Window,
-    js_fn: Function,
-    _handler: Closure<dyn FnMut(web_sys::MessageEvent)>,
-}
-
-impl Drop for MessageListenerGuard {
-    fn drop(&mut self) {
-        let _ = self
-            .window
-            .remove_event_listener_with_callback("message", &self.js_fn);
-    }
-}
-
-const IFRAME_BOOTSTRAP: &str = r#"
-const root = document.getElementById("plugin-root");
-const pending = new Map();
-let currentModule = null;
-let currentUrl = null;
-let hostContext = {};
-
-const host = Object.freeze({
-  get context() { return hostContext; },
-  invoke(method, args = {}) {
-    const requestId = crypto.randomUUID();
-    window.parent.postMessage({
-      type: "plugin_invoke",
-      instanceId: INSTANCE_ID,
-      requestId,
-      method,
-      args
-    }, "*");
-    return new Promise((resolve, reject) => {
-      pending.set(requestId, { resolve, reject });
-    });
-  }
-});
-
-function showError(error) {
-  root.replaceChildren();
-  const box = document.createElement("pre");
-  box.className = "bootstrap-error";
-  box.textContent = error instanceof Error ? `${error.message}\n${error.stack || ""}` : String(error);
-  root.append(box);
-}
-
-window.addEventListener("message", async event => {
-  const message = event.data || {};
-  if (message.instanceId !== INSTANCE_ID) return;
-
-  if (message.type === "plugin_invoke_result") {
-    const waiter = pending.get(message.requestId);
-    if (!waiter) return;
-    pending.delete(message.requestId);
-    if (message.ok) waiter.resolve(message.result);
-    else waiter.reject(new Error(message.error || "Plugin server call failed"));
-    return;
-  }
-
-  if (message.type !== "plugin_init") return;
-  try {
-    if (currentModule && typeof currentModule.unmount === "function") {
-      await currentModule.unmount();
-    }
-    if (currentUrl) URL.revokeObjectURL(currentUrl);
-
-    hostContext = message.context || {};
-    document.getElementById("plugin-styles").textContent = message.styles || "";
-    root.replaceChildren();
-
-    const blob = new Blob([message.clientScript || ""], { type: "text/javascript" });
-    currentUrl = URL.createObjectURL(blob);
-    currentModule = await import(currentUrl);
-    if (typeof currentModule.mount !== "function") {
-      throw new Error("client_script must export async function mount(root, host)");
-    }
-    await currentModule.mount(root, host);
-  } catch (error) {
-    showError(error);
-  }
-});
-
-window.parent.postMessage({
-  type: "plugin_ready",
-  instanceId: INSTANCE_ID
-}, "*");
-"#;
-
-fn build_srcdoc(instance_id: &str) -> String {
-    let instance_json = serde_json::to_string(instance_id).unwrap_or_else(|_| "\"plugin\"".into());
-    format!(
-        r#"<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    html, body, #plugin-root {{ min-height: 100%; }}
-    body {{ margin: 0; }}
-    .bootstrap-error {{
-      margin: 16px;
-      padding: 14px;
-      white-space: pre-wrap;
-      color: #b42318;
-      background: #fef3f2;
-      border: 1px solid #fecdca;
-      border-radius: 8px;
-    }}
-  </style>
-  <style id="plugin-styles"></style>
-</head>
-<body>
-  <div id="plugin-root"></div>
-  <script type="module">
-    const INSTANCE_ID = {instance_json};
-    {IFRAME_BOOTSTRAP}
-  </script>
-</body>
-</html>"#
-    )
-}
-
-fn post_json(iframe: &HtmlIFrameElement, value: serde_json::Value) {
-    let Ok(js_value) = serde_wasm_bindgen::to_value(&value) else {
-        return;
-    };
-    if let Some(window) = iframe.content_window() {
-        let _ = window.post_message(&js_value, "*");
-    }
-}
-
-fn string_property(data: &JsValue, name: &str) -> Option<String> {
-    Reflect::get(data, &JsValue::from_str(name))
-        .ok()
-        .and_then(|value| value.as_string())
-}
-
-fn commit_selected_sql(
-    resources: RwSignal<HashMap<String, String>>,
-    selected_name: RwSignal<Option<String>>,
-    sql_source: RwSignal<String>,
-) {
-    if let Some(name) = selected_name.get_untracked() {
-        resources.update(|items| {
-            items.insert(name, sql_source.get_untracked());
-        });
-    }
-}
-
-fn sorted_resource_names(resources: &HashMap<String, String>) -> Vec<String> {
-    let mut names = resources.keys().cloned().collect::<Vec<_>>();
-    names.sort();
-    names
+#[derive(Clone)]
+struct ServerMethodExample {
+    method: String,
+    args: String,
 }
 
 /// Собрать актуальный bundle из редактируемых сигналов (для save / validate / runner).
-fn build_current_bundle(
-    def: ReadSignal<Option<PluginDefinition>>,
-    client_src: RwSignal<String>,
-    server_src: RwSignal<String>,
-    styles_src: RwSignal<String>,
-    sql_resources: RwSignal<HashMap<String, String>>,
-    selected_sql_name: RwSignal<Option<String>>,
-    sql_src: RwSignal<String>,
-) -> Option<PluginBundle> {
-    commit_selected_sql(sql_resources, selected_sql_name, sql_src);
-    let current = def.get_untracked()?;
-    let mut bundle = current.bundle.clone();
-    bundle.client_script = Some(client_src.get_untracked());
-    bundle.server_script = Some(server_src.get_untracked());
-    bundle.styles = Some(styles_src.get_untracked());
-    bundle.sql_resources = sql_resources.get_untracked();
-    Some(bundle)
-}
-
-/// Контекст запуска (период) — общий для client_script (`host.context`) и серверных вызовов.
-fn run_context(date_from: &str, date_to: &str) -> PluginRunContext {
-    PluginRunContext {
-        date_from: (!date_from.trim().is_empty()).then(|| date_from.trim().to_string()),
-        date_to: (!date_to.trim().is_empty()).then(|| date_to.trim().to_string()),
-        connection_mp_refs: Vec::new(),
-        group_by: None,
-        params: HashMap::new(),
-    }
-}
-
-/// Сериализованный контекст для отправки в iframe (`plugin_init.context`).
-fn run_context_json(date_from: &str, date_to: &str) -> serde_json::Value {
-    serde_json::to_value(run_context(date_from, date_to)).unwrap_or_else(|_| json!({}))
-}
-
 /// Подпись и CSS-модификатор бейджа «здоровья» плагина.
-fn health_badge(health: PluginHealth) -> (&'static str, &'static str) {
-    match health {
-        PluginHealth::Ok => ("OK", "ok"),
-        PluginHealth::Warn => ("Внимание", "warn"),
-        PluginHealth::Crit => ("Критично", "crit"),
-        PluginHealth::NoData => ("Нет данных", "nodata"),
-    }
-}
-
-/// Сформировать человекочитаемый вывод runner'а из полного тела ответа invoke
+/// Человекочитаемый вывод runner'а из полного тела ответа invoke
 /// (результат либо ошибка со stage/stack + журнал host.log.*).
-fn format_invoke_body(body: &serde_json::Value) -> String {
-    let mut out = String::new();
-
-    if body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-        let result = body.get("result").cloned().unwrap_or(serde_json::Value::Null);
-        out.push_str(&format!(
-            "✓ Результат:\n{}",
-            serde_json::to_string_pretty(&result).unwrap_or_default()
-        ));
-    } else {
-        if let Some(err) = body.get("error").and_then(|v| v.as_str()) {
-            out.push_str(&format!("✗ {err}\n"));
-        }
-        if let Some(detail) = body.get("error_detail").filter(|d| !d.is_null()) {
-            let stage = detail.get("stage").and_then(|v| v.as_str()).unwrap_or("");
-            let message = detail.get("message").and_then(|v| v.as_str()).unwrap_or("");
-            out.push_str(&format!("\nstage: {stage}\n{message}\n"));
-            if let Some(stack) = detail.get("stack").and_then(|v| v.as_str()) {
-                out.push_str(&format!("\n{stack}\n"));
-            }
-        }
-        if out.is_empty() {
-            out = "Неизвестная ошибка".to_string();
-        }
-    }
-
-    if let Some(logs) = body.get("logs").and_then(|v| v.as_array()) {
-        let lines: Vec<String> = logs
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .collect();
-        if !lines.is_empty() {
-            out.push_str(&format!("\n— журнал —\n{}", lines.join("\n")));
-        }
-    }
-    out
-}
-
 #[component]
 pub fn PluginHost(plugin_id: String) -> impl IntoView {
+    let ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let (def, set_def) = signal(None::<PluginDefinition>);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
@@ -276,17 +47,10 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
     let (version, set_version) = signal(1i32);
     let (saving, set_saving) = signal(false);
     let (save_msg, set_save_msg) = signal(None::<String>);
-    let (console, set_console) = signal(Vec::<String>::new());
-    let restart_generation = RwSignal::new(0u64);
-    let selected_tab = RwSignal::new("app".to_string());
+    let selected_tab = RwSignal::new("code".to_string());
 
-    // Контекст запуска (период) — отдаётся client_script через host.context и серверным вызовам.
-    let run_date_from = RwSignal::new(String::new());
-    let run_date_to = RwSignal::new(String::new());
-
-    // Серверный runner (вкладка «Сервер»).
-    let runner_method = RwSignal::new(String::new());
-    let runner_args = RwSignal::new("{}".to_string());
+    let runner_context = RwSignal::new("{}".to_string());
+    let server_examples = RwSignal::new(Vec::<ServerMethodExample>::new());
     let runner_output = RwSignal::new(None::<String>);
     let runner_busy = RwSignal::new(false);
     let validate_report = RwSignal::new(None::<PluginValidateReport>);
@@ -296,11 +60,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
     let stats_busy = RwSignal::new(false);
     let stats_error = RwSignal::new(None::<String>);
 
-    // Видимость вкладок зависит от наличия скриптов.
-    let has_client = Signal::derive(move || !client_src.get().trim().is_empty());
     let has_server = Signal::derive(move || !server_src.get().trim().is_empty());
-    let iframe_element = StoredValue::new_local(None::<HtmlIFrameElement>);
-    let instance_base = uuid::Uuid::new_v4().to_string();
 
     {
         let id = plugin_id.clone();
@@ -326,140 +86,21 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     if client_empty && server_present {
                         selected_tab.set("server".to_string());
                     }
+                    runner_context.set(pretty_context(&default_run_context(&plugin.bundle)));
                     let resources = plugin.bundle.sql_resources.clone();
-                    let first_name = sorted_resource_names(&resources).into_iter().next();
-                    let first_sql = first_name
-                        .as_ref()
-                        .and_then(|name| resources.get(name))
-                        .cloned()
-                        .unwrap_or_default();
+                    let (first_name, first_sql) = first_sql_resource(&resources);
                     sql_resources.set(resources);
                     selected_sql_name.set(first_name.clone());
                     sql_name_input.set(first_name.unwrap_or_default());
                     sql_src.set(first_sql);
                     set_version.set(plugin.version);
                     set_def.set(Some(plugin));
-                    restart_generation.update(|value| *value += 1);
                 }
                 Err(message) => set_error.set(Some(message)),
             }
             set_loading.set(false);
         });
     }
-
-    let listener_plugin_id = plugin_id.clone();
-    let listener_instance_base = instance_base.clone();
-    let _message_listener = StoredValue::new_local(web_sys::window().map(|window| {
-        let handler = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
-            let data = event.data();
-            let Some(message_type) = string_property(&data, "type") else {
-                return;
-            };
-            let Some(instance_id) = string_property(&data, "instanceId") else {
-                return;
-            };
-            let expected_instance = format!(
-                "{}-{}",
-                listener_instance_base,
-                restart_generation.get_untracked()
-            );
-            if instance_id != expected_instance {
-                return;
-            }
-
-            if message_type == "plugin_ready" {
-                // Server-only плагин не имеет client_script — iframe оставляем пустым.
-                if client_src.get_untracked().trim().is_empty() {
-                    return;
-                }
-                if let Some(iframe) = iframe_element.get_value() {
-                    post_json(
-                        &iframe,
-                        json!({
-                            "type": "plugin_init",
-                            "instanceId": instance_id,
-                            "clientScript": client_src.get_untracked(),
-                            "styles": styles_src.get_untracked(),
-                            "context": run_context_json(
-                                &run_date_from.get_untracked(),
-                                &run_date_to.get_untracked(),
-                            )
-                        }),
-                    );
-                }
-                return;
-            }
-
-            if message_type != "plugin_invoke" {
-                return;
-            }
-            let Some(request_id) = string_property(&data, "requestId") else {
-                return;
-            };
-            let Some(method) = string_property(&data, "method") else {
-                return;
-            };
-            let args = Reflect::get(&data, &JsValue::from_str("args"))
-                .ok()
-                .and_then(|value| serde_wasm_bindgen::from_value(value).ok())
-                .unwrap_or(serde_json::Value::Null);
-            let id = listener_plugin_id.clone();
-
-            spawn_local(async move {
-                let request = PluginInvokeRequest {
-                    method,
-                    args,
-                    context: run_context(
-                        &run_date_from.get_untracked(),
-                        &run_date_to.get_untracked(),
-                    ),
-                };
-                let response = api::invoke(&id, &request).await;
-                let message = match response {
-                    Ok(body) => {
-                        let logs = body
-                            .get("logs")
-                            .and_then(|value| value.as_array())
-                            .map(|items| {
-                                items
-                                    .iter()
-                                    .filter_map(|value| value.as_str().map(str::to_string))
-                                    .collect::<Vec<_>>()
-                            })
-                            .unwrap_or_default();
-                        if !logs.is_empty() {
-                            set_console.update(|current| current.extend(logs));
-                        }
-                        json!({
-                            "type": "plugin_invoke_result",
-                            "instanceId": instance_id,
-                            "requestId": request_id,
-                            "ok": true,
-                            "result": body.get("result").cloned().unwrap_or(serde_json::Value::Null)
-                        })
-                    }
-                    Err(message) => json!({
-                        "type": "plugin_invoke_result",
-                        "instanceId": instance_id,
-                        "requestId": request_id,
-                        "ok": false,
-                        "error": message
-                    }),
-                };
-                if let Some(iframe) = iframe_element.get_value() {
-                    post_json(&iframe, message);
-                }
-            });
-        }) as Box<dyn FnMut(_)>);
-
-        let js_fn = handler.as_ref().unchecked_ref::<Function>().clone();
-        let _ = window.add_event_listener_with_callback("message", &js_fn);
-        MessageListenerGuard {
-            window,
-            js_fn,
-            _handler: handler,
-        }
-    }));
 
     let save = {
         let id = plugin_id.clone();
@@ -502,18 +143,12 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                             }
                         });
                         set_save_msg.set(Some("Сохранено".to_string()));
-                        restart_generation.update(|value| *value += 1);
                     }
                     Err(message) => set_save_msg.set(Some(format!("Ошибка: {message}"))),
                 }
                 set_saving.set(false);
             });
         }
-    };
-
-    let restart = move |_| {
-        set_console.set(Vec::new());
-        restart_generation.update(|value| *value += 1);
     };
 
     let select_sql = move |event| {
@@ -608,11 +243,23 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
         spawn_local(async move {
             match api::validate(&bundle).await {
                 Ok(report) => {
-                    if runner_method.get_untracked().trim().is_empty() {
-                        if let Some(first) = report.server_exports.first() {
-                            runner_method.set(first.clone());
-                        }
-                    }
+                    let exports = report.server_exports.clone();
+                    server_examples.update(|examples| {
+                        let previous = examples
+                            .iter()
+                            .map(|example| (example.method.clone(), example.args.clone()))
+                            .collect::<HashMap<_, _>>();
+                        *examples = exports
+                            .into_iter()
+                            .map(|method| ServerMethodExample {
+                                args: previous
+                                    .get(&method)
+                                    .cloned()
+                                    .unwrap_or_else(|| "{}".to_string()),
+                                method,
+                            })
+                            .collect();
+                    });
                     validate_report.set(Some(report));
                 }
                 Err(message) => runner_output.set(Some(format!("Ошибка валидации: {message}"))),
@@ -622,23 +269,30 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
     };
 
     let invoke_plugin_id = plugin_id.clone();
-    let run_invoke = move |_| {
-        let method = runner_method.get_untracked().trim().to_string();
+    let run_invoke = Callback::new(move |(method, args_source): (String, String)| {
+        let method = method.trim().to_string();
         if method.is_empty() {
             runner_output.set(Some("Укажите имя метода".to_string()));
             return;
         }
-        let args: serde_json::Value = match serde_json::from_str(&runner_args.get_untracked()) {
+        let args: serde_json::Value = match serde_json::from_str(&args_source) {
             Ok(value) => value,
             Err(error) => {
                 runner_output.set(Some(format!("Некорректный JSON аргументов: {error}")));
                 return;
             }
         };
+        let context = match parse_context(&runner_context.get_untracked()) {
+            Ok(context) => context,
+            Err(message) => {
+                runner_output.set(Some(message));
+                return;
+            }
+        };
         let request = PluginInvokeRequest {
             method,
             args,
-            context: run_context(&run_date_from.get_untracked(), &run_date_to.get_untracked()),
+            context,
         };
         let id = invoke_plugin_id.clone();
         runner_busy.set(true);
@@ -651,7 +305,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
             runner_output.set(Some(text));
             runner_busy.set(false);
         });
-    };
+    });
 
     let export_plugin_id = plugin_id.clone();
     let export_plugin = move |_| {
@@ -667,6 +321,15 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                 set_error.set(Some(format!("Экспорт не удался: {message}")));
             }
         });
+    };
+
+    let view_plugin_id = plugin_id.clone();
+    let open_view = move |_| {
+        let title = def
+            .get_untracked()
+            .map(|p| p.bundle.manifest.title)
+            .unwrap_or_else(|| "Плагин".to_string());
+        ctx.open_tab(&format!("plugin__{}", view_plugin_id), &title);
     };
 
     let stats_plugin_id = plugin_id.clone();
@@ -696,17 +359,8 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
         }
     });
 
-    let iframe_instance_base = instance_base.clone();
-    let iframe_srcdoc = move || {
-        build_srcdoc(&format!(
-            "{}-{}",
-            iframe_instance_base,
-            restart_generation.get()
-        ))
-    };
-
     view! {
-        <div class="plugin-host">
+        <div class="plugin-host plugin-host--dev">
             {move || loading.get().then(|| view! {
                 <div class="plugin-host__state">"Загрузка плагина..."</div>
             })}
@@ -719,12 +373,18 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     <h2 class="plugin-host__title">
                         {move || def.get().map(|plugin| plugin.bundle.manifest.title).unwrap_or_default()}
                     </h2>
-                    <span class="plugin-host__chip">"JavaScript"</span>
+                    <span class="plugin-host__chip">"Разработка"</span>
                     <span class="plugin-host__code">
                         {move || def.get().map(|plugin| plugin.bundle.manifest.code).unwrap_or_default()}
                     </span>
                     <button
                         class="plugin-host__run plugin-host__run--server plugin-host__export"
+                        on:click=open_view
+                    >
+                        "▶ Запустить"
+                    </button>
+                    <button
+                        class="plugin-host__run plugin-host__run--server"
                         on:click=export_plugin
                     >
                         "Экспорт .zip"
@@ -735,105 +395,12 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     .map(|description| view! { <p class="plugin-host__desc">{description}</p> })}
             </div>
 
-            <div class="plugin-host__context">
-                <label class="plugin-host__context-field">
-                    "Период с"
-                    <input
-                        type="date"
-                        prop:value=move || run_date_from.get()
-                        on:input=move |e| run_date_from.set(event_target_value(&e))
-                    />
-                </label>
-                <label class="plugin-host__context-field">
-                    "по"
-                    <input
-                        type="date"
-                        prop:value=move || run_date_to.get()
-                        on:input=move |e| run_date_to.set(event_target_value(&e))
-                    />
-                </label>
-                <span class="plugin-host__context-hint">
-                    "Контекст запуска → host.context и серверные вызовы. Для client_script нажмите «Перезапустить»."
-                </span>
-            </div>
-
             <div class="plugin-host__tabs">
                 <TabList selected_value=selected_tab>
-                    <Tab value="app".to_string()>"Приложение"</Tab>
                     <Tab value="server".to_string()>"Сервер"</Tab>
                     <Tab value="stats".to_string()>"Статистика"</Tab>
                     <Tab value="code".to_string()>"Код"</Tab>
                 </TabList>
-            </div>
-
-            <div
-                class="plugin-host__pane"
-                class:plugin-host__hidden=move || selected_tab.get() != "app"
-            >
-                <div class="plugin-host__toolbar">
-                    <button class="plugin-host__run plugin-host__run--server" on:click=restart>
-                        "Перезапустить"
-                    </button>
-                </div>
-                {move || (!has_client.get()).then(|| view! {
-                    <div class="plugin-host__state">
-                        "У плагина нет client_script — откройте вкладку «Сервер» для вызова методов."
-                    </div>
-                })}
-                <iframe
-                    class="plugin-host__iframe"
-                    sandbox="allow-scripts"
-                    srcdoc=iframe_srcdoc
-                    on:load=move |event| {
-                        let iframe = event
-                            .target()
-                            .and_then(|target| target.dyn_into::<HtmlIFrameElement>().ok());
-                        if let Some(iframe) = iframe {
-                            let instance_id = format!(
-                                "{}-{}",
-                                instance_base,
-                                restart_generation.get_untracked()
-                            );
-                            if !client_src.get_untracked().trim().is_empty() {
-                                post_json(
-                                    &iframe,
-                                    json!({
-                                        "type": "plugin_init",
-                                        "instanceId": instance_id,
-                                        "clientScript": client_src.get_untracked(),
-                                        "styles": styles_src.get_untracked(),
-                                        "context": run_context_json(
-                                            &run_date_from.get_untracked(),
-                                            &run_date_to.get_untracked(),
-                                        )
-                                    }),
-                                );
-                            }
-                            iframe_element.set_value(Some(iframe));
-                        }
-                    }
-                ></iframe>
-                {move || {
-                    let lines = console.get();
-                    (!lines.is_empty()).then(|| view! {
-                        <div class="plugin-host__console">
-                            <div class="plugin-host__console-head">
-                                <span class="plugin-host__console-title">"Серверный журнал"</span>
-                                <button
-                                    class="plugin-host__console-clear"
-                                    on:click=move |_| set_console.set(Vec::new())
-                                >
-                                    "Очистить"
-                                </button>
-                            </div>
-                            <div class="plugin-host__console-body">
-                                {lines.into_iter().map(|line| view! {
-                                    <div class="plugin-host__console-line">{line}</div>
-                                }).collect_view()}
-                            </div>
-                        </div>
-                    })
-                }}
             </div>
 
             <div
@@ -846,7 +413,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                         on:click=run_validate
                         disabled=Signal::derive(move || runner_busy.get())
                     >
-                        "Проверить (компиляция + экспорты)"
+                        "Refresh methods"
                     </button>
                 </div>
                 {move || (!has_server.get()).then(|| view! {
@@ -881,30 +448,73 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                 })}
                 <div class="plugin-host__runner-form">
                     <label class="plugin-host__runner-field">
-                        "Метод (export server_script)"
-                        <input
-                            class="plugin-host__resource-name"
-                            placeholder="напр. loadReport"
-                            prop:value=move || runner_method.get()
-                            on:input=move |e| runner_method.set(event_target_value(&e))
-                        />
-                    </label>
-                    <label class="plugin-host__runner-field">
-                        "Аргументы (JSON)"
+                        "Context JSON"
                         <textarea
-                            class="plugin-host__runner-args"
-                            prop:value=move || runner_args.get()
-                            on:input=move |e| runner_args.set(event_target_value(&e))
+                            class="plugin-host__runner-args plugin-host__runner-args--context"
+                            prop:value=move || runner_context.get()
+                            on:input=move |e| runner_context.set(event_target_value(&e))
                         ></textarea>
                     </label>
-                    <button
-                        class="plugin-host__run"
-                        on:click=run_invoke
-                        disabled=Signal::derive(move || runner_busy.get())
-                    >
-                        {move || if runner_busy.get() { "Выполнение..." } else { "Вызвать" }}
-                    </button>
                 </div>
+                {move || {
+                    let examples = server_examples.get();
+                    if examples.is_empty() {
+                        view! {
+                            <div class="plugin-host__state">
+                                "Click refresh methods to build editable server call examples."
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="plugin-host__method-list">
+                                {examples.into_iter().map(|example| {
+                                    let method = example.method.clone();
+                                    let method_for_run = method.clone();
+                                    view! {
+                                        <div class="plugin-host__method-card">
+                                            <div class="plugin-host__method-head">
+                                                <span class="plugin-host__method-name">{method.clone()}</span>
+                                                <button
+                                                    class="plugin-host__run"
+                                                    on:click=move |_| {
+                                                        let args = server_examples
+                                                            .with_untracked(|items| {
+                                                                items
+                                                                    .iter()
+                                                                    .find(|item| item.method == method_for_run)
+                                                                    .map(|item| item.args.clone())
+                                                                    .unwrap_or_else(|| "{}".to_string())
+                                                            });
+                                                        run_invoke.run((method_for_run.clone(), args));
+                                                    }
+                                                    disabled=Signal::derive(move || runner_busy.get())
+                                                >
+                                                    {move || if runner_busy.get() { "Running..." } else { "Run" }}
+                                                </button>
+                                            </div>
+                                            <label class="plugin-host__runner-field">
+                                                "Args JSON"
+                                                <textarea
+                                                    class="plugin-host__runner-args"
+                                                    prop:value=example.args.clone()
+                                                    on:input=move |event| {
+                                                        let value = event_target_value(&event);
+                                                        let method = method.clone();
+                                                        server_examples.update(|items| {
+                                                            if let Some(item) = items.iter_mut().find(|item| item.method == method) {
+                                                                item.args = value;
+                                                            }
+                                                        });
+                                                    }
+                                                ></textarea>
+                                            </label>
+                                        </div>
+                                    }
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }
+                }}
                 {move || runner_output.get().map(|text| view! {
                     <pre class="plugin-host__runner-output">{text}</pre>
                 })}

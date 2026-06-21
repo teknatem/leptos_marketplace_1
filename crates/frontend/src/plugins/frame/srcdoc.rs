@@ -1,0 +1,148 @@
+const IFRAME_BOOTSTRAP: &str = r#"
+const root = document.getElementById("plugin-root");
+const pending = new Map();
+let currentModule = null;
+let currentUrl = null;
+let hostContext = {};
+
+function emit(level, message) {
+  window.parent.postMessage({ type: "plugin_event", instanceId: INSTANCE_ID, secret: BRIDGE_SECRET, level, message }, "*");
+}
+
+const host = Object.freeze({
+  get context() { return hostContext; },
+  invoke(method, args = {}) {
+    const requestId = crypto.randomUUID();
+    window.parent.postMessage({
+      type: "plugin_invoke",
+      instanceId: INSTANCE_ID,
+      secret: BRIDGE_SECRET,
+      requestId,
+      method,
+      args
+    }, "*");
+    return new Promise((resolve, reject) => {
+      pending.set(requestId, { resolve, reject });
+    });
+  }
+});
+
+function showError(error) {
+  root.replaceChildren();
+  const box = document.createElement("pre");
+  box.className = "bootstrap-error";
+  box.textContent = error instanceof Error ? `${error.message}\n${error.stack || ""}` : String(error);
+  root.append(box);
+}
+
+const THEME_FILES = { dark: 1, light: 1, forest: 1 };
+function applyTheme(message) {
+  const themeName = THEME_FILES[message.themeName] ? message.themeName : "dark";
+  document.documentElement.dataset.theme = themeName;
+  document.body.dataset.theme = themeName;
+  // Тема приложения и плагина — один источник: подменяем href темы, как делает index.html.
+  const link = document.getElementById("plugin-theme");
+  if (link) {
+    const href = "/static/themes/" + themeName + "/" + themeName + ".css";
+    if (link.getAttribute("href") !== href) link.setAttribute("href", href);
+  }
+}
+
+window.addEventListener("message", async event => {
+  const message = event.data || {};
+  if (message.instanceId !== INSTANCE_ID || message.secret !== BRIDGE_SECRET) return;
+
+  if (message.type === "plugin_invoke_result") {
+    const waiter = pending.get(message.requestId);
+    if (!waiter) return;
+    pending.delete(message.requestId);
+    if (message.ok) waiter.resolve(message.result);
+    else waiter.reject(new Error(message.error || "Plugin server call failed"));
+    return;
+  }
+
+  if (message.type === "plugin_theme") {
+    applyTheme(message);
+    return;
+  }
+
+  if (message.type !== "plugin_init") return;
+  try {
+    if (currentModule && typeof currentModule.unmount === "function") {
+      await currentModule.unmount();
+    }
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+
+    hostContext = message.context || {};
+    applyTheme(message);
+    document.getElementById("plugin-styles").textContent = message.styles || "";
+    root.replaceChildren();
+    emit("info", "init received, mounting");
+
+    const blob = new Blob([message.clientScript || ""], { type: "text/javascript" });
+    currentUrl = URL.createObjectURL(blob);
+    currentModule = await import(currentUrl);
+    if (typeof currentModule.mount !== "function") {
+      throw new Error("client_script must export async function mount(root, host)");
+    }
+    await currentModule.mount(root, host);
+    emit("info", "mount() complete");
+  } catch (error) {
+    showError(error);
+    emit("error", error instanceof Error ? error.message : String(error));
+  }
+});
+
+window.parent.postMessage({ type: "plugin_ready", instanceId: INSTANCE_ID, secret: BRIDGE_SECRET }, "*");
+"#;
+
+pub(super) fn build_srcdoc(instance_id: &str, bridge_secret: &str, theme_name: &str) -> String {
+    let instance_json = serde_json::to_string(instance_id).unwrap_or_else(|_| "\"plugin\"".into());
+    let secret_json = serde_json::to_string(bridge_secret).unwrap_or_else(|_| "\"secret\"".into());
+    let theme_attr = match theme_name {
+        "light" => "light",
+        "forest" => "forest",
+        _ => "dark",
+    };
+    // Ранний фон до загрузки <link> темы — чтобы не было белой вспышки в тёмной теме.
+    let bg_fallback = if theme_attr == "light" {
+        "#f9fafb"
+    } else {
+        "#292929"
+    };
+    format!(
+        r#"<!doctype html>
+<html data-theme="{theme_attr}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body, #plugin-root {{ min-height: 100%; }}
+    html, body {{ margin: 0; background: {bg_fallback}; }}
+    .bootstrap-error {{
+      margin: 16px;
+      padding: 14px;
+      white-space: pre-wrap;
+      color: var(--badge-error-text, var(--color-error));
+      background: var(--badge-error-bg, color-mix(in srgb, var(--color-error) 16%, transparent));
+      border: 1px solid var(--badge-error-border, color-mix(in srgb, var(--color-error) 30%, transparent));
+      border-radius: 8px;
+    }}
+  </style>
+  <!-- Единый источник стилей: те же токены/темы, что и у приложения, + снапшот компонентов. -->
+  <link rel="stylesheet" href="/static/themes/core/variables.css">
+  <link id="plugin-theme" rel="stylesheet" href="/static/themes/{theme_attr}/{theme_attr}.css">
+  <link rel="stylesheet" href="/static/plugin-sdk.css">
+  <style id="plugin-styles"></style>
+</head>
+<body data-theme="{theme_attr}">
+  <div id="plugin-root"></div>
+  <script type="module">
+    const INSTANCE_ID = {instance_json};
+    const BRIDGE_SECRET = {secret_json};
+    {IFRAME_BOOTSTRAP}
+  </script>
+</body>
+</html>"#
+    )
+}

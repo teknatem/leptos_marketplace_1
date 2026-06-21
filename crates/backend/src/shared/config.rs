@@ -56,6 +56,74 @@ pub struct Config {
     pub llm: LlmConfig,
     #[serde(default)]
     pub external_api: ExternalApiConfig,
+    #[serde(default)]
+    pub s3: S3Config,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct S3Config {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_s3_endpoint")]
+    pub endpoint: String,
+    #[serde(default = "default_s3_region")]
+    pub region: String,
+    #[serde(default)]
+    pub bucket: String,
+    #[serde(default)]
+    pub access_key_id: String,
+    #[serde(default)]
+    pub secret_access_key: String,
+    #[serde(default = "default_s3_max_upload_mb")]
+    pub max_upload_mb: u64,
+}
+
+impl Default for S3Config {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: default_s3_endpoint(),
+            region: default_s3_region(),
+            bucket: String::new(),
+            access_key_id: String::new(),
+            secret_access_key: String::new(),
+            max_upload_mb: default_s3_max_upload_mb(),
+        }
+    }
+}
+
+impl S3Config {
+    pub fn validate_ready(&self) -> anyhow::Result<()> {
+        if !self.enabled {
+            return Err(anyhow::anyhow!("S3 storage is disabled in config.toml"));
+        }
+        if self.bucket.trim().is_empty() {
+            return Err(anyhow::anyhow!("[s3].bucket must be set"));
+        }
+        if self.access_key_id.trim().is_empty() {
+            return Err(anyhow::anyhow!("[s3].access_key_id must be set"));
+        }
+        if self.secret_access_key.trim().is_empty() {
+            return Err(anyhow::anyhow!("[s3].secret_access_key must be set"));
+        }
+        Ok(())
+    }
+
+    pub fn max_upload_bytes(&self) -> u64 {
+        self.max_upload_mb.saturating_mul(1024).saturating_mul(1024)
+    }
+}
+
+fn default_s3_endpoint() -> String {
+    "https://storage.yandexcloud.net".to_string()
+}
+
+fn default_s3_region() -> String {
+    "ru-central1".to_string()
+}
+
+fn default_s3_max_upload_mb() -> u64 {
+    512
 }
 
 #[derive(Debug, Deserialize, Clone)]

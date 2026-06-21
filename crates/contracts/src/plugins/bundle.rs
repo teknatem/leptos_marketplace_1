@@ -4,6 +4,18 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub const MAX_PLUGIN_CODE_LEN: usize = 96;
+pub const MAX_RESOURCE_NAME_LEN: usize = 80;
+pub const MAX_SCRIPT_BYTES: usize = 256 * 1024;
+pub const MAX_STYLES_BYTES: usize = 128 * 1024;
+pub const MAX_SQL_RESOURCES: usize = 64;
+pub const MAX_SQL_RESOURCE_BYTES: usize = 128 * 1024;
+pub const MAX_ASSETS: usize = 64;
+pub const MAX_ASSET_BYTES: usize = 512 * 1024;
+pub const MAX_TOTAL_ASSET_BYTES: usize = 2 * 1024 * 1024;
+
+const SUPPORTED_API_VERSIONS: &[&str] = &["1", "2"];
+
 // ============================================================================
 // Runtime — место исполнения кода плагина
 // ============================================================================
@@ -245,24 +257,134 @@ pub struct PluginBundle {
 /// Та же проверка применяется движком в `host.db.query`/`queryResource`; держим её
 /// в контракте, чтобы запрещённый SQL отсекался ещё до сохранения бандла.
 pub fn is_read_only_sql(sql: &str) -> bool {
-    let upper = sql.trim().to_ascii_uppercase();
-    upper.starts_with("SELECT") || upper.starts_with("WITH")
+    let trimmed = sql.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with("--")
+        || trimmed.starts_with("/*")
+        || trimmed.contains("--")
+        || trimmed.contains("/*")
+        || trimmed.contains("*/")
+    {
+        return false;
+    }
+
+    let statement = trimmed.strip_suffix(';').unwrap_or(trimmed).trim_end();
+    if statement.contains(';') {
+        return false;
+    }
+
+    let mut tokens = sql_tokens(statement);
+    let Some(first) = tokens.next() else {
+        return false;
+    };
+    if first != "SELECT" && first != "WITH" {
+        return false;
+    }
+
+    const FORBIDDEN: &[&str] = &[
+        "PRAGMA", "ATTACH", "DETACH", "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE",
+        "REPLACE", "VACUUM", "REINDEX",
+    ];
+    !std::iter::once(first)
+        .chain(tokens)
+        .any(|token| FORBIDDEN.contains(&token.as_str()))
+}
+
+pub fn is_valid_plugin_code(code: &str) -> bool {
+    let code = code.trim();
+    !code.is_empty()
+        && code.len() <= MAX_PLUGIN_CODE_LEN
+        && code
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+pub fn is_valid_resource_name(name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty()
+        && name.len() <= MAX_RESOURCE_NAME_LEN
+        && !name.contains("..")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+fn sql_tokens(sql: &str) -> impl Iterator<Item = String> + '_ {
+    sql.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_ascii_uppercase())
+}
+
+fn text_len(value: Option<&String>) -> usize {
+    value.map(|s| s.as_bytes().len()).unwrap_or(0)
+}
+
+fn has_non_empty_text(value: Option<&String>) -> bool {
+    value.map(|s| !s.trim().is_empty()).unwrap_or(false)
 }
 
 impl PluginBundle {
     /// Базовая валидация бандла (без сохранения).
     pub fn validate(&self) -> Result<(), String> {
-        if self.manifest.code.trim().is_empty() {
+        if !is_valid_plugin_code(&self.manifest.code) {
             return Err("Код плагина не может быть пустым".into());
         }
         if self.manifest.title.trim().is_empty() {
             return Err("Название плагина не может быть пустым".into());
         }
-        if self.manifest.runtime.runs_on_client() && self.client_script.is_none() {
+        if !SUPPORTED_API_VERSIONS.contains(&self.manifest.api_version.trim()) {
+            return Err(format!(
+                "Unsupported plugin api_version '{}'",
+                self.manifest.api_version
+            ));
+        }
+        if self.manifest.runtime.runs_on_client()
+            && !has_non_empty_text(self.client_script.as_ref())
+        {
             return Err("Runtime client/hybrid требует client_script".into());
         }
-        if self.manifest.runtime.runs_on_server() && self.server_script.is_none() {
+        if self.manifest.runtime.runs_on_server()
+            && !has_non_empty_text(self.server_script.as_ref())
+        {
             return Err("Runtime server/hybrid требует server_script".into());
+        }
+        if text_len(self.client_script.as_ref()) > MAX_SCRIPT_BYTES
+            || text_len(self.server_script.as_ref()) > MAX_SCRIPT_BYTES
+        {
+            return Err("Plugin script is too large".into());
+        }
+        if text_len(self.styles.as_ref()) > MAX_STYLES_BYTES {
+            return Err("Plugin styles are too large".into());
+        }
+        if self.sql_resources.len() > MAX_SQL_RESOURCES {
+            return Err("Plugin has too many SQL resources".into());
+        }
+        if self.assets.len() > MAX_ASSETS {
+            return Err("Plugin has too many assets".into());
+        }
+        let total_asset_bytes: usize = self
+            .assets
+            .values()
+            .map(|asset| asset.as_bytes().len())
+            .sum();
+        if total_asset_bytes > MAX_TOTAL_ASSET_BYTES {
+            return Err("Plugin assets are too large".into());
+        }
+        for (name, sql) in &self.sql_resources {
+            if !is_valid_resource_name(name) || sql.trim().is_empty() {
+                return Err("SQL resource names and text must be non-empty and safe".into());
+            }
+            if sql.as_bytes().len() > MAX_SQL_RESOURCE_BYTES {
+                return Err(format!("SQL resource '{name}' is too large"));
+            }
+        }
+        for (name, asset) in &self.assets {
+            if !is_valid_resource_name(name) {
+                return Err("Plugin asset names must be safe".into());
+            }
+            if asset.as_bytes().len() > MAX_ASSET_BYTES {
+                return Err(format!("Plugin asset '{name}' is too large"));
+            }
         }
         if self
             .sql_resources
@@ -330,6 +452,9 @@ pub struct PluginValidateReport {
     /// Имена функций, экспортированных серверным ES-модулем.
     #[serde(default)]
     pub server_exports: Vec<String>,
+    /// Имена, экспортированные клиентским ES-модулем (ожидается `mount`).
+    #[serde(default)]
+    pub client_exports: Vec<String>,
     #[serde(default)]
     pub errors: Vec<PluginError>,
 }
@@ -366,6 +491,7 @@ mod tests {
         assert!(server_bundle("ok", "WITH x AS (SELECT 1) SELECT * FROM x")
             .validate()
             .is_ok());
+        assert!(server_bundle("ok", "SELECT 1;").validate().is_ok());
     }
 
     #[test]
@@ -374,6 +500,40 @@ mod tests {
             .validate()
             .unwrap_err();
         assert!(error.contains("danger"), "got: {error}");
+    }
+
+    #[test]
+    fn rejects_write_tokens_inside_cte() {
+        assert!(!is_read_only_sql(
+            "WITH gone AS (DELETE FROM a004_nomenclature RETURNING id) SELECT * FROM gone"
+        ));
+    }
+
+    #[test]
+    fn rejects_multi_statement_and_sqlite_meta_commands() {
+        assert!(!is_read_only_sql("SELECT 1; SELECT 2"));
+        assert!(!is_read_only_sql("-- comment\nSELECT 1"));
+        assert!(!is_read_only_sql("PRAGMA table_info(plugin)"));
+        assert!(!is_read_only_sql("ATTACH DATABASE 'x' AS x"));
+    }
+
+    #[test]
+    fn rejects_empty_runtime_scripts() {
+        let mut bundle = server_bundle("ok", "SELECT 1");
+        bundle.server_script = Some("  ".into());
+        let error = bundle.validate().unwrap_err();
+        assert!(error.contains("server_script"), "got: {error}");
+    }
+
+    #[test]
+    fn rejects_unsafe_names_and_codes() {
+        let bundle = server_bundle("../bad", "SELECT 1");
+        let error = bundle.validate().unwrap_err();
+        assert!(error.contains("SQL resource"), "got: {error}");
+
+        let mut bundle = server_bundle("ok", "SELECT 1");
+        bundle.manifest.code = "bad code".into();
+        assert!(bundle.validate().is_err());
     }
 }
 

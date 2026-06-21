@@ -1,13 +1,13 @@
 use super::repository;
 use crate::domain::a017_llm_agent::repository as agent_repository;
-use crate::shared::llm::openai_provider::OpenAiProvider;
-use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole, LlmProvider};
-use crate::shared::llm::{execute_tool_call, tool_definitions_for};
+use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole};
+use crate::shared::llm::{create_provider, execute_tool_call, tool_definitions_for};
 use axum::extract::Multipart;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
     ChatRole, LlmChat, LlmChatAttachment, LlmChatDetail, LlmChatId, LlmChatListItem, LlmChatMessage,
 };
+use contracts::domain::a018_llm_chat::context::ContextPackageSummary;
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
@@ -342,6 +342,22 @@ pub async fn send_message(
     );
     llm_messages.push(ChatMessage::system(system_with_date));
 
+    // Контекст прикреплённых страниц (если есть) — отдельным system-сообщением.
+    // Привязка хранится в БД (context_package.chat_id), поэтому доступна каждый вызов.
+    if let Ok(ctxs) = repository::list_context_by_chat(&db, chat_id).await {
+        if !ctxs.is_empty() {
+            let mut block = String::from(
+                "Контекст прикреплённых страниц приложения (данные текущих объектов/отчётов). \
+                 Опирайся на него при ответе:\n\n",
+            );
+            for c in &ctxs {
+                block.push_str(&c.rendered_text);
+                block.push_str("\n---\n\n");
+            }
+            llm_messages.push(ChatMessage::system(block));
+        }
+    }
+
     // Добавить историю
     for msg in &history {
         let chat_msg = ChatMessage {
@@ -358,12 +374,25 @@ pub async fn send_message(
     }
 
     // 8. Создать LLM провайдера с выбранной моделью
-    let provider = OpenAiProvider::new_with_endpoint(
-        agent.api_endpoint.clone(),
-        agent.api_key.clone(),
-        model_to_use.clone(),
-        agent.temperature,
-        agent.max_tokens,
+    let provider = create_provider(&agent, Some(&model_to_use))
+        .map_err(|e| anyhow::anyhow!("LLM provider error: {}", e))?;
+
+    // 8.5 Роутер интентов (Фаза 0): классифицируем запрос пользователя для
+    // метаданных/аналитики. Поведение пайплайна (tools/промпт) пока НЕ меняем.
+    let router_input = utf8_truncate(&content_with_attachments, 2000);
+    let intent_result = crate::shared::llm::router::classify_intent(
+        provider.as_ref(),
+        router_input,
+        "",
+        &agent.agent_type,
+    )
+    .await;
+    tracing::info!(
+        "[router] chat_id='{}' intent='{}' confidence={:.2} source={}",
+        chat_id,
+        intent_result.intent,
+        intent_result.confidence,
+        intent_result.source
     );
 
     // 9. Tool calling цикл: LLM вызывает инструменты метаданных по мере необходимости
@@ -532,9 +561,68 @@ pub async fn send_message(
         assistant_msg.tool_trace = serde_json::to_string(&tool_trace).ok();
     }
 
+    // Метка интента от роутера (Фаза 0): для аналитики и UI-бейджа.
+    assistant_msg.intent = Some(intent_result.intent.clone());
+
     repository::insert_message(&db, &assistant_msg).await?;
 
     Ok(assistant_msg)
+}
+
+/// Собрать контекст текущей страницы и привязать его к чату.
+pub async fn add_chat_context(
+    chat_id: &str,
+    page_key: &str,
+    label: Option<&str>,
+) -> anyhow::Result<ContextPackageSummary> {
+    let db = crate::shared::data::db::get_connection();
+    let built = super::context::build_for_page_key(page_key, label).await;
+
+    let id = Uuid::new_v4().to_string();
+    let created_at = chrono::Utc::now().to_rfc3339();
+
+    repository::insert_context_package(
+        &db,
+        repository::NewContextPackage {
+            id: id.clone(),
+            chat_id: Some(chat_id.to_string()),
+            page_key: page_key.to_string(),
+            page_type: built.page_type.clone(),
+            entity_index: built.entity_index.clone(),
+            entity_id: built.entity_id.clone(),
+            title: built.title.clone(),
+            context_json: built.context_json.to_string(),
+            rendered_text: built.rendered_text.clone(),
+            created_at: created_at.clone(),
+        },
+    )
+    .await?;
+
+    Ok(ContextPackageSummary {
+        id,
+        chat_id: Some(chat_id.to_string()),
+        page_key: page_key.to_string(),
+        page_type: built.page_type,
+        title: built.title,
+        created_at,
+    })
+}
+
+/// Список пакетов контекста, привязанных к чату.
+pub async fn list_chat_context(chat_id: &str) -> anyhow::Result<Vec<ContextPackageSummary>> {
+    let db = crate::shared::data::db::get_connection();
+    let rows = repository::list_context_by_chat(&db, chat_id).await?;
+    Ok(rows
+        .into_iter()
+        .map(|m| ContextPackageSummary {
+            id: m.id,
+            chat_id: m.chat_id,
+            page_key: m.page_key,
+            page_type: m.page_type,
+            title: m.title,
+            created_at: m.created_at,
+        })
+        .collect())
 }
 
 /// Загрузить файл-вложение для чата

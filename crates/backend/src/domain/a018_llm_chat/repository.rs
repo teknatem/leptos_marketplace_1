@@ -60,6 +60,7 @@ mod message {
         pub artifact_id: Option<String>,
         pub artifact_action: Option<String>,
         pub tool_trace_json: Option<String>,
+        pub intent: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -89,6 +90,47 @@ mod attachment {
     pub enum Relation {}
 
     impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod context_package {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "a018_llm_chat_context_package")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub chat_id: Option<String>,
+        pub page_key: String,
+        pub page_type: String,
+        pub entity_index: Option<String>,
+        pub entity_id: Option<String>,
+        pub title: String,
+        pub context_json: String,
+        pub rendered_text: String,
+        pub created_at: String,
+        pub use_count: i32,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+/// Входные данные для вставки пакета контекста.
+pub struct NewContextPackage {
+    pub id: String,
+    pub chat_id: Option<String>,
+    pub page_key: String,
+    pub page_type: String,
+    pub entity_index: Option<String>,
+    pub entity_id: Option<String>,
+    pub title: String,
+    pub context_json: String,
+    pub rendered_text: String,
+    pub created_at: String,
 }
 
 impl From<chat::Model> for LlmChat {
@@ -148,6 +190,7 @@ impl From<message::Model> for LlmChatMessage {
             artifact_id,
             artifact_action,
             tool_trace: m.tool_trace_json,
+            intent: m.intent,
             attachments: Vec::new(), // Загружаются отдельно при необходимости
         }
     }
@@ -373,6 +416,7 @@ pub async fn insert_message(
             .as_ref()
             .map(|a| a.as_str().to_string())),
         tool_trace_json: Set(message.tool_trace.clone()),
+        intent: Set(message.intent.clone()),
     };
 
     active_model.insert(db).await?;
@@ -426,4 +470,42 @@ pub async fn delete_attachments_by_message_id(
         .exec(db)
         .await?;
     Ok(())
+}
+
+// ============================================================================
+// Context Package Repository Functions
+// ============================================================================
+
+/// Вставить пакет контекста страницы.
+pub async fn insert_context_package(
+    db: &DatabaseConnection,
+    pkg: NewContextPackage,
+) -> Result<(), DbErr> {
+    let active_model = context_package::ActiveModel {
+        id: Set(pkg.id),
+        chat_id: Set(pkg.chat_id),
+        page_key: Set(pkg.page_key),
+        page_type: Set(pkg.page_type),
+        entity_index: Set(pkg.entity_index),
+        entity_id: Set(pkg.entity_id),
+        title: Set(pkg.title),
+        context_json: Set(pkg.context_json),
+        rendered_text: Set(pkg.rendered_text),
+        created_at: Set(pkg.created_at),
+        use_count: Set(0),
+    };
+    active_model.insert(db).await?;
+    Ok(())
+}
+
+/// Получить пакеты контекста, привязанные к чату (старые → новые).
+pub async fn list_context_by_chat(
+    db: &DatabaseConnection,
+    chat_id: &str,
+) -> Result<Vec<context_package::Model>, DbErr> {
+    context_package::Entity::find()
+        .filter(context_package::Column::ChatId.eq(chat_id))
+        .order_by_asc(context_package::Column::CreatedAt)
+        .all(db)
+        .await
 }

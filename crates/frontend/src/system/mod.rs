@@ -5,5 +5,6 @@ pub mod favorites;
 pub mod history;
 pub mod pages;
 pub mod roles;
+pub mod s3;
 pub mod tasks;
 pub mod users;

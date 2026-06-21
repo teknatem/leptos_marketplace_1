@@ -5,10 +5,13 @@
 
 pub mod api;
 pub mod editor;
+pub mod frame;
 pub mod host;
 pub mod list;
 pub mod menu;
+pub mod view;
 
 pub use host::PluginHost;
 pub use list::PluginList;
 pub use menu::{PluginsMenuCategory, PluginsSidebarGroup};
+pub use view::PluginView;

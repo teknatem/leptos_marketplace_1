@@ -17,9 +17,12 @@ use async_trait::async_trait;
 /// OpenAI провайдер
 pub struct OpenAiProvider {
     client: Client<OpenAIConfig>,
+    provider_name: &'static str,
     model: String,
     temperature: f32,
     max_tokens: u32,
+    use_legacy_max_tokens: bool,
+    request_logprobs: bool,
 }
 
 impl OpenAiProvider {
@@ -30,9 +33,12 @@ impl OpenAiProvider {
 
         Self {
             client,
+            provider_name: "OpenAI",
             model,
             temperature: temperature as f32,
             max_tokens: max_tokens as u32,
+            use_legacy_max_tokens: false,
+            request_logprobs: true,
         }
     }
 
@@ -51,9 +57,39 @@ impl OpenAiProvider {
 
         Self {
             client,
+            provider_name: "OpenAI",
             model,
             temperature: temperature as f32,
             max_tokens: max_tokens as u32,
+            use_legacy_max_tokens: false,
+            request_logprobs: true,
+        }
+    }
+
+    /// Create a provider for OpenAI-compatible APIs with custom request quirks.
+    pub fn new_compatible(
+        provider_name: &'static str,
+        api_endpoint: String,
+        api_key: String,
+        model: String,
+        temperature: f64,
+        max_tokens: i32,
+        use_legacy_max_tokens: bool,
+        request_logprobs: bool,
+    ) -> Self {
+        let config = OpenAIConfig::new()
+            .with_api_key(api_key)
+            .with_api_base(api_endpoint);
+        let client = Client::with_config(config);
+
+        Self {
+            client,
+            provider_name,
+            model,
+            temperature: temperature as f32,
+            max_tokens: max_tokens as u32,
+            use_legacy_max_tokens,
+            request_logprobs,
         }
     }
 
@@ -186,11 +222,17 @@ impl LlmProvider for OpenAiProvider {
 
         // Добавляем расширенные параметры только для поддерживающих моделей
         if Self::supports_advanced_params(&self.model) {
-            request_builder
-                .temperature(self.temperature)
-                .max_completion_tokens(self.max_tokens);
+            request_builder.temperature(self.temperature);
+            if self.use_legacy_max_tokens {
+                #[allow(deprecated)]
+                {
+                    request_builder.max_tokens(self.max_tokens);
+                }
+            } else {
+                request_builder.max_completion_tokens(self.max_tokens);
+            }
             // logprobs несовместимы с tool calling
-            if !has_tools {
+            if self.request_logprobs && !has_tools {
                 request_builder.logprobs(true).top_logprobs(1);
             }
         }
@@ -200,7 +242,7 @@ impl LlmProvider for OpenAiProvider {
             .map_err(|e| LlmError::InvalidRequest(e.to_string()))?;
 
         let response = self.client.chat().create(request).await.map_err(|e| {
-            let err_str = e.to_string();
+            let err_str = normalize_api_error_message(&e.to_string());
             if err_str.contains("401") || err_str.contains("authentication") {
                 LlmError::AuthError(err_str)
             } else if err_str.contains("429") || err_str.contains("rate limit") {
@@ -262,7 +304,7 @@ impl LlmProvider for OpenAiProvider {
     }
 
     fn provider_name(&self) -> &str {
-        "OpenAI"
+        self.provider_name
     }
 }
 
@@ -274,9 +316,11 @@ impl OpenAiProvider {
     /// - Не поддерживают logprobs для расчета confidence
     /// - Не поддерживают max_completion_tokens
     fn supports_advanced_params(model_id: &str) -> bool {
-        let is_restricted = model_id.starts_with("gpt-5")
-            || model_id.starts_with("o1-")
-            || model_id.starts_with("o3-");
+        let normalized_model_id = model_id.rsplit('/').next().unwrap_or(model_id);
+        let is_restricted = normalized_model_id.starts_with("gpt-5")
+            || is_reasoning_model_family(normalized_model_id, "o1")
+            || is_reasoning_model_family(normalized_model_id, "o3")
+            || is_reasoning_model_family(normalized_model_id, "o4");
 
         !is_restricted
     }
@@ -339,4 +383,42 @@ impl OpenAiProvider {
 
         Ok(models)
     }
+}
+
+fn normalize_api_error_message(err: &str) -> String {
+    let Some((prefix, content)) = err.split_once(" content:") else {
+        return err.to_string();
+    };
+    let Ok(payload) = serde_json::from_str::<serde_json::Value>(content.trim()) else {
+        return err.to_string();
+    };
+
+    if let Some(raw_message) = payload
+        .pointer("/error/metadata/raw")
+        .and_then(|raw| raw.as_str())
+        .and_then(extract_nested_error_message)
+    {
+        return format!("{}: {}", prefix.trim(), raw_message);
+    }
+
+    if let Some(message) = payload.pointer("/error/message").and_then(|m| m.as_str()) {
+        return format!("{}: {}", prefix.trim(), message);
+    }
+
+    err.to_string()
+}
+
+fn extract_nested_error_message(raw: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|payload| {
+            payload
+                .pointer("/error/message")
+                .and_then(|message| message.as_str())
+                .map(ToString::to_string)
+        })
+}
+
+fn is_reasoning_model_family(model_id: &str, family: &str) -> bool {
+    model_id == family || model_id.starts_with(&format!("{family}-"))
 }

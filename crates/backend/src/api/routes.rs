@@ -739,6 +739,11 @@ fn a018_routes() -> Router {
             "/api/a018-llm-chat/:id/upload",
             post(handlers::a018_llm_chat::upload_attachment),
         )
+        .route(
+            "/api/a018-llm-chat/:id/context",
+            get(handlers::a018_llm_chat::get_chat_context)
+                .post(handlers::a018_llm_chat::add_chat_context),
+        )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a018_llm_chat", req, next).await

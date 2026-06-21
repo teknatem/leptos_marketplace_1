@@ -15,6 +15,16 @@ function languageExtension(language) {
   }
 }
 
+function themeExtensions() {
+  const stored = window.localStorage?.getItem("app_theme");
+  const domTheme =
+    document.documentElement.dataset.theme ||
+    document.body?.dataset.theme ||
+    document.documentElement.className;
+  const theme = String(stored || domTheme || "dark").toLowerCase();
+  return theme.includes("light") ? [] : [oneDark];
+}
+
 window.PluginCodeEditor = Object.freeze({
   create(parent, language, value, onChange) {
     return new EditorView({
@@ -23,7 +33,7 @@ window.PluginCodeEditor = Object.freeze({
       extensions: [
         basicSetup,
         languageExtension(language),
-        oneDark,
+        ...themeExtensions(),
         EditorView.lineWrapping,
         EditorView.updateListener.of(update => {
           if (update.docChanged) {
