@@ -67,9 +67,11 @@ use crate::domain::a032_wb_returns_claims::ui::details::WbReturnsClaimsDetails;
 use crate::domain::a032_wb_returns_claims::ui::list::WbReturnsClaimsList;
 use crate::domain::a033_wb_day_close::ui::details::{WbDayCloseDetails, WbDayCloseNewPage};
 use crate::domain::a033_wb_day_close::ui::list::WbDayCloseList;
+use crate::domain::a034_ym_realization::{YmRealizationDetail, YmRealizationList};
+use crate::domain::a035_ym_settlement_recon::{YmSettlementReconDetail, YmSettlementReconList};
 use crate::general_ledger::ui::{
     GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerEntitiesPage,
-    GeneralLedgerLayersPage, GeneralLedgerLayerTurnoverMatrixPage, GeneralLedgerPage,
+    GeneralLedgerLayerTurnoverMatrixPage, GeneralLedgerLayersPage, GeneralLedgerPage,
     GeneralLedgerReportPage, GeneralLedgerTurnoverDetails, GeneralLedgerTurnoversPage,
     GlAccountViewPage, GlDrilldownPage, SupplierBalancePage, WbWeeklyReconciliationPage,
     YmRevenueReconciliationPage,
@@ -87,8 +89,6 @@ use crate::projections::p905_wb_commission_history::ui::list::CommissionHistoryL
 use crate::projections::p906_nomenclature_prices::ui::list::NomenclaturePricesList;
 use crate::projections::p907_ym_payment_report::ui::details::YmPaymentReportDetail;
 use crate::projections::p907_ym_payment_report::ui::list::YmPaymentReportList;
-use crate::domain::a034_ym_realization::{YmRealizationDetail, YmRealizationList};
-use crate::domain::a035_ym_settlement_recon::{YmSettlementReconDetail, YmSettlementReconList};
 use crate::projections::p908_wb_goods_prices::WbGoodsPricesList;
 use crate::projections::p913_wb_advert_order_attr::ui::list::WbAdvertOrderAttrList;
 use crate::projections::p914_mp_finance_turnovers::ui::list::MpFinanceTurnoverList;
@@ -97,6 +97,7 @@ use crate::shared::drilldown_report::DrilldownReportPage;
 use crate::shared::knowledge_base::ui::{KnowledgeArticlePage, KnowledgeBaseWorkspace};
 use crate::shared::universal_dashboard::{SchemaBrowser, UniversalDashboard};
 use crate::system::pages::thaw_test::ThawTestPage;
+use crate::system::s3::ui::list::S3FilesPage;
 use crate::system::tasks::ui::details::ScheduledTaskDetails;
 use crate::system::tasks::ui::list::ScheduledTaskList;
 use crate::system::users::ui::details::{CreateUserPage, UserDetailsPage};
@@ -771,10 +772,15 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // Plugins subsystem — надстройка над платформой
         "plugins" => view! { <crate::plugins::PluginList /> }.into_any(),
-        // Открытие конкретного плагина (ключ вкладки plugin__<id>)
+        // Страница разработки плагина (ключ plugin_dev__<id>) — редактор/runner/статистика.
+        k if k.starts_with("plugin_dev__") => {
+            let id = k.strip_prefix("plugin_dev__").unwrap().to_string();
+            view! { <crate::plugins::PluginHost plugin_id=id /> }.into_any()
+        }
+        // Страница просмотра плагина (ключ plugin__<id>) — рабочая версия.
         k if k.starts_with("plugin__") => {
             let id = k.strip_prefix("plugin__").unwrap().to_string();
-            view! { <crate::plugins::PluginHost plugin_id=id /> }.into_any()
+            view! { <crate::plugins::PluginView plugin_id=id /> }.into_any()
         }
 
         // a024: BI Indicators
@@ -915,9 +921,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "general_ledger_layers" => view! { <GeneralLedgerLayersPage /> }.into_any(),
         "general_ledger_entities" => view! { <GeneralLedgerEntitiesPage /> }.into_any(),
         "supplier_balance" => view! { <SupplierBalancePage /> }.into_any(),
-        "general_ledger_matrix" => {
-            view! { <GeneralLedgerLayerTurnoverMatrixPage /> }.into_any()
-        }
+        "general_ledger_matrix" => view! { <GeneralLedgerLayerTurnoverMatrixPage /> }.into_any(),
         "general_ledger_dimensions" => {
             view! { <GeneralLedgerDimensionsPage initial_turnover_code=None /> }.into_any()
         }
@@ -1186,6 +1190,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             view! { <crate::system::roles::ui::matrix::RoleMatrixPage /> }.into_any()
         }
         "sys_audit" => view! { <crate::system::audit::AuditPage /> }.into_any(),
+        "sys_s3_files" => view! { <S3FilesPage /> }.into_any(),
         k if k.starts_with("sys_role_details_") => {
             let id = k.strip_prefix("sys_role_details_").unwrap().to_string();
             view! { <crate::system::roles::ui::details::RoleDetailsPage role_id=id /> }.into_any()

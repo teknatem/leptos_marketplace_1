@@ -16,7 +16,9 @@
 //! Сборка/разбор атомарны: архив собирается целиком в памяти и отдаётся только при
 //! успехе; импорт восстанавливает bundle полностью до валидации и записи.
 
-use contracts::plugins::{DataBinding, ParamSpec, PluginBundle, PluginManifest, ViewSpec};
+use contracts::plugins::{
+    is_valid_resource_name, DataBinding, ParamSpec, PluginBundle, PluginManifest, ViewSpec,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
@@ -31,6 +33,10 @@ const SERVER_FILE: &str = "server.js";
 const STYLES_FILE: &str = "styles.css";
 const SQL_DIR: &str = "sql/";
 const ASSETS_DIR: &str = "assets/";
+const MAX_ARCHIVE_BYTES: usize = 5 * 1024 * 1024;
+const MAX_ARCHIVE_FILES: usize = 128;
+const MAX_ENTRY_BYTES: u64 = 512 * 1024;
+const MAX_TOTAL_UNPACKED_BYTES: u64 = 4 * 1024 * 1024;
 
 /// Конверт `plugin.json` — метаданные бандла (скрипты/SQL/стили/вложения хранятся файлами).
 #[derive(Serialize, Deserialize)]
@@ -87,19 +93,42 @@ pub fn export_bundle(bundle: &PluginBundle) -> anyhow::Result<Vec<u8>> {
 
 /// Разобрать zip-архив в `PluginBundle`. Не валидирует и не сохраняет.
 pub fn import_archive(bytes: &[u8]) -> anyhow::Result<PluginBundle> {
+    if bytes.len() > MAX_ARCHIVE_BYTES {
+        anyhow::bail!("Plugin archive is too large");
+    }
     let mut archive = ZipArchive::new(Cursor::new(bytes))
         .map_err(|e| anyhow::anyhow!("Не удалось открыть архив: {e}"))?;
 
+    if archive.len() > MAX_ARCHIVE_FILES {
+        anyhow::bail!("Plugin archive contains too many files");
+    }
+
     let mut files: HashMap<String, String> = HashMap::new();
+    let mut total_unpacked = 0_u64;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
         if entry.is_dir() {
             continue;
         }
         let name = entry.name().to_string();
+        validate_entry_name(&name)?;
+        if entry.size() > MAX_ENTRY_BYTES {
+            anyhow::bail!("Plugin archive entry '{name}' is too large");
+        }
+        total_unpacked = total_unpacked.saturating_add(entry.size());
+        if total_unpacked > MAX_TOTAL_UNPACKED_BYTES {
+            anyhow::bail!("Plugin archive unpacked size is too large");
+        }
         let mut raw = Vec::new();
-        entry.read_to_end(&mut raw)?;
-        files.insert(name, String::from_utf8_lossy(&raw).into_owned());
+        (&mut entry)
+            .take(MAX_ENTRY_BYTES + 1)
+            .read_to_end(&mut raw)?;
+        if raw.len() as u64 > MAX_ENTRY_BYTES {
+            anyhow::bail!("Plugin archive entry '{name}' is too large");
+        }
+        let text = String::from_utf8(raw)
+            .map_err(|_| anyhow::anyhow!("Plugin archive entry '{name}' is not valid UTF-8"))?;
+        files.insert(name, text);
     }
 
     let envelope_raw = files
@@ -140,6 +169,42 @@ pub fn import_archive(bytes: &[u8]) -> anyhow::Result<PluginBundle> {
 }
 
 /// Безопасное имя файла архива из кода плагина.
+fn validate_entry_name(name: &str) -> anyhow::Result<()> {
+    if name.is_empty()
+        || name.starts_with('/')
+        || name.contains('\\')
+        || name
+            .split('/')
+            .any(|part| part == "." || part == ".." || part.is_empty())
+    {
+        anyhow::bail!("Plugin archive contains unsafe path '{name}'");
+    }
+
+    if matches!(
+        name,
+        MANIFEST_FILE | CLIENT_FILE | SERVER_FILE | STYLES_FILE
+    ) {
+        return Ok(());
+    }
+    if let Some(rest) = name.strip_prefix(SQL_DIR) {
+        let Some(key) = rest.strip_suffix(".sql") else {
+            anyhow::bail!("SQL resources must be stored as sql/<name>.sql");
+        };
+        if !is_valid_resource_name(key) {
+            anyhow::bail!("Invalid SQL resource name '{key}'");
+        }
+        return Ok(());
+    }
+    if let Some(key) = name.strip_prefix(ASSETS_DIR) {
+        if !is_valid_resource_name(key) {
+            anyhow::bail!("Invalid plugin asset name '{key}'");
+        }
+        return Ok(());
+    }
+
+    anyhow::bail!("Unexpected file '{name}' in plugin archive");
+}
+
 pub fn archive_filename(code: &str) -> String {
     let safe: String = code
         .chars()
@@ -212,8 +277,68 @@ mod tests {
         assert!(error.to_string().contains(MANIFEST_FILE));
     }
 
+    fn archive_with_entries(entries: Vec<(&str, Vec<u8>)>) -> Vec<u8> {
+        let mut zip = ZipWriter::new(Cursor::new(Vec::<u8>::new()));
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        for (name, content) in entries {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(&content).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn import_rejects_too_many_files() {
+        let mut names = Vec::new();
+        for index in 0..=MAX_ARCHIVE_FILES {
+            names.push(format!("assets/{index}.txt"));
+        }
+        let entries = names
+            .iter()
+            .map(|name| (name.as_str(), b"x".to_vec()))
+            .collect();
+        let archive = archive_with_entries(entries);
+        let error = import_archive(&archive).unwrap_err();
+        assert!(error.to_string().contains("too many files"));
+    }
+
+    #[test]
+    fn import_rejects_oversized_entry() {
+        let archive = archive_with_entries(vec![(
+            MANIFEST_FILE,
+            vec![b'x'; MAX_ENTRY_BYTES as usize + 1],
+        )]);
+        let error = import_archive(&archive).unwrap_err();
+        assert!(error.to_string().contains("too large"));
+    }
+
+    #[test]
+    fn import_rejects_path_traversal_and_unexpected_files() {
+        let archive = archive_with_entries(vec![("../plugin.json", b"{}".to_vec())]);
+        let error = import_archive(&archive).unwrap_err();
+        assert!(error.to_string().contains("unsafe path"));
+
+        let archive = archive_with_entries(vec![("notes.txt", b"x".to_vec())]);
+        let error = import_archive(&archive).unwrap_err();
+        assert!(error.to_string().contains("Unexpected file"));
+    }
+
+    #[test]
+    fn import_rejects_invalid_utf8_and_sql_names() {
+        let archive = archive_with_entries(vec![(CLIENT_FILE, vec![0xff, 0xfe])]);
+        let error = import_archive(&archive).unwrap_err();
+        assert!(error.to_string().contains("UTF-8"));
+
+        let archive = archive_with_entries(vec![("sql/bad/name.sql", b"SELECT 1".to_vec())]);
+        let error = import_archive(&archive).unwrap_err();
+        assert!(error.to_string().contains("Invalid SQL resource name"));
+    }
+
     #[test]
     fn archive_filename_is_sanitized() {
-        assert_eq!(archive_filename("PLG WB/Orders"), "PLG_WB_Orders.plugin.zip");
+        assert_eq!(
+            archive_filename("PLG WB/Orders"),
+            "PLG_WB_Orders.plugin.zip"
+        );
     }
 }

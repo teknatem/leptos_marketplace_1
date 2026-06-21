@@ -35,6 +35,13 @@ fn parse_session_id(query_params: &Option<String>) -> Option<String> {
     v.get("session_id")?.as_str().map(|s| s.to_string())
 }
 
+/// Извлечь строковое поле из query_params JSON (для Plugin-артефакта).
+fn parse_params_field(query_params: &Option<String>, key: &str) -> Option<String> {
+    let params_str = query_params.as_deref()?;
+    let v: serde_json::Value = serde_json::from_str(params_str).ok()?;
+    v.get(key)?.as_str().map(|s| s.to_string())
+}
+
 #[component]
 #[allow(non_snake_case)]
 pub fn ArtifactCard(artifact_id: String) -> impl IntoView {
@@ -128,6 +135,68 @@ pub fn ArtifactCard(artifact_id: String) -> impl IntoView {
 
                                 <div style="margin-top: 8px; font-size: 11px; color: var(--colorNeutralForeground3);">
                                     {format!("Drilldown отчёт • Создан: {}", created_at)}
+                                </div>
+                            </div>
+                        }.into_any()
+                    } else if a.artifact_type == ArtifactType::Plugin {
+                        // ── Plugin карточка ──
+                        let plugin_id = parse_params_field(&a.query_params, "plugin_id");
+                        let code = parse_params_field(&a.query_params, "code").unwrap_or_default();
+                        let has_plugin = plugin_id.is_some();
+
+                        let preview_key = plugin_id
+                            .as_deref()
+                            .map(|id| format!("plugin__{}", id))
+                            .unwrap_or_default();
+                        let editor_key = plugin_id
+                            .as_deref()
+                            .map(|id| format!("plugin_dev__{}", id))
+                            .unwrap_or_default();
+
+                        let title_preview = description.clone();
+                        let handle_preview = move |_| {
+                            if has_plugin {
+                                global_ctx.open_tab(&preview_key, &title_preview);
+                            }
+                        };
+                        let title_editor = description.clone();
+                        let handle_editor = move |_| {
+                            if has_plugin {
+                                global_ctx.open_tab(&editor_key, &title_editor);
+                            }
+                        };
+
+                        view! {
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        {icon("package")}
+                                        <strong>{description.clone()}</strong>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <Button
+                                            size=ButtonSize::Small
+                                            appearance=ButtonAppearance::Primary
+                                            on_click=handle_preview
+                                            disabled=move || !has_plugin
+                                        >
+                                            {icon("external-link")}
+                                            " Превью"
+                                        </Button>
+                                        <Button
+                                            size=ButtonSize::Small
+                                            appearance=ButtonAppearance::Secondary
+                                            on_click=handle_editor
+                                            disabled=move || !has_plugin
+                                        >
+                                            {icon("file-code")}
+                                            " Редактор"
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div style="margin-top: 8px; font-size: 11px; color: var(--colorNeutralForeground3);">
+                                    {format!("Плагин {} • Создан: {}", code, created_at)}
                                 </div>
                             </div>
                         }.into_any()

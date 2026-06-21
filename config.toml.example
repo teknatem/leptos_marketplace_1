@@ -35,3 +35,13 @@ path = "data/app.db"
 # path = "/var/lib/marketplace/app.db"
 
 # The directory will be created automatically if it doesn't exist
+
+[s3]
+# Manual S3 file manager. Keep disabled until bucket and credentials are configured.
+enabled = false
+endpoint = "https://storage.yandexcloud.net"
+region = "ru-central1"
+bucket = ""
+access_key_id = ""
+secret_access_key = ""
+max_upload_mb = 512

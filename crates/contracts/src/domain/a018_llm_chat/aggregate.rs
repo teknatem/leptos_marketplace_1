@@ -263,6 +263,11 @@ pub struct LlmChatMessage {
     #[serde(default)]
     pub tool_trace: Option<String>,
 
+    // Интент, определённый роутером для запроса пользователя
+    // (func_help | data_query | plugin_dev | sys_admin | kb_curation | bi_authoring | meta_smalltalk)
+    #[serde(default)]
+    pub intent: Option<String>,
+
     // Вложения (загружаются отдельно при необходимости)
     #[serde(default)]
     pub attachments: Vec<LlmChatAttachment>,
@@ -284,6 +289,7 @@ impl LlmChatMessage {
             artifact_id: None,
             artifact_action: None,
             tool_trace: None,
+            intent: None,
             attachments: Vec::new(),
         }
     }
@@ -311,6 +317,7 @@ impl LlmChatMessage {
             artifact_id: None,
             artifact_action: None,
             tool_trace: None,
+            intent: None,
             attachments: Vec::new(),
         }
     }
@@ -335,6 +342,7 @@ impl LlmChatMessage {
             artifact_id: None,
             artifact_action: None,
             tool_trace: None,
+            intent: None,
             attachments: Vec::new(),
         }
     }

@@ -24,6 +24,7 @@ use contracts::domain::a027_wb_documents::ENTITY_METADATA as A027;
 /// Для остальных - хардкод. Fallback: сам ключ.
 pub fn tab_label_for_key(key: &str) -> &'static str {
     match key {
+        "sys_s3_files" => "S3 файлы",
         "a001_connection_1c" => A001.ui.list_name,
         "a002_organization" => A002.ui.list_name,
         "a004_nomenclature" => A004.ui.list_name,

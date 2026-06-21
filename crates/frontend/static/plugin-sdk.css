@@ -1,0 +1,291 @@
+/* Plugin SDK stylesheet — единый источник стилей для микро-приложений (плагинов).
+ *
+ * Подключается ВНУТРЬ iframe плагина через <link> (см. plugins/frame/srcdoc.rs) вместе с
+ * файлами тем приложения (themes/core/variables.css + themes/<name>/<name>.css), откуда
+ * берутся все CSS-переменные --color-*, --spacing-*, --radius-* и т.д. Здесь — только
+ * компонентные классы (стабильный контракт для авторов плагинов), значения токенов НЕ
+ * хардкодим. Менять тему — подменой href темы (как в index.html), а не правкой этого файла.
+ */
+
+html {
+  color-scheme: light dark;
+}
+
+/* Фон html/body/#plugin-root — фикс «светлого хвоста» в тёмной теме: раньше фон был только
+   у body, область за </body> падала на белый дефолт браузера. */
+html,
+body,
+#plugin-root {
+  min-height: 100%;
+  background: var(--color-bg-primary);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  font-size: var(--font-size-base);
+  line-height: 1.45;
+  color: var(--color-text-primary);
+}
+
+h1 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 4px;
+}
+
+p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.muted {
+  color: var(--color-text-secondary);
+}
+
+.toolbar,
+.filters {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.row {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field__label,
+label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--form-label-text);
+}
+
+.input,
+input,
+select,
+textarea {
+  font: inherit;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  background: var(--form-input-bg);
+  border: 1px solid var(--form-input-border);
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
+}
+
+textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.input:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--form-input-focus-border);
+  box-shadow: 0 0 0 3px var(--form-input-focus-shadow);
+}
+
+::placeholder {
+  color: var(--form-placeholder);
+}
+
+.btn {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.btn:hover {
+  background: var(--btn-primary-hover);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btn--secondary {
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+}
+
+.btn--secondary:hover {
+  background: var(--btn-secondary-hover);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--btn-ghost-text);
+  border: 1px solid var(--color-border);
+}
+
+.btn--ghost:hover {
+  background: var(--btn-ghost-hover);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+}
+
+.stats {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.stat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  min-width: 140px;
+}
+
+.stat__label {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  margin-bottom: 4px;
+}
+
+.stat__value {
+  font-size: 20px;
+  font-weight: var(--font-weight-bold);
+}
+
+.stat--ok .stat__value {
+  color: var(--color-success);
+}
+
+.stat--bad .stat__value {
+  color: var(--color-error);
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-base);
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  padding: 9px 12px;
+  background: var(--table-header-bg);
+  color: var(--table-header-fg);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.data-table tbody tr:nth-child(even) {
+  background: var(--table-row-even);
+}
+
+.data-table tbody tr:hover {
+  background: var(--table-row-hover);
+}
+
+.data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  background: var(--badge-neutral-bg);
+  color: var(--badge-neutral-text);
+}
+
+.badge--success {
+  background: var(--badge-success-bg);
+  color: var(--badge-success-text);
+}
+
+.badge--error {
+  background: var(--badge-error-bg);
+  color: var(--badge-error-text);
+}
+
+.badge--warning {
+  background: var(--badge-warning-bg);
+  color: var(--badge-warning-text);
+}
+
+.status {
+  min-height: 20px;
+  color: var(--color-text-secondary);
+}
+
+.status--ok {
+  color: var(--color-success);
+}
+
+.status--error {
+  color: var(--color-error);
+}

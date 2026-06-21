@@ -5,7 +5,7 @@
 //! to the application database and `host.log.*` writes to the invocation log.
 
 use contracts::plugins::{
-    PluginDefinition, PluginError, PluginInvokeRequest, PluginValidateReport,
+    is_read_only_sql, PluginDefinition, PluginError, PluginInvokeRequest, PluginValidateReport,
 };
 use rquickjs::{
     prelude::{Async, Func},
@@ -30,9 +30,7 @@ fn js_error(stage: &str, caught: &CaughtError) -> PluginError {
     match caught {
         CaughtError::Exception(exception) => PluginError::new(
             stage,
-            exception
-                .message()
-                .unwrap_or_else(|| exception.to_string()),
+            exception.message().unwrap_or_else(|| exception.to_string()),
         )
         .with_stack(exception.stack()),
         other => PluginError::new(stage, other.to_string()),
@@ -98,8 +96,7 @@ async fn read_sql(
     params: Vec<serde_json::Value>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let trimmed = sql.trim();
-    let upper = trimmed.to_ascii_uppercase();
-    if !(upper.starts_with("SELECT") || upper.starts_with("WITH")) {
+    if !is_read_only_sql(trimmed) {
         return Err("host.db.query allows only SELECT/WITH statements".to_string());
     }
 
@@ -222,15 +219,12 @@ pub async fn invoke_server_method(
                 .catch(&ctx)
                 .map_err(|error| js_error("module_eval", &error))?;
 
-            let function: Function = module
-                .get(method.as_str())
-                .catch(&ctx)
-                .map_err(|_| {
-                    PluginError::new(
-                        "missing_export",
-                        format!("Server method '{method}' is not exported"),
-                    )
-                })?;
+            let function: Function = module.get(method.as_str()).catch(&ctx).map_err(|_| {
+                PluginError::new(
+                    "missing_export",
+                    format!("Server method '{method}' is not exported"),
+                )
+            })?;
             let args_value = rquickjs_serde::to_value(ctx.clone(), args)
                 .map_err(|error| PluginError::new("invoke", error.to_string()))?;
             let context_value = rquickjs_serde::to_value(ctx.clone(), context)
@@ -264,84 +258,120 @@ pub async fn invoke_server_method(
         .map_err(|error| anyhow::Error::new(relabel_timeout(deadline, error)))
 }
 
-/// Скомпилировать серверный ES-модуль и перечислить экспортированные функции
-/// **без вызова** какой-либо из них. Используется `POST /api/plugin/validate`
-/// для быстрой петли обратной связи (в т.ч. при доработке плагина из чата).
-pub async fn validate_server_script(script: &str) -> PluginValidateReport {
-    let (runtime, deadline) = match limited_runtime().await {
-        Ok(value) => value,
-        Err(error) => {
-            return PluginValidateReport {
-                ok: false,
-                server_exports: vec![],
-                errors: vec![PluginError::new("module_eval", error.to_string())],
-            }
-        }
-    };
-    let js_context = match AsyncContext::full(&runtime).await {
-        Ok(value) => value,
-        Err(error) => {
-            return PluginValidateReport {
-                ok: false,
-                server_exports: vec![],
-                errors: vec![PluginError::new("module_eval", error.to_string())],
-            }
-        }
-    };
+/// Скомпилировать ES-модуль и перечислить его экспорты **без вызова** функций.
+///
+/// `stage_prefix` подставляется в `stage` ошибок (пусто для серверного модуля,
+/// `client_` для клиентского), чтобы агент отличал, какой скрипт не собрался.
+/// Stub-глобалы (`__hostDbQuery`/`__hostLog`) позволяют исполнить верхний уровень
+/// модуля без доступа к БД и журналу; DOM не мокается — обращение к нему на верхнем
+/// уровне справедливо считается ошибкой.
+async fn compile_module_exports(
+    script: &str,
+    stage_prefix: &str,
+) -> Result<Vec<String>, PluginError> {
+    let stage = format!("{stage_prefix}module_eval");
+    let (runtime, deadline) = limited_runtime()
+        .await
+        .map_err(|error| PluginError::new(stage.clone(), error.to_string()))?;
+    let js_context = AsyncContext::full(&runtime)
+        .await
+        .map_err(|error| PluginError::new(stage.clone(), error.to_string()))?;
 
     let script = script.to_string();
+    let stage_for_block = stage.clone();
     let result: Result<Vec<String>, PluginError> = js_context
         .async_with(async move |ctx| {
-            // Stub-глобалы: модуль компилируется и исполняется на верхнем уровне,
-            // но без доступа к БД и без записи в журнал.
+            let stage = stage_for_block.as_str();
             let globals = ctx.globals();
             globals
-                .set("__hostDbQuery", Func::from(|_: String, _: String| "[]".to_string()))
+                .set(
+                    "__hostDbQuery",
+                    Func::from(|_: String, _: String| "[]".to_string()),
+                )
                 .catch(&ctx)
-                .map_err(|error| js_error("module_eval", &error))?;
+                .map_err(|error| js_error(stage, &error))?;
             globals
                 .set("__hostLog", Func::from(|_: String| {}))
                 .catch(&ctx)
-                .map_err(|error| js_error("module_eval", &error))?;
+                .map_err(|error| js_error(stage, &error))?;
 
-            let declared = Module::declare(ctx.clone(), "plugin-server.js", script)
+            let declared = Module::declare(ctx.clone(), "plugin-module.js", script)
                 .catch(&ctx)
-                .map_err(|error| js_error("module_eval", &error))?;
+                .map_err(|error| js_error(stage, &error))?;
             let (module, evaluation) = declared
                 .eval()
                 .catch(&ctx)
-                .map_err(|error| js_error("module_eval", &error))?;
+                .map_err(|error| js_error(stage, &error))?;
             evaluation
                 .into_future::<()>()
                 .await
                 .catch(&ctx)
-                .map_err(|error| js_error("module_eval", &error))?;
+                .map_err(|error| js_error(stage, &error))?;
 
             let namespace = module
                 .namespace()
                 .catch(&ctx)
-                .map_err(|error| js_error("module_eval", &error))?;
+                .map_err(|error| js_error(stage, &error))?;
             let mut exports = namespace
                 .keys::<String>()
                 .collect::<rquickjs::Result<Vec<String>>>()
                 .catch(&ctx)
-                .map_err(|error| js_error("module_eval", &error))?;
+                .map_err(|error| js_error(stage, &error))?;
             exports.sort();
             Ok(exports)
         })
         .await;
 
     runtime.idle().await;
-    match result {
+    result.map_err(|error| relabel_timeout(deadline, error))
+}
+
+/// Скомпилировать серверный ES-модуль и перечислить экспортированные функции
+/// **без вызова** какой-либо из них. Используется `POST /api/plugin/validate`
+/// для быстрой петли обратной связи (в т.ч. при доработке плагина из чата).
+pub async fn validate_server_script(script: &str) -> PluginValidateReport {
+    match compile_module_exports(script, "").await {
         Ok(server_exports) => PluginValidateReport {
             ok: true,
             server_exports,
-            errors: vec![],
+            ..Default::default()
         },
         Err(error) => PluginValidateReport {
             ok: false,
-            server_exports: vec![],
-            errors: vec![relabel_timeout(deadline, error)],
+            errors: vec![error],
+            ..Default::default()
+        },
+    }
+}
+
+/// Скомпилировать клиентский ES-модуль (UI iframe) и убедиться, что он экспортирует
+/// `mount`. Реального рендера нет (в QuickJS нет DOM) — это статическая проверка
+/// контракта для самопроверки агента до передачи плагина пользователю.
+pub async fn validate_client_script(script: &str) -> PluginValidateReport {
+    match compile_module_exports(script, "client_").await {
+        Ok(client_exports) => {
+            if client_exports.iter().any(|name| name == "mount") {
+                PluginValidateReport {
+                    ok: true,
+                    client_exports,
+                    ..Default::default()
+                }
+            } else {
+                PluginValidateReport {
+                    ok: false,
+                    errors: vec![PluginError::new(
+                        "client_missing_export",
+                        "client_script должен экспортировать async function mount(root, host)",
+                    )],
+                    client_exports,
+                    ..Default::default()
+                }
+            }
+        }
+        Err(error) => PluginValidateReport {
+            ok: false,
+            errors: vec![error],
+            ..Default::default()
         },
     }
 }
@@ -491,6 +521,45 @@ export function beta() { return 2; }
     async fn validate_reports_syntax_error() {
         let report = validate_server_script("export async function broken( {").await;
         assert!(!report.ok);
-        assert_eq!(report.errors.first().map(|e| e.stage.as_str()), Some("module_eval"));
+        assert_eq!(
+            report.errors.first().map(|e| e.stage.as_str()),
+            Some("module_eval")
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_client_lists_exports_and_accepts_mount() {
+        let report = validate_client_script(
+            r#"
+export async function mount(root, host) {
+  const rows = await host.invoke("load");
+  root.textContent = JSON.stringify(rows);
+}
+export function unmount() {}
+"#,
+        )
+        .await;
+        assert!(report.ok, "errors: {:?}", report.errors);
+        assert_eq!(report.client_exports, vec!["mount", "unmount"]);
+    }
+
+    #[tokio::test]
+    async fn validate_client_requires_mount_export() {
+        let report = validate_client_script("export function render() {}").await;
+        assert!(!report.ok);
+        assert_eq!(
+            report.errors.first().map(|e| e.stage.as_str()),
+            Some("client_missing_export")
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_client_reports_syntax_error_with_prefix() {
+        let report = validate_client_script("export async function mount( {").await;
+        assert!(!report.ok);
+        assert_eq!(
+            report.errors.first().map(|e| e.stage.as_str()),
+            Some("client_module_eval")
+        );
     }
 }

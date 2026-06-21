@@ -3,10 +3,14 @@ pub mod kb_admin_tools;
 pub mod knowledge_base;
 pub mod metadata_registry;
 pub mod openai_provider;
+pub mod openrouter_provider;
 pub mod plugin_tools;
+pub mod provider_factory;
+pub mod router;
 pub mod tool_executor;
 pub mod types;
 
 pub use metadata_registry::METADATA_REGISTRY;
+pub use provider_factory::create_provider;
 pub use tool_executor::{execute_tool_call, metadata_tool_definitions, tool_definitions_for};
 pub use types::*;

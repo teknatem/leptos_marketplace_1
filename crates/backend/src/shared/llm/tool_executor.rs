@@ -7,8 +7,8 @@
 use super::admin_tools::{admin_tool_definitions, execute_admin_tool};
 use super::kb_admin_tools::{execute_kb_admin_tool, kb_admin_tool_definitions};
 use super::knowledge_base::KNOWLEDGE_BASE;
-use super::plugin_tools::{execute_plugin_tool, plugin_tool_definitions, PLUGIN_TOOL_NAMES};
 use super::metadata_registry::METADATA_REGISTRY;
+use super::plugin_tools::{execute_plugin_tool, plugin_tool_definitions, PLUGIN_TOOL_NAMES};
 use super::types::{ToolCall, ToolDefinition};
 use contracts::domain::a017_llm_agent::aggregate::AgentType;
 
@@ -350,7 +350,7 @@ pub async fn execute_tool_call(
     // Plugin developer tools — dispatch to plugin_tools module
     if PLUGIN_TOOL_NAMES.contains(&call.name.as_str()) {
         let result = if matches!(agent_type, AgentType::PluginAdmin | AgentType::General) {
-            execute_plugin_tool(&call.name, &call.arguments, agent_id).await
+            execute_plugin_tool(&call.name, &call.arguments, chat_id, agent_id).await
         } else {
             serde_json::json!({
                 "error": format!(

@@ -76,8 +76,11 @@ pub fn plugin_tool_definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "plugin_validate".into(),
-            description: "Проверить bundle БЕЗ сохранения: компиляция серверного модуля, перечень \
-                          экспортов, проверка SQL. Возвращает { ok, server_exports, errors:[{stage,message,stack}] }. \
+            description: "Проверить bundle БЕЗ сохранения: компиляция серверного И клиентского \
+                          модулей, перечень экспортов, проверка SQL. Для client/hybrid также \
+                          проверяется, что client_script экспортирует mount. Возвращает \
+                          { ok, server_exports, client_exports, errors:[{stage,message,stack}] }; \
+                          стадии client-ошибок: client_module_eval, client_missing_export. \
                           Вызывай перед plugin_upsert."
                 .into(),
             parameters: json!({
@@ -90,7 +93,9 @@ pub fn plugin_tool_definitions() -> Vec<ToolDefinition> {
             name: "plugin_upsert".into(),
             description: "Создать или обновить плагин. Если id не задан, идентичность берётся по \
                           manifest.code (idempotent upsert-by-code). Бандл валидируется ПЕРЕД \
-                          сохранением — невалидный плагин не сохраняется. Возвращает { ok, id, version, validate }."
+                          сохранением (server + client, включая mount) — невалидный плагин не \
+                          сохраняется. По умолчанию статус draft. Создаёт в чате карточку-превью \
+                          (кнопки «Превью»/«Редактор»). Возвращает { ok, id, version, validate, artifact_id }."
                 .into(),
             parameters: json!({
                 "type": "object",
@@ -123,13 +128,18 @@ pub fn plugin_tool_definitions() -> Vec<ToolDefinition> {
 }
 
 /// Диспетчер инструментов разработчика плагинов.
-pub async fn execute_plugin_tool(name: &str, arguments: &str, agent_id: &str) -> Value {
+pub async fn execute_plugin_tool(
+    name: &str,
+    arguments: &str,
+    chat_id: &str,
+    agent_id: &str,
+) -> Value {
     let args: Value = serde_json::from_str(arguments).unwrap_or_else(|_| json!({}));
     match name {
         "plugin_list" => plugin_list().await,
         "plugin_get" => plugin_get(&args).await,
         "plugin_validate" => plugin_validate(&args).await,
-        "plugin_upsert" => plugin_upsert(&args, agent_id).await,
+        "plugin_upsert" => plugin_upsert(&args, chat_id, agent_id).await,
         "plugin_invoke" => plugin_invoke(&args).await,
         _ => json!({ "error": format!("Unknown plugin tool: '{}'", name) }),
     }
@@ -196,7 +206,7 @@ async fn plugin_validate(args: &Value) -> Value {
     json!({ "validate": service::validate(&bundle).await })
 }
 
-async fn plugin_upsert(args: &Value, agent_id: &str) -> Value {
+async fn plugin_upsert(args: &Value, chat_id: &str, agent_id: &str) -> Value {
     let bundle = match parse_bundle(args) {
         Ok(b) => b,
         Err(e) => return e,
@@ -208,11 +218,11 @@ async fn plugin_upsert(args: &Value, agent_id: &str) -> Value {
         return json!({ "ok": false, "error": "Валидация не пройдена", "validate": report });
     }
 
+    let plugin_code = bundle.manifest.code.clone();
+    let plugin_title = bundle.manifest.title.clone();
+
     // Идентичность по code: если id не задан, но плагин с таким code уже есть — обновляем его.
-    let mut id = args
-        .get("id")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let mut id = args.get("id").and_then(Value::as_str).map(str::to_string);
     let mut version = None;
     if id.is_none() {
         if let Ok(Some(existing)) = service::get_by_code(&bundle.manifest.code).await {
@@ -241,14 +251,58 @@ async fn plugin_upsert(args: &Value, agent_id: &str) -> Value {
                 .ok()
                 .flatten()
                 .map(|d| d.version);
-            json!({
+            // Карточка-превью в чате: пользователь откроет плагин в один клик.
+            let artifact_id =
+                create_plugin_artifact(&saved_id, &plugin_code, &plugin_title, chat_id, agent_id)
+                    .await;
+            let mut result = json!({
                 "ok": true,
                 "id": saved_id,
                 "version": saved_version,
                 "validate": report,
-            })
+            });
+            if let Some(id) = artifact_id {
+                result["artifact_id"] = Value::String(id);
+            }
+            result
         }
         Err(e) => json!({ "ok": false, "error": e.to_string() }),
+    }
+}
+
+/// Создать артефакт a019 типа `plugin` — чат покажет карточку с кнопками
+/// «Превью» / «Редактор». Возвращает id артефакта (None при сбое — сохранение
+/// плагина от этого не страдает).
+async fn create_plugin_artifact(
+    plugin_id: &str,
+    code: &str,
+    title: &str,
+    chat_id: &str,
+    agent_id: &str,
+) -> Option<String> {
+    let query_params = json!({
+        "plugin_id": plugin_id,
+        "code": code,
+        "title": title,
+    });
+    let dto = crate::domain::a019_llm_artifact::service::LlmArtifactDto {
+        id: None,
+        code: Some(format!("PLUGIN-{code}")),
+        description: title.to_string(),
+        comment: Some(format!("Плагин {code}")),
+        chat_id: chat_id.to_string(),
+        agent_id: agent_id.to_string(),
+        artifact_type: Some("plugin".to_string()),
+        sql_query: String::new(),
+        query_params: Some(query_params.to_string()),
+        visualization_config: None,
+    };
+    match crate::domain::a019_llm_artifact::service::create(dto).await {
+        Ok(uuid) => Some(uuid.to_string()),
+        Err(e) => {
+            tracing::warn!("plugin_upsert: failed to save plugin artifact: {e}");
+            None
+        }
     }
 }
 
@@ -296,9 +350,13 @@ mod tests {
                 "server_script": "export async function broken( {"
             }
         });
-        let result = execute_plugin_tool("plugin_upsert", &args.to_string(), "agent-1").await;
+        let result =
+            execute_plugin_tool("plugin_upsert", &args.to_string(), "chat-1", "agent-1").await;
         assert_eq!(result["ok"], json!(false));
         assert_eq!(result["validate"]["ok"], json!(false));
-        assert!(result.get("id").is_none(), "битый плагин не должен сохраняться");
+        assert!(
+            result.get("id").is_none(),
+            "битый плагин не должен сохраняться"
+        );
     }
 }

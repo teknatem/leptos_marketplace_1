@@ -7,6 +7,7 @@
 //! - Theme selector
 //! - Notifications and settings buttons
 
+use crate::domain::a018_llm_chat::ui::AiChatHeaderButton;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
 use crate::shared::theme::ThemeSelect;
@@ -105,6 +106,9 @@ pub fn TopHeader() -> impl IntoView {
                 >
                     {icon("code")}
                 </button>
+
+                // AI чат с контекстом текущей страницы
+                <AiChatHeaderButton />
 
                 // Theme selector
                 <HistoryHeaderButton />

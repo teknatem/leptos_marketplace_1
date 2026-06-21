@@ -136,6 +136,24 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/sys/s3/files",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/sys/s3/files/:id/download",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "DELETE",
+        path: "/api/sys/s3/files/:id",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/system/audit/routes",
         scope_id: None,
         mode: PolicyMode::AdminOnly,
@@ -1423,13 +1441,37 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "POST",
+        path: "/api/plugin/import",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/plugin/runs/summary",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/plugin/:id/export",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/plugin/:id/stats",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "POST",
         path: "/api/plugin/:id/data",
         scope_id: None,
         mode: PolicyMode::AdminOnly,
     },
     RoutePolicy {
         method: "POST",
-        path: "/api/plugin/:id/run",
+        path: "/api/plugin/:id/invoke",
         scope_id: None,
         mode: PolicyMode::AdminOnly,
     },
@@ -1514,5 +1556,39 @@ mod tests {
             );
         }
         // Do not panic — these are known and tracked via the audit endpoint.
+    }
+
+    #[test]
+    fn plugin_routes_are_registered() {
+        let expected = [
+            ("GET", "/api/plugin"),
+            ("POST", "/api/plugin"),
+            ("GET", "/api/plugin/all"),
+            ("POST", "/api/plugin/validate"),
+            ("POST", "/api/plugin/testdata"),
+            ("POST", "/api/plugin/import"),
+            ("GET", "/api/plugin/runs/summary"),
+            ("GET", "/api/plugin/:id"),
+            ("DELETE", "/api/plugin/:id"),
+            ("GET", "/api/plugin/:id/export"),
+            ("GET", "/api/plugin/:id/stats"),
+            ("POST", "/api/plugin/:id/data"),
+            ("POST", "/api/plugin/:id/invoke"),
+        ];
+
+        for (method, path) in expected {
+            assert!(
+                ROUTE_REGISTRY.iter().any(|policy| policy.path == path
+                    && (policy.method == "*" || policy.method == method)),
+                "missing route policy for {method} {path}"
+            );
+        }
+
+        assert!(
+            !ROUTE_REGISTRY
+                .iter()
+                .any(|policy| policy.path == "/api/plugin/:id/run"),
+            "stale plugin run route policy should not exist"
+        );
     }
 }

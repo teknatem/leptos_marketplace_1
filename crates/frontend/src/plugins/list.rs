@@ -3,7 +3,6 @@
 
 use crate::layout::global_context::AppGlobalContext;
 use crate::plugins::api;
-use crate::shared::auth_download::download_authenticated_file;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
 use contracts::plugins::{PluginHealth, PluginListItem, PluginRunBrief};
@@ -46,7 +45,12 @@ pub fn PluginList() -> impl IntoView {
         // Сводки запусков подгружаем параллельно; их отсутствие не критично.
         spawn_local(async move {
             if let Ok(briefs) = api::runs_summary(7).await {
-                set_summaries.set(briefs.into_iter().map(|b| (b.plugin_id.clone(), b)).collect());
+                set_summaries.set(
+                    briefs
+                        .into_iter()
+                        .map(|b| (b.plugin_id.clone(), b))
+                        .collect(),
+                );
             }
         });
     };
@@ -105,8 +109,7 @@ pub fn PluginList() -> impl IntoView {
                         .unwrap_or("")
                         .to_string();
                     if body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        set_import_msg
-                            .set(Some(format!("Импортирован «{code}» (статус draft)")));
+                        set_import_msg.set(Some(format!("Импортирован «{code}» (статус draft)")));
                         reload();
                     } else {
                         let errors = body
@@ -114,9 +117,7 @@ pub fn PluginList() -> impl IntoView {
                             .and_then(|v| v.get("errors"))
                             .map(|e| e.to_string())
                             .unwrap_or_default();
-                        set_error.set(Some(format!(
-                            "«{code}» не прошёл валидацию: {errors}"
-                        )));
+                        set_error.set(Some(format!("«{code}» не прошёл валидацию: {errors}")));
                         set_import_msg.set(None);
                     }
                 }
@@ -214,13 +215,15 @@ pub fn PluginList() -> impl IntoView {
                                     </thead>
                                     <tbody>
                                         {list.into_iter().map(|p| {
-                                            let key = format!("plugin__{}", p.id);
-                                            let title = p.title.clone();
+                                            // Название → пользовательская страница плагина (`plugin__<id>`).
+                                            let view_key = format!("plugin__{}", p.id);
+                                            let view_title = p.title.clone();
+                                            // «Изменить» → страница редактирования (`plugin_dev__<id>`).
+                                            let edit_key = format!("plugin_dev__{}", p.id);
+                                            let edit_title = format!("{} — разработка", p.title);
                                             let updated = p.updated_at.format("%Y-%m-%d %H:%M").to_string();
                                             let status = p.status.clone();
                                             let status_mod = format!("plugins-badge plugins-badge--{}", status);
-                                            let export_id = p.id.clone();
-                                            let export_code = p.code.clone();
                                             let brief = sums.get(&p.id).cloned();
                                             let (health_label, health_mod) = brief
                                                 .as_ref()
@@ -233,7 +236,18 @@ pub fn PluginList() -> impl IntoView {
                                             view! {
                                                 <tr>
                                                     <td><span class="plugins-code">{p.code.clone()}</span></td>
-                                                    <td class="plugins-table__title">{p.title.clone()}</td>
+                                                    <td class="plugins-table__title">
+                                                        <a
+                                                            href="#"
+                                                            class="plugins-link"
+                                                            on:click=move |ev| {
+                                                                ev.prevent_default();
+                                                                ctx.open_tab(&view_key, &view_title);
+                                                            }
+                                                        >
+                                                            {p.title.clone()}
+                                                        </a>
+                                                    </td>
                                                     <td><span class="plugins-chip">{p.runtime.clone()}</span></td>
                                                     <td><span class=status_mod>{status}</span></td>
                                                     <td>
@@ -258,24 +272,10 @@ pub fn PluginList() -> impl IntoView {
                                                             class="plugins-link"
                                                             on:click=move |ev| {
                                                                 ev.prevent_default();
-                                                                ctx.open_tab(&key, &title);
+                                                                ctx.open_tab(&edit_key, &edit_title);
                                                             }
                                                         >
-                                                            "Открыть →"
-                                                        </a>
-                                                        <a
-                                                            href="#"
-                                                            class="plugins-link plugins-link--muted"
-                                                            on:click=move |ev| {
-                                                                ev.prevent_default();
-                                                                let url = format!("/api/plugin/{}/export", export_id);
-                                                                let fallback = format!("{}.plugin.zip", export_code);
-                                                                spawn_local(async move {
-                                                                    let _ = download_authenticated_file(&url, &fallback).await;
-                                                                });
-                                                            }
-                                                        >
-                                                            "Экспорт"
+                                                            "Изменить"
                                                         </a>
                                                     </td>
                                                 </tr>

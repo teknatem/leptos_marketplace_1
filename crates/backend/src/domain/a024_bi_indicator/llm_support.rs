@@ -1,6 +1,6 @@
 use crate::domain::a017_llm_agent;
-use crate::shared::llm::openai_provider::OpenAiProvider;
-use crate::shared::llm::types::{ChatMessage, LlmProvider};
+use crate::shared::llm::create_provider;
+use crate::shared::llm::types::ChatMessage;
 use contracts::domain::a024_bi_indicator::aggregate::{GenerateViewRequest, GenerateViewResponse};
 
 const BI_VIEW_SYSTEM_PROMPT: &str = r#"You are a BI indicator visual designer. Your task is to generate HTML and CSS for a dashboard indicator card.
@@ -50,22 +50,8 @@ pub async fn generate_view(request: GenerateViewRequest) -> anyhow::Result<Gener
         anyhow::anyhow!("No LLM agent found. Configure an agent in a017_llm_agent first.")
     })?;
 
-    let provider = if agent.api_endpoint.is_empty() {
-        OpenAiProvider::new(
-            agent.api_key.clone(),
-            agent.model_name.clone(),
-            agent.temperature,
-            agent.max_tokens,
-        )
-    } else {
-        OpenAiProvider::new_with_endpoint(
-            agent.api_endpoint.clone(),
-            agent.api_key.clone(),
-            agent.model_name.clone(),
-            agent.temperature,
-            agent.max_tokens,
-        )
-    };
+    let provider =
+        create_provider(&agent, None).map_err(|e| anyhow::anyhow!("LLM provider error: {}", e))?;
 
     let mut user_prompt = String::new();
 

@@ -14,7 +14,7 @@
     "icon": "robot"
   },
   "ai": {
-    "description": "Настройки подключения к провайдерам LLM (OpenAI, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_tokens) и системный промпт. Используется для создания чатов и выполнения запросов к языковым моделям.",
+    "description": "Настройки подключения к провайдерам LLM (OpenAI, OpenRouter, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_tokens) и системный промпт. Используется для создания чатов и выполнения запросов к языковым моделям.",
     "questions": [
       "Какие LLM агенты настроены?",
       "Как добавить OpenAI агента?",
@@ -117,7 +117,7 @@
       "validation": {
         "required": true
       },
-      "ai_hint": "Поддерживаемые провайдеры: OpenAI (GPT-4, GPT-4o), Anthropic (Claude), Ollama (локальные модели)"
+      "ai_hint": "Поддерживаемые провайдеры: OpenAI (GPT-4, GPT-4o), OpenRouter (OpenAI-compatible routing), Anthropic (Claude), Ollama (локальные модели)"
     },
     {
       "name": "api_endpoint",
@@ -139,7 +139,7 @@
         "pattern": "^https?://.+",
         "custom_error": "URL должен начинаться с http:// или https://"
       },
-      "ai_hint": "OpenAI: https://api.openai.com/v1, Anthropic: https://api.anthropic.com, Ollama: http://localhost:11434"
+      "ai_hint": "OpenAI: https://api.openai.com/v1, OpenRouter: https://openrouter.ai/api/v1, Anthropic: https://api.anthropic.com, Ollama: http://localhost:11434"
     },
     {
       "name": "api_key",
@@ -179,7 +179,7 @@
         "required": true,
         "max_length": 100
       },
-      "ai_hint": "OpenAI: gpt-4o, gpt-4-turbo, gpt-3.5-turbo. Anthropic: claude-3-5-sonnet-20241022. Ollama: llama3.2, mistral"
+      "ai_hint": "OpenAI: gpt-4o, gpt-4-turbo, gpt-3.5-turbo. OpenRouter: openai/gpt-4o, anthropic/claude-3.5-sonnet. Anthropic: claude-3-5-sonnet-20241022. Ollama: llama3.2, mistral"
     },
     {
       "name": "available_models",

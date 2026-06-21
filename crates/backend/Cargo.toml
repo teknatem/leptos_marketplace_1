@@ -29,6 +29,8 @@ base64 = "0.22"
 sha2 = "0.10"
 toml = "0.8"
 async-openai = { version = "0.32.3", features = ["chat-completion", "model"] }
+bytes = "1"
+hmac = "0.12"
 thiserror = "1.0"
 csv = "1"
 encoding_rs = "0.8"

@@ -12,6 +12,7 @@ use crate::domain::a018_llm_chat::job_store::{self, LlmJobStatus};
 use contracts::domain::a018_llm_chat::aggregate::{
     LlmChat, LlmChatDetail, LlmChatListItem, LlmChatMessage,
 };
+use contracts::domain::a018_llm_chat::context::{AddContextRequest, ContextPackageSummary};
 
 #[derive(Deserialize)]
 pub struct LlmChatListParams {
@@ -187,6 +188,32 @@ pub async fn poll_job(Path(job_id): Path<String>) -> Result<Json<JobStatusRespon
             message: None,
             error: Some(e),
         })),
+    }
+}
+
+/// GET /api/a018-llm-chat/:id/context
+/// Список пакетов контекста, привязанных к чату.
+pub async fn get_chat_context(
+    Path(id): Path<String>,
+) -> Result<Json<Vec<ContextPackageSummary>>, StatusCode> {
+    match a018_llm_chat::service::list_chat_context(&id).await {
+        Ok(v) => Ok(Json(v)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// POST /api/a018-llm-chat/:id/context
+/// Собрать контекст текущей страницы по page_key и привязать к чату.
+pub async fn add_chat_context(
+    Path(id): Path<String>,
+    Json(req): Json<AddContextRequest>,
+) -> Result<Json<ContextPackageSummary>, StatusCode> {
+    match a018_llm_chat::service::add_chat_context(&id, &req.page_key, req.label.as_deref()).await {
+        Ok(summary) => Ok(Json(summary)),
+        Err(e) => {
+            tracing::error!("add_chat_context error: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 

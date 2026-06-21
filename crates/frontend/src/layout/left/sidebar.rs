@@ -359,10 +359,28 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     tab_label_for_key("u505_match_nomenclature"),
                     "layers",
                 ),
+            ],
+            admin_only: true,
+        },
+        MenuGroup {
+            id: "llm",
+            label: "LLM",
+            icon: "message-square",
+            items: vec![
                 SidebarItem::with_scope(
                     "a018_llm_chat",
                     tab_label_for_key("a018_llm_chat"),
                     "message-square",
+                ),
+                SidebarItem::with_scope(
+                    "a019_llm_artifact",
+                    tab_label_for_key("a019_llm_artifact"),
+                    "file-text",
+                ),
+                SidebarItem::with_scope(
+                    "a017_llm_agent",
+                    tab_label_for_key("a017_llm_agent"),
+                    "robot",
                 ),
             ],
             admin_only: true,
@@ -527,6 +545,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                 ),
                 SidebarItem::new("sys_audit", tab_label_for_key("sys_audit"), "shield-check"),
                 SidebarItem::new(
+                    "sys_s3_files",
+                    tab_label_for_key("sys_s3_files"),
+                    "download-cloud",
+                ),
+                SidebarItem::new(
                     "quality_checks",
                     tab_label_for_key("quality_checks"),
                     "check-circle",
@@ -536,11 +559,6 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "sys_task_type_registry",
                     tab_label_for_key("sys_task_type_registry"),
                     "layers",
-                ),
-                SidebarItem::with_scope(
-                    "a017_llm_agent",
-                    tab_label_for_key("a017_llm_agent"),
-                    "robot",
                 ),
                 SidebarItem::new(
                     "filter_registry",

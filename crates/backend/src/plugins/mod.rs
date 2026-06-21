@@ -3,6 +3,7 @@
 //! Exported `server_script` functions run in QuickJS and receive a small host
 //! API for database queries and invocation logging.
 
+pub mod demo;
 pub mod engine;
 pub mod package;
 pub mod repository;

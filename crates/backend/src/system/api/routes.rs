@@ -209,6 +209,25 @@ pub fn configure_system_routes() -> Router {
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
         // ========================================
+        // SYSTEM S3 FILE MANAGER
+        // ========================================
+        .route(
+            "/api/sys/s3/files",
+            get(handlers::s3::list_files)
+                .post(handlers::s3::upload_file)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/s3/files/:id/download",
+            get(handlers::s3::download_file)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/s3/files/:id",
+            axum::routing::delete(handlers::s3::delete_file)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        // ========================================
         // UTILITIES
         // ========================================
         // Logs handlers
