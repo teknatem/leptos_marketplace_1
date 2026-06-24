@@ -88,11 +88,7 @@ fn currency_label(code: Option<i64>) -> &'static str {
 fn parse_order_item(item: &serde_json::Value) -> Option<WbOrdersDto> {
     let id = item.get("id")?.as_str()?.to_string();
     let document_no = item.get("document_no")?.as_str()?.to_string();
-    let str_field = |key: &str| {
-        item.get(key)
-            .and_then(|v| v.as_str())
-            .map(String::from)
-    };
+    let str_field = |key: &str| item.get(key).and_then(|v| v.as_str()).map(String::from);
     Some(WbOrdersDto {
         id,
         document_no,
@@ -1207,7 +1203,11 @@ async fn fetch_all_orders_for_export(
         .json::<PaginatedResponse>()
         .await
         .map_err(|e| format!("Failed to parse: {}", e))?;
-    Ok(paginated.items.iter().filter_map(parse_order_item).collect())
+    Ok(paginated
+        .items
+        .iter()
+        .filter_map(parse_order_item)
+        .collect())
 }
 
 /// Загрузка списка организаций

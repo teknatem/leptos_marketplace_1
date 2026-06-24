@@ -45,7 +45,11 @@ const SPECS: &[FileSpec] = &[
     FileSpec {
         filename: "delivered.csv",
         is_return: false,
-        date: &["DELIVERY_DATE", "TRANSFERRED_TO_DELIVERY_DATE", "ORDER_CREATION_DATE"],
+        date: &[
+            "DELIVERY_DATE",
+            "TRANSFERRED_TO_DELIVERY_DATE",
+            "ORDER_CREATION_DATE",
+        ],
         order: &["ORDER_ID"],
         shop_sku: &["SHOP_SKU", "YOUR_SKU"],
         your_sku: &["YOUR_SKU"],
@@ -185,7 +189,11 @@ fn parse_file(
     let headers = match reader.headers() {
         Ok(h) => h.clone(),
         Err(e) => {
-            tracing::warn!("Realization {}: не прочитать заголовки: {}", spec.filename, e);
+            tracing::warn!(
+                "Realization {}: не прочитать заголовки: {}",
+                spec.filename,
+                e
+            );
             return;
         }
     };
@@ -239,7 +247,9 @@ fn parse_file(
         });
         let day = clamp_to_month(row_day, month_first, month_last);
 
-        let revenue = get(idx_revenue).and_then(|v| parse_money(&v)).unwrap_or(0.0);
+        let revenue = get(idx_revenue)
+            .and_then(|v| parse_money(&v))
+            .unwrap_or(0.0);
 
         let line = YmRealizationLine {
             order_id: get(idx_order),
@@ -248,7 +258,9 @@ fn parse_file(
             marketplace_product_ref: None,
             market_sku: None,
             offer_name: get(idx_offer_name).unwrap_or_default(),
-            quantity: get(idx_quantity).and_then(|v| parse_money(&v)).unwrap_or(0.0),
+            quantity: get(idx_quantity)
+                .and_then(|v| parse_money(&v))
+                .unwrap_or(0.0),
             // Выручка хранится положительной; знак операции несёт is_return.
             revenue_amount: revenue.abs(),
             is_return: spec.is_return,

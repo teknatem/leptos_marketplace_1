@@ -84,9 +84,7 @@ fn reg_tab_key(reg_type: &str, reg_ref: &str) -> Option<String> {
         "a021_production_output" => Some(format!("a021_production_output_details_{id}")),
         "a022_kit_variant" => Some(format!("a022_kit_variant_details_{id}")),
         "a023_purchase_of_goods" => Some(format!("a023_purchase_of_goods_details_{id}")),
-        "a028_missing_cost_registry" => {
-            Some(format!("a028_missing_cost_registry_details_{id}"))
-        }
+        "a028_missing_cost_registry" => Some(format!("a028_missing_cost_registry_details_{id}")),
         "p907_ym_payment_report" if !id.trim().is_empty() => {
             Some(format!("p907_ym_payment_report_details_{id}"))
         }

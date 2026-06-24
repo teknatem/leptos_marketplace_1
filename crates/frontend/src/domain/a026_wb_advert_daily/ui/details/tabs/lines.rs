@@ -1,8 +1,6 @@
 //! Lines tab ("Позиции") - per-product advert metrics with sorting and CSV export.
 
-use super::super::model::{
-    fmt_money, fmt_ratio, LINES_COLUMN_WIDTHS_KEY, LINES_TABLE_ID,
-};
+use super::super::model::{fmt_money, fmt_ratio, LINES_COLUMN_WIDTHS_KEY, LINES_TABLE_ID};
 use super::super::view_model::WbAdvertDailyDetailsVm;
 use crate::shared::components::card_animated::CardAnimated;
 use crate::shared::components::table::TableCrosshairHighlight;
@@ -86,8 +84,10 @@ pub fn LinesTab(vm: WbAdvertDailyDetailsVm) -> impl IntoView {
             .filter(|line| line.nomenclature_ref.is_none())
             .count();
 
-        let export_filename =
-            format!("wb_advert_daily_positions_{}_{}.csv", d.document_date, d.document_no);
+        let export_filename = format!(
+            "wb_advert_daily_positions_{}_{}.csv",
+            d.document_date, d.document_no
+        );
         let export_lines = move |_| {
             let lines = sorted_lines.get_untracked();
             if let Err(err) = export_to_excel(&lines, &export_filename) {

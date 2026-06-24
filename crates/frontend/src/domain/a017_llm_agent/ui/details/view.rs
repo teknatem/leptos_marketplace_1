@@ -35,6 +35,7 @@ pub fn LlmAgentDetails(
                         vm.max_tokens.set(agent.max_tokens.to_string());
                         vm.system_prompt
                             .set(agent.system_prompt.unwrap_or_default());
+                        vm.agent_type.set(agent.agent_type.as_str().to_string());
                         vm.is_primary.set(agent.is_primary);
 
                         // Load available models if present
@@ -285,6 +286,26 @@ pub fn LlmAgentDetails(
                         </select>
                         <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
                             "OpenAI, OpenRouter, Anthropic, Ollama"
+                        </div>
+                    </div>
+
+                    <div class="form__group">
+                        <label class="form__label">"Роль агента"</label>
+                        <select
+                            style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%; background: var(--color-surface); color: var(--color-text);"
+                            prop:value=move || vm.agent_type.get()
+                            on:change=move |ev| {
+                                vm.agent_type.set(event_target_value(&ev));
+                            }
+                        >
+                            <option value="business_analyst">"Бизнес-аналитик"</option>
+                            <option value="general">"Общий (все инструменты)"</option>
+                            <option value="plugin_admin">"Разработчик плагинов"</option>
+                            <option value="system_admin">"Системный администратор"</option>
+                            <option value="kb_admin">"Администратор базы знаний"</option>
+                        </select>
+                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                            "Определяет набор инструментов. Для создания плагинов выбери «Разработчик плагинов» или «Общий»."
                         </div>
                     </div>
 

@@ -665,9 +665,7 @@ pub fn projections_for_cell(turnover_code: &str, layer: &str) -> Vec<&'static st
         }
     };
 
-    let has_common = dimensions
-        .iter()
-        .any(|dim| is_common_dimension_id(&dim.id));
+    let has_common = dimensions.iter().any(|dim| is_common_dimension_id(&dim.id));
     if has_common {
         push("sys_general_ledger", &mut projections);
     }
@@ -1003,25 +1001,61 @@ mod tests {
     #[test]
     fn table_source_registry_matches_projection_columns() {
         // GL хранит идентичность, но НЕ номенклатуру и НЕ fina-разрезы.
-        assert!(table_provides_dimension("sys_general_ledger", "registrator_ref"));
-        assert!(table_provides_dimension("sys_general_ledger", "connection_mp_ref"));
-        assert!(!table_provides_dimension("sys_general_ledger", "nomenclature"));
-        assert!(!table_provides_dimension("sys_general_ledger", "customer_kind"));
+        assert!(table_provides_dimension(
+            "sys_general_ledger",
+            "registrator_ref"
+        ));
+        assert!(table_provides_dimension(
+            "sys_general_ledger",
+            "connection_mp_ref"
+        ));
+        assert!(!table_provides_dimension(
+            "sys_general_ledger",
+            "nomenclature"
+        ));
+        assert!(!table_provides_dimension(
+            "sys_general_ledger",
+            "customer_kind"
+        ));
 
         // p914 несёт всё: идентичность + номенклатуру + fina.
-        assert!(table_provides_dimension("p914_mp_finance_turnovers", "registrator_ref"));
-        assert!(table_provides_dimension("p914_mp_finance_turnovers", "nomenclature"));
-        assert!(table_provides_dimension("p914_mp_finance_turnovers", "customer_kind"));
+        assert!(table_provides_dimension(
+            "p914_mp_finance_turnovers",
+            "registrator_ref"
+        ));
+        assert!(table_provides_dimension(
+            "p914_mp_finance_turnovers",
+            "nomenclature"
+        ));
+        assert!(table_provides_dimension(
+            "p914_mp_finance_turnovers",
+            "customer_kind"
+        ));
 
         // p903 — без registrator/layer, но с кабинетом и номенклатурой.
-        assert!(table_provides_dimension("p903_wb_finance_report", "connection_mp_ref"));
-        assert!(table_provides_dimension("p903_wb_finance_report", "nomenclature"));
-        assert!(!table_provides_dimension("p903_wb_finance_report", "registrator_ref"));
+        assert!(table_provides_dimension(
+            "p903_wb_finance_report",
+            "connection_mp_ref"
+        ));
+        assert!(table_provides_dimension(
+            "p903_wb_finance_report",
+            "nomenclature"
+        ));
+        assert!(!table_provides_dimension(
+            "p903_wb_finance_report",
+            "registrator_ref"
+        ));
         assert!(!table_provides_dimension("p903_wb_finance_report", "layer"));
 
         // p911/p913 не имеют колонки layer.
-        assert!(!table_provides_dimension("p911_wb_advert_by_items", "layer"));
-        assert!(table_provides_dimension("p911_wb_advert_by_items", "registrator_ref"));
+        assert!(!table_provides_dimension(
+            "p911_wb_advert_by_items",
+            "layer"
+        ));
+        assert!(table_provides_dimension(
+            "p911_wb_advert_by_items",
+            "registrator_ref"
+        ));
 
         // Все измерения реестра источников существуют как seed.
         for source in DIMENSION_SOURCE_TABLES {

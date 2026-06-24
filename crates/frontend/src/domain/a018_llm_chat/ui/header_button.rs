@@ -88,6 +88,15 @@ pub fn AiChatHeaderButton() -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             match add_context(&chat_id, &page_key, &label).await {
                 Ok(()) => {
+                    // Сигнал открытой странице чата перезагрузить ленту контекста.
+                    let vkey = crate::domain::a018_llm_chat::ui::context_version_key(&chat_id);
+                    let next = ctx
+                        .get_form_state(&vkey)
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0)
+                        + 1;
+                    ctx.set_form_state(vkey, serde_json::Value::from(next));
+
                     let key = format!("{}{}", CHAT_DETAIL_PREFIX, chat_id);
                     ctx.activate_tab(&key);
                 }
@@ -249,14 +258,17 @@ async fn http_request(method: &str, url: &str, body: Option<String>) -> Result<S
 async fn fetch_default_agent() -> Result<(String, String), String> {
     let url = format!("{}/api/a017-llm-agent", api_base());
     let text = http_request("GET", &url, None).await?;
-    let agents: Vec<serde_json::Value> =
-        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let agents: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     if agents.is_empty() {
         return Err("Нет доступных LLM-агентов".to_string());
     }
     let chosen = agents
         .iter()
-        .find(|a| a.get("is_primary").and_then(|v| v.as_bool()).unwrap_or(false))
+        .find(|a| {
+            a.get("is_primary")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        })
         .or_else(|| agents.first())
         .unwrap();
     let id = chosen

@@ -207,6 +207,54 @@ fn default_api_version() -> String {
     "1".to_string()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+pub enum PluginCapability {
+    DbReadAll,
+    DbRead(String),
+    NetworkNone,
+    AssetsRead,
+    PluginInvoke,
+    Unknown(String),
+}
+
+impl PluginCapability {
+    pub fn parse(raw: &str) -> Self {
+        let value = raw.trim();
+        match value {
+            "db:read:*" | "data:read" => Self::DbReadAll,
+            "network:none" => Self::NetworkNone,
+            "assets:read" => Self::AssetsRead,
+            "plugin:invoke" => Self::PluginInvoke,
+            _ => value
+                .strip_prefix("db:read:")
+                .filter(|scope| !scope.trim().is_empty())
+                .map(|scope| Self::DbRead(scope.trim().to_ascii_lowercase()))
+                .unwrap_or_else(|| Self::Unknown(value.to_string())),
+        }
+    }
+
+    pub fn canonical(&self) -> String {
+        match self {
+            Self::DbReadAll => "db:read:*".to_string(),
+            Self::DbRead(scope) => format!("db:read:{scope}"),
+            Self::NetworkNone => "network:none".to_string(),
+            Self::AssetsRead => "assets:read".to_string(),
+            Self::PluginInvoke => "plugin:invoke".to_string(),
+            Self::Unknown(value) => value.clone(),
+        }
+    }
+}
+
+impl PluginManifest {
+    pub fn parsed_capabilities(&self) -> Vec<PluginCapability> {
+        self.capabilities
+            .iter()
+            .map(|value| PluginCapability::parse(value))
+            .collect()
+    }
+}
+
 // ============================================================================
 // Bundle — самодостаточный артефакт
 // ============================================================================
@@ -535,6 +583,22 @@ mod tests {
         bundle.manifest.code = "bad code".into();
         assert!(bundle.validate().is_err());
     }
+
+    #[test]
+    fn parses_plugin_capabilities() {
+        assert_eq!(
+            PluginCapability::parse("data:read"),
+            PluginCapability::DbReadAll
+        );
+        assert_eq!(
+            PluginCapability::parse("db:read:wb"),
+            PluginCapability::DbRead("wb".into())
+        );
+        assert_eq!(
+            PluginCapability::DbRead("ref".into()).canonical(),
+            "db:read:ref"
+        );
+    }
 }
 
 // ============================================================================
@@ -618,6 +682,53 @@ pub struct PluginInvokeRequest {
     pub args: serde_json::Value,
     #[serde(default)]
     pub context: PluginRunContext,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PluginSmokeMethod {
+    pub method: String,
+    #[serde(default)]
+    pub args: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PluginSmokeRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle: Option<PluginBundle>,
+    #[serde(default)]
+    pub context: PluginRunContext,
+    #[serde(default)]
+    pub methods: Vec<PluginSmokeMethod>,
+    #[serde(default)]
+    pub render: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginSmokeFailure {
+    pub stage: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_hint: Option<String>,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PluginSmokeReport {
+    pub ok: bool,
+    pub validate: PluginValidateReport,
+    #[serde(default)]
+    pub server_exports: Vec<String>,
+    #[serde(default)]
+    pub client_exports: Vec<String>,
+    #[serde(default)]
+    pub client_invokes: Vec<String>,
+    #[serde(default)]
+    pub failures: Vec<PluginSmokeFailure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_next_step: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

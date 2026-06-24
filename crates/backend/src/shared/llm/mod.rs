@@ -7,6 +7,7 @@ pub mod openrouter_provider;
 pub mod plugin_tools;
 pub mod provider_factory;
 pub mod router;
+pub mod skills;
 pub mod tool_executor;
 pub mod types;
 

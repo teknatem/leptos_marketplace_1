@@ -25,9 +25,7 @@ pub async fn represent_many(ids: &[String]) -> HashMap<String, AggregateRepresen
             .await
             .unwrap_or_default();
         rows.into_iter()
-            .map(|(id, posting_number)| {
-                (id, build(TYPE_NAME, None, Some(posting_number)))
-            })
+            .map(|(id, posting_number)| (id, build(TYPE_NAME, None, Some(posting_number))))
             .collect()
     })
     .await

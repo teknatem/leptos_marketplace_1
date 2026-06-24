@@ -84,6 +84,7 @@ pub mod quality;
 pub mod debug;
 pub mod kb_read;
 pub mod llm_knowledge;
+pub mod llm_skills;
 
 // Универсальный резолвер представлений ссылок (*_ref)
 pub mod refs;

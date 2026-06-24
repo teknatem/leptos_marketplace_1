@@ -31,11 +31,13 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         crate::projections::p915_mp_order_events::builder::SettledOrderEvent<'_>,
     > = settled
         .iter()
-        .map(|s| crate::projections::p915_mp_order_events::builder::SettledOrderEvent {
-            order_id: &s.order_id,
-            amount: s.amount,
-            is_return: s.is_return,
-        })
+        .map(
+            |s| crate::projections::p915_mp_order_events::builder::SettledOrderEvent {
+                order_id: &s.order_id,
+                amount: s.amount,
+                is_return: s.is_return,
+            },
+        )
         .collect();
     let events = crate::projections::p915_mp_order_events::builder::from_supplier_settlement(
         &order_events,
@@ -92,6 +94,9 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     .await?;
 
     txn.commit().await?;
-    tracing::info!("a035 отмена проведения: ордер {}", document.header.bank_order_id);
+    tracing::info!(
+        "a035 отмена проведения: ордер {}",
+        document.header.bank_order_id
+    );
     Ok(())
 }

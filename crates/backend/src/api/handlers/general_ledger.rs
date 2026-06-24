@@ -15,7 +15,7 @@ use contracts::general_ledger::{
     GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
     GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
-    GlEntitiesResponse, GlEntityDto, GlLayerDto, GlLayersResponse, GlLayerTurnoverMatrixResponse,
+    GlEntitiesResponse, GlEntityDto, GlLayerDto, GlLayerTurnoverMatrixResponse, GlLayersResponse,
     GlMatrixCell, GlMatrixDimension, GlMatrixLayer, GlMatrixProjection, GlMatrixTurnover,
     GlReportQuery, GlReportResponse, GlResourceDetailResponse, SupplierBalanceQuery,
     SupplierBalanceResponse, WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse,
@@ -277,13 +277,12 @@ fn matrix_projection(resource_table: &str) -> GlMatrixProjection {
 /// overlay из данных GL. Естественная деривация без хардкода.
 pub async fn layer_turnover_matrix(
 ) -> Result<Json<GlLayerTurnoverMatrixResponse>, axum::http::StatusCode> {
-    let counts =
-        crate::general_ledger::repository::count_grouped_by_turnover_and_layer()
-            .await
-            .map_err(|e| {
-                tracing::error!("layer/turnover matrix counts error: {e}");
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    let counts = crate::general_ledger::repository::count_grouped_by_turnover_and_layer()
+        .await
+        .map_err(|e| {
+            tracing::error!("layer/turnover matrix counts error: {e}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let mut layers = GL_LAYER_CLASSES
         .iter()

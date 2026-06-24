@@ -702,10 +702,7 @@ async fn build_details_dto(doc: WbAdvertDaily) -> anyhow::Result<WbAdvertDailyDe
             WbAdvertDailyLineDetailsDto {
                 nm_id: line.nm_id,
                 wb_name: line.nm_name.clone(),
-                marketplace_product_ref: product_ref_cache
-                    .get(&line.nm_id)
-                    .cloned()
-                    .flatten(),
+                marketplace_product_ref: product_ref_cache.get(&line.nm_id).cloned().flatten(),
                 nomenclature_ref: line.nomenclature_ref.clone(),
                 nomenclature_article: article,
                 nomenclature_name: name,

@@ -130,7 +130,11 @@ fn build_events(data: &YmOrderFlowResponse) -> Vec<TimelineEvent> {
                 details.push(detail_row("Статус", s.to_string(), T_PRIMARY.to_string()));
             }
             if let Some(d) = o.delivery_date.as_deref().filter(|s| !s.is_empty()) {
-                details.push(detail_row("Доставка", d.to_string(), T_SECONDARY.to_string()));
+                details.push(detail_row(
+                    "Доставка",
+                    d.to_string(),
+                    T_SECONDARY.to_string(),
+                ));
             }
             if let Some(v) = o.items_total.filter(|v| v.abs() > 0.0001) {
                 details.push(detail_row(
@@ -183,7 +187,11 @@ fn build_events(data: &YmOrderFlowResponse) -> Vec<TimelineEvent> {
                 ));
             }
             if !r.shop_sku.is_empty() {
-                details.push(detail_row("SKU", r.shop_sku.clone(), T_SECONDARY.to_string()));
+                details.push(detail_row(
+                    "SKU",
+                    r.shop_sku.clone(),
+                    T_SECONDARY.to_string(),
+                ));
             }
 
             events.push(TimelineEvent {
@@ -232,7 +240,11 @@ fn build_events(data: &YmOrderFlowResponse) -> Vec<TimelineEvent> {
                 details.push(detail_row("SKU", sku.to_string(), T_SECONDARY.to_string()));
             }
             if let Some(src) = p.transaction_source.as_deref().filter(|s| !s.is_empty()) {
-                details.push(detail_row("Источник", src.to_string(), T_SECONDARY.to_string()));
+                details.push(detail_row(
+                    "Источник",
+                    src.to_string(),
+                    T_SECONDARY.to_string(),
+                ));
             }
 
             events.push(TimelineEvent {
@@ -245,10 +257,7 @@ fn build_events(data: &YmOrderFlowResponse) -> Vec<TimelineEvent> {
                 subtitle,
                 details,
                 amount: p.transaction_sum.filter(|v| v.abs() > 0.0001),
-                links: vec![(
-                    format!("p907_ym_payment_report_details_{}", p.id),
-                    "Платёж",
-                )],
+                links: vec![(format!("p907_ym_payment_report_details_{}", p.id), "Платёж")],
             });
         }
     }
@@ -267,7 +276,11 @@ fn build_events(data: &YmOrderFlowResponse) -> Vec<TimelineEvent> {
                 details.push(detail_row("Сумма возврата", rub(r.amount), CE.to_string()));
             }
             if r.qty != 0 {
-                details.push(detail_row("Кол-во", format!("{}", r.qty), T_PRIMARY.to_string()));
+                details.push(detail_row(
+                    "Кол-во",
+                    format!("{}", r.qty),
+                    T_PRIMARY.to_string(),
+                ));
             }
             if !r.refund_status.is_empty() {
                 details.push(detail_row(

@@ -1,7 +1,7 @@
 use super::repository;
 use crate::domain::a017_llm_agent::repository as agent_repository;
 use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole};
-use crate::shared::llm::{create_provider, execute_tool_call, tool_definitions_for};
+use crate::shared::llm::{create_provider, execute_tool_call};
 use axum::extract::Multipart;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
@@ -31,17 +31,8 @@ fn utf8_truncate(s: &str, max_bytes: usize) -> &str {
 /// (search_knowledge → get_knowledge → get_entity_schema) перед финальным ответом.
 const MAX_TOOL_ITERATIONS: usize = 10;
 
-/// Системный промпт по умолчанию (бизнес-аналитик).
-const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompts/default_agent.md");
-
-/// Системный промпт для агента-администратора системы.
-const SYSTEM_ADMIN_PROMPT: &str = include_str!("prompts/system_admin_agent.md");
-
-/// Системный промпт для администратора базы знаний (диалог/анализ).
-const KB_ADMIN_PROMPT: &str = include_str!("prompts/kb_admin_analyze.md");
-
-/// Системный промпт для разработчика плагинов.
-const PLUGIN_ADMIN_PROMPT: &str = include_str!("prompts/plugin_admin_agent.md");
+/// Системные промпты вынесены в реестр навыков (см. shared/llm/skills.rs):
+/// базовый core-промпт + промпт-фрагменты активных навыков.
 
 /// Максимальное число не-системных сообщений в контексте (sliding window)
 const MAX_HISTORY_MESSAGES: usize = 20;
@@ -252,9 +243,8 @@ pub async fn send_message(
             let att_uuid = Uuid::parse_str(att_id_str)
                 .map_err(|e| anyhow::anyhow!("Invalid attachment ID: {}", e))?;
 
-            // Найти вложение
-            let attachments = repository::find_attachments_by_message_id(&db, &Uuid::nil()).await?;
-            if let Some(attachment) = attachments.into_iter().find(|a| a.id == att_uuid) {
+            // Найти вложение по его id (а не сканировать все nil-вложения глобально)
+            if let Some(attachment) = repository::find_attachment_by_id(&db, &att_uuid).await? {
                 // Прочитать содержимое файла
                 match read_text_file(&attachment.filepath).await {
                     Ok(file_content) => {
@@ -278,15 +268,14 @@ pub async fn send_message(
     let user_msg = LlmChatMessage::user(chat_id_obj, request.content);
     repository::insert_message(&db, &user_msg).await?;
 
-    // 5. Обновить вложения, чтобы они были привязаны к сообщению пользователя
+    // 5. Привязать вложения к сохранённому сообщению пользователя точечным UPDATE
+    // по id вложения (без удаления чужих незавершённых загрузок).
     for att_id_str in &request.attachment_ids {
         if let Ok(att_uuid) = Uuid::parse_str(att_id_str) {
-            // Удалить старую запись и создать новую с правильным message_id
-            let attachments = repository::find_attachments_by_message_id(&db, &Uuid::nil()).await?;
-            if let Some(mut attachment) = attachments.into_iter().find(|a| a.id == att_uuid) {
-                repository::delete_attachments_by_message_id(&db, &Uuid::nil()).await?;
-                attachment.message_id = user_msg.id;
-                repository::insert_attachment(&db, &attachment).await?;
+            if let Err(e) =
+                repository::bind_attachment_to_message(&db, &att_uuid, &user_msg.id).await
+            {
+                tracing::warn!("Failed to bind attachment {}: {}", att_id_str, e);
             }
         }
     }
@@ -323,36 +312,92 @@ pub async fn send_message(
     // 7. Преобразовать историю в формат для LLM
     let mut llm_messages: Vec<ChatMessage> = Vec::new();
 
-    // Системный промпт: из агента в БД, иначе — файл по типу агента
-    use contracts::domain::a017_llm_agent::aggregate::AgentType;
-    let fallback_prompt = match agent.agent_type {
-        AgentType::SystemAdmin => SYSTEM_ADMIN_PROMPT,
-        AgentType::KbAdmin => KB_ADMIN_PROMPT,
-        AgentType::PluginAdmin => PLUGIN_ADMIN_PROMPT,
-        _ => DEFAULT_SYSTEM_PROMPT,
+    // Системный промпт и набор инструментов собираются из АКТИВНЫХ навыков (skills).
+    use crate::shared::llm::skills;
+    let allowed = skills::allowed_skills_for(&agent.agent_type);
+    // Быстрая (rule-based) предактивация навыка по интенту сообщения; полный LLM-роутер
+    // идёт конкурентно ниже, а модель может добрать навыки через use_skill.
+    let quick = crate::shared::llm::router::quick_intent(
+        utf8_truncate(&content_with_attachments, 2000),
+        &agent.agent_type,
+    );
+    let mut active_skills: Vec<&'static str> = match skills::skill_for_intent(&quick) {
+        Some(s) if allowed.contains(&s.id) => vec![s.id],
+        _ => skills::default_skills_for(&agent.agent_type)
+            .into_iter()
+            .filter(|id| allowed.contains(id))
+            .collect(),
     };
-    let system_prompt = agent.system_prompt.as_deref().unwrap_or(fallback_prompt);
+
+    // Базовый промпт: кастомный из агента, иначе role-agnostic core. Далее — фрагменты навыков.
+    let base_prompt = agent
+        .system_prompt
+        .clone()
+        .unwrap_or_else(|| skills::core_prompt().to_string());
     let now = chrono::Local::now();
-    let system_with_date = format!(
+    let mut system_text = format!(
         "{}\n\n---\nСегодня: {}. Текущий месяц: {}. Текущий год: {}.",
-        system_prompt,
+        base_prompt,
         now.format("%Y-%m-%d"),
         now.format("%m.%Y"),
         now.format("%Y")
     );
-    llm_messages.push(ChatMessage::system(system_with_date));
+    for id in &active_skills {
+        if let Some(sk) = skills::skill_by_id(id) {
+            system_text.push_str("\n\n---\n");
+            system_text.push_str(sk.prompt);
+        }
+    }
+    tracing::info!(
+        "[skills] chat_id='{}' quick_intent='{}' active={:?}",
+        chat_id,
+        quick,
+        active_skills
+    );
+    llm_messages.push(ChatMessage::system(system_text));
 
     // Контекст прикреплённых страниц (если есть) — отдельным system-сообщением.
     // Привязка хранится в БД (context_package.chat_id), поэтому доступна каждый вызов.
     if let Ok(ctxs) = repository::list_context_by_chat(&db, chat_id).await {
         if !ctxs.is_empty() {
+            // Дедуп: один и тот же объект/страница мог прикрепляться несколько раз —
+            // оставляем только новейший пакет на ключ (entity_id, иначе page_key).
+            // Глобальный потолок суммарного объёма: не раздувать контекст на множестве
+            // крупных пакетов (каждый rendered_text — до 24KB).
+            const MAX_CONTEXT_BLOCK_BYTES: usize = 48_000;
+            use std::collections::HashSet;
+            let mut seen: HashSet<String> = HashSet::new();
+            let mut chosen: Vec<&_> = Vec::new();
+            // Список отсортирован старые→новые; идём с конца, чтобы оставить новейший.
+            for c in ctxs.iter().rev() {
+                let dedup_key = c
+                    .entity_id
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| c.page_key.clone());
+                if seen.insert(dedup_key) {
+                    chosen.push(c);
+                }
+            }
+            chosen.reverse(); // восстановить хронологический порядок
+
             let mut block = String::from(
                 "Контекст прикреплённых страниц приложения (данные текущих объектов/отчётов). \
                  Опирайся на него при ответе:\n\n",
             );
-            for c in &ctxs {
+            let mut total = 0usize;
+            let mut omitted = false;
+            for c in &chosen {
+                if total + c.rendered_text.len() > MAX_CONTEXT_BLOCK_BYTES {
+                    omitted = true;
+                    continue;
+                }
                 block.push_str(&c.rendered_text);
                 block.push_str("\n---\n\n");
+                total += c.rendered_text.len();
+            }
+            if omitted {
+                block.push_str("…[часть прикреплённого контекста опущена из-за объёма]\n");
             }
             llm_messages.push(ChatMessage::system(block));
         }
@@ -379,28 +424,22 @@ pub async fn send_message(
 
     // 8.5 Роутер интентов (Фаза 0): классифицируем запрос пользователя для
     // метаданных/аналитики. Поведение пайплайна (tools/промпт) пока НЕ меняем.
+    // Запускаем КОНКУРЕНТНО с основным tool-циклом (tokio::join! ниже), чтобы
+    // классификация не добавляла серийную задержку к каждому сообщению.
     let router_input = utf8_truncate(&content_with_attachments, 2000);
-    let intent_result = crate::shared::llm::router::classify_intent(
+    let router_fut = crate::shared::llm::router::classify_intent(
         provider.as_ref(),
         router_input,
         "",
         &agent.agent_type,
-    )
-    .await;
-    tracing::info!(
-        "[router] chat_id='{}' intent='{}' confidence={:.2} source={}",
-        chat_id,
-        intent_result.intent,
-        intent_result.confidence,
-        intent_result.source
     );
 
-    // 9. Tool calling цикл: LLM вызывает инструменты метаданных по мере необходимости
-    let tool_defs = tool_definitions_for(&agent.agent_type);
+    // 9. Tool calling цикл: набор инструментов = core ∪ активные навыки.
+    // tool_defs/active_tools/active_skills мутабельны — модель может активировать навыки
+    // через use_skill (progressive disclosure), и набор пересобирается на лету.
+    let mut tool_defs = skills::assemble_tools(&active_skills);
+    let mut active_tools = skills::active_tool_names(&active_skills);
     let start = std::time::Instant::now();
-    let mut final_response = None;
-    let mut artifact_to_attach: Option<LlmArtifactId> = None;
-    let mut tool_trace: Vec<serde_json::Value> = Vec::new();
 
     tracing::info!(
         "[llm_loop] chat_id='{}' model='{}' history_msgs={} tools={}",
@@ -410,126 +449,181 @@ pub async fn send_message(
         tool_defs.len()
     );
 
-    for iteration in 0..MAX_TOOL_ITERATIONS {
-        let response = provider
-            .chat_completion_with_tools(llm_messages.clone(), tool_defs.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
+    // Основной цикл — отдельный future, чтобы выполняться конкурентно с роутером.
+    // Блок захватывает `llm_messages` по &mut (только этот future его меняет),
+    // а провайдер/инструменты — по общей ссылке (их же конкурентно читает роутер).
+    let agent_id_str = chat.agent_id.as_string();
+    let loop_fut = async {
+        let mut final_response: Option<crate::shared::llm::types::LlmResponse> = None;
+        let mut artifact_to_attach: Option<LlmArtifactId> = None;
+        let mut tool_trace: Vec<serde_json::Value> = Vec::new();
 
-        tracing::info!(
-            "[llm_iter] iter={} has_tool_calls={} finish_reason={:?} tokens={:?}",
-            iteration + 1,
-            response.has_tool_calls(),
-            response.finish_reason,
-            response.tokens_used
-        );
+        for iteration in 0..MAX_TOOL_ITERATIONS {
+            let response = provider
+                .chat_completion_with_tools(&llm_messages, &tool_defs)
+                .await
+                .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
 
-        if !response.has_tool_calls() {
-            // Финальный ответ — LLM завершил работу
-            final_response = Some(response);
-            break;
-        }
-
-        tracing::debug!(
-            "Tool calling iteration {}: {} calls",
-            iteration + 1,
-            response.tool_calls.len()
-        );
-
-        // Добавить ответ ассистента с tool_calls в историю сообщений
-        llm_messages.push(ChatMessage::assistant_with_tool_calls(
-            response.tool_calls.clone(),
-        ));
-
-        // Выполнить каждый tool call и добавить результаты
-        for tool_call in &response.tool_calls {
-            let call_start = std::time::Instant::now();
             tracing::info!(
-                "[tool_call] iter={} tool='{}' args={}",
+                "[llm_iter] iter={} has_tool_calls={} finish_reason={:?} tokens={:?}",
                 iteration + 1,
-                tool_call.name,
-                utf8_truncate(&tool_call.arguments, 200)
-            );
-            let result = execute_tool_call(
-                tool_call,
-                chat_id,
-                &chat.agent_id.as_string(),
-                &agent.agent_type,
-            )
-            .await;
-            let call_ms = call_start.elapsed().as_millis() as u64;
-
-            tracing::info!(
-                "[tool_result] tool='{}' ms={} ok={} preview={}",
-                tool_call.name,
-                call_ms,
-                !result.contains("\"error\""),
-                utf8_truncate(&result, 300)
+                response.has_tool_calls(),
+                response.finish_reason,
+                response.tokens_used
             );
 
-            // Разобрать результат для трассировки
-            let parsed = serde_json::from_str::<serde_json::Value>(&result).ok();
-            let is_ok = parsed
-                .as_ref()
-                .map(|v| v.get("_ok").and_then(|b| b.as_bool()).unwrap_or(true))
-                .unwrap_or(true);
-
-            // Если tool call создал артефакт — запомнить его ID
-            if let Some(ref v) = parsed {
-                if let Some(id_str) = v.get("artifact_id").and_then(|v| v.as_str()) {
-                    if let Ok(uid) = Uuid::parse_str(id_str) {
-                        artifact_to_attach = Some(LlmArtifactId::new(uid));
-                        tracing::info!("Tool call produced artifact: {}", id_str);
-                    }
-                }
+            if !response.has_tool_calls() {
+                // Финальный ответ — LLM завершил работу
+                final_response = Some(response);
+                break;
             }
 
-            // Краткое описание результата для трассировки
-            let summary = if !is_ok {
-                parsed
-                    .as_ref()
-                    .and_then(|v| v.get("error").and_then(|e| e.as_str()))
-                    .unwrap_or("error")
-                    .chars()
-                    .take(120)
-                    .collect::<String>()
-            } else {
-                parsed
-                    .as_ref()
-                    .and_then(|v| {
-                        // Подбираем лучшее краткое описание в зависимости от инструмента
-                        v.get("row_count")
-                            .and_then(|n| n.as_u64())
-                            .map(|n| format!("{} rows", n))
-                            .or_else(|| {
-                                v.get("total")
-                                    .and_then(|n| n.as_u64())
-                                    .map(|n| format!("{} items", n))
-                            })
-                            .or_else(|| {
-                                v.get("session_id")
-                                    .and_then(|s| s.as_str())
-                                    .map(|_| "artifact created".to_string())
-                            })
-                            .or_else(|| {
-                                v.get("artifact_id")
-                                    .and_then(|s| s.as_str())
-                                    .map(|_| "artifact created".to_string())
-                            })
-                    })
-                    .unwrap_or_else(|| "ok".to_string())
-            };
+            tracing::debug!(
+                "Tool calling iteration {}: {} calls",
+                iteration + 1,
+                response.tool_calls.len()
+            );
 
-            tool_trace.push(serde_json::json!({
-                "tool":    tool_call.name,
-                "ok":      is_ok,
-                "ms":      call_ms,
-                "summary": summary,
-            }));
+            // Добавить ответ ассистента с tool_calls в историю сообщений
+            llm_messages.push(ChatMessage::assistant_with_tool_calls(
+                response.tool_calls.clone(),
+            ));
 
-            llm_messages.push(ChatMessage::tool_result(tool_call.id.clone(), result));
+            // Навыки, активированные на этой итерации (применяем после всех tool-результатов,
+            // чтобы не разрывать пару assistant(tool_calls) → tool_result).
+            let mut newly_activated: Vec<&'static skills::Skill> = Vec::new();
+
+            // Выполнить каждый tool call и добавить результаты
+            for tool_call in &response.tool_calls {
+                let call_start = std::time::Instant::now();
+                tracing::info!(
+                    "[tool_call] iter={} tool='{}' args={}",
+                    iteration + 1,
+                    tool_call.name,
+                    utf8_truncate(&tool_call.arguments, 200)
+                );
+                let result = execute_tool_call(
+                    tool_call,
+                    chat_id,
+                    &agent_id_str,
+                    &agent.agent_type,
+                    &active_tools,
+                )
+                .await;
+                let call_ms = call_start.elapsed().as_millis() as u64;
+
+                tracing::info!(
+                    "[tool_result] tool='{}' ms={} ok={} preview={}",
+                    tool_call.name,
+                    call_ms,
+                    !result.contains("\"error\""),
+                    utf8_truncate(&result, 300)
+                );
+
+                // Разобрать результат для трассировки
+                let parsed = serde_json::from_str::<serde_json::Value>(&result).ok();
+                let is_ok = parsed
+                    .as_ref()
+                    .map(|v| v.get("_ok").and_then(|b| b.as_bool()).unwrap_or(true))
+                    .unwrap_or(true);
+
+                // Если tool call создал артефакт — запомнить его ID
+                if let Some(ref v) = parsed {
+                    if let Some(id_str) = v.get("artifact_id").and_then(|v| v.as_str()) {
+                        if let Ok(uid) = Uuid::parse_str(id_str) {
+                            artifact_to_attach = Some(LlmArtifactId::new(uid));
+                            tracing::info!("Tool call produced artifact: {}", id_str);
+                        }
+                    }
+                }
+
+                // Активация навыка через use_skill (_activate_skill) — progressive disclosure.
+                if let Some(ref v) = parsed {
+                    if let Some(sid) = v.get("_activate_skill").and_then(|x| x.as_str()) {
+                        if let Some(sk) = skills::skill_by_id(sid) {
+                            if allowed.contains(&sk.id) && !active_skills.contains(&sk.id) {
+                                active_skills.push(sk.id);
+                                newly_activated.push(sk);
+                            }
+                        }
+                    }
+                }
+
+                // Краткое описание результата для трассировки
+                let summary = if !is_ok {
+                    parsed
+                        .as_ref()
+                        .and_then(|v| v.get("error").and_then(|e| e.as_str()))
+                        .unwrap_or("error")
+                        .chars()
+                        .take(120)
+                        .collect::<String>()
+                } else {
+                    parsed
+                        .as_ref()
+                        .and_then(|v| {
+                            // Подбираем лучшее краткое описание в зависимости от инструмента
+                            v.get("row_count")
+                                .and_then(|n| n.as_u64())
+                                .map(|n| format!("{} rows", n))
+                                .or_else(|| {
+                                    v.get("total")
+                                        .and_then(|n| n.as_u64())
+                                        .map(|n| format!("{} items", n))
+                                })
+                                .or_else(|| {
+                                    v.get("session_id")
+                                        .and_then(|s| s.as_str())
+                                        .map(|_| "artifact created".to_string())
+                                })
+                                .or_else(|| {
+                                    v.get("artifact_id")
+                                        .and_then(|s| s.as_str())
+                                        .map(|_| "artifact created".to_string())
+                                })
+                        })
+                        .unwrap_or_else(|| "ok".to_string())
+                };
+
+                tool_trace.push(serde_json::json!({
+                    "tool":    tool_call.name,
+                    "ok":      is_ok,
+                    "ms":      call_ms,
+                    "summary": summary,
+                }));
+
+                llm_messages.push(ChatMessage::tool_result(tool_call.id.clone(), result));
+            }
+
+            // Применить активированные навыки: пересобрать инструменты и дописать
+            // их инструкции (после всех tool-результатов — пара assistant/tool не разорвана).
+            if !newly_activated.is_empty() {
+                tool_defs = skills::assemble_tools(&active_skills);
+                active_tools = skills::active_tool_names(&active_skills);
+                for sk in newly_activated {
+                    tracing::info!("[skill] activated '{}' (chat='{}')", sk.id, chat_id);
+                    llm_messages.push(ChatMessage::system(format!(
+                        "Активирован навык «{}». Его инструменты и инструкции:\n\n{}",
+                        sk.title, sk.prompt
+                    )));
+                }
+            }
         }
-    }
+
+        Ok::<_, anyhow::Error>((final_response, artifact_to_attach, tool_trace))
+    };
+
+    // Конкурентный запуск: роутер не добавляет серийную задержку.
+    let (intent_result, loop_result) = tokio::join!(router_fut, loop_fut);
+    let (final_response, artifact_to_attach, tool_trace) = loop_result?;
+
+    tracing::info!(
+        "[router] chat_id='{}' intent='{}' confidence={:.2} source={}",
+        chat_id,
+        intent_result.intent,
+        intent_result.confidence,
+        intent_result.source
+    );
 
     let duration_ms = start.elapsed().as_millis() as i64;
 
@@ -605,7 +699,23 @@ pub async fn add_chat_context(
         page_type: built.page_type,
         title: built.title,
         created_at,
+        rendered_text: built.rendered_text,
     })
+}
+
+/// Получить один пакет контекста по id (для details-страницы контекста).
+pub async fn get_context_by_id(id: &str) -> anyhow::Result<Option<ContextPackageSummary>> {
+    let db = crate::shared::data::db::get_connection();
+    let row = repository::find_context_by_id(&db, id).await?;
+    Ok(row.map(|m| ContextPackageSummary {
+        id: m.id,
+        chat_id: m.chat_id,
+        page_key: m.page_key,
+        page_type: m.page_type,
+        title: m.title,
+        created_at: m.created_at,
+        rendered_text: m.rendered_text,
+    }))
 }
 
 /// Список пакетов контекста, привязанных к чату.
@@ -621,6 +731,7 @@ pub async fn list_chat_context(chat_id: &str) -> anyhow::Result<Vec<ContextPacka
             page_type: m.page_type,
             title: m.title,
             created_at: m.created_at,
+            rendered_text: m.rendered_text,
         })
         .collect())
 }

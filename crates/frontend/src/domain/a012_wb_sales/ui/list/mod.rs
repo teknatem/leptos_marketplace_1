@@ -1687,7 +1687,10 @@ async fn fetch_all_sales_for_export(
         url.push_str(&format!("&search_sale_id={}", search_sale_id));
     }
     if !search_supplier_article.is_empty() {
-        url.push_str(&format!("&search_supplier_article={}", search_supplier_article));
+        url.push_str(&format!(
+            "&search_supplier_article={}",
+            search_supplier_article
+        ));
     }
 
     let response = Request::get(&url)
@@ -1698,8 +1701,7 @@ async fn fetch_all_sales_for_export(
         return Err(format!("HTTP {}", response.status()));
     }
     let text = response.text().await.map_err(|e| format!("{e:?}"))?;
-    let paginated: PaginatedResponse =
-        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let paginated: PaginatedResponse = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     let items: Vec<WbSalesDto> = paginated
         .items
         .into_iter()

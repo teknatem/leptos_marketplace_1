@@ -35,6 +35,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a013_ym_order" => A013.ui.list_name,
         "a017_llm_agent" => A017.ui.list_name,
         "a018_llm_chat" => A018.ui.list_name,
+        "llm_skills" => "Навыки LLM",
         "a019_llm_artifact" => A019.ui.list_name,
         "a020_wb_promotion" => A020.ui.list_name,
         "a024_bi_indicator" => A024.ui.list_name,

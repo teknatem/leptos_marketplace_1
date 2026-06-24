@@ -7,8 +7,10 @@
 //! валидация бандла, затем единичный upsert.
 
 use super::types::ToolDefinition;
-use crate::plugins::{engine, service};
-use contracts::plugins::{PluginBundle, PluginError, PluginInvokeRequest, PluginUpsert};
+use crate::plugins::service;
+use contracts::plugins::{
+    PluginBundle, PluginError, PluginInvokeRequest, PluginSmokeRequest, PluginUpsert,
+};
 use serde_json::{json, Value};
 
 /// Имена инструментов разработчика плагинов (для guard'а в диспетчере).
@@ -16,8 +18,14 @@ pub const PLUGIN_TOOL_NAMES: &[&str] = &[
     "plugin_list",
     "plugin_get",
     "plugin_validate",
+    "plugin_smoke_test",
     "plugin_upsert",
     "plugin_invoke",
+    "plugin_template",
+    "plugin_examples",
+    "get_plugin_ui_contract",
+    "plugin_data_catalog",
+    "plugin_runs",
 ];
 
 /// Краткое описание формы bundle для всех инструментов, принимающих его на вход.
@@ -34,9 +42,28 @@ fn bundle_schema() -> Value {
                     "runtime": { "type": "string", "enum": ["client", "server", "hybrid"] },
                     "api_version": { "type": "string", "description": "Версия API движка плагинов, обычно \"2\"." },
                     "description": { "type": "string" },
-                    "capabilities": { "type": "array", "items": { "type": "string" } }
+                    "capabilities": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Runtime access scopes. Use db:read:* for prototypes, or db:read:<table/tag> for least privilege."
+                    }
                 },
                 "required": ["code", "title", "runtime"]
+            },
+            "params": {
+                "type": "array",
+                "description": "Optional user parameters surfaced in PluginRunContext.params.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "key": { "type": "string" },
+                        "param_type": { "type": "string", "enum": ["date", "date_range", "string", "integer", "float", "boolean", "ref"] },
+                        "label": { "type": "string" },
+                        "default_value": { "type": "string" },
+                        "required": { "type": "boolean" }
+                    },
+                    "required": ["key", "param_type", "label"]
+                }
             },
             "client_script": { "type": "string", "description": "ES-модуль iframe; export async function mount(root, host)." },
             "server_script": { "type": "string", "description": "ES-модуль QuickJS; экспортированные async-функции (args, host)." },
@@ -90,6 +117,31 @@ pub fn plugin_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            name: "plugin_smoke_test".into(),
+            description: "One-call preflight for LLM plugin authoring: validates bundle/id, checks client host.invoke names against server exports, runs server methods with context, and returns structured failures plus suggested_next_step."
+                .into(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Existing plugin UUID. Alternative to bundle." },
+                    "bundle": bundle_schema(),
+                    "context": { "type": "object", "description": "PluginRunContext: date_from/date_to/connection_mp_refs/group_by/params." },
+                    "methods": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "method": { "type": "string" },
+                                "args": { "type": "object" }
+                            },
+                            "required": ["method"]
+                        }
+                    },
+                    "render": { "type": "boolean", "description": "When true, requires client mount and checks host.invoke wiring." }
+                }
+            }),
+        },
+        ToolDefinition {
             name: "plugin_upsert".into(),
             description: "Создать или обновить плагин. Если id не задан, идентичность берётся по \
                           manifest.code (idempotent upsert-by-code). Бандл валидируется ПЕРЕД \
@@ -124,6 +176,59 @@ pub fn plugin_tool_definitions() -> Vec<ToolDefinition> {
                 "required": ["id", "method"]
             }),
         },
+        ToolDefinition {
+            name: "plugin_template".into(),
+            description: "Получить минимальный ВАЛИДНЫЙ скелет bundle для выбранного runtime \
+                          (client | server | hybrid). Начинай новый плагин с шаблона, затем \
+                          заполняй логику и SQL. Возвращает { bundle, hint }."
+                .into(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "runtime": { "type": "string", "enum": ["client", "server", "hybrid"], "description": "Тип плагина. По умолчанию hybrid." }
+                }
+            }),
+        },
+        ToolDefinition {
+            name: "plugin_examples".into(),
+            description: "Получить готовый рабочий ПРИМЕР плагина (hybrid: server_script + \
+                          client_script + sql_resources + styles), оформленный по UI-контракту. \
+                          Используй как образец структуры и стиля перед написанием своего. \
+                          Возвращает { examples:[{ title, bundle }] }."
+                .into(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        },
+        ToolDefinition {
+            name: "get_plugin_ui_contract".into(),
+            description: "Получить UI-контракт iframe: готовые CSS-классы/компоненты \
+                          (.card, .table-wrap > table.data-table, .num, .stat*, .btn*, .badge*, \
+                          .status*) и правила (DOM только внутри mount, тема подхватывается). \
+                          Рендери UI этим китом, свой CSS — по минимуму."
+                .into(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        },
+        ToolDefinition {
+            name: "plugin_data_catalog".into(),
+            description: "Safe data-source catalog for miniapp plugins: common tags/tables, required db:read capabilities, and SQL starter snippets."
+                .into(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        },
+        ToolDefinition {
+            name: "plugin_runs".into(),
+            description: "Журнал запусков плагина за последние дни: сводка (total, errors, \
+                          error_rate, avg_ms, health) и последние запуски (method, status, \
+                          error_stage, duration). Используй для самокоррекции: проверь, не падает \
+                          ли серверный метод после plugin_invoke/в проде."
+                .into(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "UUID плагина." },
+                    "days": { "type": "integer", "description": "Окно в днях (по умолчанию 7)." }
+                },
+                "required": ["id"]
+            }),
+        },
     ]
 }
 
@@ -139,8 +244,14 @@ pub async fn execute_plugin_tool(
         "plugin_list" => plugin_list().await,
         "plugin_get" => plugin_get(&args).await,
         "plugin_validate" => plugin_validate(&args).await,
+        "plugin_smoke_test" => plugin_smoke_test(&args).await,
         "plugin_upsert" => plugin_upsert(&args, chat_id, agent_id).await,
         "plugin_invoke" => plugin_invoke(&args).await,
+        "plugin_template" => plugin_template(&args),
+        "plugin_examples" => plugin_examples(),
+        "get_plugin_ui_contract" => plugin_ui_contract(),
+        "plugin_data_catalog" => plugin_data_catalog(),
+        "plugin_runs" => plugin_runs(&args).await,
         _ => json!({ "error": format!("Unknown plugin tool: '{}'", name) }),
     }
 }
@@ -204,6 +315,17 @@ async fn plugin_validate(args: &Value) -> Value {
         Err(e) => return e,
     };
     json!({ "validate": service::validate(&bundle).await })
+}
+
+async fn plugin_smoke_test(args: &Value) -> Value {
+    let request = match serde_json::from_value::<PluginSmokeRequest>(args.clone()) {
+        Ok(request) => request,
+        Err(e) => return json!({ "ok": false, "error": format!("Invalid smoke request: {e}") }),
+    };
+    match service::smoke_test(request).await {
+        Ok(report) => json!({ "ok": report.ok, "smoke": report }),
+        Err(e) => json!({ "ok": false, "error": e.to_string() }),
+    }
 }
 
 async fn plugin_upsert(args: &Value, chat_id: &str, agent_id: &str) -> Value {
@@ -315,7 +437,7 @@ async fn plugin_invoke(args: &Value) -> Value {
     };
 
     // Dev-вызов: тестируем плагин даже в статусе draft/disabled (минуя гейт активности).
-    let def = match service::get_by_id(id).await {
+    let _def = match service::get_by_id(id).await {
         Ok(Some(def)) => def,
         Ok(None) => return json!({ "error": "Плагин не найден" }),
         Err(e) => return json!({ "error": e.to_string() }),
@@ -324,15 +446,183 @@ async fn plugin_invoke(args: &Value) -> Value {
     let request = PluginInvokeRequest {
         method: method.to_string(),
         args: args.get("args").cloned().unwrap_or(Value::Null),
-        context: Default::default(),
+        context: args
+            .get("context")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default(),
     };
 
-    match engine::invoke_server_method(def, request).await {
+    match service::dev_invoke(id, request).await {
         Ok((result, logs)) => json!({ "ok": true, "result": result, "logs": logs }),
         Err(e) => {
             let detail = e.downcast_ref::<PluginError>().cloned();
             json!({ "ok": false, "error": e.to_string(), "error_detail": detail })
         }
+    }
+}
+
+// ─── Шаблоны и пример (few-shot для генерации) ───────────────────────────────
+
+const TPL_CLIENT: &str = r##"export async function mount(root, host) {
+  root.innerHTML = `<div class="card">Привет из плагина</div>`;
+}
+"##;
+
+const TPL_SERVER: &str = r##"export async function run(args, host) {
+  return await host.db.queryResource("rows", []);
+}
+"##;
+
+const HYBRID_CLIENT: &str = r##"export async function mount(root, host) {
+  root.innerHTML = `<div class="card"><div class="status">Загрузка…</div></div>`;
+  try {
+    const rows = await host.invoke("loadRows", {});
+    root.innerHTML = `
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Артикул</th><th class="num">Значение</th></tr></thead>
+        <tbody>${rows.map(r => `<tr><td>${r.article}</td><td class="num">${r.value}</td></tr>`).join("")}</tbody>
+      </table></div>`;
+  } catch (e) {
+    root.innerHTML = `<div class="status status--error">${e.message}</div>`;
+  }
+}
+"##;
+
+const HYBRID_SERVER: &str = r##"export async function loadRows(args, host) {
+  host.log.info("loadRows called");
+  return await host.db.queryResource("rows", []);
+}
+"##;
+
+/// Демо-SELECT без зависимости от схемы — пример сразу запускается через plugin_invoke.
+const EXAMPLE_SQL: &str = "SELECT 'ABC-1' AS article, 1200 AS value UNION ALL SELECT 'ABC-2', 980";
+
+const EXAMPLE_STYLES: &str = ".card { padding: 16px; }";
+
+/// Минимальный валидный скелет bundle по runtime.
+fn plugin_template(args: &Value) -> Value {
+    let runtime = args
+        .get("runtime")
+        .and_then(Value::as_str)
+        .unwrap_or("hybrid");
+    let bundle = match runtime {
+        "client" => json!({
+            "manifest": { "code": "MY-PLUGIN", "title": "Мой плагин", "runtime": "client", "api_version": "2" },
+            "client_script": TPL_CLIENT,
+        }),
+        "server" => json!({
+            "manifest": { "code": "MY-PLUGIN", "title": "Мой плагин", "runtime": "server", "api_version": "2" },
+            "server_script": TPL_SERVER,
+            "sql_resources": { "rows": "SELECT 1 AS value" },
+        }),
+        _ => json!({
+            "manifest": { "code": "MY-PLUGIN", "title": "Мой плагин", "runtime": "hybrid", "api_version": "2" },
+            "client_script": HYBRID_CLIENT,
+            "server_script": HYBRID_SERVER,
+            "sql_resources": { "rows": "SELECT 1 AS value" },
+        }),
+    };
+    json!({
+        "bundle": bundle,
+        "runtime": runtime,
+        "hint": "Минимальный валидный скелет. Замени code/title, впиши логику и реальный SELECT \
+                 в sql_resources, затем plugin_validate → plugin_invoke."
+    })
+}
+
+/// Готовый рабочий пример (hybrid) — образец структуры и стиля.
+fn plugin_examples() -> Value {
+    let bundle = json!({
+        "manifest": {
+            "code": "EXAMPLE-MARGIN-TABLE",
+            "title": "Пример: таблица из серверного метода",
+            "runtime": "hybrid",
+            "api_version": "2",
+            "description": "Канонический hybrid-плагин: server_script тянет данные, client_script рисует таблицу по UI-контракту."
+        },
+        "client_script": HYBRID_CLIENT,
+        "server_script": HYBRID_SERVER,
+        "sql_resources": { "rows": EXAMPLE_SQL },
+        "styles": EXAMPLE_STYLES,
+    });
+    json!({
+        "examples": [
+            { "title": "Hybrid: таблица из серверного метода", "bundle": bundle }
+        ],
+        "hint": "Скопируй структуру, замени SQL на реальный (проверь через execute_query). \
+                 Имена в host.invoke(\"X\") должны совпадать с export-функциями server_script."
+    })
+}
+
+/// UI-контракт iframe: CSS-кит и правила рендера.
+fn plugin_ui_contract() -> Value {
+    json!({
+        "entry": "export async function mount(root, host) { … } — единственная точка входа; DOM трогай только ВНУТРИ mount (на верхнем уровне модуля DOM нет).",
+        "data": "Данные с сервера: const rows = await host.invoke(\"methodName\", { … }).",
+        "theme": "Тема (свет/тёмная) подхватывается автоматически — не хардкодь цвета.",
+        "components": {
+            "card":   ".card — контейнер-карточка.",
+            "table":  ".table-wrap > table.data-table; числовые ячейки (th и td) — класс .num.",
+            "stat":   ".stat / .stat__label / .stat__value — плитка-метрика; модификаторы .stat--ok / .stat--bad.",
+            "button": ".btn / .btn--secondary / .btn--ghost.",
+            "badge":  ".badge / .badge--success / .badge--error.",
+            "status": ".status / .status--ok / .status--error — строка статуса и вывод ошибок."
+        },
+        "hint": "Рендери этим китом, свой CSS — по минимуму. Ошибки показывай в .status--error."
+    })
+}
+
+/// Журнал запусков плагина — серверная наблюдаемость для самокоррекции.
+fn plugin_data_catalog() -> Value {
+    json!({
+        "capabilities": {
+            "prototype": ["db:read:*", "network:none"],
+            "least_privilege_examples": [
+                { "need": "reference data", "capabilities": ["db:read:ref", "network:none"] },
+                { "need": "Wildberries sales/orders/projections", "capabilities": ["db:read:wb", "network:none"] },
+                { "need": "BI dashboards and indicators", "capabilities": ["db:read:bi", "network:none"] },
+                { "need": "general ledger", "capabilities": ["db:read:gl", "network:none"] }
+            ]
+        },
+        "safe_sources": [
+            {
+                "tag": "ref",
+                "tables": ["a002_organization", "a004_nomenclature", "a005_marketplace", "a006_connection_mp"],
+                "starter_sql": "SELECT id, code, description FROM a004_nomenclature WHERE is_deleted = 0 LIMIT 50"
+            },
+            {
+                "tag": "wb",
+                "tables": ["a012_wb_sales", "a015_wb_orders", "a020_wb_promotion", "a026_wb_advert_daily", "p909_mp_order_line_turnovers", "p914_mp_finance_turnovers"],
+                "starter_sql": "SELECT date, article, quantity, total_price FROM a012_wb_sales WHERE is_deleted = 0 ORDER BY date DESC LIMIT 50"
+            },
+            {
+                "tag": "gl",
+                "tables": ["sys_general_ledger"],
+                "starter_sql": "SELECT business_date, turnover_code, debit_account, credit_account, amount FROM sys_general_ledger ORDER BY business_date DESC LIMIT 50"
+            },
+            {
+                "tag": "bi",
+                "tables": ["a024_bi_indicator", "a025_bi_dashboard"],
+                "starter_sql": "SELECT code, description FROM a024_bi_indicator WHERE is_deleted = 0 LIMIT 50"
+            }
+        ],
+        "hint": "Start with execute_query to prove SQL, then put the SELECT into sql_resources and include matching manifest.capabilities."
+    })
+}
+
+async fn plugin_runs(args: &Value) -> Value {
+    let Some(id) = args.get("id").and_then(Value::as_str) else {
+        return json!({ "error": "Отсутствует id" });
+    };
+    let days = args
+        .get("days")
+        .and_then(Value::as_i64)
+        .unwrap_or(7)
+        .clamp(1, 90);
+    match service::stats(id, days).await {
+        Ok(stats) => json!({ "ok": true, "stats": stats }),
+        Err(e) => json!({ "error": e.to_string() }),
     }
 }
 
@@ -358,5 +648,52 @@ mod tests {
             result.get("id").is_none(),
             "битый плагин не должен сохраняться"
         );
+    }
+
+    /// Скелеты из plugin_template должны парситься и проходить базовую валидацию.
+    #[test]
+    fn templates_are_valid_bundles() {
+        for rt in ["client", "server", "hybrid"] {
+            let out = plugin_template(&json!({ "runtime": rt }));
+            let bundle: PluginBundle = serde_json::from_value(out["bundle"].clone())
+                .unwrap_or_else(|e| panic!("template {rt} bundle parse: {e}"));
+            bundle
+                .validate()
+                .unwrap_or_else(|e| panic!("template {rt} invalid: {e}"));
+        }
+    }
+
+    /// Образец из plugin_examples должен быть валидным bundle.
+    #[test]
+    fn example_is_valid_bundle() {
+        let out = plugin_examples();
+        let bundle: PluginBundle = serde_json::from_value(out["examples"][0]["bundle"].clone())
+            .expect("example bundle parse");
+        bundle.validate().expect("example invalid");
+    }
+
+    #[tokio::test]
+    async fn smoke_test_reports_missing_server_export_for_client_invoke() {
+        let args = json!({
+            "render": true,
+            "bundle": {
+                "manifest": {
+                    "code": "T-SMOKE",
+                    "title": "Smoke",
+                    "runtime": "hybrid",
+                    "api_version": "2",
+                    "capabilities": ["network:none"]
+                },
+                "client_script": "export async function mount(root, host) { await host.invoke(\"missingMethod\", {}); }",
+                "server_script": "export function loadRows() { return []; }"
+            },
+            "methods": []
+        });
+        let result = plugin_smoke_test(&args).await;
+        assert_eq!(result["ok"], json!(false));
+        let failures = result["smoke"]["failures"].as_array().unwrap();
+        assert!(failures
+            .iter()
+            .any(|failure| { failure["stage"] == json!("client_missing_server_export") }));
     }
 }

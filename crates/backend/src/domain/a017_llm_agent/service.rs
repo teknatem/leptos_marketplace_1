@@ -1,5 +1,5 @@
 use super::repository;
-use contracts::domain::a017_llm_agent::aggregate::{LlmAgent, LlmProviderType};
+use contracts::domain::a017_llm_agent::aggregate::{AgentType, LlmAgent, LlmProviderType};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,6 +18,10 @@ pub struct LlmAgentDto {
     pub system_prompt: Option<String>,
     pub is_primary: bool,
     pub available_models: Option<String>,
+    /// Тип/роль агента (business_analyst | system_admin | general | kb_admin | plugin_admin).
+    /// Определяет набор доступных инструментов. None → не менять (по умолчанию business_analyst).
+    #[serde(default)]
+    pub agent_type: Option<String>,
 }
 
 /// Создание нового агента LLM
@@ -43,6 +47,11 @@ pub async fn create(dto: LlmAgentDto) -> anyhow::Result<Uuid> {
         dto.is_primary,
         dto.available_models,
     );
+
+    // Тип агента определяет набор инструментов (напр. plugin_admin → инструменты плагинов).
+    if let Some(ref at) = dto.agent_type {
+        aggregate.agent_type = AgentType::from_str(at);
+    }
 
     // Валидация
     aggregate
@@ -92,6 +101,9 @@ pub async fn update(dto: LlmAgentDto) -> anyhow::Result<()> {
     aggregate.max_tokens = dto.max_tokens;
     aggregate.system_prompt = dto.system_prompt;
     aggregate.is_primary = dto.is_primary;
+    if let Some(ref at) = dto.agent_type {
+        aggregate.agent_type = AgentType::from_str(at);
+    }
     // available_models не обновляется через update, только через fetch_models endpoint
 
     // Валидация

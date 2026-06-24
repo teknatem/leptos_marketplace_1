@@ -1,6 +1,8 @@
 use crate::shared::config;
 use once_cell::sync::OnceCell;
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, SqlxSqliteConnector, Statement};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, SqlxSqliteConnector, Statement,
+};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::time::Duration;
 

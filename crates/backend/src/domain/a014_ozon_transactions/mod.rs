@@ -1,5 +1,5 @@
 pub mod posting;
-pub mod representation;
 pub mod repository;
+pub mod representation;
 pub mod service;
 pub mod service_enrichment;

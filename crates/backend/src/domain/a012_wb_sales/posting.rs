@@ -110,12 +110,13 @@ pub async fn post_document_with_cache(
             &document, &id_str,
         )
         .await?;
-    let p909_result = crate::projections::p909_mp_order_line_turnovers::projection_builder::from_wb_sales(
-        &document,
-        &id_str,
-        &registrator_ref,
-        prod_item_cost_total,
-    )?;
+    let p909_result =
+        crate::projections::p909_mp_order_line_turnovers::projection_builder::from_wb_sales(
+            &document,
+            &id_str,
+            &registrator_ref,
+            prod_item_cost_total,
+        )?;
 
     // Группы p909 для пересчёта link_status = (группы, имевшие строки до перепроведения)
     // ∪ (группы, вставляемые сейчас). Первое читаем до удаления, чтобы у оставшихся строк
@@ -215,11 +216,13 @@ pub async fn post_document_with_cache(
 
     // Вставляем заново собранные строки.
     crate::projections::p900_mp_sales_register::repository::upsert_entry_with_conn(
-        &txn, &p900_entry,
+        &txn,
+        &p900_entry,
     )
     .await?;
     for entry in &p904_entries {
-        crate::projections::p904_sales_data::repository::upsert_entry_with_conn(&txn, entry).await?;
+        crate::projections::p904_sales_data::repository::upsert_entry_with_conn(&txn, entry)
+            .await?;
     }
     for turnover in &p909_result.turnovers {
         crate::projections::p909_mp_order_line_turnovers::repository::insert_entry_raw_with_conn(
@@ -246,8 +249,10 @@ pub async fn post_document_with_cache(
         crate::general_ledger::repository::save_entry_with_conn(&txn, gl_entry).await?;
     }
     for entry in &p913_expense_entries {
-        crate::projections::p913_wb_advert_order_attr::repository::save_entry_with_conn(&txn, entry)
-            .await?;
+        crate::projections::p913_wb_advert_order_attr::repository::save_entry_with_conn(
+            &txn, entry,
+        )
+        .await?;
     }
 
     txn.commit().await?;

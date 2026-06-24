@@ -49,7 +49,10 @@ fn field_type(field_id: &str) -> &'static str {
         "business_id" | "partner_id" | "shop_name" | "inn" | "model" => "Бизнес",
         "transaction_id" | "transaction_date" | "transaction_type" | "transaction_source"
         | "transaction_sum" | "payment_status" => "Транзакция",
-        "order_id" | "shop_order_id" | "order_creation_date" | "order_delivery_date"
+        "order_id"
+        | "shop_order_id"
+        | "order_creation_date"
+        | "order_delivery_date"
         | "order_type" => "Заказ",
         "shop_sku" | "offer_or_service_name" | "count" => "Товар/услуга",
         "act_id" | "act_date" | "bank_order_id" | "bank_order_date" | "bank_sum" => "Банк/Акт",
@@ -825,8 +828,8 @@ async fn fetch_representation(kind: &str, id: &str) -> Result<Option<String>, St
         .await
         .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
 
-    let parsed: ResolveRefResponse =
-        serde_wasm_bindgen::from_value(json).map_err(|e| format!("Failed to deserialize: {:?}", e))?;
+    let parsed: ResolveRefResponse = serde_wasm_bindgen::from_value(json)
+        .map_err(|e| format!("Failed to deserialize: {:?}", e))?;
     Ok(parsed.representation)
 }
 

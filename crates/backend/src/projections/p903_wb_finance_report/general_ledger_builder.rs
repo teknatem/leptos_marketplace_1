@@ -547,9 +547,7 @@ pub fn build_finance_turnover_entries(
         .marketplace_order_ref
         .clone()
         .filter(|value| !value.trim().is_empty());
-    let order_registrator_type = order_ref
-        .as_ref()
-        .map(|_| "a015_wb_orders".to_string());
+    let order_registrator_type = order_ref.as_ref().map(|_| "a015_wb_orders".to_string());
 
     let ctx = FinanceTurnoverContext {
         nomenclature_ref: row.a004_nomenclature_ref.clone(),

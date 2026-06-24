@@ -96,12 +96,12 @@ impl OpenAiProvider {
     /// Конвертировать наши сообщения в формат OpenAI
     fn convert_messages(
         &self,
-        messages: Vec<ChatMessage>,
+        messages: &[ChatMessage],
     ) -> Result<Vec<ChatCompletionRequestMessage>, LlmError> {
         let mut openai_messages = Vec::new();
 
         for msg in messages {
-            let openai_msg = match msg.role {
+            let openai_msg = match &msg.role {
                 ChatRole::System => ChatCompletionRequestSystemMessageArgs::default()
                     .content(msg.content_str())
                     .build()
@@ -156,15 +156,15 @@ impl OpenAiProvider {
     }
 
     /// Конвертировать определения инструментов в формат OpenAI
-    fn convert_tools(&self, tools: Vec<ToolDefinition>) -> Vec<ChatCompletionTools> {
+    fn convert_tools(&self, tools: &[ToolDefinition]) -> Vec<ChatCompletionTools> {
         tools
-            .into_iter()
+            .iter()
             .map(|t| {
                 ChatCompletionTools::Function(ChatCompletionTool {
                     function: FunctionObject {
-                        name: t.name,
-                        description: Some(t.description),
-                        parameters: Some(t.parameters),
+                        name: t.name.clone(),
+                        description: Some(t.description.clone()),
+                        parameters: Some(t.parameters.clone()),
                         strict: None,
                     },
                 })
@@ -193,14 +193,14 @@ impl OpenAiProvider {
 
 #[async_trait]
 impl LlmProvider for OpenAiProvider {
-    async fn chat_completion(&self, messages: Vec<ChatMessage>) -> Result<LlmResponse, LlmError> {
-        self.chat_completion_with_tools(messages, vec![]).await
+    async fn chat_completion(&self, messages: &[ChatMessage]) -> Result<LlmResponse, LlmError> {
+        self.chat_completion_with_tools(messages, &[]).await
     }
 
     async fn chat_completion_with_tools(
         &self,
-        messages: Vec<ChatMessage>,
-        tools: Vec<ToolDefinition>,
+        messages: &[ChatMessage],
+        tools: &[ToolDefinition],
     ) -> Result<LlmResponse, LlmError> {
         let openai_messages = self.convert_messages(messages)?;
         let has_tools = !tools.is_empty();
@@ -299,7 +299,7 @@ impl LlmProvider for OpenAiProvider {
 
     async fn test_connection(&self) -> Result<(), LlmError> {
         let messages = vec![ChatMessage::user("Hello")];
-        self.chat_completion(messages).await?;
+        self.chat_completion(&messages).await?;
         Ok(())
     }
 

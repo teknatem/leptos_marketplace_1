@@ -62,8 +62,10 @@ pub async fn post_document(id: Uuid) -> Result<()> {
             &registrator_ref,
         )
         .await?;
-        let order_events =
-            crate::projections::p915_mp_order_events::builder::from_ym_order(&document, &registrator_ref);
+        let order_events = crate::projections::p915_mp_order_events::builder::from_ym_order(
+            &document,
+            &registrator_ref,
+        );
         for event in &order_events {
             crate::projections::p915_mp_order_events::repository::insert_entry_raw_with_conn(
                 &txn, event,
@@ -103,8 +105,10 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     crate::projections::p900_mp_sales_register::service::delete_by_registrator(&id.to_string())
         .await?;
     crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
-    crate::projections::p915_mp_order_events::repository::delete_by_registrator_ref(&id.to_string())
-        .await?;
+    crate::projections::p915_mp_order_events::repository::delete_by_registrator_ref(
+        &id.to_string(),
+    )
+    .await?;
 
     tracing::info!("Unposted document a013: {}", id);
 

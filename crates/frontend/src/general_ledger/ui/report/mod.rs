@@ -3,7 +3,6 @@ use crate::general_ledger::api::{
 };
 use crate::general_ledger::ui::dimension_chip::{is_system_dim_id, GlDimensionChip};
 use crate::general_ledger::ui::layer_badge::GlLayerBadge;
-use contracts::general_ledger::GL_LAYER_CLASSES;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::date_range_picker::DateRangePicker;
@@ -14,6 +13,7 @@ use crate::shared::page_standard::PAGE_CAT_LIST;
 use chrono::{Datelike, Utc};
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
+use contracts::general_ledger::GL_LAYER_CLASSES;
 use contracts::general_ledger::{
     GeneralLedgerTurnoverDto, GlDimensionDef, GlDrilldownQuery, GlDrilldownSessionCreate,
     GlReportQuery, GlReportResponse, GlReportRow,

@@ -190,6 +190,48 @@ impl MetadataRegistry {
         })
     }
 
+    // ─── architecture_overview ────────────────────────────────────────────
+
+    /// Компактная карта всех сущностей и их связей в одном вызове.
+    /// Заменяет серию `list_entities` — LLM сразу видит граф системы.
+    /// `category` — необязательный фильтр по тегу ("wb", "gl", "bi", ...).
+    pub fn architecture_overview(&self, category: Option<&str>) -> Value {
+        let entities: Vec<Value> = self
+            .entries
+            .iter()
+            .filter(|e| category.map_or(true, |cat| e.tags.contains(&cat)))
+            .map(|e| {
+                let table = e.meta.table_name.unwrap_or(e.meta.collection_name);
+                json!({
+                    "index":   e.meta.entity_index,
+                    "name":    e.meta.ui.element_name,
+                    "table":   table,
+                    "tags":    e.tags,
+                    "related": e.meta.ai.related,
+                })
+            })
+            .collect();
+
+        // Перечень всех доступных категорий (тегов) для навигации.
+        let mut categories: Vec<&str> = self
+            .entries
+            .iter()
+            .flat_map(|e| e.tags.iter().copied())
+            .collect();
+        categories.sort_unstable();
+        categories.dedup();
+
+        let total = entities.len();
+        json!({
+            "entities":   entities,
+            "total":      total,
+            "categories": categories,
+            "hint": "Карта сущностей и связей (related = индексы связанных таблиц). \
+                     Детали полей — get_entity_schema(index); SQL JOIN — get_join_hint(from, to); \
+                     учёт — get_chart_of_accounts и list_gl_turnovers."
+        })
+    }
+
     // ─── get_entity_schema ────────────────────────────────────────────────
 
     /// Вернуть детальную схему сущности: таблица, поля, типы, ai_hint, FK.

@@ -3,7 +3,7 @@ use contracts::general_ledger::{
     GeneralLedgerEntryDto, GeneralLedgerTurnoverDto, GlAccountViewQuery, GlAccountViewResponse,
     GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,
     GlDrilldownSessionCreate, GlDrilldownSessionCreateResponse, GlDrilldownSessionRecord,
-    GlEntitiesResponse, GlLayersResponse, GlLayerTurnoverMatrixResponse, GlReportQuery,
+    GlEntitiesResponse, GlLayerTurnoverMatrixResponse, GlLayersResponse, GlReportQuery,
     GlReportResponse, GlResourceDetailResponse, SupplierBalanceQuery, SupplierBalanceResponse,
     WbWeeklyReconciliationQuery, WbWeeklyReconciliationResponse, YmRevenueReconQuery,
     YmRevenueReconResponse,

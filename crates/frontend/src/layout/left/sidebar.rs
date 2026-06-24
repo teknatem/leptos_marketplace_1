@@ -382,6 +382,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     tab_label_for_key("a017_llm_agent"),
                     "robot",
                 ),
+                SidebarItem::new("llm_skills", tab_label_for_key("llm_skills"), "list"),
             ],
             admin_only: true,
         },

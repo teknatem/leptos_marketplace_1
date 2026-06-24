@@ -33,12 +33,18 @@ pub fn turnover_code_for_source(source: &str) -> Option<&'static str> {
     match source.trim() {
         "Платёж покупателя" => Some("customer_revenue"),
         "Возврат платежа покупателя" => Some("customer_revenue_storno"),
-        "Баллы за скидку Маркета" | "Баллы за скидку Яндекс Плюс" => Some("wb_coinvestment"),
+        "Баллы за скидку Маркета" | "Баллы за скидку Яндекс Плюс" => {
+            Some("wb_coinvestment")
+        }
         "Возврат баллов за скидку Маркета" | "Возврат баллов за скидку Яндекс Плюс" => {
             Some("wb_coinvestment_storno")
         }
-        "Скидка за участие в совместных акциях" => Some("spp_discount"),
-        "Возврат скидки за участие в совместных акциях" => Some("spp_discount_storno"),
+        "Скидка за участие в совместных акциях" => {
+            Some("spp_discount")
+        }
+        "Возврат скидки за участие в совместных акциях" => {
+            Some("spp_discount_storno")
+        }
         // Известные регулярные операции без отдельного счёта — относим на «Прочие
         // доходы/расходы» явно, чтобы не зашумлять лог fallback-предупреждением.
         "Оплата услуг Яндекс.Маркета" => Some("other_expense"),
@@ -124,26 +130,35 @@ fn build_buyer_payment_entries(
     let mut entries = Vec::new();
     // Денежная нога выручки YM закрывает аванс 62 (оверрайд дебета 7609→62);
     // ноги расчётов (prepayment*) уже имеют свои счета в реестре.
-    let mut push =
-        |turnover_code: &str, entry_date: &str, qty: Option<f64>, mirror_p914: bool, debit_override: Option<&str>| {
-            if let Some(entry) = make_entry_with_override(
-                row,
-                turnover_code,
-                entry_date,
-                amount,
-                qty,
-                mirror_p914,
-                debit_override,
-            ) {
-                entries.push(entry);
-            }
-        };
+    let mut push = |turnover_code: &str,
+                    entry_date: &str,
+                    qty: Option<f64>,
+                    mirror_p914: bool,
+                    debit_override: Option<&str>| {
+        if let Some(entry) = make_entry_with_override(
+            row,
+            turnover_code,
+            entry_date,
+            amount,
+            qty,
+            mirror_p914,
+            debit_override,
+        ) {
+            entries.push(entry);
+        }
+    };
 
     if is_return {
         // Возврат — все ноги датой транзакции (отдельной даты реализации нет).
         push("prepayment_storno", txn_date, None, false, None);
         if delivery_date.is_some() {
-            push("customer_revenue_storno", txn_date, revenue_qty, true, Some("62"));
+            push(
+                "customer_revenue_storno",
+                txn_date,
+                revenue_qty,
+                true,
+                Some("62"),
+            );
             push("prepayment_settle_storno", txn_date, None, false, None);
         }
     } else {
@@ -207,9 +222,17 @@ fn build_single_entry(
         .unwrap_or(false);
     let debit_override = is_points_wallet.then_some("76YB");
 
-    make_entry_with_override(row, turnover_code, txn_date, amount, qty, true, debit_override)
-        .into_iter()
-        .collect()
+    make_entry_with_override(
+        row,
+        turnover_code,
+        txn_date,
+        amount,
+        qty,
+        true,
+        debit_override,
+    )
+    .into_iter()
+    .collect()
 }
 
 /// Сборка одной GL-проводки слоя fina по обороту, с возможностью переопределить
@@ -536,7 +559,8 @@ mod tests {
 
     #[test]
     fn market_and_plus_points_use_wb_coinvestment() {
-        for source in ["Баллы за скидку Маркета", "Баллы за скидку Яндекс Плюс"] {
+        for source in ["Баллы за скидку Маркета", "Баллы за скидку Яндекс Плюс"]
+        {
             let entry = single_entry("Начисление", source, 300.0);
             assert_eq!(entry.turnover_code, "wb_coinvestment", "source: {source}");
             assert_eq!(entry.debit_account, "7609");
@@ -644,7 +668,10 @@ mod tests {
         assert_eq!(turnovers.len(), 1);
         let mirror = &turnovers[0];
         let revenue_gl = by_code(&gl_entries, "customer_revenue");
-        assert_eq!(mirror.general_ledger_ref.as_deref(), Some(revenue_gl.id.as_str()));
+        assert_eq!(
+            mirror.general_ledger_ref.as_deref(),
+            Some(revenue_gl.id.as_str())
+        );
         assert_eq!(mirror.amount, 1000.0);
         assert_eq!(mirror.layer, "fina");
         assert_eq!(mirror.turnover_code, "customer_revenue");

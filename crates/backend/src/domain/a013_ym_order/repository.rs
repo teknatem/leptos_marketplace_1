@@ -652,7 +652,13 @@ pub async fn list_sql(query: YmOrderListQuery) -> Result<YmOrderListResult> {
         WHERE {}
         ORDER BY {} {} NULLS LAST
         LIMIT {} OFFSET {}"#,
-        realization_subquery, payment_subquery, where_clause, order_column, order_dir, query.limit, query.offset
+        realization_subquery,
+        payment_subquery,
+        where_clause,
+        order_column,
+        order_dir,
+        query.limit,
+        query.offset
     );
 
     let rows = db

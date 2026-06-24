@@ -21,4 +21,7 @@ pub struct ContextPackageSummary {
     pub page_type: String,
     pub title: String,
     pub created_at: String,
+    /// Компактный человекочитаемый текст контекста (для просмотра по ссылке).
+    #[serde(default)]
+    pub rendered_text: String,
 }

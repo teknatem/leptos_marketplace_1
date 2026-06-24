@@ -76,7 +76,11 @@ fn parse_page_key(key: &str) -> PageRef {
             rest = stripped;
         }
         let seg0 = first_segment(&kind).to_string();
-        let page_type = if seg0.starts_with('p') { "report" } else { "aggregate" };
+        let page_type = if seg0.starts_with('p') {
+            "report"
+        } else {
+            "aggregate"
+        };
         return PageRef {
             page_type,
             kind: Some(kind),
@@ -117,11 +121,7 @@ fn parse_page_key(key: &str) -> PageRef {
 /// Прочитать одну строку объекта (generic SELECT) как JSON по имени таблицы и id.
 async fn fetch_object_row(table: &str, id: &str) -> Option<Value> {
     // Имя таблицы из метаданных (доверенное), но проверим на всякий случай.
-    if table.is_empty()
-        || !table
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
-    {
+    if table.is_empty() || !table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return None;
     }
     let db = crate::shared::data::db::get_connection();
@@ -135,6 +135,31 @@ async fn fetch_object_row(table: &str, id: &str) -> Option<Value> {
         .await
         .ok()
         .and_then(|mut rows| rows.drain(..).next())
+}
+
+/// Рекурсивно раскрывает строковые значения, которые сами являются JSON
+/// (напр. колонка `line_json`), чтобы LLM видел полную структуру без экранирования.
+fn expand_json_strings(v: &Value) -> Value {
+    match v {
+        Value::String(s) => {
+            let t = s.trim();
+            let looks_json = (t.starts_with('{') && t.ends_with('}'))
+                || (t.starts_with('[') && t.ends_with(']'));
+            if looks_json {
+                if let Ok(parsed) = serde_json::from_str::<Value>(t) {
+                    return expand_json_strings(&parsed);
+                }
+            }
+            v.clone()
+        }
+        Value::Array(a) => Value::Array(a.iter().map(expand_json_strings).collect()),
+        Value::Object(m) => Value::Object(
+            m.iter()
+                .map(|(k, vv)| (k.clone(), expand_json_strings(vv)))
+                .collect(),
+        ),
+        _ => v.clone(),
+    }
 }
 
 /// Обрезать значение поля до разумной длины (без разрыва UTF-8).
@@ -273,7 +298,10 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
 
     // ── Компактный текст для инъекции в диалог ──────────────────────────────
     let mut text = String::new();
-    text.push_str(&format!("Страница: {}\n", label_title.as_deref().unwrap_or(&title)));
+    text.push_str(&format!(
+        "Страница: {}\n",
+        label_title.as_deref().unwrap_or(&title)
+    ));
     text.push_str(&format!("Тип страницы: {}\n", pr.page_type));
     text.push_str(&format!("Ссылка: {}\n", deep_link));
     if let Some(name) = &entity_name {
@@ -287,18 +315,18 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
         text.push_str(&format!("Объект: {}\n", lbl));
     }
     if let Some(Value::Object(map)) = &object_row {
-        text.push_str("Данные объекта:\n");
-        let mut shown = 0;
+        let mut filtered = serde_json::Map::new();
         for (k, v) in map {
-            if SKIP_COLUMNS.contains(&k.as_str()) {
+            if SKIP_COLUMNS.contains(&k.as_str()) || v.is_null() {
                 continue;
             }
-            let Some(val) = short_value(v) else { continue };
-            text.push_str(&format!("  {}: {}\n", k, val));
-            shown += 1;
-            if shown >= 40 {
-                break;
-            }
+            filtered.insert(k.clone(), expand_json_strings(v));
+        }
+        if !filtered.is_empty() {
+            let pretty = serde_json::to_string_pretty(&Value::Object(filtered)).unwrap_or_default();
+            text.push_str("Данные объекта (JSON):\n```json\n");
+            text.push_str(&pretty);
+            text.push_str("\n```\n");
         }
     }
     if !adjacent.is_empty() {
@@ -312,6 +340,13 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
                 .unwrap_or("");
             text.push_str(&format!("  {}: {}\n", field, label));
         }
+    }
+
+    // Мягкий потолок размера, чтобы не раздувать контекст на гигантских объектах.
+    const MAX_TEXT_CHARS: usize = 24_000;
+    if text.chars().count() > MAX_TEXT_CHARS {
+        let truncated: String = text.chars().take(MAX_TEXT_CHARS).collect();
+        text = format!("{}\n…[контекст обрезан]", truncated);
     }
 
     BuiltContext {

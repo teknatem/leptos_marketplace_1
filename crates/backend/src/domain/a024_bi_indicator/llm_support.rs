@@ -78,7 +78,7 @@ pub async fn generate_view(request: GenerateViewRequest) -> anyhow::Result<Gener
     ];
 
     let response = provider
-        .chat_completion(messages)
+        .chat_completion(&messages)
         .await
         .map_err(|e| anyhow::anyhow!("LLM request failed: {}", e))?;
 

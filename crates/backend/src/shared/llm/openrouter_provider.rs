@@ -87,14 +87,14 @@ impl OpenRouterProvider {
 
 #[async_trait]
 impl LlmProvider for OpenRouterProvider {
-    async fn chat_completion(&self, messages: Vec<ChatMessage>) -> Result<LlmResponse, LlmError> {
+    async fn chat_completion(&self, messages: &[ChatMessage]) -> Result<LlmResponse, LlmError> {
         self.inner.chat_completion(messages).await
     }
 
     async fn chat_completion_with_tools(
         &self,
-        messages: Vec<ChatMessage>,
-        tools: Vec<ToolDefinition>,
+        messages: &[ChatMessage],
+        tools: &[ToolDefinition],
     ) -> Result<LlmResponse, LlmError> {
         self.inner.chat_completion_with_tools(messages, tools).await
     }

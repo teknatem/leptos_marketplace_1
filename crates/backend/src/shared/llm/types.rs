@@ -147,13 +147,16 @@ impl LlmResponse {
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     /// Отправка запроса к чату (без инструментов)
-    async fn chat_completion(&self, messages: Vec<ChatMessage>) -> Result<LlmResponse, LlmError>;
+    async fn chat_completion(&self, messages: &[ChatMessage]) -> Result<LlmResponse, LlmError>;
 
-    /// Отправка запроса к чату с поддержкой инструментов
+    /// Отправка запроса к чату с поддержкой инструментов.
+    ///
+    /// Принимает срезы (а не `Vec`), чтобы вызывающий код (tool-цикл) не клонировал
+    /// всю историю сообщений на каждой итерации.
     async fn chat_completion_with_tools(
         &self,
-        messages: Vec<ChatMessage>,
-        tools: Vec<ToolDefinition>,
+        messages: &[ChatMessage],
+        tools: &[ToolDefinition],
     ) -> Result<LlmResponse, LlmError>;
 
     /// Тест подключения к провайдеру

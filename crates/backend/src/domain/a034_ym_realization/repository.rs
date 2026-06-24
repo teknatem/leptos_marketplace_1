@@ -104,7 +104,10 @@ impl From<Model> for YmRealization {
     }
 }
 
-fn to_active_model(document: &YmRealization, created_at: Option<chrono::DateTime<chrono::Utc>>) -> Result<ActiveModel> {
+fn to_active_model(
+    document: &YmRealization,
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<ActiveModel> {
     let header_json = serde_json::to_string(&document.header)?;
     let totals_json = serde_json::to_string(&document.totals)?;
     let sales_lines_json = serde_json::to_string(&document.sales_lines)?;
@@ -283,17 +286,26 @@ pub async fn list_sql(query: YmRealizationListQuery) -> Result<YmRealizationList
     let mut conditions = vec!["d.is_deleted = 0".to_string()];
     if let Some(ref date_from) = query.date_from {
         if !date_from.is_empty() {
-            conditions.push(format!("d.document_date >= '{}'", date_from.replace('\'', "''")));
+            conditions.push(format!(
+                "d.document_date >= '{}'",
+                date_from.replace('\'', "''")
+            ));
         }
     }
     if let Some(ref date_to) = query.date_to {
         if !date_to.is_empty() {
-            conditions.push(format!("d.document_date <= '{}'", date_to.replace('\'', "''")));
+            conditions.push(format!(
+                "d.document_date <= '{}'",
+                date_to.replace('\'', "''")
+            ));
         }
     }
     if let Some(ref connection_id) = query.connection_id {
         if !connection_id.is_empty() {
-            conditions.push(format!("d.connection_id = '{}'", connection_id.replace('\'', "''")));
+            conditions.push(format!(
+                "d.connection_id = '{}'",
+                connection_id.replace('\'', "''")
+            ));
         }
     }
     if let Some(ref search) = query.search_query {

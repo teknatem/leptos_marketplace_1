@@ -136,6 +136,7 @@ pub fn PluginFrame(
                         context,
                         console,
                         log,
+                        dev,
                     ),
                     _ => {}
                 }
@@ -232,6 +233,7 @@ fn handle_plugin_invoke(
     context: RwSignal<PluginRunContext>,
     console: RwSignal<Vec<String>>,
     log: Callback<String>,
+    dev: bool,
 ) {
     let Some(request_id) = string_property(data, "requestId") else {
         return;
@@ -256,7 +258,11 @@ fn handle_plugin_invoke(
             args,
             context: context.get_untracked(),
         };
-        let response = api::invoke(&id, &request).await;
+        let response = if dev {
+            api::dev_invoke(&id, &request).await
+        } else {
+            api::invoke(&id, &request).await
+        };
         let message = match response {
             Ok(body) => {
                 let logs = body

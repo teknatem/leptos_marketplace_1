@@ -4,9 +4,7 @@ use contracts::domain::common::AggregateId;
 use uuid::Uuid;
 
 use super::{posting, repository};
-pub use repository::{
-    YmRealizationListQuery, YmRealizationListResult, YmRealizationListRow,
-};
+pub use repository::{YmRealizationListQuery, YmRealizationListResult, YmRealizationListRow};
 
 pub async fn replace_for_period(
     connection_id: &str,

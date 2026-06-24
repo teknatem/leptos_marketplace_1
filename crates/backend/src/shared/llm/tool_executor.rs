@@ -11,6 +11,32 @@ use super::metadata_registry::METADATA_REGISTRY;
 use super::plugin_tools::{execute_plugin_tool, plugin_tool_definitions, PLUGIN_TOOL_NAMES};
 use super::types::{ToolCall, ToolDefinition};
 use contracts::domain::a017_llm_agent::aggregate::AgentType;
+use once_cell::sync::Lazy;
+use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
+
+/// Идемпотентные инструменты «знания о системе»: результат зависит только от
+/// (agent_type, name, arguments) — не от чата/состояния. Кэшируем их, чтобы LLM
+/// не переоткрывал схему/каталог на каждом ходу диалога (лишние round-trip'ы и токены).
+const CACHEABLE_TOOLS: &[&str] = &[
+    "get_architecture_overview",
+    "get_chart_of_accounts",
+    "get_entity_schema",
+    "list_entities",
+    "get_join_hint",
+    "list_data_views",
+];
+
+/// Процесс-кэш результатов идемпотентных инструментов. Инвалидация — рестартом
+/// процесса (метаданные/схема статичны в рамках запуска).
+static METADATA_TOOL_CACHE: Lazy<Mutex<HashMap<String, String>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Ключ кэша. Включает agent_type, т.к. часть инструментов отдаёт ошибку доступа
+/// для отдельных ролей (напр. list_entities для SystemAdmin).
+fn cache_key(agent_type: &AgentType, name: &str, arguments: &str) -> String {
+    format!("{}\u{0}{}\u{0}{}", agent_type.as_str(), name, arguments)
+}
 
 // ─── Определения инструментов ────────────────────────────────────────────────
 
@@ -43,6 +69,9 @@ pub fn tool_definitions_for(agent_type: &AgentType) -> Vec<ToolDefinition> {
             tools.extend(analyst_tool_definitions());
             tools.extend(admin_tool_definitions());
             tools.extend(kb_admin_tool_definitions());
+            // General = все инструменты, включая разработку плагинов
+            // (execute_tool_call уже допускает General к plugin-инструментам).
+            tools.extend(plugin_tool_definitions());
             tools
         }
         AgentType::KbAdmin => {
@@ -64,8 +93,41 @@ pub fn tool_definitions_for(agent_type: &AgentType) -> Vec<ToolDefinition> {
 }
 
 /// Общие инструменты для всех агентов (схемы, KB, DataView).
-fn shared_tool_definitions() -> Vec<ToolDefinition> {
+pub(crate) fn shared_tool_definitions() -> Vec<ToolDefinition> {
     vec![
+        ToolDefinition {
+            name: "get_architecture_overview".into(),
+            description: "Получить КАРТУ всей системы за один вызов: список сущностей \
+                          (index, table, name, tags) и их связи (related). Используй В ПЕРВУЮ \
+                          ОЧЕРЕДЬ, чтобы понять структуру домена, вместо множества list_entities. \
+                          Затем углубляйся через get_entity_schema(index)."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Необязательный фильтр по тегу-категории.",
+                        "enum": ["wb", "ozon", "ym", "ref", "llm", "promotion", "advertising",
+                                 "bi", "dashboard", "projection", "gl", "accounting", "sales", "orders", "1c"]
+                    }
+                }
+            }),
+        },
+        ToolDefinition {
+            name: "get_chart_of_accounts".into(),
+            description: "Получить план счетов General Ledger: код, имя, тип счёта \
+                          (актив/пассив), нормальное сальдо, иерархию (parent_code), раздел \
+                          отчётности и описание. Используй для понимания учётной модели: какие \
+                          счета дебетуются/кредитуются, как устроены взаиморасчёты с маркетплейсом \
+                          (7609/76YA/76YB), выручка (9001), себестоимость (9002). \
+                          Виды оборотов между счетами — в list_gl_turnovers."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
         ToolDefinition {
             name: "get_entity_schema".into(),
             description: "Получить детальную схему таблицы: поля, SQL-типы, описания, \
@@ -118,7 +180,7 @@ fn shared_tool_definitions() -> Vec<ToolDefinition> {
 }
 
 /// Инструменты бизнес-аналитика (данные маркетплейсов, SQL, BI).
-fn analyst_tool_definitions() -> Vec<ToolDefinition> {
+pub(crate) fn analyst_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
             name: "list_entities".into(),
@@ -273,7 +335,7 @@ fn analyst_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-fn execute_query_tool_definition() -> ToolDefinition {
+pub(crate) fn execute_query_tool_definition() -> ToolDefinition {
     ToolDefinition {
         name: "execute_query".into(),
         description: "Выполнить SQL SELECT-запрос к базе данных и получить результат. \
@@ -314,7 +376,35 @@ pub async fn execute_tool_call(
     chat_id: &str,
     agent_id: &str,
     agent_type: &AgentType,
+    active_tools: &HashSet<String>,
 ) -> String {
+    // Авторизация: исполняем только инструменты активного набора (core ∪ активные навыки).
+    // Единый источник истины вместо разрозненных проверок по роли агента.
+    if !active_tools.contains(call.name.as_str()) {
+        let result = serde_json::json!({
+            "error": format!(
+                "Инструмент '{}' не активен в текущем наборе. Вызови list_skills() и \
+                 use_skill(\"<id>\"), чтобы активировать нужный навык.",
+                call.name
+            ),
+            "_tool": call.name,
+            "_ok": false,
+        });
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    // Кэш идемпотентных «системных» инструментов — обслуживаем повтор без вычисления.
+    let cacheable = CACHEABLE_TOOLS.contains(&call.name.as_str());
+    if cacheable {
+        let key = cache_key(agent_type, &call.name, &call.arguments);
+        if let Ok(cache) = METADATA_TOOL_CACHE.lock() {
+            if let Some(hit) = cache.get(&key) {
+                return hit.clone();
+            }
+        }
+    }
+
     if matches!(
         call.name.as_str(),
         "list_kb_documents"
@@ -324,16 +414,7 @@ pub async fn execute_tool_call(
             | "list_open_kb_edits"
             | "write_kb_document"
     ) {
-        let result = if matches!(agent_type, AgentType::KbAdmin | AgentType::General) {
-            execute_kb_admin_tool(&call.name, &call.arguments, agent_id).await
-        } else {
-            serde_json::json!({
-                "error": format!(
-                    "Tool '{}' is only available for KbAdmin and General agents.",
-                    call.name
-                )
-            })
-        };
+        let result = execute_kb_admin_tool(&call.name, &call.arguments, agent_id).await;
         let is_ok = result.get("error").is_none();
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
@@ -349,16 +430,7 @@ pub async fn execute_tool_call(
 
     // Plugin developer tools — dispatch to plugin_tools module
     if PLUGIN_TOOL_NAMES.contains(&call.name.as_str()) {
-        let result = if matches!(agent_type, AgentType::PluginAdmin | AgentType::General) {
-            execute_plugin_tool(&call.name, &call.arguments, chat_id, agent_id).await
-        } else {
-            serde_json::json!({
-                "error": format!(
-                    "Tool '{}' is only available for PluginAdmin and General agents.",
-                    call.name
-                )
-            })
-        };
+        let result = execute_plugin_tool(&call.name, &call.arguments, chat_id, agent_id).await;
         let is_ok = result.get("error").is_none();
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
@@ -380,16 +452,7 @@ pub async fn execute_tool_call(
             | "list_background_jobs"
             | "get_data_integrity_report"
     ) {
-        let result = if matches!(agent_type, AgentType::SystemAdmin | AgentType::General) {
-            execute_admin_tool(&call.name, &call.arguments).await
-        } else {
-            serde_json::json!({
-                "error": format!(
-                    "Tool '{}' is only available for SystemAdmin and General agents.",
-                    call.name
-                )
-            })
-        };
+        let result = execute_admin_tool(&call.name, &call.arguments).await;
         let is_ok = result.get("error").is_none();
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
@@ -404,18 +467,30 @@ pub async fn execute_tool_call(
     }
 
     let result = match call.name.as_str() {
-        "list_entities" => {
-            // Guard: analyst-only
-            if matches!(agent_type, AgentType::SystemAdmin) {
-                serde_json::json!({
-                    "error": "Tool 'list_entities' is not available for SystemAdmin agents. \
-                              Use check_system_health or list_background_jobs instead."
-                })
-            } else {
-                let category = parse_string_arg(&call.arguments, "category");
-                METADATA_REGISTRY.list_entities(category.as_deref())
-            }
+        "get_architecture_overview" => {
+            let category = parse_string_arg(&call.arguments, "category");
+            METADATA_REGISTRY.architecture_overview(category.as_deref())
         }
+
+        "get_chart_of_accounts" => {
+            let accounts = crate::shared::analytics::account_registry::ACCOUNT_REGISTRY;
+            serde_json::json!({
+                "accounts": accounts,
+                "count": accounts.len(),
+                "hint": "План счетов GL. parent_code задаёт иерархию (группа → субсчёт). \
+                         Проводки хранятся в sys_general_ledger (поля debit_account/credit_account). \
+                         Какие обороты задействуют счета — см. list_gl_turnovers."
+            })
+        }
+
+        "list_entities" => {
+            let category = parse_string_arg(&call.arguments, "category");
+            METADATA_REGISTRY.list_entities(category.as_deref())
+        }
+
+        "list_skills" => super::skills::list_skills_result(agent_type),
+
+        "use_skill" => super::skills::use_skill_result(&call.arguments, agent_type),
 
         "get_entity_schema" => {
             let index = parse_string_arg(&call.arguments, "entity_index").unwrap_or_default();
@@ -436,15 +511,9 @@ pub async fn execute_tool_call(
         }
 
         "get_join_hint" => {
-            if matches!(agent_type, AgentType::SystemAdmin) {
-                serde_json::json!({
-                    "error": "Tool 'get_join_hint' is not available for SystemAdmin agents."
-                })
-            } else {
-                let from = parse_string_arg(&call.arguments, "from_entity").unwrap_or_default();
-                let to = parse_string_arg(&call.arguments, "to_entity").unwrap_or_default();
-                METADATA_REGISTRY.get_join_hint(&from, &to)
-            }
+            let from = parse_string_arg(&call.arguments, "from_entity").unwrap_or_default();
+            let to = parse_string_arg(&call.arguments, "to_entity").unwrap_or_default();
+            METADATA_REGISTRY.get_join_hint(&from, &to)
         }
 
         "search_knowledge" => {
@@ -545,25 +614,10 @@ pub async fn execute_tool_call(
             })
         }
 
-        "execute_query" => {
-            if matches!(agent_type, AgentType::SystemAdmin) {
-                serde_json::json!({
-                    "error": "Tool 'execute_query' is not available for SystemAdmin agents. \
-                              Use check_system_health or get_data_integrity_report instead."
-                })
-            } else {
-                execute_query_tool(&call.arguments, chat_id, agent_id).await
-            }
-        }
+        "execute_query" => execute_query_tool(&call.arguments, chat_id, agent_id).await,
 
         "create_drilldown_report" => {
-            if matches!(agent_type, AgentType::SystemAdmin) {
-                serde_json::json!({
-                    "error": "Tool 'create_drilldown_report' is not available for SystemAdmin agents."
-                })
-            } else {
-                create_drilldown_report_tool(&call.arguments, chat_id, agent_id).await
-            }
+            create_drilldown_report_tool(&call.arguments, chat_id, agent_id).await
         }
 
         "list_gl_turnovers" => {
@@ -621,8 +675,20 @@ pub async fn execute_tool_call(
         map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
     }
 
-    serde_json::to_string_pretty(&result)
-        .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e))
+    let output = serde_json::to_string_pretty(&result)
+        .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+
+    // Сохранить в кэш идемпотентных инструментов.
+    if cacheable {
+        if let Ok(mut cache) = METADATA_TOOL_CACHE.lock() {
+            cache.insert(
+                cache_key(agent_type, &call.name, &call.arguments),
+                output.clone(),
+            );
+        }
+    }
+
+    output
 }
 
 // ─── create_drilldown_report implementation ───────────────────────────────────

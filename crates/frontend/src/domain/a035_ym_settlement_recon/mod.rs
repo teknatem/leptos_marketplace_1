@@ -502,7 +502,11 @@ pub fn YmSettlementReconDetail(id: String, #[prop(into)] on_close: Callback<()>)
         let id = id_for_recompute.clone();
         spawn_local(async move {
             busy.set(true);
-            let url = format!("{}/api/a035/ym-settlement-recon/{}/recompute", api_base(), id);
+            let url = format!(
+                "{}/api/a035/ym-settlement-recon/{}/recompute",
+                api_base(),
+                id
+            );
             if let Ok(resp) = Request::post(&url).send().await {
                 if resp.ok() {
                     if let Ok(data) = resp.json::<DetailsDto>().await {
@@ -526,7 +530,12 @@ pub fn YmSettlementReconDetail(id: String, #[prop(into)] on_close: Callback<()>)
         spawn_local(async move {
             busy.set(true);
             let action = if posted { "unpost" } else { "post" };
-            let url = format!("{}/api/a035/ym-settlement-recon/{}/{}", api_base(), id, action);
+            let url = format!(
+                "{}/api/a035/ym-settlement-recon/{}/{}",
+                api_base(),
+                id,
+                action
+            );
             let _ = Request::post(&url).send().await;
             busy.set(false);
             load();

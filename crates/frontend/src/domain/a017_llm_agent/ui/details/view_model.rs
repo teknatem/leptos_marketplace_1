@@ -23,6 +23,9 @@ pub struct LlmAgentDetailsVm {
     pub max_tokens: RwSignal<String>,
     pub system_prompt: RwSignal<String>,
 
+    /// Тип/роль агента — определяет набор инструментов (напр. plugin_admin → плагины).
+    pub agent_type: RwSignal<String>,
+
     // Flags
     pub is_primary: RwSignal<bool>,
 
@@ -67,6 +70,7 @@ impl LlmAgentDetailsVm {
             temperature: RwSignal::new("0.7".to_string()),
             max_tokens: RwSignal::new("4096".to_string()),
             system_prompt: RwSignal::new(String::new()),
+            agent_type: RwSignal::new("business_analyst".to_string()),
             is_primary: RwSignal::new(false),
             is_models_dropdown_open: RwSignal::new(false),
             error: error.into(),
@@ -109,6 +113,7 @@ impl LlmAgentDetailsVm {
             "max_tokens": self.get_max_tokens(),
             "system_prompt": if self.system_prompt.get().is_empty() { None } else { Some(self.system_prompt.get()) },
             "is_primary": self.is_primary.get(),
+            "agent_type": self.agent_type.get(),
         })
     }
 }

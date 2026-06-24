@@ -120,13 +120,12 @@ pub async fn post_report(
 /// строки. Используется после изменения маппинга оборотов, чтобы провести ранее
 /// не отражавшиеся операции YM.
 pub async fn repost_all() -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let (rows, gl_entries) =
-        crate::projections::p907_ym_payment_report::service::repost_all()
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to repost all p907 rows: {}", e);
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    let (rows, gl_entries) = crate::projections::p907_ym_payment_report::service::repost_all()
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to repost all p907 rows: {}", e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -140,15 +139,21 @@ pub async fn repost_all() -> Result<Json<serde_json::Value>, axum::http::StatusC
 /// Используется на детальной странице для показа соответствующего JSON.
 pub async fn get_finance_turnovers(
     Path(id): Path<String>,
-) -> Result<Json<Vec<contracts::projections::p914_mp_finance_turnovers::dto::MpFinanceTurnoverDto>>, axum::http::StatusCode>
-{
+) -> Result<
+    Json<Vec<contracts::projections::p914_mp_finance_turnovers::dto::MpFinanceTurnoverDto>>,
+    axum::http::StatusCode,
+> {
     let rows = crate::projections::p914_mp_finance_turnovers::repository::list_by_registrator(
         "p907_ym_payment_report",
         &id,
     )
     .await
     .map_err(|e| {
-        tracing::error!("Failed to load p914 finance turnovers for p907 id {}: {}", id, e);
+        tracing::error!(
+            "Failed to load p914 finance turnovers for p907 id {}: {}",
+            id,
+            e
+        );
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 

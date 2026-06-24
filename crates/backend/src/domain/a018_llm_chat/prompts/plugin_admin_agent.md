@@ -80,13 +80,21 @@ export async function loadRows(_args, host) {
   «Превью»/«Редактор»). Возвращает `{ id, version, validate, artifact_id }`.
 - `plugin_invoke({ id, method, args })` — запустить серверный метод; возвращает
   `{ result, logs }` либо `{ error, error_detail:{ stage, message, stack } }`.
-- Интроспекция БД: `list_entities(category)`, `get_entity_schema(entity_index)`,
-  `get_join_hint(from, to)`, `execute_query(sql, description)` — изучай схему и проверяй
-  SELECT перед тем, как вставить его в `sql_resources`.
+- `plugin_template({ runtime })` — минимальный ВАЛИДНЫЙ скелет bundle (client/server/hybrid).
+  Начинай новый плагин с него.
+- `plugin_examples()` — готовый рабочий пример (hybrid) как образец структуры и стиля.
+- `get_plugin_ui_contract()` — CSS-кит iframe (.card, .table-wrap/.data-table/.num, .stat*, .btn*,
+  .badge*, .status*) и правила рендера.
+- `plugin_runs({ id, [days] })` — журнал запусков (сводка + последние ошибки/health) для самокоррекции.
+- Интроспекция БД: `get_architecture_overview([category])` (карта системы), `list_entities(category)`,
+  `get_entity_schema(entity_index)`, `get_join_hint(from, to)`, `execute_query(sql, description)` —
+  изучай схему и проверяй SELECT перед тем, как вставить его в `sql_resources`.
 
 ## Рабочий цикл (соблюдай)
 
-1. **Изучи схему**: `list_entities` → `get_entity_schema` для нужных таблиц. Имена таблиц и
+0. **Старт нового плагина**: возьми `plugin_template(runtime)` за основу и при необходимости
+   подсмотри `plugin_examples()` / `get_plugin_ui_contract()` для структуры и UI.
+1. **Изучи схему**: `get_architecture_overview` → `get_entity_schema` для нужных таблиц. Имена таблиц и
    колонок должны точно совпадать со схемой.
 2. **Проверь SQL**: отладь запрос через `execute_query` до вставки в `sql_resources`.
 3. **Собери/обнови bundle**, отправь `plugin_validate`. Чини ошибки по `stage`:

@@ -2,7 +2,8 @@
 
 use contracts::plugins::{
     PluginBundle, PluginDefinition, PluginInvokeRequest, PluginListItem, PluginRunBrief,
-    PluginRunContext, PluginStats, PluginUpsert, PluginValidateReport,
+    PluginRunContext, PluginSmokeReport, PluginSmokeRequest, PluginStats, PluginUpsert,
+    PluginValidateReport,
 };
 use contracts::shared::drilldown::DrilldownResponse;
 use gloo_net::http::{Request, RequestBuilder, Response};
@@ -113,8 +114,19 @@ pub async fn invoke(id: &str, request: &PluginInvokeRequest) -> Result<serde_jso
     post_json(&format!("{API_BASE}/{id}/invoke"), request).await
 }
 
+pub async fn dev_invoke(
+    id: &str,
+    request: &PluginInvokeRequest,
+) -> Result<serde_json::Value, String> {
+    post_json(&format!("{API_BASE}/{id}/dev-invoke"), request).await
+}
+
 pub async fn validate(bundle: &PluginBundle) -> Result<PluginValidateReport, String> {
     post_json(&format!("{API_BASE}/validate"), bundle).await
+}
+
+pub async fn smoke_test(request: &PluginSmokeRequest) -> Result<PluginSmokeReport, String> {
+    post_json(&format!("{API_BASE}/smoke-test"), request).await
 }
 
 pub async fn invoke_raw(

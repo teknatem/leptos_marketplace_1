@@ -326,9 +326,7 @@ pub fn GeneralLedgerDetailsPage(id: String, #[prop(into)] on_close: Callback<()>
                 .filter(|value| !value.trim().is_empty())
             {
                 spawn_local(async move {
-                    if let Some((_, _, label)) =
-                        resolve_ref(RefKind::ConnectionMp, conn_id).await
-                    {
+                    if let Some((_, _, label)) = resolve_ref(RefKind::ConnectionMp, conn_id).await {
                         set_connection_name.set(Some(label));
                     }
                 });

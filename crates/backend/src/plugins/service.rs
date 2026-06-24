@@ -3,7 +3,8 @@
 use super::repository;
 use chrono::Utc;
 use contracts::plugins::{
-    PluginBundle, PluginDefinition, PluginError, PluginInvokeRequest, PluginStatus, PluginUpsert,
+    PluginBundle, PluginDefinition, PluginError, PluginInvokeRequest, PluginSmokeFailure,
+    PluginSmokeMethod, PluginSmokeReport, PluginSmokeRequest, PluginStatus, PluginUpsert,
     PluginValidateReport,
 };
 use uuid::Uuid;
@@ -48,9 +49,19 @@ pub async fn validate(bundle: &PluginBundle) -> PluginValidateReport {
 }
 
 pub async fn upsert(dto: PluginUpsert) -> anyhow::Result<String> {
-    dto.bundle
-        .validate()
-        .map_err(|error| anyhow::anyhow!("Validation failed: {error}"))?;
+    let report = validate(&dto.bundle).await;
+    if !report.ok {
+        return Err(anyhow::anyhow!(
+            "Validation failed: {}",
+            report
+                .errors
+                .first()
+                .map(|error| error.to_string())
+                .unwrap_or_else(|| "unknown plugin validation error".to_string())
+        ));
+    }
+    let revision_bundle = dto.bundle.clone();
+    let revision_agent_id = dto.created_by_agent_id.clone();
 
     let status = dto
         .status
@@ -58,10 +69,26 @@ pub async fn upsert(dto: PluginUpsert) -> anyhow::Result<String> {
         .map(PluginStatus::from_str)
         .unwrap_or(PluginStatus::Draft);
 
-    match dto.id.as_deref() {
+    let id = match dto.id.as_deref() {
         Some(id) => update_existing(id.to_string(), dto, status).await,
         None => insert_new(dto, status).await,
+    }?;
+    if let Ok(Some(saved)) = get_by_id(&id).await {
+        if let Err(error) = repository::insert_revision(
+            db(),
+            &id,
+            saved.version,
+            &revision_bundle,
+            &report,
+            None,
+            revision_agent_id.as_deref(),
+        )
+        .await
+        {
+            tracing::warn!("Failed to record plugin revision for {id}: {error}");
+        }
     }
+    Ok(id)
 }
 
 async fn update_existing(
@@ -154,7 +181,25 @@ pub async fn invoke(
         .await?
         .ok_or_else(|| anyhow::anyhow!("Plugin not found: {id}"))?;
     ensure_public_runnable(&def)?;
+    invoke_definition(id, def, request, Some("public")).await
+}
 
+pub async fn dev_invoke(
+    id: &str,
+    request: PluginInvokeRequest,
+) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
+    let def = repository::find_by_id(db(), id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Plugin not found: {id}"))?;
+    invoke_definition(id, def, request, Some("dev")).await
+}
+
+async fn invoke_definition(
+    id: &str,
+    def: PluginDefinition,
+    request: PluginInvokeRequest,
+    triggered_by: Option<&str>,
+) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
     let code = def.bundle.manifest.code.clone();
     let method = request.method.clone();
     let started = std::time::Instant::now();
@@ -181,11 +226,211 @@ pub async fn invoke(
         status,
         error_stage.as_deref(),
         row_count,
-        None,
+        triggered_by,
     )
     .await;
 
     result
+}
+
+fn smoke_failure(
+    stage: impl Into<String>,
+    file_hint: Option<String>,
+    message: impl Into<String>,
+    stack: Option<String>,
+) -> PluginSmokeFailure {
+    PluginSmokeFailure {
+        stage: stage.into(),
+        file_hint,
+        message: message.into(),
+        stack,
+    }
+}
+
+fn file_hint_for_stage(stage: &str) -> Option<String> {
+    if stage.starts_with("client_") {
+        Some("client_script".to_string())
+    } else if matches!(
+        stage,
+        "module_eval" | "missing_export" | "invoke" | "runtime" | "deserialize" | "timeout"
+    ) {
+        Some("server_script".to_string())
+    } else if stage == "manifest" {
+        Some("manifest".to_string())
+    } else {
+        None
+    }
+}
+
+fn extract_client_invokes(script: Option<&String>) -> Vec<String> {
+    let Some(script) = script else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for marker in ["host.invoke(\"", "host.invoke('"] {
+        let quote = marker.chars().last().unwrap_or('"');
+        let mut rest = script.as_str();
+        while let Some(pos) = rest.find(marker) {
+            let after = &rest[pos + marker.len()..];
+            if let Some(end) = after.find(quote) {
+                let method = after[..end].trim();
+                if !method.is_empty() && !out.iter().any(|item| item == method) {
+                    out.push(method.to_string());
+                }
+                rest = &after[end + 1..];
+            } else {
+                break;
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+fn temp_definition(bundle: PluginBundle) -> PluginDefinition {
+    let now = Utc::now();
+    PluginDefinition {
+        id: "smoke-bundle".to_string(),
+        bundle,
+        status: PluginStatus::Draft,
+        is_enabled: false,
+        owner_user_id: None,
+        created_by_agent_id: None,
+        version: 0,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+fn suggested_next_step(failures: &[PluginSmokeFailure]) -> Option<String> {
+    let first = failures.first()?;
+    let hint = match first.stage.as_str() {
+        "manifest" => "Fix the plugin manifest or bundle shape, then run plugin_validate again.",
+        "client_missing_export" => "Export async function mount(root, host) from client_script.",
+        "client_missing_server_export" => {
+            "Make every host.invoke(\"method\") call match an exported server_script function."
+        }
+        "module_eval" | "client_module_eval" => {
+            "Fix JavaScript syntax/top-level module code, then rerun smoke test."
+        }
+        "missing_export" => "Export the requested server method or update the invoke method name.",
+        "runtime" | "invoke" | "deserialize" | "timeout" => {
+            "Use the stage/message/stack to fix server_script runtime behavior."
+        }
+        "sql" | "database" => "Fix SQL resources or manifest db:read capabilities.",
+        _ => "Fix the first reported failure, then rerun plugin_smoke_test.",
+    };
+    Some(hint.to_string())
+}
+
+pub async fn smoke_test(request: PluginSmokeRequest) -> anyhow::Result<PluginSmokeReport> {
+    let def = if let Some(bundle) = request.bundle {
+        temp_definition(bundle)
+    } else if let Some(id) = request.id.as_deref() {
+        repository::find_by_id(db(), id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Plugin not found: {id}"))?
+    } else {
+        return Err(anyhow::anyhow!("PluginSmokeRequest requires id or bundle"));
+    };
+
+    let validate = validate(&def.bundle).await;
+    let mut failures: Vec<PluginSmokeFailure> = validate
+        .errors
+        .iter()
+        .map(|error| {
+            smoke_failure(
+                error.stage.clone(),
+                file_hint_for_stage(&error.stage),
+                error.message.clone(),
+                error.stack.clone(),
+            )
+        })
+        .collect();
+    let server_exports = validate.server_exports.clone();
+    let client_exports = validate.client_exports.clone();
+    let client_invokes = extract_client_invokes(def.bundle.client_script.as_ref());
+
+    for method in &client_invokes {
+        if !server_exports.iter().any(|export| export == method) {
+            failures.push(smoke_failure(
+                "client_missing_server_export",
+                Some("client_script".to_string()),
+                format!("client_script calls host.invoke(\"{method}\"), but server_script does not export it"),
+                None,
+            ));
+        }
+    }
+
+    let mut methods = request.methods;
+    if methods.is_empty() {
+        methods = server_exports
+            .iter()
+            .map(|method| PluginSmokeMethod {
+                method: method.clone(),
+                args: serde_json::Value::Null,
+            })
+            .collect();
+    }
+
+    if validate.ok {
+        for method in methods {
+            if method.method.trim().is_empty() {
+                continue;
+            }
+            let invoke = PluginInvokeRequest {
+                method: method.method.clone(),
+                args: method.args,
+                context: request.context.clone(),
+            };
+            if let Err(error) = super::engine::invoke_server_method(def.clone(), invoke).await {
+                if let Some(detail) = error.downcast_ref::<PluginError>() {
+                    failures.push(smoke_failure(
+                        detail.stage.clone(),
+                        file_hint_for_stage(&detail.stage),
+                        detail.message.clone(),
+                        detail.stack.clone(),
+                    ));
+                } else {
+                    failures.push(smoke_failure(
+                        "invoke",
+                        Some("server_script".to_string()),
+                        error.to_string(),
+                        None,
+                    ));
+                }
+            }
+        }
+    }
+
+    if request.render
+        && def.bundle.manifest.runtime.runs_on_client()
+        && !client_exports.iter().any(|export| export == "mount")
+    {
+        failures.push(smoke_failure(
+            "client_missing_export",
+            Some("client_script".to_string()),
+            "render smoke requires client_script to export mount",
+            None,
+        ));
+    }
+
+    let ok = validate.ok && failures.is_empty();
+    let suggested_next_step = if ok {
+        None
+    } else {
+        suggested_next_step(&failures)
+    };
+
+    Ok(PluginSmokeReport {
+        ok,
+        validate,
+        server_exports,
+        client_exports,
+        client_invokes,
+        failures,
+        suggested_next_step,
+    })
 }
 
 pub async fn stats(id: &str, days: i64) -> anyhow::Result<contracts::plugins::PluginStats> {
