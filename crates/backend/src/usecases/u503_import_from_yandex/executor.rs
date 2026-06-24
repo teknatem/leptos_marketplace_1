@@ -418,7 +418,10 @@ impl ImportExecutor {
                 self.progress_tracker.add_error(
                     session_id,
                     Some(aggregate_index.to_string()),
-                    format!("Не удалось получить список магазинов (GET /campaigns): {}", e),
+                    format!(
+                        "Не удалось получить список магазинов (GET /campaigns): {}",
+                        e
+                    ),
                     None,
                 );
                 fallback
@@ -918,8 +921,14 @@ impl ImportExecutor {
                 aggregate_index,
                 Some(format!("Сохранение строк отчёта... ({}/{})", saved, total)),
             );
-            self.progress_tracker
-                .update_aggregate(session_id, aggregate_index, saved, Some(total), saved, 0);
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                saved,
+                Some(total),
+                saved,
+                0,
+            );
         }
 
         // Phase 6: post each row (GL/p914) one by one, tolerant of per-row errors
@@ -1017,7 +1026,10 @@ impl ImportExecutor {
     ) -> Result<()> {
         use crate::domain::a002_organization;
 
-        tracing::info!("Importing YM realization report for session: {}", session_id);
+        tracing::info!(
+            "Importing YM realization report for session: {}",
+            session_id
+        );
         let aggregate_index = "a034_ym_realization";
 
         let organization_id = match Uuid::parse_str(&connection.organization_ref) {
@@ -1047,7 +1059,11 @@ impl ImportExecutor {
             let first_day = chrono::NaiveDate::from_ymd_opt(year, month, 1)
                 .ok_or_else(|| anyhow::anyhow!("Invalid month {}-{}", year, month))?;
             let last_day = {
-                let (ny, nm) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
+                let (ny, nm) = if month == 12 {
+                    (year + 1, 1)
+                } else {
+                    (year, month + 1)
+                };
                 chrono::NaiveDate::from_ymd_opt(ny, nm, 1)
                     .and_then(|d| d.pred_opt())
                     .ok_or_else(|| anyhow::anyhow!("Invalid month end {}-{}", year, month))?
@@ -1059,7 +1075,10 @@ impl ImportExecutor {
                 aggregate_index,
                 Some(format!(
                     "Генерация отчёта за {}-{:02} ({}/{})...",
-                    year, month, month_idx + 1, total_months
+                    year,
+                    month,
+                    month_idx + 1,
+                    total_months
                 )),
             );
             let report_id = self
@@ -1118,11 +1137,7 @@ impl ImportExecutor {
                     _ => {}
                 }
                 if attempt == MAX_POLL_ATTEMPTS {
-                    anyhow::bail!(
-                        "Превышено время ожидания отчёта за {}-{:02}",
-                        year,
-                        month
-                    );
+                    anyhow::bail!("Превышено время ожидания отчёта за {}-{:02}", year, month);
                 }
             }
             let url = download_url
@@ -1176,7 +1191,10 @@ impl ImportExecutor {
                 self.progress_tracker.add_error(
                     session_id,
                     Some(aggregate_index.to_string()),
-                    format!("Ошибка сохранения документов за {}-{:02}: {}", year, month, e),
+                    format!(
+                        "Ошибка сохранения документов за {}-{:02}: {}",
+                        year, month, e
+                    ),
                     None,
                 );
                 e

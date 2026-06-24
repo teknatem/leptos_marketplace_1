@@ -1,4 +1,7 @@
-use axum::{extract::{Path, Query}, Json};
+use axum::{
+    extract::{Path, Query},
+    Json,
+};
 use contracts::domain::a034_ym_realization::aggregate::{YmRealization, YmRealizationLine};
 use contracts::domain::common::AggregateId;
 use contracts::general_ledger::GeneralLedgerEntryDto;
@@ -6,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::a034_ym_realization;
-use crate::domain::a034_ym_realization::repository::{YmRealizationListQuery, YmRealizationListRow};
+use crate::domain::a034_ym_realization::repository::{
+    YmRealizationListQuery, YmRealizationListRow,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -106,7 +111,9 @@ async fn resolve_product_names(refs: Vec<String>) -> std::collections::HashMap<S
         if r.is_empty() || out.contains_key(&r) {
             continue;
         }
-        let Ok(uuid) = Uuid::parse_str(&r) else { continue };
+        let Ok(uuid) = Uuid::parse_str(&r) else {
+            continue;
+        };
         if let Ok(Some(product)) =
             crate::domain::a007_marketplace_product::service::get_by_id(uuid).await
         {
@@ -175,9 +182,7 @@ pub async fn list_paginated(
 /// Итоговые расхождения строки списка (доставки, возвраты) = отчёт − заказы,
 /// согласованы с блоками сводки в карточке. Возвраты требуют order_id из строк
 /// документа, поэтому подгружаем документ.
-async fn compute_row_discrepancies(
-    dto: &YmRealizationListItemDto,
-) -> anyhow::Result<(f64, f64)> {
+async fn compute_row_discrepancies(dto: &YmRealizationListItemDto) -> anyhow::Result<(f64, f64)> {
     let uuid = Uuid::parse_str(&dto.id)?;
     let Some(doc) = a034_ym_realization::service::get_by_id(uuid).await? else {
         return Ok((0.0, 0.0));
@@ -207,7 +212,10 @@ async fn compute_row_discrepancies(
         let a016 = crate::domain::a016_ym_returns::repository::list_by_order_ids(&order_ids)
             .await
             .unwrap_or_default();
-        build_a016_returns_side(&a016).values().map(|s| s.amount).sum()
+        build_a016_returns_side(&a016)
+            .values()
+            .map(|s| s.amount)
+            .sum()
     };
     let returns_discrepancy = doc.totals.return_revenue - orders_ret;
 
@@ -319,14 +327,15 @@ pub async fn get_general_ledger_entries(
     let rows = crate::general_ledger::repository::list_by_registrator("a034_ym_realization", &id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get general ledger entries for a034 {}: {}", id, e);
+            tracing::error!(
+                "Failed to get general ledger entries for a034 {}: {}",
+                id,
+                e
+            );
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let general_ledger_entries = rows
-        .into_iter()
-        .map(to_journal_dto)
-        .collect::<Vec<_>>();
+    let general_ledger_entries = rows.into_iter().map(to_journal_dto).collect::<Vec<_>>();
 
     Ok(Json(
         serde_json::json!({ "general_ledger_entries": general_ledger_entries }),
@@ -443,7 +452,12 @@ pub async fn get_payment_detail(
             .and_then(|r| product_names.get(r).cloned());
 
         rows.push(PaymentDetailRow {
-            kind: if is_revenue { "Выручка" } else { "Возврат" }.to_string(),
+            kind: if is_revenue {
+                "Выручка"
+            } else {
+                "Возврат"
+            }
+            .to_string(),
             order_id: row.order_id.map(|v| v.to_string()),
             marketplace_product_ref: row.marketplace_product_ref.clone(),
             product_name,
@@ -616,9 +630,7 @@ pub async fn get_reconciliation_sales(
 /// Ядро «Сверки реализации»: возвращает группы сверки (тот же набор и логика, что
 /// видит пользователь на вкладке). Используется и хендлером вкладки, и сводкой
 /// «Итоги», чтобы цифры гарантированно совпадали.
-async fn compute_recon_sales_groups(
-    doc: &YmRealization,
-) -> anyhow::Result<Vec<ReconGroup>> {
+async fn compute_recon_sales_groups(doc: &YmRealization) -> anyhow::Result<Vec<ReconGroup>> {
     use std::collections::HashSet;
 
     let day = doc.header.document_date.clone();
@@ -703,7 +715,12 @@ async fn compute_recon_sales_groups(
     }
 
     let mut g_unrecognized = new_group("Не распознано (нет a007)");
-    push_unrecognized(&mut g_unrecognized, ybuh_unres, orders_unres, &delivery_dates);
+    push_unrecognized(
+        &mut g_unrecognized,
+        ybuh_unres,
+        orders_unres,
+        &delivery_dates,
+    );
 
     Ok(vec![
         g_match,
@@ -724,7 +741,11 @@ pub async fn get_reconciliation_returns(
 ) -> Result<Json<ReconResponse>, axum::http::StatusCode> {
     let doc = load_doc_for_recon(&id).await?;
     let groups = compute_recon_returns_groups(&doc).await.map_err(|e| {
-        tracing::error!("Failed to compute a034 returns reconciliation {}: {}", id, e);
+        tracing::error!(
+            "Failed to compute a034 returns reconciliation {}: {}",
+            id,
+            e
+        );
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
     Ok(Json(ReconResponse { groups }))
@@ -732,9 +753,7 @@ pub async fn get_reconciliation_returns(
 
 /// Ядро «Сверки возвратов»: те же группы, что на вкладке. Используется и
 /// хендлером вкладки, и сводкой «Итоги».
-async fn compute_recon_returns_groups(
-    doc: &YmRealization,
-) -> anyhow::Result<Vec<ReconGroup>> {
+async fn compute_recon_returns_groups(doc: &YmRealization) -> anyhow::Result<Vec<ReconGroup>> {
     // Сторона реализации (a034) — все строки-возвраты по (order_id, shop_sku).
     let ybuh = build_ybuh_side_by_sku(&doc.return_lines);
 
@@ -839,7 +858,9 @@ fn build_a016_returns_side(
             } else {
                 header_amount / n_lines
             };
-            let side = map.entry((order.clone(), line.shop_sku.clone())).or_default();
+            let side = map
+                .entry((order.clone(), line.shop_sku.clone()))
+                .or_default();
             side.amount += alloc;
             side.qty += line.count as f64;
             if side.shop_sku.is_empty() {
@@ -1146,7 +1167,11 @@ pub async fn fetch_missing_orders(
             Ok(Some(_)) => {}
             Ok(None) => missing.push(order_no),
             Err(e) => {
-                tracing::error!("a034 fetch_missing_orders: lookup {} failed: {}", order_no, e);
+                tracing::error!(
+                    "a034 fetch_missing_orders: lookup {} failed: {}",
+                    order_no,
+                    e
+                );
                 return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
             }
         }
@@ -1165,16 +1190,15 @@ pub async fn fetch_missing_orders(
     // Подключение МП (для токена/кампании) и организация (как в импорте u503).
     let connection_uuid = Uuid::parse_str(&doc.header.connection_id)
         .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
-    let connection = match crate::domain::a006_connection_mp::service::get_by_id(connection_uuid)
-        .await
-    {
-        Ok(Some(c)) => c,
-        Ok(None) => return Err(axum::http::StatusCode::NOT_FOUND),
-        Err(e) => {
-            tracing::error!("a034 fetch_missing_orders: connection load failed: {}", e);
-            return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
+    let connection =
+        match crate::domain::a006_connection_mp::service::get_by_id(connection_uuid).await {
+            Ok(Some(c)) => c,
+            Ok(None) => return Err(axum::http::StatusCode::NOT_FOUND),
+            Err(e) => {
+                tracing::error!("a034 fetch_missing_orders: connection load failed: {}", e);
+                return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        };
     let organization_id = doc.header.organization_id.clone();
 
     let client =
@@ -1293,12 +1317,19 @@ pub async fn get_reconciliation_summary(
     let returns = compute_recon_returns_groups(&doc)
         .await
         .map_err(|e| {
-            tracing::error!("a034 recon summary: returns groups failed for {}: {}", id, e);
+            tracing::error!(
+                "a034 recon summary: returns groups failed for {}: {}",
+                id,
+                e
+            );
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?
         .iter()
         .map(group_to_summary_row)
         .collect();
 
-    Ok(Json(ReconSummaryResponse { deliveries, returns }))
+    Ok(Json(ReconSummaryResponse {
+        deliveries,
+        returns,
+    }))
 }

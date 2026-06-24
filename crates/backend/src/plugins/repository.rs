@@ -7,7 +7,7 @@ use contracts::plugins::{
 };
 use sea_orm::entity::prelude::*;
 use sea_orm::prelude::Expr;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use std::collections::HashMap;
 
 const RESOURCE_STORAGE_FORMAT: &str = "plugin_bundle_resources_v1";
@@ -245,5 +245,36 @@ pub async fn soft_delete(db: &DatabaseConnection, id: &str) -> Result<(), DbErr>
         .filter(plugin::Column::Id.eq(id.to_string()))
         .exec(db)
         .await?;
+    Ok(())
+}
+
+pub async fn insert_revision(
+    db: &DatabaseConnection,
+    plugin_id: &str,
+    version: i32,
+    bundle: &PluginBundle,
+    validate_report: &contracts::plugins::PluginValidateReport,
+    smoke_report_json: Option<&str>,
+    created_by_agent_id: Option<&str>,
+) -> Result<(), DbErr> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let bundle_json = serde_json::to_string(bundle).unwrap_or_else(|_| "{}".to_string());
+    let validate_json = serde_json::to_string(validate_report).unwrap_or_else(|_| "{}".to_string());
+    db.execute(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Sqlite,
+        "INSERT INTO plugin_revision \
+            (id, plugin_id, version, bundle_json, validate_report_json, smoke_report_json, created_by_agent_id, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+        vec![
+            id.into(),
+            plugin_id.into(),
+            version.into(),
+            bundle_json.into(),
+            validate_json.into(),
+            smoke_report_json.map(str::to_string).into(),
+            created_by_agent_id.map(str::to_string).into(),
+        ],
+    ))
+    .await?;
     Ok(())
 }

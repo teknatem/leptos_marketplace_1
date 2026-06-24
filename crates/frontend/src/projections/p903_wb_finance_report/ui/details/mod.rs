@@ -155,9 +155,11 @@ fn gl_resource_turnovers(field_id: &str) -> &'static [&'static str] {
     match field_id {
         "retail_amount" => &["customer_revenue", "customer_revenue_storno"],
         "return_amount" => &["customer_return", "customer_revenue_storno"],
-        "ppvz_vw" | "ppvz_vw_nds" => {
-            &["mp_commission", "mp_commission_storno", "mp_commission_adjustment"]
-        }
+        "ppvz_vw" | "ppvz_vw_nds" => &[
+            "mp_commission",
+            "mp_commission_storno",
+            "mp_commission_adjustment",
+        ],
         "ppvz_sales_commission" => &["mp_commission_adjustment"],
         "acquiring_fee" => &["mp_acquiring", "mp_acquiring_storno"],
         "rebill_logistic_cost" => &["mp_rebill_logistic_cost"],

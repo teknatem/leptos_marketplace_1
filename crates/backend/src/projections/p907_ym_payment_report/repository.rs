@@ -561,8 +561,7 @@ pub async fn list_buyer_movements_by_delivery_day(
         .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
         .filter(Column::OrderDeliveryDate.like(format!("{}%", day)))
         .filter(
-            Column::TransactionSource
-                .is_in(["Платёж покупателя", "Возврат платежа покупателя"]),
+            Column::TransactionSource.is_in(["Платёж покупателя", "Возврат платежа покупателя"]),
         )
         .order_by_asc(Column::TransactionSource)
         .order_by_asc(Column::OrderId)

@@ -102,12 +102,13 @@ impl PostingPreparationCache {
             return Ok(value.clone());
         }
 
-        let resolved = crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
-            connection_id,
-            nm_id,
-            Some(article),
-        )
-        .await?;
+        let resolved =
+            crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
+                connection_id,
+                nm_id,
+                Some(article),
+            )
+            .await?;
         self.nomenclature_ref_by_lookup
             .insert(cache_key, resolved.clone());
         Ok(resolved)

@@ -9,15 +9,175 @@ use super::tool_calls_trace::ToolCallsTrace;
 use super::view_model::LlmChatDetailsVm;
 use crate::domain::a018_llm_chat::ui::pending_first_message_key;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::date_utils::{format_datetime_utc_local, format_utc_local};
 use crate::shared::icons::icon;
 use crate::shared::knowledge_base::links::KbLinkedText;
+use crate::shared::markdown::Markdown;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
-use contracts::domain::a018_llm_chat::aggregate::LlmChatMessage;
+use contracts::domain::a018_llm_chat::aggregate::{ChatRole, LlmChatMessage};
+use contracts::domain::a018_llm_chat::context::ContextPackageSummary;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
 use thaw::*;
 use uuid::Uuid;
+
+/// Один элемент ленты чата: либо сообщение, либо событие прикрепления контекста.
+/// Оба сортируются по времени создания для хронологического показа.
+enum FeedItem {
+    Message(LlmChatMessage),
+    Context(ContextPackageSummary),
+}
+
+struct FeedRow {
+    ts: chrono::DateTime<chrono::Utc>,
+    key: String,
+    item: FeedItem,
+}
+
+/// Левый «жёлоб» строки ленты: имя автора и время (до секунд), выровненные
+/// по левой границе блока.
+#[allow(non_snake_case)]
+fn FeedGutter(author: &'static str, time: String) -> impl IntoView {
+    view! {
+        <div style="flex: 0 0 96px; display: flex; flex-direction: column; gap: 2px; text-align: left;">
+            <div style="font-size: 11px; font-weight: 600; letter-spacing: .02em; opacity: 0.6;">
+                {author}
+            </div>
+            <div style="font-size: 11px; opacity: 0.45; font-variant-numeric: tabular-nums;">
+                {time}
+            </div>
+        </div>
+    }
+}
+
+/// Строка сообщения чата (пользователь / ассистент).
+#[allow(non_snake_case)]
+fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
+    let is_user = matches!(msg.role, ChatRole::User);
+    let tokens = msg.tokens_used;
+    let model = msg.model_name.clone();
+    let conf = msg.confidence;
+    let duration = msg.duration_ms;
+    let intent = msg.intent.clone();
+    let artifact_id = msg.artifact_id.as_ref().map(|id| id.as_string());
+    let tool_trace = msg.tool_trace.clone();
+    let content = msg.content.clone();
+    let time = format_utc_local(&msg.created_at, "%d.%m %H:%M:%S");
+    let author = if is_user {
+        "ВЫ"
+    } else {
+        "АССИСТЕНТ"
+    };
+    let row_style = if is_user {
+        "width: 100%; padding: 12px 16px; background: var(--colorBrandBackground2);"
+    } else {
+        "width: 100%; padding: 12px 16px; background: var(--colorNeutralBackground1);"
+    };
+    view! {
+        <div style=row_style>
+            <div style="max-width: 980px; margin: 0 auto; display: flex; gap: 16px;">
+                {FeedGutter(author, time)}
+                <div style="flex: 1; min-width: 0;">
+                    {if is_user {
+                        view! { <KbLinkedText text=content /> }.into_any()
+                    } else {
+                        view! { <Markdown text=content /> }.into_any()
+                    }}
+                    {move || {
+                        let mut meta_parts = Vec::new();
+                        if let Some(i) = &intent {
+                            let label = match i.as_str() {
+                                "func_help" => "🧭 функционал",
+                                "data_query" => "📊 данные",
+                                "bi_authoring" => "📈 BI-сборка",
+                                "plugin_dev" => "🧩 плагин",
+                                "sys_admin" => "🛠 система",
+                                "kb_curation" => "📚 база знаний",
+                                "meta_smalltalk" => "💬 диалог",
+                                other => other,
+                            };
+                            meta_parts.push(label.to_string());
+                        }
+                        if let Some(t) = tokens {
+                            meta_parts.push(format!("🎫 {} tokens", t));
+                        }
+                        if let Some(m) = &model {
+                            meta_parts.push(format!("🤖 {}", m));
+                        }
+                        if let Some(d) = duration {
+                            meta_parts.push(format!("⏱ {:.1}s", d as f64 / 1000.0));
+                        }
+                        if let Some(c) = conf {
+                            meta_parts.push(format!("📊 {:.1}%", c * 100.0));
+                        }
+                        if !meta_parts.is_empty() {
+                            Some(
+                                view! {
+                                    <div style="font-size: 11px; opacity: 0.7; margin-top: 6px;">
+                                        {meta_parts.join(" • ")}
+                                    </div>
+                                },
+                            )
+                        } else {
+                            None
+                        }
+                    }}
+
+                    {move || {
+                        if !is_user {
+                            Some(view! { <ToolCallsTrace tool_trace=tool_trace.clone() /> })
+                        } else {
+                            None
+                        }
+                    }}
+                    {move || {
+                        artifact_id
+                            .clone()
+                            .map(|id| view! { <ArtifactCard artifact_id=id /> })
+                    }}
+                </div>
+            </div>
+        </div>
+    }
+}
+
+/// Строка-событие: к чату прикреплён пакет контекста страницы. Ссылка ведёт на
+/// details-страницу контекста (тот же дизайн, что был у чипа контекста).
+#[allow(non_snake_case)]
+fn ContextRow(p: ContextPackageSummary, nav_ctx: Option<AppGlobalContext>) -> impl IntoView {
+    let time = format_datetime_utc_local(&p.created_at, "%d.%m %H:%M:%S");
+    let tab_key = format!("a018_llm_context_details_{}", p.id);
+    let title = p.title.clone();
+    let link_title = p.title.clone();
+    let page_key = p.page_key.clone();
+    view! {
+        <div style="width: 100%; padding: 10px 16px; background: var(--colorNeutralBackground2);">
+            <div style="max-width: 980px; margin: 0 auto; display: flex; gap: 16px;">
+                {FeedGutter("КОНТЕКСТ", time)}
+                <div style="flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                    <span style="opacity: 0.7; font-size: 13px;">"Добавлен документ в контекст:"</span>
+                    <a
+                        href="#"
+                        title=page_key
+                        style="display: inline-flex; align-items: center; gap: 6px; \
+                               color: var(--colorBrandForeground1); text-decoration: none; \
+                               cursor: pointer; font-size: 13px;"
+                        on:click=move |e| {
+                            e.prevent_default();
+                            if let Some(c) = nav_ctx {
+                                c.open_tab(&tab_key, &format!("Контекст: {}", title));
+                            }
+                        }
+                    >
+                        {icon("paperclip")}
+                        {format!(" {}", link_title)}
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
+}
 
 #[component]
 #[allow(non_snake_case)]
@@ -25,9 +185,10 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     let vm = LlmChatDetailsVm::new();
     let chat_id = id.clone();
     let messages_container_ref = NodeRef::<leptos::html::Div>::new();
-    let context_pkgs = RwSignal::new(
-        Vec::<contracts::domain::a018_llm_chat::context::ContextPackageSummary>::new(),
-    );
+    let context_pkgs = RwSignal::new(Vec::<
+        contracts::domain::a018_llm_chat::context::ContextPackageSummary,
+    >::new());
+    let nav_ctx = use_context::<AppGlobalContext>();
 
     // Scroll to bottom helper
     let scroll_to_bottom = {
@@ -102,6 +263,12 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     }
                 }
 
+                // Перезагрузить пакеты контекста: документы, прикреплённые во время
+                // сессии, должны появиться в ленте на своих местах по времени.
+                if let Ok(pkgs) = fetch_chat_context(&chat_id).await {
+                    context_pkgs.set(pkgs);
+                }
+
                 match poll_result {
                     Ok(_) => {
                         vm.uploaded_files.set(Vec::new());
@@ -170,6 +337,40 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
         }
     });
 
+    // Реактивно перезагружать ленту контекста, когда документ добавлен из шапки
+    // (`AiChatHeaderButton`) к уже открытому чату: вкладка не переоткрывается, а
+    // версия контекста в `form_states` инкрементируется — на это и реагируем.
+    Effect::new({
+        let chat_id = chat_id.clone();
+        let ctx = use_context::<AppGlobalContext>();
+        let last_seen = RwSignal::new(None::<u64>);
+        move |_| {
+            let Some(ctx) = ctx else { return };
+            let key = crate::domain::a018_llm_chat::ui::context_version_key(&chat_id);
+            // Tracked-чтение карты: эффект перевызывается при любом изменении.
+            let version = ctx
+                .form_states
+                .with(|m| m.get(&key).and_then(|v| v.as_u64()).unwrap_or(0));
+            match last_seen.get_untracked() {
+                None => {
+                    // Первый прогон: запомнить текущую версию, не перезагружая.
+                    last_seen.set(Some(version));
+                    return;
+                }
+                Some(prev) if prev == version => return,
+                _ => {}
+            }
+            last_seen.set(Some(version));
+
+            let chat_id = chat_id.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(pkgs) = fetch_chat_context(&chat_id).await {
+                    context_pkgs.set(pkgs);
+                }
+            });
+        }
+    });
+
     view! {
         <PageFrame page_id="a018_llm_chat--detail" category=PAGE_CAT_DETAIL class="a018-llm-chat-detail">
             <div class="page__header">
@@ -227,126 +428,42 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         })
                 }}
 
-                // Context chips: прикреплённые страницы (контекст), переданный из шапки.
-                {move || {
-                    let pkgs = context_pkgs.get();
-                    if pkgs.is_empty() {
-                        return view! { <></> }.into_any();
-                    }
-                    view! {
-                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                            {pkgs.into_iter().map(|p| {
-                                view! {
-                                    <span
-                                        title=p.page_key.clone()
-                                        style="display: inline-flex; align-items: center; gap: 6px; \
-                                               max-width: 320px; padding: 4px 10px; border-radius: 14px; \
-                                               font-size: 12px; background: var(--colorNeutralBackground3); \
-                                               border: 1px solid var(--colorNeutralStroke2); \
-                                               white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
-                                    >
-                                        {icon("paperclip")}
-                                        {format!(" {}", p.title)}
-                                    </span>
-                                }
-                            }).collect_view()}
-                        </div>
-                    }.into_any()
-                }}
-
-                // Messages area
+                // Messages area — full width, no frame; rows distinguished by background.
+                // Сообщения и события прикрепления контекста показываются единой
+                // лентой в хронологическом порядке (сортировка по времени создания).
                 <div
                 node_ref=messages_container_ref
-                style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--colorNeutralBackground1); border: 1px solid var(--colorNeutralStroke2); border-radius: 8px;"
+                style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin-bottom: 16px;"
             >
                 <For
-                    each=move || vm.messages.get()
-                    key=|msg| msg.id.to_string()
-                    let:msg
-                >
-                    {{
-                        let is_user = matches!(
-                            msg.role,
-                            contracts::domain::a018_llm_chat::aggregate::ChatRole::User
-                        );
-                        let tokens = msg.tokens_used;
-                        let model = msg.model_name.clone();
-                        let conf = msg.confidence;
-                        let duration = msg.duration_ms;
-                        let intent = msg.intent.clone();
-                        let artifact_id = msg.artifact_id.as_ref().map(|id| id.as_string());
-                        let tool_trace = msg.tool_trace.clone();
-                        view! {
-                            <div
-                                style=if is_user {
-                                    "align-self: flex-end; max-width: 70%;"
-                                } else {
-                                    "align-self: flex-start; max-width: 70%;"
-                                }
-                            >
-                                <div
-                                    style=if is_user {
-                                        "background: var(--colorBrandBackground2); padding: 10px 14px; border-radius: 12px;"
-                                    } else {
-                                        "background: var(--colorNeutralBackground2); padding: 10px 14px; border-radius: 12px;"
-                                    }
-                                >
-                                    <KbLinkedText text=msg.content.clone() />
-                                    {move || {
-                                        let mut meta_parts = Vec::new();
-                                        if let Some(i) = &intent {
-                                            let label = match i.as_str() {
-                                                "func_help" => "🧭 функционал",
-                                                "data_query" => "📊 данные",
-                                                "bi_authoring" => "📈 BI-сборка",
-                                                "plugin_dev" => "🧩 плагин",
-                                                "sys_admin" => "🛠 система",
-                                                "kb_curation" => "📚 база знаний",
-                                                "meta_smalltalk" => "💬 диалог",
-                                                other => other,
-                                            };
-                                            meta_parts.push(label.to_string());
-                                        }
-                                        if let Some(t) = tokens {
-                                            meta_parts.push(format!("🎫 {} tokens", t));
-                                        }
-                                        if let Some(m) = &model {
-                                            meta_parts.push(format!("🤖 {}", m));
-                                        }
-                                        if let Some(d) = duration {
-                                            meta_parts.push(format!("⏱ {:.1}s", d as f64 / 1000.0));
-                                        }
-                                        if let Some(c) = conf {
-                                            meta_parts.push(format!("📊 {:.1}%", c * 100.0));
-                                        }
-                                        if !meta_parts.is_empty() {
-                                            Some(
-                                                view! {
-                                                    <div style="font-size: 11px; opacity: 0.7; margin-top: 6px;">
-                                                        {meta_parts.join(" • ")}
-                                                    </div>
-                                                },
-                                            )
-                                        } else {
-                                            None
-                                        }
-                                    }}
-                                </div>
-
-                                {move || {
-                                    if !is_user {
-                                        Some(view! { <ToolCallsTrace tool_trace=tool_trace.clone() /> })
-                                    } else {
-                                        None
-                                    }
-                                }}
-                                {move || {
-                                    artifact_id
-                                        .clone()
-                                        .map(|id| view! { <ArtifactCard artifact_id=id /> })
-                                }}
-                            </div>
+                    each=move || {
+                        let mut rows: Vec<FeedRow> = Vec::new();
+                        for m in vm.messages.get() {
+                            rows.push(FeedRow {
+                                ts: m.created_at,
+                                key: format!("m-{}", m.id),
+                                item: FeedItem::Message(m),
+                            });
                         }
+                        for p in context_pkgs.get() {
+                            let ts = chrono::DateTime::parse_from_rfc3339(&p.created_at)
+                                .map(|d| d.with_timezone(&chrono::Utc))
+                                .unwrap_or_else(|_| chrono::Utc::now());
+                            rows.push(FeedRow {
+                                ts,
+                                key: format!("c-{}", p.id),
+                                item: FeedItem::Context(p),
+                            });
+                        }
+                        rows.sort_by(|a, b| a.ts.cmp(&b.ts));
+                        rows
+                    }
+                    key=|row| row.key.clone()
+                    let:row
+                >
+                    {match row.item {
+                        FeedItem::Message(msg) => MessageRow(msg).into_any(),
+                        FeedItem::Context(p) => ContextRow(p, nav_ctx).into_any(),
                     }}
                 </For>
 

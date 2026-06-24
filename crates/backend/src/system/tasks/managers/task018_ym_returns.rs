@@ -69,7 +69,8 @@ static METADATA: TaskMetadata = TaskMetadata {
         TaskConfigField {
             key: "connection_id",
             label: "Кабинет Яндекс Маркет",
-            hint: "Подключение к Yandex Market Partner API из справочника «Подключения маркетплейсов»",
+            hint:
+                "Подключение к Yandex Market Partner API из справочника «Подключения маркетплейсов»",
             field_type: TaskConfigFieldType::ConnectionMp,
             required: true,
             default_value: None,

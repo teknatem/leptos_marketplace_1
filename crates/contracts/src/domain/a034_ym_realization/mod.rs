@@ -6,6 +6,6 @@ mod metadata_gen;
 pub use metadata_gen::{ENTITY_METADATA, FIELDS};
 
 pub use aggregate::{
-    YmRealization, YmRealizationHeader, YmRealizationId, YmRealizationLine, YmRealizationSourceMeta,
-    YmRealizationTotals,
+    YmRealization, YmRealizationHeader, YmRealizationId, YmRealizationLine,
+    YmRealizationSourceMeta, YmRealizationTotals,
 };

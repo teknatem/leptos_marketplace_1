@@ -26,20 +26,21 @@ pub async fn list(
     let offset = params.offset.or(Some(0));
     let sort_desc = params.sort_desc.unwrap_or(true);
 
-    let total_count = crate::projections::p914_mp_finance_turnovers::repository::count_with_filters(
-        params.date_from.clone(),
-        params.date_to.clone(),
-        params.connection_mp_ref.clone(),
-        params.registrator_type.clone(),
-        params.turnover_code.clone(),
-        params.order_key.clone(),
-        params.event_kind.clone(),
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to count p914 rows: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let total_count =
+        crate::projections::p914_mp_finance_turnovers::repository::count_with_filters(
+            params.date_from.clone(),
+            params.date_to.clone(),
+            params.connection_mp_ref.clone(),
+            params.registrator_type.clone(),
+            params.turnover_code.clone(),
+            params.order_key.clone(),
+            params.event_kind.clone(),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to count p914 rows: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let items = crate::projections::p914_mp_finance_turnovers::repository::list_with_filters(
         params.date_from,

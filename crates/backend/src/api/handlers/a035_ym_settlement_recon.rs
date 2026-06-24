@@ -104,7 +104,9 @@ pub async fn list_paginated(
         date_to: query.date_to,
         connection_id: query.connection_id,
         search_query: query.search_query,
-        sort_by: query.sort_by.unwrap_or_else(|| "bank_order_date".to_string()),
+        sort_by: query
+            .sort_by
+            .unwrap_or_else(|| "bank_order_date".to_string()),
         sort_desc: query.sort_desc.unwrap_or(true),
         limit: page_size,
         offset,
@@ -148,7 +150,11 @@ pub async fn get_by_id(
     match build_details_dto(doc).await {
         Ok(dto) => Ok(Json(dto)),
         Err(e) => {
-            tracing::error!("Failed to enrich YM settlement recon document {}: {}", id, e);
+            tracing::error!(
+                "Failed to enrich YM settlement recon document {}: {}",
+                id,
+                e
+            );
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -246,7 +252,11 @@ pub async fn recompute(
         Ok(Some(doc)) => doc,
         Ok(None) => return Err(axum::http::StatusCode::NOT_FOUND),
         Err(e) => {
-            tracing::error!("Failed to recompute YM settlement recon document {}: {}", id, e);
+            tracing::error!(
+                "Failed to recompute YM settlement recon document {}: {}",
+                id,
+                e
+            );
             return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
         }
     };
@@ -281,7 +291,11 @@ pub async fn unpost_document(
     a035_ym_settlement_recon::service::unpost_document(uuid)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to unpost YM settlement recon document {}: {}", id, e);
+            tracing::error!(
+                "Failed to unpost YM settlement recon document {}: {}",
+                id,
+                e
+            );
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         })?;
     Ok(Json(serde_json::json!({"success": true})))

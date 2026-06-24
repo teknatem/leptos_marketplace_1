@@ -71,7 +71,9 @@ fn gl_entry(
 }
 
 /// Собирает GL-проводки документа (выручка/сторно). Public для юнит-тестов.
-pub fn build_general_ledger_entries(document: &super::DocumentForPosting) -> Vec<GeneralLedgerModel> {
+pub fn build_general_ledger_entries(
+    document: &super::DocumentForPosting,
+) -> Vec<GeneralLedgerModel> {
     let mut entries = Vec::new();
     let entry_date = &document.document_date;
     let connection = Some(document.connection_id.clone());
@@ -195,8 +197,10 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         &registrator_ref,
     )
     .await?;
-    let order_events =
-        crate::projections::p915_mp_order_events::builder::from_ym_realization(&document, &registrator_ref);
+    let order_events = crate::projections::p915_mp_order_events::builder::from_ym_realization(
+        &document,
+        &registrator_ref,
+    );
     for event in &order_events {
         crate::projections::p915_mp_order_events::repository::insert_entry_raw_with_conn(
             &txn, event,

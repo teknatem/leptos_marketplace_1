@@ -106,7 +106,6 @@ pub async fn project_wb_sales(
     Ok(())
 }
 
-
 pub async fn project_wb_finance_entry(
     entry: &crate::projections::p903_wb_finance_report::repository::Model,
     posting_id: &str,

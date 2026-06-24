@@ -12,7 +12,9 @@ use crate::shared::clipboard::copy_to_clipboard;
 use crate::shared::indicator_format::format_int_with_triads;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
-use contracts::general_ledger::{GlDimensionCatalogItem, GlDimensionDef, GlMatrixCell, GlMatrixLayer};
+use contracts::general_ledger::{
+    GlDimensionCatalogItem, GlDimensionDef, GlMatrixCell, GlMatrixLayer,
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use thaw::*;

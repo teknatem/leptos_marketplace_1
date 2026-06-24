@@ -1429,6 +1429,12 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "POST",
+        path: "/api/plugin/smoke-test",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "POST",
         path: "/api/plugin/testdata",
         scope_id: None,
         mode: PolicyMode::AdminOnly,
@@ -1466,6 +1472,12 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     RoutePolicy {
         method: "POST",
         path: "/api/plugin/:id/data",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/plugin/:id/dev-invoke",
         scope_id: None,
         mode: PolicyMode::AdminOnly,
     },
@@ -1565,6 +1577,7 @@ mod tests {
             ("POST", "/api/plugin"),
             ("GET", "/api/plugin/all"),
             ("POST", "/api/plugin/validate"),
+            ("POST", "/api/plugin/smoke-test"),
             ("POST", "/api/plugin/testdata"),
             ("POST", "/api/plugin/import"),
             ("GET", "/api/plugin/runs/summary"),
@@ -1573,6 +1586,7 @@ mod tests {
             ("GET", "/api/plugin/:id/export"),
             ("GET", "/api/plugin/:id/stats"),
             ("POST", "/api/plugin/:id/data"),
+            ("POST", "/api/plugin/:id/dev-invoke"),
             ("POST", "/api/plugin/:id/invoke"),
         ];
 

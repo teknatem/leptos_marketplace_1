@@ -441,6 +441,35 @@ pub async fn find_attachments_by_message_id(
     Ok(models.into_iter().map(|m| m.into()).collect())
 }
 
+/// Найти одно вложение по его id.
+pub async fn find_attachment_by_id(
+    db: &DatabaseConnection,
+    id: &Uuid,
+) -> Result<Option<LlmChatAttachment>, DbErr> {
+    let model = attachment::Entity::find_by_id(id.to_string())
+        .one(db)
+        .await?;
+    Ok(model.map(|m| m.into()))
+}
+
+/// Привязать вложение к сообщению точечным UPDATE по id вложения.
+/// Не затрагивает другие вложения (в т.ч. незавершённые загрузки из других чатов).
+pub async fn bind_attachment_to_message(
+    db: &DatabaseConnection,
+    attachment_id: &Uuid,
+    message_id: &Uuid,
+) -> Result<(), DbErr> {
+    attachment::Entity::update_many()
+        .col_expr(
+            attachment::Column::MessageId,
+            Expr::value(message_id.to_string()),
+        )
+        .filter(attachment::Column::Id.eq(attachment_id.to_string()))
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
 /// Вставить вложение
 pub async fn insert_attachment(
     db: &DatabaseConnection,
@@ -496,6 +525,16 @@ pub async fn insert_context_package(
     };
     active_model.insert(db).await?;
     Ok(())
+}
+
+/// Получить один пакет контекста по id.
+pub async fn find_context_by_id(
+    db: &DatabaseConnection,
+    id: &str,
+) -> Result<Option<context_package::Model>, DbErr> {
+    context_package::Entity::find_by_id(id.to_string())
+        .one(db)
+        .await
 }
 
 /// Получить пакеты контекста, привязанные к чату (старые → новые).

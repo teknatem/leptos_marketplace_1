@@ -1513,7 +1513,10 @@ impl YandexApiClient {
             );
         }
 
-        self.log_to_file(&format!("Generate realization report response: {}", resp_body));
+        self.log_to_file(&format!(
+            "Generate realization report response: {}",
+            resp_body
+        ));
 
         let parsed: serde_json::Value = serde_json::from_str(&resp_body)
             .map_err(|e| anyhow::anyhow!("Failed to parse generate response: {}", e))?;
@@ -1524,7 +1527,10 @@ impl YandexApiClient {
             .ok_or_else(|| anyhow::anyhow!("reportId not found in response: {}", resp_body))?
             .to_string();
 
-        self.log_to_file(&format!("Realization report generated, reportId={}", report_id));
+        self.log_to_file(&format!(
+            "Realization report generated, reportId={}",
+            report_id
+        ));
         Ok(report_id)
     }
 
@@ -1733,7 +1739,11 @@ impl YandexApiClient {
         let status = response.status();
         if !status.is_success() {
             let err_body = response.text().await.unwrap_or_default();
-            anyhow::bail!("download_report_csvs failed with status {}: {}", status, err_body);
+            anyhow::bail!(
+                "download_report_csvs failed with status {}: {}",
+                status,
+                err_body
+            );
         }
         let bytes = response
             .bytes()

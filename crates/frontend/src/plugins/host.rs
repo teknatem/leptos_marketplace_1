@@ -13,8 +13,10 @@ use self::model::{
 use crate::layout::global_context::AppGlobalContext;
 use crate::plugins::api;
 use crate::plugins::editor::CodeEditor;
+use crate::plugins::frame::PluginFrame;
 use contracts::plugins::{
-    PluginDefinition, PluginInvokeRequest, PluginStats, PluginUpsert, PluginValidateReport,
+    PluginDefinition, PluginInvokeRequest, PluginRunContext, PluginStats, PluginUpsert,
+    PluginValidateReport,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -47,9 +49,13 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
     let (version, set_version) = signal(1i32);
     let (saving, set_saving) = signal(false);
     let (save_msg, set_save_msg) = signal(None::<String>);
-    let selected_tab = RwSignal::new("code".to_string());
+    let selected_tab = RwSignal::new("app".to_string());
 
     let runner_context = RwSignal::new("{}".to_string());
+    let preview_context = RwSignal::new(PluginRunContext::default());
+    let preview_restart = RwSignal::new(0_u64);
+    let preview_console = RwSignal::new(Vec::<String>::new());
+    let preview_events = RwSignal::new(Vec::<String>::new());
     let server_examples = RwSignal::new(Vec::<ServerMethodExample>::new());
     let runner_output = RwSignal::new(None::<String>);
     let runner_busy = RwSignal::new(false);
@@ -86,7 +92,9 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     if client_empty && server_present {
                         selected_tab.set("server".to_string());
                     }
-                    runner_context.set(pretty_context(&default_run_context(&plugin.bundle)));
+                    let default_context = default_run_context(&plugin.bundle);
+                    runner_context.set(pretty_context(&default_context));
+                    preview_context.set(default_context);
                     let resources = plugin.bundle.sql_resources.clone();
                     let (first_name, first_sql) = first_sql_resource(&resources);
                     sql_resources.set(resources);
@@ -140,6 +148,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                             if let Some(plugin) = value {
                                 plugin.bundle = saved_bundle;
                                 plugin.version += 1;
+                                preview_restart.update(|value| *value += 1);
                             }
                         });
                         set_save_msg.set(Some("Сохранено".to_string()));
@@ -351,6 +360,12 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
 
     // Ленивая загрузка при первом открытии вкладки «Статистика».
     Effect::new(move |_| {
+        if let Ok(context) = parse_context(&runner_context.get()) {
+            preview_context.set(context);
+        }
+    });
+
+    Effect::new(move |_| {
         if selected_tab.get() == "stats"
             && stats.get_untracked().is_none()
             && !stats_busy.get_untracked()
@@ -397,10 +412,33 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
 
             <div class="plugin-host__tabs">
                 <TabList selected_value=selected_tab>
+                    <Tab value="app".to_string()>"РџСЂРёР»РѕР¶РµРЅРёРµ"</Tab>
                     <Tab value="server".to_string()>"Сервер"</Tab>
                     <Tab value="stats".to_string()>"Статистика"</Tab>
                     <Tab value="code".to_string()>"Код"</Tab>
                 </TabList>
+            </div>
+
+            <div
+                class="plugin-host__pane"
+                class:plugin-host__hidden=move || selected_tab.get() != "app"
+            >
+                <PluginFrame
+                    plugin_id=plugin_id.clone()
+                    client_src=client_src
+                    styles_src=styles_src
+                    context=preview_context
+                    restart=preview_restart
+                    console=preview_console
+                    events=preview_events
+                    dev=true
+                />
+                {move || {
+                    let lines = preview_console.get();
+                    (!lines.is_empty()).then(|| view! {
+                        <pre class="plugin-host__runner-output">{lines.join("\n")}</pre>
+                    })
+                }}
             </div>
 
             <div

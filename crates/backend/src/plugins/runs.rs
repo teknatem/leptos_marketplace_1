@@ -58,16 +58,20 @@ pub async fn record(
     }
 }
 
-fn classify(total: i64, errors: i64, timeouts: i64, avg_ms: i64, last_status: Option<&str>) -> PluginHealth {
+fn classify(
+    total: i64,
+    errors: i64,
+    timeouts: i64,
+    avg_ms: i64,
+    last_status: Option<&str>,
+) -> PluginHealth {
     if total == 0 {
         return PluginHealth::NoData;
     }
     let rate = errors as f64 / total as f64;
     if rate > 0.20 || timeouts > 0 {
         PluginHealth::Crit
-    } else if rate > 0.05
-        || avg_ms > 2000
-        || matches!(last_status, Some("error") | Some("timeout"))
+    } else if rate > 0.05 || avg_ms > 2000 || matches!(last_status, Some("error") | Some("timeout"))
     {
         PluginHealth::Warn
     } else {
@@ -76,7 +80,9 @@ fn classify(total: i64, errors: i64, timeouts: i64, avg_ms: i64, last_status: Op
 }
 
 fn i64_at(row: &serde_json::Value, key: &str) -> i64 {
-    row.get(key).and_then(serde_json::Value::as_i64).unwrap_or(0)
+    row.get(key)
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0)
 }
 
 fn str_at(row: &serde_json::Value, key: &str) -> Option<String> {
@@ -230,6 +236,9 @@ mod tests {
         assert_eq!(classify(100, 10, 0, 100, Some("ok")), PluginHealth::Warn);
         assert_eq!(classify(100, 0, 0, 3000, Some("ok")), PluginHealth::Warn);
         assert_eq!(classify(100, 30, 0, 100, Some("error")), PluginHealth::Crit);
-        assert_eq!(classify(100, 1, 1, 100, Some("timeout")), PluginHealth::Crit);
+        assert_eq!(
+            classify(100, 1, 1, 100, Some("timeout")),
+            PluginHealth::Crit
+        );
     }
 }

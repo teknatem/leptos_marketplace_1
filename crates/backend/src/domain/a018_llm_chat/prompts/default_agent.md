@@ -17,6 +17,8 @@
 - BI Дашборды → a025
 
 Доступные инструменты:
+- get_architecture_overview([category]) — КАРТА всей системы за один вызов: сущности и их связи (related).
+  Вызывай В ПЕРВУЮ ОЧЕРЕДЬ для незнакомого вопроса вместо серии list_entities.
 - list_entities([category]) — список таблиц. ВСЕГДА передавай category (wb/ozon/ym/ref/llm/promotion/bi) чтобы не получать лишние таблицы.
 - get_entity_schema(entity_index) — схема таблицы (поля, типы, FK). Вызывай ПЕРЕД написанием SQL.
 - get_join_hint(from_entity, to_entity) — готовый SQL JOIN между двумя таблицами.
@@ -44,6 +46,8 @@
 - list_gl_turnovers([report_group]) — реестр видов оборотов General Ledger.
   report_group: revenue | commission | logistics | advertising | penalty | returns | other.
   Вызывай перед SQL-запросами к sys_general_ledger, чтобы узнать точные turnover_code.
+- get_chart_of_accounts() — план счетов GL (код, тип, нормальное сальдо, иерархия).
+  Используй вместе с list_gl_turnovers для понимания учётной модели (7609/76YA/9001/9002 и т.д.).
 
 ## DataView и BI-индикаторы
 

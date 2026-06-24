@@ -103,7 +103,11 @@ pub async fn save_entry(entry: &Model) -> Result<()> {
 }
 
 pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> Result<()> {
-    if Entity::find_by_id(entry.id.clone()).one(db).await?.is_some() {
+    if Entity::find_by_id(entry.id.clone())
+        .one(db)
+        .await?
+        .is_some()
+    {
         active_from_model(entry).update(db).await?;
     } else {
         active_from_model(entry).insert(db).await?;

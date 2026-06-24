@@ -71,10 +71,7 @@ pub fn to_label(rep: &AggregateRepresentation) -> String {
 ///
 /// Для неизвестного типа или ненайденных id возвращает пустую/частичную карту —
 /// вызывающая сторона делает фолбэк (UI — на синтетику).
-pub async fn resolve_many(
-    kind: &str,
-    ids: &[String],
-) -> HashMap<String, AggregateRepresentation> {
+pub async fn resolve_many(kind: &str, ids: &[String]) -> HashMap<String, AggregateRepresentation> {
     if ids.is_empty() {
         return HashMap::new();
     }
@@ -84,12 +81,18 @@ pub async fn resolve_many(
         "a014_ozon_transactions" => {
             crate::domain::a014_ozon_transactions::representation::represent_many(ids).await
         }
-        "a015_wb_orders" => crate::domain::a015_wb_orders::representation::represent_many(ids).await,
-        "a016_ym_returns" => crate::domain::a016_ym_returns::representation::represent_many(ids).await,
+        "a015_wb_orders" => {
+            crate::domain::a015_wb_orders::representation::represent_many(ids).await
+        }
+        "a016_ym_returns" => {
+            crate::domain::a016_ym_returns::representation::represent_many(ids).await
+        }
         "a021_production_output" => {
             crate::domain::a021_production_output::representation::represent_many(ids).await
         }
-        "a022_kit_variant" => crate::domain::a022_kit_variant::representation::represent_many(ids).await,
+        "a022_kit_variant" => {
+            crate::domain::a022_kit_variant::representation::represent_many(ids).await
+        }
         "a023_purchase_of_goods" => {
             crate::domain::a023_purchase_of_goods::representation::represent_many(ids).await
         }

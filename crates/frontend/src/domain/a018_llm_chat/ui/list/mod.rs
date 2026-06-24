@@ -320,7 +320,6 @@ pub fn LlmChatList() -> impl IntoView {
     }
 }
 
-
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
 
 fn agent_type_color(agent_type: &AgentType) -> &'static str {

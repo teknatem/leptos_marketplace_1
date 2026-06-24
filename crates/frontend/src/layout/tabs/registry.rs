@@ -34,6 +34,7 @@ use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
 use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::domain::a017_llm_agent::ui::list::LlmAgentList;
+use crate::domain::a018_llm_chat::ui::context_details::LlmContextDetails;
 use crate::domain::a018_llm_chat::ui::details::LlmChatDetails;
 use crate::domain::a018_llm_chat::ui::list::LlmChatList;
 use crate::domain::a019_llm_artifact::ui::details::LlmArtifactDetails;
@@ -662,6 +663,9 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // a017: LLM Agents
         "a017_llm_agent" => view! { <LlmAgentList /> }.into_any(),
 
+        // Каталог LLM-навыков (skills)
+        "llm_skills" => view! { <crate::domain::a018_llm_chat::ui::LlmSkillList /> }.into_any(),
+
         // a018: LLM Chat
         "a018_llm_chat" => view! { <LlmChatList /> }.into_any(),
         k if k.starts_with("a018_llm_chat_details_") => {
@@ -672,6 +676,26 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating LlmChatDetails with id: {}", id);
             view! {
                 <LlmChatDetails
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+
+        // a018: LLM Context package (просмотр контекста, переданного LLM)
+        k if k.starts_with("a018_llm_context_details_") => {
+            let id = k
+                .strip_prefix("a018_llm_context_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <LlmContextDetails
                     id=id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();

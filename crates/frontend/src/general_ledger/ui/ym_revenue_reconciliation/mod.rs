@@ -117,7 +117,11 @@ pub fn YmRevenueReconciliationPage() -> impl IntoView {
             let query = YmRevenueReconQuery {
                 date_from: df,
                 date_to: dt,
-                connection_mp_ref: if cab.trim().is_empty() { None } else { Some(cab) },
+                connection_mp_ref: if cab.trim().is_empty() {
+                    None
+                } else {
+                    Some(cab)
+                },
                 group,
             };
             match fetch_ym_revenue_reconciliation(&query).await {

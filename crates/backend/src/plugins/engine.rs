@@ -5,7 +5,8 @@
 //! to the application database and `host.log.*` writes to the invocation log.
 
 use contracts::plugins::{
-    is_read_only_sql, PluginDefinition, PluginError, PluginInvokeRequest, PluginValidateReport,
+    is_read_only_sql, PluginCapability, PluginDefinition, PluginError, PluginInvokeRequest,
+    PluginValidateReport,
 };
 use rquickjs::{
     prelude::{Async, Func},
@@ -91,29 +92,146 @@ fn json_param_to_db(value: serde_json::Value) -> Result<DbValue, String> {
     }
 }
 
+fn normalize_ident(raw: &str) -> Option<String> {
+    let ident = raw
+        .trim_matches(|c: char| {
+            matches!(
+                c,
+                '"' | '\'' | '`' | '[' | ']' | '(' | ')' | ',' | ';' | '\n' | '\r' | '\t'
+            )
+        })
+        .split('.')
+        .last()
+        .unwrap_or(raw)
+        .trim()
+        .to_ascii_lowercase();
+    if ident.is_empty()
+        || ident.starts_with("select")
+        || ident.starts_with('$')
+        || ident
+            .chars()
+            .any(|c| !(c.is_ascii_alphanumeric() || c == '_'))
+    {
+        None
+    } else {
+        Some(ident)
+    }
+}
+
+fn sql_table_refs(sql: &str) -> Vec<String> {
+    let mut refs = Vec::new();
+    let tokens: Vec<&str> = sql
+        .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';'))
+        .filter(|token| !token.trim().is_empty())
+        .collect();
+    for pair in tokens.windows(2) {
+        let head = pair[0].trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_');
+        if matches!(head.to_ascii_uppercase().as_str(), "FROM" | "JOIN") {
+            if let Some(table) = normalize_ident(pair[1]) {
+                if !refs.contains(&table) {
+                    refs.push(table);
+                }
+            }
+        }
+    }
+    refs
+}
+
+fn table_scopes(table: &str) -> Vec<String> {
+    let table = table.to_ascii_lowercase();
+    let mut scopes = vec![table.clone()];
+    let tags: &[&str] =
+        if table.starts_with("a017") || table.starts_with("a018") || table.starts_with("a019") {
+            &["llm"]
+        } else if table.starts_with("a024") || table.starts_with("a025") {
+            &["bi", "dashboard"]
+        } else if table.starts_with("sys_general_ledger") {
+            &["gl", "accounting"]
+        } else if table.starts_with("a013") {
+            &["ym", "sales"]
+        } else if table.starts_with("a002")
+            || table.starts_with("a004")
+            || table.starts_with("a005")
+            || table.starts_with("a006")
+        {
+            &["ref"]
+        } else if table.starts_with("a012")
+            || table.starts_with("a015")
+            || table.starts_with("a020")
+            || table.starts_with("a026")
+            || table.starts_with("p9")
+        {
+            &["wb", "projection"]
+        } else {
+            &[]
+        };
+    scopes.extend(tags.iter().map(|tag| tag.to_string()));
+    scopes
+}
+
+fn capability_allows_table(capabilities: &[PluginCapability], table: &str) -> bool {
+    let scopes = table_scopes(table);
+    capabilities.iter().any(|capability| match capability {
+        PluginCapability::DbReadAll => true,
+        PluginCapability::DbRead(scope) => scopes.iter().any(|item| item == scope),
+        _ => false,
+    })
+}
+
+fn enforce_sql_capabilities(sql: &str, capabilities: &[PluginCapability]) -> Result<(), String> {
+    let tables = sql_table_refs(sql);
+    if tables.is_empty() {
+        return Ok(());
+    }
+    let blocked: Vec<String> = tables
+        .into_iter()
+        .filter(|table| !capability_allows_table(capabilities, table))
+        .collect();
+    if blocked.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Plugin manifest capabilities do not allow reading table(s): {}. Add db:read:<table>, db:read:<tag>, or db:read:*.",
+            blocked.join(", ")
+        ))
+    }
+}
+
+fn limit_read_sql(sql: &str) -> String {
+    let statement = sql.trim().trim_end_matches(';').trim();
+    format!("SELECT * FROM ({statement}) AS plugin_limited_result LIMIT {READ_ROW_LIMIT}")
+}
+
 async fn read_sql(
     sql: &str,
     params: Vec<serde_json::Value>,
+    capabilities: &[PluginCapability],
 ) -> Result<Vec<serde_json::Value>, String> {
     let trimmed = sql.trim();
     if !is_read_only_sql(trimmed) {
         return Err("host.db.query allows only SELECT/WITH statements".to_string());
     }
+    enforce_sql_capabilities(trimmed, capabilities)?;
 
     let values = params
         .into_iter()
         .map(json_param_to_db)
         .collect::<Result<Vec<_>, _>>()?;
-    let stmt = Statement::from_sql_and_values(DatabaseBackend::Sqlite, trimmed, values);
+    let limited = limit_read_sql(trimmed);
+    let stmt = Statement::from_sql_and_values(DatabaseBackend::Sqlite, limited, values);
     let rows = serde_json::Value::find_by_statement(stmt)
         .all(db())
         .await
         .map_err(|error| format!("SQL error: {error}"))?;
 
-    Ok(rows.into_iter().take(READ_ROW_LIMIT).collect())
+    Ok(rows)
 }
 
-async fn host_db_query(sql: String, params_json: String) -> rquickjs::Result<String> {
+async fn host_db_query(
+    sql: String,
+    params_json: String,
+    capabilities_json: String,
+) -> rquickjs::Result<String> {
     let params: Vec<serde_json::Value> = serde_json::from_str(&params_json).map_err(|error| {
         rquickjs::Error::new_from_js_message(
             "JSON",
@@ -121,7 +239,15 @@ async fn host_db_query(sql: String, params_json: String) -> rquickjs::Result<Str
             format!("Invalid parameter array: {error}"),
         )
     })?;
-    let rows = read_sql(&sql, params)
+    let capabilities: Vec<PluginCapability> =
+        serde_json::from_str(&capabilities_json).map_err(|error| {
+            rquickjs::Error::new_from_js_message(
+                "JSON",
+                "plugin capabilities",
+                format!("Invalid capability array: {error}"),
+            )
+        })?;
+    let rows = read_sql(&sql, params, &capabilities)
         .await
         .map_err(|error| rquickjs::Error::new_into_js_message("database", "JavaScript", error))?;
     serde_json::to_string(&rows).map_err(|error| {
@@ -131,9 +257,9 @@ async fn host_db_query(sql: String, params_json: String) -> rquickjs::Result<Str
 
 const HOST_FACTORY: &str = r#"
 (() => ({
-  db: Object.freeze({
+    db: Object.freeze({
     query: async (sql, params = []) => {
-      const json = await __hostDbQuery(String(sql), JSON.stringify(params));
+      const json = await __hostDbQuery(String(sql), JSON.stringify(params), __hostCapabilitiesJson);
       return JSON.parse(json);
     },
     queryResource: async (name, params = []) => {
@@ -142,7 +268,7 @@ const HOST_FACTORY: &str = r#"
       if (typeof sql !== "string") {
         throw new Error(`SQL resource '${key}' is not defined`);
       }
-      const json = await __hostDbQuery(sql, JSON.stringify(params));
+      const json = await __hostDbQuery(sql, JSON.stringify(params), __hostCapabilitiesJson);
       return JSON.parse(json);
     }
   }),
@@ -169,6 +295,7 @@ pub async fn invoke_server_method(
         .server_script
         .ok_or_else(|| anyhow::anyhow!("Plugin has no server_script"))?;
     let sql_resources = def.bundle.sql_resources;
+    let capabilities = def.bundle.manifest.parsed_capabilities();
     if request.method.trim().is_empty() {
         return Err(anyhow::anyhow!("Plugin method must not be empty"));
     }
@@ -195,6 +322,12 @@ pub async fn invoke_server_method(
                 .map_err(|error| PluginError::new("module_eval", error.to_string()))?;
             globals
                 .set("__hostSqlResources", sql_resources_value)
+                .catch(&ctx)
+                .map_err(|error| js_error("module_eval", &error))?;
+            let capabilities_json = serde_json::to_string(&capabilities)
+                .map_err(|error| PluginError::new("module_eval", error.to_string()))?;
+            globals
+                .set("__hostCapabilitiesJson", capabilities_json)
                 .catch(&ctx)
                 .map_err(|error| js_error("module_eval", &error))?;
 
@@ -395,7 +528,7 @@ mod tests {
                     runtime: PluginRuntime::Server,
                     api_version: "2".to_string(),
                     description: None,
-                    capabilities: vec![],
+                    capabilities: vec!["db:read:*".into()],
                 },
                 params: vec![],
                 data: DataBinding::default(),
@@ -560,6 +693,32 @@ export function unmount() {}
         assert_eq!(
             report.errors.first().map(|e| e.stage.as_str()),
             Some("client_module_eval")
+        );
+    }
+
+    #[test]
+    fn extracts_table_refs_for_capability_checks() {
+        assert_eq!(
+            sql_table_refs("SELECT * FROM a004_nomenclature n JOIN p900_x x ON 1=1"),
+            vec!["a004_nomenclature".to_string(), "p900_x".to_string()]
+        );
+    }
+
+    #[test]
+    fn capability_blocks_unauthorized_tables() {
+        let caps = vec![PluginCapability::DbRead("ref".into())];
+        assert!(enforce_sql_capabilities("SELECT * FROM a004_nomenclature", &caps).is_ok());
+        let error = enforce_sql_capabilities("SELECT * FROM plugin", &caps).unwrap_err();
+        assert!(error.contains("plugin"), "got: {error}");
+    }
+
+    #[test]
+    fn read_sql_is_wrapped_with_hard_limit() {
+        assert_eq!(
+            limit_read_sql("SELECT 1 AS value;"),
+            format!(
+                "SELECT * FROM (SELECT 1 AS value) AS plugin_limited_result LIMIT {READ_ROW_LIMIT}"
+            )
         );
     }
 }

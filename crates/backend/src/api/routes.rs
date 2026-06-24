@@ -32,6 +32,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a016_routes())
         .merge(a017_routes())
         .merge(a018_routes())
+        .merge(llm_skills_routes())
         .merge(a019_routes())
         .merge(a020_routes())
         .merge(a021_routes())
@@ -120,6 +121,10 @@ fn plugin_routes() -> Router {
         )
         .route("/api/plugin/all", get(handlers::plugins::list_all))
         .route("/api/plugin/validate", post(handlers::plugins::validate))
+        .route(
+            "/api/plugin/smoke-test",
+            post(handlers::plugins::smoke_test),
+        )
         .route("/api/plugin/testdata", post(handlers::plugins::testdata))
         .route("/api/plugin/import", post(handlers::plugins::import))
         .route(
@@ -133,6 +138,10 @@ fn plugin_routes() -> Router {
         .route("/api/plugin/:id/export", get(handlers::plugins::export))
         .route("/api/plugin/:id/stats", get(handlers::plugins::stats))
         .route("/api/plugin/:id/data", post(handlers::plugins::run_data))
+        .route(
+            "/api/plugin/:id/dev-invoke",
+            post(handlers::plugins::dev_invoke),
+        )
         .route("/api/plugin/:id/invoke", post(handlers::plugins::invoke))
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move { require_admin(req, next).await },
@@ -709,6 +718,11 @@ fn a017_routes() -> Router {
         ))
 }
 
+/// Каталог LLM-навыков (read-only обзор реестра для UI).
+fn llm_skills_routes() -> Router {
+    Router::new().route("/api/llm-skills", get(handlers::llm_skills::list))
+}
+
 fn a018_routes() -> Router {
     Router::new()
         .route(
@@ -743,6 +757,10 @@ fn a018_routes() -> Router {
             "/api/a018-llm-chat/:id/context",
             get(handlers::a018_llm_chat::get_chat_context)
                 .post(handlers::a018_llm_chat::add_chat_context),
+        )
+        .route(
+            "/api/a018-llm-chat-context/:id",
+            get(handlers::a018_llm_chat::get_context_package),
         )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {

@@ -326,7 +326,10 @@ pub async fn list_sql(query: ReconListQuery) -> Result<ReconListResult> {
             theoretical_sum: row.try_get("", "theoretical_sum").unwrap_or(0.0),
             deviation: row.try_get("", "deviation").unwrap_or(0.0),
             rows_count: row.try_get("", "rows_count").unwrap_or(0),
-            model: row.try_get::<Option<String>>("", "model").unwrap_or(None).unwrap_or_default(),
+            model: row
+                .try_get::<Option<String>>("", "model")
+                .unwrap_or(None)
+                .unwrap_or_default(),
             is_posted: row.try_get("", "is_posted").unwrap_or(false),
         })
         .collect();
@@ -370,10 +373,7 @@ pub struct SettledOrder {
 /// сгруппированные по `order_id` с суммой `transaction_sum`. Используется при
 /// проведении a035 для записи событий «Дата оплаты поставщику» /
 /// «Возврат оплаты поставщику» в p915.
-pub async fn settled_orders(
-    connection_id: &str,
-    bank_order_id: i64,
-) -> Result<Vec<SettledOrder>> {
+pub async fn settled_orders(connection_id: &str, bank_order_id: i64) -> Result<Vec<SettledOrder>> {
     let db = get_connection();
     let sql = "SELECT order_id, transaction_source, SUM(transaction_sum) AS amount
                FROM p907_ym_payment_report

@@ -220,8 +220,7 @@ async fn run(dry_run: bool) -> anyhow::Result<ConsolidateReport> {
     let (a035_created, a035_updated) = if dry_run {
         (None, None)
     } else {
-        let res =
-            crate::domain::a035_ym_settlement_recon::service::generate("", "").await?;
+        let res = crate::domain::a035_ym_settlement_recon::service::generate("", "").await?;
         (Some(res.created), Some(res.updated))
     };
 

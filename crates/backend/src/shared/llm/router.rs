@@ -88,7 +88,7 @@ pub async fn classify_intent(
         ChatMessage::user(user_block),
     ];
 
-    match provider.chat_completion(messages).await {
+    match provider.chat_completion(&messages).await {
         Ok(resp) => match parse_intent_json(&resp.content) {
             Some(result) => result,
             None => {
@@ -100,7 +100,10 @@ pub async fn classify_intent(
             }
         },
         Err(e) => {
-            tracing::warn!("[router] ошибка LLM-классификатора ({:?}), fallback на правила", e);
+            tracing::warn!(
+                "[router] ошибка LLM-классификатора ({:?}), fallback на правила",
+                e
+            );
             rule_based(trimmed, seed_agent_type)
         }
     }
@@ -108,6 +111,16 @@ pub async fn classify_intent(
 
 fn preview(s: &str) -> String {
     s.chars().take(120).collect()
+}
+
+/// Быстрая (rule-based, без LLM) классификация интента для синхронной предактивации
+/// навыков перед основным циклом. Полный LLM-роутер по-прежнему идёт конкурентно.
+pub fn quick_intent(message: &str, seed_agent_type: &AgentType) -> String {
+    let trimmed = message.trim();
+    if trimmed.chars().count() < 3 {
+        return "meta_smalltalk".to_string();
+    }
+    rule_based(trimmed, seed_agent_type).intent
 }
 
 /// Распарсить `{ "intent": "...", "confidence": ... }` из ответа модели,
@@ -151,7 +164,13 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
         return IntentResult::new("bi_authoring", 0.45, "rules");
     }
     if any(&[
-        "здоров", "производительн", "фонов", "задач", "целостност", "диагност", "health",
+        "здоров",
+        "производительн",
+        "фонов",
+        "задач",
+        "целостност",
+        "диагност",
+        "health",
     ]) {
         return IntentResult::new("sys_admin", 0.4, "rules");
     }
@@ -159,12 +178,29 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
         return IntentResult::new("kb_curation", 0.4, "rules");
     }
     if any(&[
-        "выручк", "продаж", "заказ", "отчёт", "отчет", "остат", "sql", "сколько", "сумм",
-        "маржинальн", "возврат", "реклам",
+        "выручк",
+        "продаж",
+        "заказ",
+        "отчёт",
+        "отчет",
+        "остат",
+        "sql",
+        "сколько",
+        "сумм",
+        "маржинальн",
+        "возврат",
+        "реклам",
     ]) {
         return IntentResult::new("data_query", 0.45, "rules");
     }
-    if any(&["как ", "где ", "что такое", "что делает", "помоги найти", "инструкц"]) {
+    if any(&[
+        "как ",
+        "где ",
+        "что такое",
+        "что делает",
+        "помоги найти",
+        "инструкц",
+    ]) {
         return IntentResult::new("func_help", 0.4, "rules");
     }
 

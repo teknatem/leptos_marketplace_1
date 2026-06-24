@@ -233,17 +233,16 @@ struct A013ListResponse {
 
 /// Ячейка «Товар»: гиперссылка на карточку a007 по marketplace_product_ref.
 /// Нет ref — показываем подпись (или прочерк) текстом.
-fn product_link(
-    tabs_store: AppGlobalContext,
-    mp_ref: Option<String>,
-    label: String,
-) -> AnyView {
+fn product_link(tabs_store: AppGlobalContext, mp_ref: Option<String>, label: String) -> AnyView {
     let text = if label.trim().is_empty() {
         "—".to_string()
     } else {
         label
     };
-    match mp_ref.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+    match mp_ref
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
         Some(id) => {
             let label = text.clone();
             view! {
@@ -357,8 +356,7 @@ pub fn YmRealizationList() -> impl IntoView {
 
     // Поля сводных расхождений сортируются на клиенте (считаются построчно на сервере),
     // остальные колонки — на сервере (через sort_by/sort_desc).
-    let is_client_sort =
-        |f: &str| f == "delivery_discrepancy" || f == "returns_discrepancy";
+    let is_client_sort = |f: &str| f == "delivery_discrepancy" || f == "returns_discrepancy";
 
     let load = move || {
         spawn_local(async move {
@@ -687,7 +685,11 @@ pub fn YmRealizationDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         payments_loaded.set(true);
         let id = id_for_payments.clone();
         spawn_local(async move {
-            let url = format!("{}/api/a034/ym-realization/{}/payment-detail", api_base(), id);
+            let url = format!(
+                "{}/api/a034/ym-realization/{}/payment-detail",
+                api_base(),
+                id
+            );
             match Request::get(&url).send().await {
                 Ok(resp) if resp.ok() => {
                     if let Ok(data) = resp.json::<PaymentDetailResponse>().await {
@@ -707,7 +709,11 @@ pub fn YmRealizationDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         recon_sales_loaded.set(true);
         let id = id_for_recon_sales.clone();
         spawn_local(async move {
-            let url = format!("{}/api/a034/ym-realization/{}/reconciliation-sales", api_base(), id);
+            let url = format!(
+                "{}/api/a034/ym-realization/{}/reconciliation-sales",
+                api_base(),
+                id
+            );
             match Request::get(&url).send().await {
                 Ok(resp) if resp.ok() => {
                     if let Ok(data) = resp.json::<ReconResponse>().await {
@@ -727,7 +733,11 @@ pub fn YmRealizationDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         recon_returns_loaded.set(true);
         let id = id_for_recon_returns.clone();
         spawn_local(async move {
-            let url = format!("{}/api/a034/ym-realization/{}/reconciliation-returns", api_base(), id);
+            let url = format!(
+                "{}/api/a034/ym-realization/{}/reconciliation-returns",
+                api_base(),
+                id
+            );
             match Request::get(&url).send().await {
                 Ok(resp) if resp.ok() => {
                     if let Ok(data) = resp.json::<ReconResponse>().await {
@@ -747,7 +757,11 @@ pub fn YmRealizationDetail(id: String, #[prop(into)] on_close: Callback<()>) -> 
         deliveries_loaded.set(true);
         let id = id_for_deliveries.clone();
         spawn_local(async move {
-            let url = format!("{}/api/a034/ym-realization/{}/delivery-orders", api_base(), id);
+            let url = format!(
+                "{}/api/a034/ym-realization/{}/delivery-orders",
+                api_base(),
+                id
+            );
             match Request::get(&url).send().await {
                 Ok(resp) if resp.ok() => {
                     if let Ok(data) = resp.json::<DeliveryOrdersResponse>().await {
@@ -1183,11 +1197,19 @@ fn RealizationLinesTable(
             .cmp(&b.order_id)
             .then_with(|| a.shop_sku.cmp(&b.shop_sku))
     });
-    let amount_header = if is_return { "Сумма возврата" } else { "Выручка" };
+    let amount_header = if is_return {
+        "Сумма возврата"
+    } else {
+        "Выручка"
+    };
     let total: f64 = lines.iter().map(|l| l.revenue_amount).sum();
     let total_qty: f64 = lines.iter().map(|l| l.quantity).sum();
     if lines.is_empty() {
-        let label = if is_return { "возвратов" } else { "реализаций" };
+        let label = if is_return {
+            "возвратов"
+        } else {
+            "реализаций"
+        };
         return view! { <div class="page__placeholder">{format!("Нет строк {} в документе.", label)}</div> }.into_any();
     }
     view! {

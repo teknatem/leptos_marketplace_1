@@ -13,7 +13,8 @@ use serde_json::json;
 use crate::plugins::service;
 use contracts::plugins::{
     PluginBundle, PluginDefinition, PluginError, PluginInvokeRequest, PluginListItem,
-    PluginRunBrief, PluginRunContext, PluginStats, PluginUpsert, PluginValidateReport,
+    PluginRunBrief, PluginRunContext, PluginSmokeReport, PluginSmokeRequest, PluginStats,
+    PluginUpsert, PluginValidateReport,
 };
 
 #[derive(Deserialize)]
@@ -75,6 +76,19 @@ pub async fn delete(Path(id): Path<String>) -> Result<(), axum::http::StatusCode
 /// Возвращает отчёт с перечнем серверных экспортов и структурированными ошибками.
 pub async fn validate(Json(bundle): Json<PluginBundle>) -> Json<PluginValidateReport> {
     Json(service::validate(&bundle).await)
+}
+
+/// POST /api/plugin/smoke-test — validate + static client/server checks + dev method invokes.
+pub async fn smoke_test(
+    Json(request): Json<PluginSmokeRequest>,
+) -> Result<Json<PluginSmokeReport>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    match service::smoke_test(request).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
 }
 
 /// POST /api/plugin/testdata — вставить демонстрационный плагин.
@@ -167,6 +181,23 @@ pub async fn invoke(
         Err(e) => {
             // `error` остаётся строкой (совместимость с фронтендом), `error_detail`
             // несёт структуру { stage, message, stack } для UI-раннера и LLM-агента.
+            let detail = e.downcast_ref::<PluginError>().cloned();
+            Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({ "error": e.to_string(), "error_detail": detail })),
+            ))
+        }
+    }
+}
+
+/// POST /api/plugin/:id/dev-invoke: developer invoke for draft/disabled plugins.
+pub async fn dev_invoke(
+    Path(id): Path<String>,
+    Json(request): Json<PluginInvokeRequest>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    match service::dev_invoke(&id, request).await {
+        Ok((value, logs)) => Ok(Json(json!({ "ok": true, "result": value, "logs": logs }))),
+        Err(e) => {
             let detail = e.downcast_ref::<PluginError>().cloned();
             Err((
                 axum::http::StatusCode::BAD_REQUEST,

@@ -600,12 +600,9 @@ pub async fn store_marketplace_raw_payload(
         .ok()
         .and_then(|value| marketplace_field_rubles(&value, "salePrice"));
 
-    let updated = repository::update_marketplace_payload_by_document_no(
-        document_no,
-        &raw_ref,
-        sale_price,
-    )
-    .await?;
+    let updated =
+        repository::update_marketplace_payload_by_document_no(document_no, &raw_ref, sale_price)
+            .await?;
 
     // Привязка свежего Marketplace-пейлоада приносит `salePrice`, который является
     // основным источником `base_price` для `margin_pro` у FBS-заказов (Statistics API

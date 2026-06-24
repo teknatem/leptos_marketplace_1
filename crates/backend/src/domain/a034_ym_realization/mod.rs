@@ -1,6 +1,6 @@
 pub mod posting;
-pub mod representation;
 pub mod repository;
+pub mod representation;
 pub mod service;
 
 /// Минимальный набор полей документа, нужный для построения GL-проводок.

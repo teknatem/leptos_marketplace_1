@@ -1,6 +1,8 @@
 use anyhow::Result;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::data::db::get_connection;

@@ -5,8 +5,7 @@ use sea_orm::{EntityTrait, Set, TransactionTrait};
 use crate::shared::data::db::get_connection;
 
 pub async fn rebuild_entry_from_existing(id: &str) -> Result<usize> {
-    let Some(row) =
-        crate::projections::p907_ym_payment_report::repository::get_by_uuid(id).await?
+    let Some(row) = crate::projections::p907_ym_payment_report::repository::get_by_uuid(id).await?
     else {
         return Ok(0);
     };
@@ -65,8 +64,7 @@ async fn rebuild_from_row(
         std::slice::from_ref(&row.id),
     )
     .await?;
-    let order_events =
-        crate::projections::p915_mp_order_events::builder::from_ym_payment_row(&row);
+    let order_events = crate::projections::p915_mp_order_events::builder::from_ym_payment_row(&row);
     for event in &order_events {
         crate::projections::p915_mp_order_events::repository::insert_entry_raw_with_conn(
             &txn, event,
@@ -94,7 +92,12 @@ async fn resolve_and_persist_marketplace_refs(
     let mut changed = false;
 
     if row.marketplace_product_ref.is_none() {
-        if let Some(sku) = row.shop_sku.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        if let Some(sku) = row
+            .shop_sku
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
             if let Some(mp_ref) =
                 crate::domain::a007_marketplace_product::service::resolve_marketplace_product_ref(
                     &row.connection_mp_ref,

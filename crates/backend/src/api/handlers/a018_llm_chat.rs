@@ -202,6 +202,18 @@ pub async fn get_chat_context(
     }
 }
 
+/// GET /api/a018-llm-chat-context/:id
+/// Получить один пакет контекста (для details-страницы просмотра контекста LLM).
+pub async fn get_context_package(
+    Path(id): Path<String>,
+) -> Result<Json<ContextPackageSummary>, StatusCode> {
+    match a018_llm_chat::service::get_context_by_id(&id).await {
+        Ok(Some(s)) => Ok(Json(s)),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 /// POST /api/a018-llm-chat/:id/context
 /// Собрать контекст текущей страницы по page_key и привязать к чату.
 pub async fn add_chat_context(

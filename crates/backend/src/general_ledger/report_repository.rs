@@ -11,7 +11,8 @@ use contracts::general_ledger::{
 
 use super::detail_links::descriptor_for_resource_table;
 use super::drilldown_dimensions::{
-    dimension_available_for_drilldown, dimension_label, is_fina_dimension, is_nomenclature_dimension,
+    dimension_available_for_drilldown, dimension_label, is_fina_dimension,
+    is_nomenclature_dimension,
 };
 use super::turnover_registry::get_turnover_class;
 
@@ -842,8 +843,7 @@ fn build_p914_dimension_sql(alias: &str, dimension_id: &str) -> (String, String,
 /// по `general_ledger_ref`; группировка идёт по колонке p914. Работает для любого
 /// источника fina (p903/p907), так как p914 зеркалит все fina-проводки.
 async fn query_p914_fina_drilldown(query: &GlDrilldownQuery) -> Result<Vec<GlDrilldownRow>> {
-    let (select_key, select_label, group_by_expr) =
-        build_p914_dimension_sql("d", &query.group_by);
+    let (select_key, select_label, group_by_expr) = build_p914_dimension_sql("d", &query.group_by);
     let amount_expr = build_signed_amount_expr(
         "gl",
         query
@@ -1097,7 +1097,9 @@ const SUPPLIER_POINTS_ACCOUNT: &str = "76YB";
 async fn scalar_sum(sql: &str, params: Vec<Value>) -> Result<f64> {
     let stmt = Statement::from_sql_and_values(conn().get_database_backend(), sql, params);
     let row = conn().query_one(stmt).await?;
-    Ok(row.and_then(|r| r.try_get::<f64>("", "v").ok()).unwrap_or(0.0))
+    Ok(row
+        .and_then(|r| r.try_get::<f64>("", "v").ok())
+        .unwrap_or(0.0))
 }
 
 /// Знаковое сальдо счёта (Дт − Кт) в контуре ym до даты: `cmp` = "<" (входящее) или
@@ -1175,10 +1177,8 @@ pub async fn get_supplier_balance(
     let to = query.date_to.as_str();
 
     // Сальдо денежного счёта 7609: входящее (< from) и исходящее (<= to).
-    let opening_balance =
-        signed_balance_upto(SUPPLIER_CASH_ACCOUNT, conn_ref, "<", from).await?;
-    let closing_balance =
-        signed_balance_upto(SUPPLIER_CASH_ACCOUNT, conn_ref, "<=", to).await?;
+    let opening_balance = signed_balance_upto(SUPPLIER_CASH_ACCOUNT, conn_ref, "<", from).await?;
+    let closing_balance = signed_balance_upto(SUPPLIER_CASH_ACCOUNT, conn_ref, "<=", to).await?;
 
     // Разложение периода (7609 всегда на дебете в контуре ym):
     //  начислено  = дебет 7609, amount>0 (выручка/доходы);
@@ -1212,8 +1212,7 @@ pub async fn get_supplier_balance(
     )
     .await?;
 
-    let points_balance =
-        signed_balance_upto(SUPPLIER_POINTS_ACCOUNT, conn_ref, "<=", to).await?;
+    let points_balance = signed_balance_upto(SUPPLIER_POINTS_ACCOUNT, conn_ref, "<=", to).await?;
 
     Ok(SupplierBalanceResponse {
         entity: SUPPLIER_ENTITY.to_string(),

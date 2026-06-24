@@ -869,8 +869,20 @@ pub async fn ym_order_flow(
         Ok(oid) => {
             let (rows, _) =
                 crate::projections::p907_ym_payment_report::repository::list_with_filters(
-                    "", "", None, None, None, None, Some(oid), None, None, None,
-                    "transaction_date", false, 1000, 0,
+                    "",
+                    "",
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(oid),
+                    None,
+                    None,
+                    None,
+                    "transaction_date",
+                    false,
+                    1000,
+                    0,
                 )
                 .await
                 .unwrap_or_default();

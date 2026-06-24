@@ -25,7 +25,10 @@ pub async fn represent_many(ids: &[String]) -> HashMap<String, AggregateRepresen
             .unwrap_or_default();
         rows.into_iter()
             .map(|(id, date, doc_no)| {
-                (id, build(ENTITY_METADATA.ui.element_name, Some(date), Some(doc_no)))
+                (
+                    id,
+                    build(ENTITY_METADATA.ui.element_name, Some(date), Some(doc_no)),
+                )
             })
             .collect()
     })

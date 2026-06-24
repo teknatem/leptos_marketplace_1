@@ -134,34 +134,35 @@ pub fn from_ym_realization(doc: &YmRealization, registrator_ref: &str) -> Vec<Mo
 
     let mut events = Vec::new();
 
-    let build_line = |event_type: OrderEventType,
-                      line: &contracts::domain::a034_ym_realization::aggregate::YmRealizationLine,
-                      events: &mut Vec<Model>| {
-        let order_id = line
-            .order_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|v| !v.is_empty());
-        let Some(order_id) = order_id else {
-            tracing::debug!(
-                "p915: пропуск строки a034 без order_id (sku={})",
-                line.shop_sku
-            );
-            return;
+    let build_line =
+        |event_type: OrderEventType,
+         line: &contracts::domain::a034_ym_realization::aggregate::YmRealizationLine,
+         events: &mut Vec<Model>| {
+            let order_id = line
+                .order_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty());
+            let Some(order_id) = order_id else {
+                tracing::debug!(
+                    "p915: пропуск строки a034 без order_id (sku={})",
+                    line.shop_sku
+                );
+                return;
+            };
+            events.push(make_event(
+                order_id.to_string(),
+                line.marketplace_product_ref.clone(),
+                event_date.clone(),
+                event_type,
+                layer,
+                Some(line.revenue_amount),
+                REG_A034,
+                registrator_ref,
+                connection.clone(),
+                &now,
+            ));
         };
-        events.push(make_event(
-            order_id.to_string(),
-            line.marketplace_product_ref.clone(),
-            event_date.clone(),
-            event_type,
-            layer,
-            Some(line.revenue_amount),
-            REG_A034,
-            registrator_ref,
-            connection.clone(),
-            &now,
-        ));
-    };
 
     for line in &doc.sales_lines {
         build_line(OrderEventType::Realization, line, &mut events);
@@ -260,7 +261,7 @@ pub fn from_supplier_settlement(
 mod tests {
     use super::*;
     use contracts::domain::a034_ym_realization::aggregate::{
-        YmRealizationHeader, YmRealizationLine, YmRealizationSourceMeta, YmRealization,
+        YmRealization, YmRealizationHeader, YmRealizationLine, YmRealizationSourceMeta,
     };
 
     fn realization_line(order_id: Option<&str>, is_return: bool, amount: f64) -> YmRealizationLine {
@@ -277,7 +278,10 @@ mod tests {
         }
     }
 
-    fn realization(sales: Vec<YmRealizationLine>, returns: Vec<YmRealizationLine>) -> YmRealization {
+    fn realization(
+        sales: Vec<YmRealizationLine>,
+        returns: Vec<YmRealizationLine>,
+    ) -> YmRealization {
         let header = YmRealizationHeader {
             document_no: "DOC-1".to_string(),
             document_date: "2026-05-10".to_string(),
@@ -305,7 +309,10 @@ mod tests {
         let events = from_ym_realization(&doc, "reg-a034");
         assert_eq!(events.len(), 2);
 
-        let sale = events.iter().find(|e| e.event_type == "realization").unwrap();
+        let sale = events
+            .iter()
+            .find(|e| e.event_type == "realization")
+            .unwrap();
         assert_eq!(sale.layer, "ybuh");
         assert_eq!(sale.order_id, "100");
         assert_eq!(sale.marketplace_product.as_deref(), Some("mp-uuid-1"));
@@ -313,7 +320,10 @@ mod tests {
         assert_eq!(sale.event_date, "2026-05-10");
         assert_eq!(sale.registrator_type, "a034_ym_realization");
 
-        let ret = events.iter().find(|e| e.event_type == "goods_return").unwrap();
+        let ret = events
+            .iter()
+            .find(|e| e.event_type == "goods_return")
+            .unwrap();
         assert_eq!(ret.amount, Some(150.0));
     }
 
@@ -346,11 +356,24 @@ mod tests {
     #[test]
     fn supplier_settlement_emits_payment_and_return_events() {
         let orders = [
-            SettledOrderEvent { order_id: "100", amount: 15894.0, is_return: false },
-            SettledOrderEvent { order_id: "200", amount: -15894.0, is_return: true },
+            SettledOrderEvent {
+                order_id: "100",
+                amount: 15894.0,
+                is_return: false,
+            },
+            SettledOrderEvent {
+                order_id: "200",
+                amount: -15894.0,
+                is_return: true,
+            },
         ];
-        let events =
-            from_supplier_settlement(&orders, "2026-05-29", "conn-1", "a035_ym_settlement_recon", "reg-a035");
+        let events = from_supplier_settlement(
+            &orders,
+            "2026-05-29",
+            "conn-1",
+            "a035_ym_settlement_recon",
+            "reg-a035",
+        );
         assert_eq!(events.len(), 2);
 
         let pay = events.iter().find(|e| e.order_id == "100").unwrap();

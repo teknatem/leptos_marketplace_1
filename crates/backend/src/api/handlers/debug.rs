@@ -43,11 +43,18 @@ pub async fn tool_test(Query(params): Query<ToolTestParams>) -> impl IntoRespons
         call.arguments
     );
 
+    // Для debug-эндпоинта активируем все навыки General, чтобы любой инструмент проходил guard.
+    let active_skills = crate::shared::llm::skills::allowed_skills_for(
+        &contracts::domain::a017_llm_agent::aggregate::AgentType::General,
+    );
+    let active_tools = crate::shared::llm::skills::active_tool_names(&active_skills);
+
     let raw_result = crate::shared::llm::execute_tool_call(
         &call,
         "debug-chat-id",
         "debug-agent-id",
         &contracts::domain::a017_llm_agent::aggregate::AgentType::General,
+        &active_tools,
     )
     .await;
 

@@ -308,7 +308,8 @@ async fn enrich_wb_finance_turnovers(
         Err(_) => return Ok(()),
     };
 
-    let Some(order) = crate::domain::a015_wb_orders::repository::get_by_id(order_uuid).await? else {
+    let Some(order) = crate::domain::a015_wb_orders::repository::get_by_id(order_uuid).await?
+    else {
         return Ok(());
     };
 
@@ -401,19 +402,21 @@ pub async fn reconcile_day(
         .await?;
 
     let preserved_ids = existing_id_map(&existing);
-    let preserved_marketplace_refs: std::collections::HashMap<P903NaturalKey, (Option<String>, Option<String>)> =
-        existing
-            .iter()
-            .map(|item| {
+    let preserved_marketplace_refs: std::collections::HashMap<
+        P903NaturalKey,
+        (Option<String>, Option<String>),
+    > = existing
+        .iter()
+        .map(|item| {
+            (
+                item.rrd_id,
                 (
-                    item.rrd_id,
-                    (
-                        item.marketplace_product_ref.clone(),
-                        item.marketplace_order_ref.clone(),
-                    ),
-                )
-            })
-            .collect();
+                    item.marketplace_product_ref.clone(),
+                    item.marketplace_order_ref.clone(),
+                ),
+            )
+        })
+        .collect();
     let loaded_at_utc = chrono::Utc::now().to_rfc3339();
     let mut models = entries
         .iter()
@@ -445,8 +448,7 @@ pub async fn reconcile_day(
         .await?;
     }
 
-    let general_ledger_rows =
-        save_general_ledger_and_finance_turnovers(&txn, &models).await?;
+    let general_ledger_rows = save_general_ledger_and_finance_turnovers(&txn, &models).await?;
 
     txn.commit().await?;
 
@@ -490,8 +492,7 @@ pub async fn rebuild_day_from_existing(
     )
     .await?;
 
-    let general_ledger_rows =
-        save_general_ledger_and_finance_turnovers(&txn, &existing).await?;
+    let general_ledger_rows = save_general_ledger_and_finance_turnovers(&txn, &existing).await?;
 
     txn.commit().await?;
 
@@ -563,7 +564,12 @@ async fn resolve_and_set_marketplace_refs(
     }
 
     if model.marketplace_order_ref.is_none() {
-        if let Some(srid) = model.srid.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        if let Some(srid) = model
+            .srid
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
             if let Some(order) =
                 crate::domain::a015_wb_orders::repository::get_by_document_no(srid).await?
             {
