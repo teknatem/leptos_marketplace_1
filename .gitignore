@@ -43,6 +43,9 @@ pnpm-debug.log*
 .env
 .env.local
 
+# Local config with secrets (use config.toml.example as template)
+config.toml
+
 .claude/settings.local.json
 
 nul
