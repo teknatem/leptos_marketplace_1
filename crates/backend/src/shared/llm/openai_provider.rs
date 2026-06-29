@@ -8,7 +8,8 @@ use async_openai::{
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
         ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionTools,
-        CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
+        CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
+        FunctionCall, FunctionObject,
     },
     Client,
 };
@@ -172,6 +173,43 @@ impl OpenAiProvider {
             .collect()
     }
 
+    /// Отправить запрос с повторами при ВРЕМЕННЫХ ошибках сети/сервиса.
+    ///
+    /// Транспортные сбои (`error sending request`, разрыв соединения, таймаут) и
+    /// перегрузка апстрима (429/502/503/504) — преходящие: один сетевой «чих» не
+    /// должен ронять весь ход чата. Невосстановимые ошибки (401/403/400) возвращаются
+    /// сразу, без повторов.
+    async fn create_with_retries(
+        &self,
+        request: CreateChatCompletionRequest,
+    ) -> Result<CreateChatCompletionResponse, LlmError> {
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match self.client.chat().create(request.clone()).await {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    let err_str = normalize_api_error_message(&e.to_string());
+                    if is_transient_error(&err_str) && attempt < MAX_ATTEMPTS {
+                        let backoff_ms = 400u64 * 2u64.pow(attempt - 1); // 400ms, 800ms
+                        tracing::warn!(
+                            "[llm] временная ошибка ({}) попытка {}/{}, повтор через {}ms: {}",
+                            self.provider_name,
+                            attempt,
+                            MAX_ATTEMPTS,
+                            backoff_ms,
+                            err_str
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                        continue;
+                    }
+                    return Err(classify_api_error(&err_str));
+                }
+            }
+        }
+    }
+
     /// Извлечь tool calls из ответа OpenAI
     fn extract_tool_calls(&self, choice: &ChatChoice) -> Vec<ToolCall> {
         let Some(tool_calls) = &choice.message.tool_calls else {
@@ -241,16 +279,7 @@ impl LlmProvider for OpenAiProvider {
             .build()
             .map_err(|e| LlmError::InvalidRequest(e.to_string()))?;
 
-        let response = self.client.chat().create(request).await.map_err(|e| {
-            let err_str = normalize_api_error_message(&e.to_string());
-            if err_str.contains("401") || err_str.contains("authentication") {
-                LlmError::AuthError(err_str)
-            } else if err_str.contains("429") || err_str.contains("rate limit") {
-                LlmError::RateLimitExceeded
-            } else {
-                LlmError::ApiError(err_str)
-            }
-        })?;
+        let response = self.create_with_retries(request).await?;
 
         let choice = response
             .choices
@@ -383,6 +412,39 @@ impl OpenAiProvider {
 
         Ok(models)
     }
+}
+
+/// Сопоставить текст ошибки апстрима с типом [`LlmError`].
+fn classify_api_error(err_str: &str) -> LlmError {
+    let lower = err_str.to_lowercase();
+    if err_str.contains("401") || err_str.contains("403") || lower.contains("authentication") {
+        LlmError::AuthError(err_str.to_string())
+    } else if err_str.contains("429") || lower.contains("rate limit") {
+        LlmError::RateLimitExceeded
+    } else {
+        LlmError::ApiError(err_str.to_string())
+    }
+}
+
+/// Является ли ошибка временной (есть смысл повторить запрос).
+fn is_transient_error(err_str: &str) -> bool {
+    let s = err_str.to_lowercase();
+    s.contains("error sending request")
+        || s.contains("connection")
+        || s.contains("connect error")
+        || s.contains("timed out")
+        || s.contains("timeout")
+        || s.contains("reset")
+        || s.contains("broken pipe")
+        || s.contains("dns")
+        || s.contains("429")
+        || s.contains("rate limit")
+        || s.contains("502")
+        || s.contains("503")
+        || s.contains("504")
+        || s.contains("bad gateway")
+        || s.contains("service unavailable")
+        || s.contains("gateway timeout")
 }
 
 fn normalize_api_error_message(err: &str) -> String {

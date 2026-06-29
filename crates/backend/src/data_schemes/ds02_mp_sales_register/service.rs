@@ -15,52 +15,20 @@ use crate::shared::universal_dashboard::{
     get_registry, query_builder::QueryParam, QueryBuilder, RawRow, TreeBuilder,
 };
 
-use super::schema::DS02_SCHEMA;
-
 /// Execute a dashboard query
 pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboardResponse> {
-    // Support DS01, DS02, DS03 schemas, with backward compatibility for old IDs
-    let schema = match config.data_source.as_str() {
-        "ds02_mp_sales_register" => &DS02_SCHEMA,
-        // Backward compatibility
-        "p900_sales_register" => &DS02_SCHEMA,
-        "ds01_wb_finance_report" | "p903_wb_finance_report" | "s001_wb_finance" => {
-            &crate::data_schemes::ds01_wb_finance_report::schema::DS01_SCHEMA
-        }
-        "ds03_p904_sales" => &crate::data_schemes::ds03_p904_sales::schema::DS03_SCHEMA,
-        _ => {
-            // Try registry for other data sources
-            let registry = get_registry();
-            if registry.has_schema(&config.data_source) {
-                // Schema found but not yet supported for execution
-                return Err(anyhow::anyhow!(
-                    "Data source '{}' is registered but not yet supported for execution",
-                    config.data_source
-                ));
-            } else {
-                return Err(anyhow::anyhow!(
-                    "Unknown data source: {}",
-                    config.data_source
-                ));
-            }
-        }
-    };
-
-    // Get table name from registry (with backward compatibility mapping)
     let registry = get_registry();
-    let data_source_for_table = match config.data_source.as_str() {
-        "p900_sales_register" => "ds02_mp_sales_register",
-        "p903_wb_finance_report" | "s001_wb_finance" => "ds01_wb_finance_report",
-        _ => config.data_source.as_str(),
-    };
+    let schema = registry
+        .get_schema(&config.data_source)
+        .ok_or_else(|| anyhow::anyhow!("Unknown data source: {}", config.data_source))?;
     let table_name = registry
-        .get_table_name(data_source_for_table)
+        .get_table_name(&config.data_source)
         .ok_or_else(|| {
-            anyhow::anyhow!("Table name not found for schema: {}", data_source_for_table)
+            anyhow::anyhow!("Table name not found for schema: {}", config.data_source)
         })?;
 
     // Build SQL query
-    let query_builder = QueryBuilder::new(schema, &config, table_name);
+    let query_builder = QueryBuilder::new(&schema, &config, table_name);
     let query_result = query_builder
         .build()
         .map_err(|e| anyhow::anyhow!("Query build error: {}", e))?;
@@ -80,11 +48,13 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
 
             // Parse grouping columns
             for grouping_id in config.groupings.iter() {
-                let field = schema.fields.iter().find(|f| f.id == grouping_id).unwrap();
+                let field = schema.fields.iter().find(|f| f.id == *grouping_id).unwrap();
 
-                let value = match field.field_type {
-                    contracts::shared::universal_dashboard::FieldType::Text
-                    | contracts::shared::universal_dashboard::FieldType::Date => {
+                let value = match &field.value_type {
+                    contracts::shared::universal_dashboard::ValueType::Text
+                    | contracts::shared::universal_dashboard::ValueType::Date
+                    | contracts::shared::universal_dashboard::ValueType::DateTime
+                    | contracts::shared::universal_dashboard::ValueType::Ref { .. } => {
                         // For ref fields, try to use _display column first
                         if field.ref_table.is_some() && field.ref_display_column.is_some() {
                             let display_col = format!("{}_display", grouping_id);
@@ -118,13 +88,14 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
                                 .unwrap_or(CellValue::Null)
                         }
                     }
-                    contracts::shared::universal_dashboard::FieldType::Integer => query_result
+                    contracts::shared::universal_dashboard::ValueType::Integer
+                    | contracts::shared::universal_dashboard::ValueType::Boolean => query_result
                         .try_get::<Option<i64>>("", grouping_id)
                         .ok()
                         .flatten()
                         .map(CellValue::Integer)
                         .unwrap_or(CellValue::Null),
-                    contracts::shared::universal_dashboard::FieldType::Numeric => query_result
+                    contracts::shared::universal_dashboard::ValueType::Numeric => query_result
                         .try_get::<Option<f64>>("", grouping_id)
                         .ok()
                         .flatten()
@@ -159,7 +130,7 @@ pub async fn execute_dashboard(config: DashboardConfig) -> Result<ExecuteDashboa
         let field = schema
             .fields
             .iter()
-            .find(|f| f.id == grouping_id)
+            .find(|f| f.id == *grouping_id)
             .ok_or_else(|| anyhow::anyhow!("Field not found: {}", grouping_id))?;
 
         columns.push(ColumnHeader {
@@ -380,38 +351,18 @@ pub async fn delete_dashboard_config(id: &str) -> Result<()> {
 
 /// Generate SQL query without executing
 pub async fn generate_sql(config: DashboardConfig) -> Result<GenerateSqlResponse> {
-    // Support DS01, DS02, DS03 schemas, with backward compatibility
-    let schema = match config.data_source.as_str() {
-        "ds02_mp_sales_register" => &DS02_SCHEMA,
-        // Backward compatibility
-        "p900_sales_register" => &DS02_SCHEMA,
-        "ds01_wb_finance_report" | "p903_wb_finance_report" | "s001_wb_finance" => {
-            &crate::data_schemes::ds01_wb_finance_report::schema::DS01_SCHEMA
-        }
-        "ds03_p904_sales" => &crate::data_schemes::ds03_p904_sales::schema::DS03_SCHEMA,
-        _ => {
-            return Err(anyhow::anyhow!(
-                "Unsupported data source for SQL generation: '{}'. Supported: ds01_wb_finance_report, ds02_mp_sales_register, ds03_p904_sales",
-                config.data_source
-            ));
-        }
-    };
-
-    // Get table name from registry (with backward compatibility mapping)
     let registry = get_registry();
-    let data_source_for_table = match config.data_source.as_str() {
-        "p900_sales_register" => "ds02_mp_sales_register",
-        "p903_wb_finance_report" | "s001_wb_finance" => "ds01_wb_finance_report",
-        _ => config.data_source.as_str(),
-    };
+    let schema = registry
+        .get_schema(&config.data_source)
+        .ok_or_else(|| anyhow::anyhow!("Unknown data source: {}", config.data_source))?;
     let table_name = registry
-        .get_table_name(data_source_for_table)
+        .get_table_name(&config.data_source)
         .ok_or_else(|| {
-            anyhow::anyhow!("Table name not found for schema: {}", data_source_for_table)
+            anyhow::anyhow!("Table name not found for schema: {}", config.data_source)
         })?;
 
     // Build SQL query
-    let query_builder = QueryBuilder::new(schema, &config, table_name);
+    let query_builder = QueryBuilder::new(&schema, &config, table_name);
     let result = query_builder
         .build()
         .map_err(|e| anyhow::anyhow!("Query build error: {}", e))?;

@@ -81,7 +81,6 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     tab_label_for_key("bi_timeline"),
                     "line-chart",
                 ),
-                SidebarItem::new("data_view", tab_label_for_key("data_view"), "layers"),
                 SidebarItem::new(
                     "d402_wb_order_flow",
                     tab_label_for_key("d402_wb_order_flow"),
@@ -498,6 +497,39 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             ],
             admin_only: false,
         },
+        // Источники данных (роли источников — см. ADR-0010):
+        // DataView (курируемые витрины), схемы таблиц (universal_dashboard/schema_browser),
+        // drilldown, сохранённые отчёты, глобальные фильтры. Собраны в одну группу для прозрачности.
+        MenuGroup {
+            id: "semantic_layer",
+            label: "Источники данных",
+            icon: "stack",
+            items: vec![
+                SidebarItem::new("data_view", tab_label_for_key("data_view"), "layers"),
+                SidebarItem::new(
+                    "universal_dashboard",
+                    tab_label_for_key("universal_dashboard"),
+                    "table-pivot",
+                ),
+                SidebarItem::new(
+                    "schema_browser",
+                    tab_label_for_key("schema_browser"),
+                    "database-cog",
+                ),
+                SidebarItem::new(
+                    "drilldown__new",
+                    tab_label_for_key("drilldown__new"),
+                    "zoom-in",
+                ),
+                SidebarItem::new("all_reports", tab_label_for_key("all_reports"), "table"),
+                SidebarItem::new(
+                    "filter_registry",
+                    tab_label_for_key("filter_registry"),
+                    "filter",
+                ),
+            ],
+            admin_only: true,
+        },
         MenuGroup {
             id: "settings",
             label: "Настройки",
@@ -509,25 +541,9 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "bar-chart",
                 ),
                 SidebarItem::new(
-                    "d401_metadata_dashboard",
-                    tab_label_for_key("d401_metadata_dashboard"),
+                    "d405_metadata_dashboard",
+                    tab_label_for_key("d405_metadata_dashboard"),
                     "layout-dashboard",
-                ),
-                SidebarItem::new(
-                    "drilldown__new",
-                    tab_label_for_key("drilldown__new"),
-                    "zoom-in",
-                ),
-                SidebarItem::new(
-                    "universal_dashboard",
-                    tab_label_for_key("universal_dashboard"),
-                    "table-pivot",
-                ),
-                SidebarItem::new("all_reports", tab_label_for_key("all_reports"), "table"),
-                SidebarItem::new(
-                    "schema_browser",
-                    tab_label_for_key("schema_browser"),
-                    "database-cog",
                 ),
             ],
             admin_only: true,
@@ -560,11 +576,6 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "sys_task_type_registry",
                     tab_label_for_key("sys_task_type_registry"),
                     "layers",
-                ),
-                SidebarItem::new(
-                    "filter_registry",
-                    tab_label_for_key("filter_registry"),
-                    "filter",
                 ),
                 SidebarItem::new(
                     "sys_thaw_test",

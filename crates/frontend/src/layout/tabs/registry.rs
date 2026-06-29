@@ -1245,7 +1245,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating MonthlySummaryDashboard");
             view! { <MonthlySummaryDashboard /> }.into_any()
         }
-        "d401_metadata_dashboard" => {
+        "d405_metadata_dashboard" => {
             log!("✅ Creating MetadataDashboard");
             view! { <MetadataDashboard /> }.into_any()
         }

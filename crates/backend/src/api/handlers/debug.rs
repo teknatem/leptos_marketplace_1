@@ -96,7 +96,6 @@ fn build_args(p: &ToolTestParams) -> serde_json::Value {
         "get_knowledge" => serde_json::json!({
             "id": p.id.as_deref().unwrap_or("")
         }),
-        "list_data_views" => serde_json::json!({}),
         _ => serde_json::json!({}),
     }
 }

@@ -14,6 +14,10 @@ use super::metadata_converter::{metadata_to_pivot_schema, RefResolver};
 use crate::data_schemes::ds01_wb_finance_report::schema::{DS01_SCHEMA, DS01_TABLE_NAME};
 use crate::data_schemes::ds02_mp_sales_register::schema::{DS02_SCHEMA, DS02_TABLE_NAME};
 use crate::data_schemes::ds03_p904_sales::schema::{DS03_SCHEMA, DS03_TABLE_NAME};
+use contracts::domain::a002_organization::{ENTITY_METADATA as A002_META, FIELDS as A002_FIELDS};
+use contracts::domain::a004_nomenclature::{ENTITY_METADATA as A004_META, FIELDS as A004_FIELDS};
+use contracts::domain::a005_marketplace::{ENTITY_METADATA as A005_META, FIELDS as A005_FIELDS};
+use contracts::domain::a006_connection_mp::{ENTITY_METADATA as A006_META, FIELDS as A006_FIELDS};
 
 /// Information about a registered entity with metadata
 pub struct RegisteredEntity {
@@ -36,6 +40,14 @@ struct CustomSchemaEntry {
 }
 
 impl SchemaRegistry {
+    fn canonical_schema_id(id: &str) -> &str {
+        match id {
+            "p903_wb_finance_report" | "s001_wb_finance" => "ds01_wb_finance_report",
+            "p900_sales_register" => "ds02_mp_sales_register",
+            _ => id,
+        }
+    }
+
     /// Create a new registry with all available schemas
     pub fn new() -> Self {
         let mut registry = Self {
@@ -48,8 +60,8 @@ impl SchemaRegistry {
         registry.register_custom_schema(&DS02_SCHEMA, DS02_TABLE_NAME);
         registry.register_custom_schema(&DS03_SCHEMA, DS03_TABLE_NAME);
 
-        // Register auto schemas from metadata
-        // Currently only a001, a017, a018, a019 have metadata
+        // Only explicitly approved metadata projections are executable. Connection
+        // entities with credentials are never auto-registered wholesale.
         registry.register_auto_schemas();
 
         registry
@@ -69,20 +81,18 @@ impl SchemaRegistry {
 
     /// Register auto schemas from entities with metadata
     fn register_auto_schemas(&mut self) {
-        // Import entities with metadata
-        use contracts::domain::a001_connection_1c::aggregate::Connection1CDatabase;
-
-        // Register each entity that has metadata
-        // Note: a017-a019 have metadata.json but don't export metadata_gen yet
-        self.register_entity_if_available::<Connection1CDatabase>();
+        self.register_metadata_schema(&A002_META, A002_FIELDS);
+        self.register_metadata_schema(&A004_META, A004_FIELDS);
+        self.register_metadata_schema(&A005_META, A005_FIELDS);
+        self.register_metadata_schema(&A006_META, A006_FIELDS);
     }
 
-    /// Register entity if it has metadata
-    fn register_entity_if_available<T>(&mut self)
-    where
-        T: contracts::domain::common::AggregateRoot,
-    {
-        if let (Some(entity), Some(fields)) = (T::entity_metadata_info(), T::field_metadata()) {
+    fn register_metadata_schema(
+        &mut self,
+        entity: &'static EntityMetadataInfo,
+        fields: &'static [FieldMetadata],
+    ) {
+        if entity.table_name.is_some() {
             self.auto_schemas.insert(
                 entity.entity_index.to_string(),
                 RegisteredEntity { entity, fields },
@@ -123,6 +133,7 @@ impl SchemaRegistry {
 
     /// Get schema by ID
     pub fn get_schema(&self, id: &str) -> Option<DataSourceSchemaOwned> {
+        let id = Self::canonical_schema_id(id);
         // Check custom schemas first
         if let Some(entry) = self.custom_schemas.get(id) {
             return Some(entry.schema.into());
@@ -138,6 +149,7 @@ impl SchemaRegistry {
 
     /// Get table name for schema
     pub fn get_table_name(&self, schema_id: &str) -> Option<String> {
+        let schema_id = Self::canonical_schema_id(schema_id);
         // Check custom schemas
         if let Some(entry) = self.custom_schemas.get(schema_id) {
             return Some(entry.table_name.to_string());
@@ -153,6 +165,7 @@ impl SchemaRegistry {
 
     /// Check if schema exists
     pub fn has_schema(&self, id: &str) -> bool {
+        let id = Self::canonical_schema_id(id);
         self.custom_schemas.contains_key(id) || self.auto_schemas.contains_key(id)
     }
 

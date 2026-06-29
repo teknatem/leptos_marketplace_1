@@ -7,6 +7,7 @@ use contracts::plugins::{
     PluginSmokeMethod, PluginSmokeReport, PluginSmokeRequest, PluginStatus, PluginUpsert,
     PluginValidateReport,
 };
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 fn db() -> &'static sea_orm::DatabaseConnection {
@@ -318,9 +319,238 @@ fn suggested_next_step(failures: &[PluginSmokeFailure]) -> Option<String> {
             "Use the stage/message/stack to fix server_script runtime behavior."
         }
         "sql" | "database" => "Fix SQL resources or manifest db:read capabilities.",
+        "table_spec_parse" => {
+            "Keep the table spec as a JSON literal assigned to `const spec = ...`, then rerun plugin_smoke_test."
+        }
+        "table_spec" | "table_data" => {
+            "Fix table spec columns/sort/totals/conditionalFormat so they match the data rows returned by server_script."
+        }
         _ => "Fix the first reported failure, then rerun plugin_smoke_test.",
     };
     Some(hint.to_string())
+}
+
+fn extract_table_spec(script: Option<&String>) -> Result<Option<serde_json::Value>, String> {
+    let Some(script) = script else {
+        return Ok(None);
+    };
+    if !script.contains("PluginTables.render") {
+        return Ok(None);
+    }
+
+    for marker in ["const spec =", "let spec =", "var spec ="] {
+        if let Some(pos) = script.find(marker) {
+            let after = pos + marker.len();
+            let Some(rel_start) = script[after..].find(|c: char| matches!(c, '{' | '[')) else {
+                return Err(
+                    "Found table spec assignment, but no JSON object/array follows it".into(),
+                );
+            };
+            let start = after + rel_start;
+            let literal = extract_balanced_json_literal(script, start)?;
+            let value = serde_json::from_str::<serde_json::Value>(literal)
+                .map_err(|error| format!("Table spec must be strict JSON: {error}"))?;
+            return Ok(Some(value));
+        }
+    }
+
+    Err("PluginTables.render is used, but smoke test could not find `const spec = {...}`".into())
+}
+
+fn extract_balanced_json_literal(script: &str, start: usize) -> Result<&str, String> {
+    let mut stack: Vec<char> = Vec::new();
+    let mut in_string = false;
+    let mut escape = false;
+
+    for (offset, ch) in script[start..].char_indices() {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if ch == '\\' {
+                escape = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => stack.push('}'),
+            '[' => stack.push(']'),
+            '}' | ']' => {
+                if stack.pop() != Some(ch) {
+                    return Err("Table spec JSON has mismatched brackets".into());
+                }
+                if stack.is_empty() {
+                    let end = start + offset + ch.len_utf8();
+                    return Ok(&script[start..end]);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Err("Table spec JSON is not closed".into())
+}
+
+fn table_spec_failures(
+    spec: &serde_json::Value,
+    rows: Option<&serde_json::Value>,
+) -> Vec<PluginSmokeFailure> {
+    let mut failures = Vec::new();
+    let mut fail = |message: String| {
+        failures.push(smoke_failure(
+            "table_spec",
+            Some("client_script".to_string()),
+            message,
+            None,
+        ));
+    };
+
+    let Some(columns) = spec.get("columns").and_then(|v| v.as_array()) else {
+        fail("table spec requires columns: [...]".into());
+        return failures;
+    };
+    if columns.is_empty() {
+        fail("table spec must contain at least one column".into());
+    }
+
+    let allowed_types = ["text", "number", "int", "money", "percent", "date"];
+    let numeric_types = ["number", "int", "money", "percent"];
+    let mut keys: HashSet<String> = HashSet::new();
+    let mut types: HashMap<String, String> = HashMap::new();
+
+    for (idx, col) in columns.iter().enumerate() {
+        let Some(key) = col
+            .get("key")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        else {
+            fail(format!("columns[{idx}].key is required"));
+            continue;
+        };
+        if !keys.insert(key.to_string()) {
+            fail(format!("duplicate column key '{key}'"));
+        }
+        let col_type = col.get("type").and_then(|v| v.as_str()).unwrap_or("text");
+        if !allowed_types.contains(&col_type) {
+            fail(format!("column '{key}' has unsupported type '{col_type}'"));
+        }
+        types.insert(key.to_string(), col_type.to_string());
+    }
+
+    if let Some(sort_key) = spec
+        .get("sort")
+        .and_then(|v| v.get("key"))
+        .and_then(|v| v.as_str())
+    {
+        if !keys.contains(sort_key) {
+            fail(format!("sort.key '{sort_key}' is not present in columns"));
+        }
+    }
+
+    if let Some(agg) = spec
+        .get("totals")
+        .and_then(|v| v.get("agg"))
+        .and_then(|v| v.as_object())
+    {
+        let allowed_agg = ["sum", "avg", "count", "min", "max"];
+        for (key, fn_value) in agg {
+            if !keys.contains(key) {
+                fail(format!("totals.agg references unknown column '{key}'"));
+            }
+            let Some(fn_name) = fn_value.as_str() else {
+                fail(format!("totals.agg['{key}'] must be a string"));
+                continue;
+            };
+            if !allowed_agg.contains(&fn_name) {
+                fail(format!(
+                    "totals.agg['{key}'] has unsupported function '{fn_name}'"
+                ));
+            }
+        }
+    }
+
+    if let Some(items) = spec.get("conditionalFormat").and_then(|v| v.as_array()) {
+        let allowed_kinds = ["threshold", "dataBar", "heatmap"];
+        let allowed_ops = [">", "<", ">=", "<=", "=", "!="];
+        for (idx, item) in items.iter().enumerate() {
+            let column = item.get("column").and_then(|v| v.as_str()).unwrap_or("");
+            if !keys.contains(column) {
+                fail(format!(
+                    "conditionalFormat[{idx}] references unknown column '{column}'"
+                ));
+            }
+            let kind = item.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+            if !allowed_kinds.contains(&kind) {
+                fail(format!(
+                    "conditionalFormat[{idx}] has unsupported kind '{kind}'"
+                ));
+            }
+            if let Some(col_type) = types.get(column) {
+                if !numeric_types.contains(&col_type.as_str()) {
+                    fail(format!(
+                        "conditionalFormat[{idx}] column '{column}' must be numeric, got '{col_type}'"
+                    ));
+                }
+            }
+            if kind == "threshold" {
+                let Some(rules) = item.get("rules").and_then(|v| v.as_array()) else {
+                    fail(format!("conditionalFormat[{idx}] threshold requires rules"));
+                    continue;
+                };
+                for (rule_idx, rule) in rules.iter().enumerate() {
+                    let op = rule.get("op").and_then(|v| v.as_str()).unwrap_or("");
+                    if !allowed_ops.contains(&op) {
+                        fail(format!(
+                            "conditionalFormat[{idx}].rules[{rule_idx}] has unsupported op '{op}'"
+                        ));
+                    }
+                    if rule.get("value").is_none() {
+                        fail(format!(
+                            "conditionalFormat[{idx}].rules[{rule_idx}] requires value"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(page_size) = spec
+        .get("pagination")
+        .and_then(|v| v.get("pageSize"))
+        .and_then(|v| v.as_i64())
+    {
+        if !(1..=1000).contains(&page_size) {
+            fail(format!(
+                "pagination.pageSize must be in 1..=1000, got {page_size}"
+            ));
+        }
+    }
+
+    if let Some(rows) = rows {
+        let Some(rows_array) = rows.as_array() else {
+            failures.push(smoke_failure(
+                "table_data",
+                Some("server_script".to_string()),
+                "PluginTables.render expects data() to return an array of row objects",
+                None,
+            ));
+            return failures;
+        };
+        if let Some(sample) = rows_array.first().and_then(|v| v.as_object()) {
+            for key in &keys {
+                if !sample.contains_key(key) {
+                    fail(format!(
+                        "column.key '{key}' is absent in the first data row; check SELECT aliases"
+                    ));
+                }
+            }
+        }
+    }
+
+    failures
 }
 
 pub async fn smoke_test(request: PluginSmokeRequest) -> anyhow::Result<PluginSmokeReport> {
@@ -350,6 +580,11 @@ pub async fn smoke_test(request: PluginSmokeRequest) -> anyhow::Result<PluginSmo
     let server_exports = validate.server_exports.clone();
     let client_exports = validate.client_exports.clone();
     let client_invokes = extract_client_invokes(def.bundle.client_script.as_ref());
+    let uses_plugin_tables = def
+        .bundle
+        .client_script
+        .as_ref()
+        .is_some_and(|script| script.contains("PluginTables.render"));
 
     for method in &client_invokes {
         if !server_exports.iter().any(|export| export == method) {
@@ -372,7 +607,18 @@ pub async fn smoke_test(request: PluginSmokeRequest) -> anyhow::Result<PluginSmo
             })
             .collect();
     }
+    if request.render {
+        for method in &client_invokes {
+            if !methods.iter().any(|item| item.method == *method) {
+                methods.push(PluginSmokeMethod {
+                    method: method.clone(),
+                    args: serde_json::Value::Null,
+                });
+            }
+        }
+    }
 
+    let mut method_results: HashMap<String, serde_json::Value> = HashMap::new();
     if validate.ok {
         for method in methods {
             if method.method.trim().is_empty() {
@@ -383,21 +629,26 @@ pub async fn smoke_test(request: PluginSmokeRequest) -> anyhow::Result<PluginSmo
                 args: method.args,
                 context: request.context.clone(),
             };
-            if let Err(error) = super::engine::invoke_server_method(def.clone(), invoke).await {
-                if let Some(detail) = error.downcast_ref::<PluginError>() {
-                    failures.push(smoke_failure(
-                        detail.stage.clone(),
-                        file_hint_for_stage(&detail.stage),
-                        detail.message.clone(),
-                        detail.stack.clone(),
-                    ));
-                } else {
-                    failures.push(smoke_failure(
-                        "invoke",
-                        Some("server_script".to_string()),
-                        error.to_string(),
-                        None,
-                    ));
+            match super::engine::invoke_server_method(def.clone(), invoke).await {
+                Ok((value, _logs)) => {
+                    method_results.insert(method.method.clone(), value);
+                }
+                Err(error) => {
+                    if let Some(detail) = error.downcast_ref::<PluginError>() {
+                        failures.push(smoke_failure(
+                            detail.stage.clone(),
+                            file_hint_for_stage(&detail.stage),
+                            detail.message.clone(),
+                            detail.stack.clone(),
+                        ));
+                    } else {
+                        failures.push(smoke_failure(
+                            "invoke",
+                            Some("server_script".to_string()),
+                            error.to_string(),
+                            None,
+                        ));
+                    }
                 }
             }
         }
@@ -413,6 +664,27 @@ pub async fn smoke_test(request: PluginSmokeRequest) -> anyhow::Result<PluginSmo
             "render smoke requires client_script to export mount",
             None,
         ));
+    }
+
+    if request.render && uses_plugin_tables {
+        match extract_table_spec(def.bundle.client_script.as_ref()) {
+            Ok(Some(spec)) => {
+                let rows = client_invokes
+                    .iter()
+                    .filter_map(|method| method_results.get(method))
+                    .find(|value| value.is_array())
+                    .or_else(|| method_results.get("data"))
+                    .or_else(|| method_results.values().find(|value| value.is_array()));
+                failures.extend(table_spec_failures(&spec, rows));
+            }
+            Ok(None) => {}
+            Err(message) => failures.push(smoke_failure(
+                "table_spec_parse",
+                Some("client_script".to_string()),
+                message,
+                None,
+            )),
+        }
     }
 
     let ok = validate.ok && failures.is_empty();
@@ -545,4 +817,44 @@ pub async fn run_data(
 
 pub async fn insert_test_data() -> anyhow::Result<()> {
     super::demo::insert_test_data().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_strict_json_table_spec_from_template_client_script() {
+        let script = r#"
+export async function mount(root, host) {
+  const rows = await host.invoke("data", {});
+  const spec = {"title":"T","columns":[{"key":"name","type":"text"}]};
+  PluginTables.render(root, spec, rows);
+}
+"#
+        .to_string();
+
+        let spec = extract_table_spec(Some(&script))
+            .expect("parse result")
+            .expect("table spec");
+        assert_eq!(spec["columns"][0]["key"], json!("name"));
+    }
+
+    #[test]
+    fn table_spec_validation_reports_missing_select_alias() {
+        let spec = json!({
+            "columns": [
+                { "key": "article", "type": "text" },
+                { "key": "revenue", "type": "money" }
+            ],
+            "sort": { "key": "revenue", "dir": "desc" }
+        });
+        let rows = json!([{ "article": "A-1", "amount": 1200 }]);
+
+        let failures = table_spec_failures(&spec, Some(&rows));
+        assert!(failures.iter().any(|f| {
+            f.stage == "table_spec" && f.message.contains("column.key 'revenue' is absent")
+        }));
+    }
 }

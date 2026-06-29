@@ -269,14 +269,14 @@ pub fn MetadataDashboard() -> impl IntoView {
     let is_aggregate_selected = move || matches!(selected.get(), SelectedNode::Aggregate { .. });
 
     view! {
-        <div id="d401_metadata_dashboard--dashboard" data-page-category="legacy" class="d401-root">
+        <div id="d405_metadata_dashboard--dashboard" data-page-category="legacy" class="d401-root">
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center class="d401-header">
                 <div>
                     <div class="d401-title">"Метаданные (POC)"</div>
                     <div class="d401-subtitle">"Aggregates → Fields • источник: contracts metadata_gen.rs"</div>
                 </div>
                 <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Brand>
-                    "d401_metadata_dashboard"
+                    "d405_metadata_dashboard"
                 </Badge>
             </Flex>
 

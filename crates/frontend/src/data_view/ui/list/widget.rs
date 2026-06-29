@@ -66,7 +66,7 @@ pub fn DataViewList() -> impl IntoView {
             // ── Header ──────────────────────────────────────────────────────
             <div class="page__header">
                 <div class="page__header-left">
-                    <h1 class="page__title">{icon("layers")} " DataView — Семантический слой"</h1>
+                    <h1 class="page__title">{icon("layers")} " DataView — Источники данных"</h1>
                 </div>
                 <div class="page__header-right">
                     <Button

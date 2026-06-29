@@ -46,6 +46,14 @@ function applyTheme(message) {
     const href = "/static/themes/" + themeName + "/" + themeName + ".css";
     if (link.getAttribute("href") !== href) link.setAttribute("href", href);
   }
+  // Графики (PluginCharts) и таблицы (PluginTables) перечитывают цвета темы вслед за приложением.
+  if (window.PluginCharts || window.PluginTables) {
+    // Дать <link> темы примениться, затем перекрасить живые виджеты.
+    setTimeout(() => {
+      try { if (window.PluginCharts) window.PluginCharts.applyTheme(); } catch (e) {}
+      try { if (window.PluginTables) window.PluginTables.applyTheme(); } catch (e) {}
+    }, 60);
+  }
 }
 
 window.addEventListener("message", async event => {
@@ -133,6 +141,12 @@ pub(super) fn build_srcdoc(instance_id: &str, bridge_secret: &str, theme_name: &
   <link rel="stylesheet" href="/static/themes/core/variables.css">
   <link id="plugin-theme" rel="stylesheet" href="/static/themes/{theme_attr}/{theme_attr}.css">
   <link rel="stylesheet" href="/static/plugin-sdk.css">
+  <!-- Charting-рантайм: Chart.js (UMD ставит window.Chart) + тема-aware обёртка PluginCharts.
+       Классические <script> исполняются до module-bootstrap ниже → доступны внутри mount(). -->
+  <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+  <script src="/static/plugin-charts.js"></script>
+  <!-- Табличный рантайм: тема-aware HTML-таблица без зависимостей (window.PluginTables). -->
+  <script src="/static/plugin-tables.js"></script>
   <style id="plugin-styles"></style>
 </head>
 <body data-theme="{theme_attr}">

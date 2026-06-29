@@ -90,7 +90,7 @@ pub fn SchemaBrowser() -> impl IntoView {
 
     view! {
         <PageFrame page_id="schema_browser--system" category="system">
-            <PageHeader title="Схемы данных" subtitle="Просмотр и тестирование схем для сводных таблиц">
+            <PageHeader title="Схемы таблиц" subtitle="Описания таблиц БД: поля, типы, связи — для ad-hoc срезов">
                 <Button
                     appearance=ButtonAppearance::Primary
                     on_click=move |_| on_validate_all.run(())

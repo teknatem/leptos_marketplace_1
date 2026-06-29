@@ -1,4 +1,4 @@
-//! DataView — Семантический слой
+//! DataView — Источники данных
 //!
 //! Реестр именованных DataView: каждый view в своём подкаталоге dvNNN/.
 //! На входе — ViewContext, на выходе — IndicatorValue (scalar) или DrilldownResponse.

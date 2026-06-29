@@ -1,14 +1,17 @@
 //! Исполнитель инструментов (tool calls) для LLM.
 //!
 //! Содержит:
-//! - определения инструментов для передачи LLM (`metadata_tool_definitions`, `tool_definitions_for`)
+//! - определения общих metadata-инструментов для передачи LLM
 //! - диспетчер выполнения (`execute_tool_call`)
 
-use super::admin_tools::{admin_tool_definitions, execute_admin_tool};
-use super::kb_admin_tools::{execute_kb_admin_tool, kb_admin_tool_definitions};
+use super::admin_tools::execute_admin_tool;
+use super::chart_tools::{execute_chart_tool, CHART_TOOL_NAMES};
+use super::data_tools::{execute_data_tool, DATA_TOOL_NAMES};
+use super::kb_admin_tools::execute_kb_admin_tool;
 use super::knowledge_base::KNOWLEDGE_BASE;
 use super::metadata_registry::METADATA_REGISTRY;
-use super::plugin_tools::{execute_plugin_tool, plugin_tool_definitions, PLUGIN_TOOL_NAMES};
+use super::plugin_tools::{execute_plugin_tool, PLUGIN_TOOL_NAMES};
+use super::table_tools::{execute_table_tool, TABLE_TOOL_NAMES};
 use super::types::{ToolCall, ToolDefinition};
 use contracts::domain::a017_llm_agent::aggregate::AgentType;
 use once_cell::sync::Lazy;
@@ -24,7 +27,7 @@ const CACHEABLE_TOOLS: &[&str] = &[
     "get_entity_schema",
     "list_entities",
     "get_join_hint",
-    "list_data_views",
+    "list_data_sources",
 ];
 
 /// Процесс-кэш результатов идемпотентных инструментов. Инвалидация — рестартом
@@ -39,58 +42,6 @@ fn cache_key(agent_type: &AgentType, name: &str, arguments: &str) -> String {
 }
 
 // ─── Определения инструментов ────────────────────────────────────────────────
-
-/// Вернуть определения инструментов для BusinessAnalyst агента.
-/// Используется для обратной совместимости; предпочитай `tool_definitions_for`.
-pub fn metadata_tool_definitions() -> Vec<ToolDefinition> {
-    tool_definitions_for(&AgentType::BusinessAnalyst)
-}
-
-/// Вернуть набор инструментов для конкретного типа агента.
-///
-/// - `BusinessAnalyst` — инструменты работы с данными маркетплейсов и BI
-/// - `SystemAdmin`     — инструменты мониторинга и диагностики системы
-/// - `General`         — все инструменты
-pub fn tool_definitions_for(agent_type: &AgentType) -> Vec<ToolDefinition> {
-    let shared = shared_tool_definitions();
-    match agent_type {
-        AgentType::BusinessAnalyst => {
-            let mut tools = shared;
-            tools.extend(analyst_tool_definitions());
-            tools
-        }
-        AgentType::SystemAdmin => {
-            let mut tools = shared;
-            tools.extend(admin_tool_definitions());
-            tools
-        }
-        AgentType::General => {
-            let mut tools = shared;
-            tools.extend(analyst_tool_definitions());
-            tools.extend(admin_tool_definitions());
-            tools.extend(kb_admin_tool_definitions());
-            // General = все инструменты, включая разработку плагинов
-            // (execute_tool_call уже допускает General к plugin-инструментам).
-            tools.extend(plugin_tool_definitions());
-            tools
-        }
-        AgentType::KbAdmin => {
-            let mut tools = shared;
-            tools.extend(kb_admin_tool_definitions());
-            tools.push(execute_query_tool_definition());
-            tools
-        }
-        AgentType::PluginAdmin => {
-            // Интроспекция БД (list_entities/get_entity_schema/get_join_hint/execute_query)
-            // переиспользуется из analyst-набора — агент изучает схему и тестирует SELECT
-            // до вставки в sql_resources.
-            let mut tools = shared;
-            tools.extend(analyst_tool_definitions());
-            tools.extend(plugin_tool_definitions());
-            tools
-        }
-    }
-}
 
 /// Общие инструменты для всех агентов (схемы, KB, DataView).
 pub(crate) fn shared_tool_definitions() -> Vec<ToolDefinition> {
@@ -160,20 +111,6 @@ pub(crate) fn shared_tool_definitions() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["id"]
-            }),
-        },
-        ToolDefinition {
-            name: "list_data_views".into(),
-            description: "Получить список доступных DataView — именованных бизнес-вычислений \
-                          (семантический слой над таблицами БД). \
-                          Каждый DataView описывает: метрики (metric_id) и измерения (group_by) \
-                          для drill-down детализации. \
-                          Используй для выбора view_id и metric_id при создании BI-индикаторов \
-                          или при вопросах о доступных аналитических срезах."
-                .into(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {}
             }),
         },
     ]
@@ -247,40 +184,11 @@ pub(crate) fn analyst_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "execute_query".into(),
-            description: "Выполнить SQL SELECT-запрос к базе данных и получить результат. \
-                          ТОЛЬКО SELECT (WITH ... SELECT тоже разрешён). INSERT/UPDATE/DELETE — запрещены. \
-                          Результат возвращается как массив rows + сохраняется как артефакт в чате. \
-                          Используй для поиска UUID в справочниках перед созданием drilldown-отчёта. \
-                          Обязательно вызывай get_entity_schema перед написанием SQL — \
-                          имена таблиц и колонок должны точно совпадать со схемой. \
-                          Примеры таблиц справочников: a006_connection_mp (кабинеты МП), \
-                          a002_organization (организации), a004_nomenclature (номенклатура), \
-                          a005_marketplace (маркетплейсы)."
-                .into(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "sql": {
-                        "type": "string",
-                        "description": "SQL SELECT-запрос. Автоматически добавляется LIMIT 50 если не указан. \
-                                        Максимум 200 строк. Используй конкретные WHERE-условия для фильтрации."
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Описание что ищем — сохраняется как название артефакта, например \
-                                        'Кабинеты Wildberries' или 'Проверка наличия артикула ABC-123'."
-                    }
-                },
-                "required": ["sql", "description"]
-            }),
-        },
-        ToolDefinition {
             name: "create_drilldown_report".into(),
             description: "Создать drilldown-отчёт и сохранить его в системе. \
                           Инструмент записывает сессию в базу и возвращает artifact_id — \
                           пользователь увидит карточку с кнопкой открытия отчёта прямо в чате. \
-                          Используй list_data_views чтобы узнать доступные view_id, metric_id и group_by. \
+                          Используй list_data_sources(kind=\"dataview\") чтобы узнать доступные view_id, metric_id и group_by. \
                           Обязательно уточни у пользователя период (date_from, date_to) если он не указан."
                 .into(),
             parameters: serde_json::json!({
@@ -335,35 +243,6 @@ pub(crate) fn analyst_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-pub(crate) fn execute_query_tool_definition() -> ToolDefinition {
-    ToolDefinition {
-        name: "execute_query".into(),
-        description: "Выполнить SQL SELECT-запрос к базе данных и получить результат. \
-                      ТОЛЬКО SELECT (WITH ... SELECT тоже разрешён). \
-                      Используй для анализа чатов, tool_trace и структуры данных перед созданием тикетов KB. \
-                      База данных — SQLite: используй datetime('now', '-7 days'), а не NOW()/INTERVAL. \
-                      LLM-история: a018_llm_chat и a018_llm_chat_message \
-                      (created_at, role, content, tool_trace_json)."
-            .into(),
-        parameters: serde_json::json!({
-            "type": "object",
-            "properties": {
-                "sql": {
-                    "type": "string",
-                    "description": "SQL SELECT-запрос SQLite. Автоматически добавляется LIMIT 50 если не указан. \
-                                    Пример: SELECT role, content, tool_trace_json FROM a018_llm_chat_message \
-                                    WHERE created_at >= datetime('now', '-7 days') ORDER BY created_at DESC"
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Описание запроса."
-                }
-            },
-            "required": ["sql", "description"]
-        }),
-    }
-}
-
 // ─── Диспетчер ───────────────────────────────────────────────────────────────
 
 /// Выполнить tool call и вернуть результат в виде JSON-строки.
@@ -415,6 +294,63 @@ pub async fn execute_tool_call(
             | "write_kb_document"
     ) {
         let result = execute_kb_admin_tool(&call.name, &call.arguments, agent_id).await;
+        let is_ok = result.get("error").is_none();
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    if DATA_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result =
+            execute_data_tool(&call.name, &call.arguments, agent_type, chat_id, agent_id).await;
+        let is_ok = result.get("error").is_none();
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        let output = serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+        if cacheable {
+            if let Ok(mut cache) = METADATA_TOOL_CACHE.lock() {
+                cache.insert(
+                    cache_key(agent_type, &call.name, &call.arguments),
+                    output.clone(),
+                );
+            }
+        }
+        return output;
+    }
+
+    // Chart builder tools — dispatch to chart_tools module (заготовки, без БД)
+    if CHART_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result = execute_chart_tool(&call.name, &call.arguments);
+        let is_ok = result.get("error").is_none();
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    // Table builder tools — dispatch to table_tools module (заготовки, без БД)
+    if TABLE_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result = execute_table_tool(&call.name, &call.arguments);
         let is_ok = result.get("error").is_none();
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
@@ -580,42 +516,6 @@ pub async fn execute_tool_call(
             }
         }
 
-        "list_data_views" => {
-            let registry = crate::data_view::DataViewRegistry::new();
-            let views: Vec<serde_json::Value> = registry
-                .list_meta()
-                .iter()
-                .map(|m| {
-                    serde_json::json!({
-                        "id":          m.id,
-                        "name":        m.name,
-                        "category":    m.category,
-                        "description": m.ai_description,
-                        "data_sources": m.data_sources,
-                        "metrics":     m.available_resources.iter().map(|r| serde_json::json!({
-                            "id":          r.id,
-                            "label":       r.label,
-                            "description": r.description,
-                            "unit":        r.unit,
-                        })).collect::<Vec<_>>(),
-                        "dimensions":  m.available_dimensions.iter().map(|d| serde_json::json!({
-                            "id":    d.id,
-                            "label": d.label,
-                        })).collect::<Vec<_>>(),
-                    })
-                })
-                .collect();
-            let total = views.len();
-            serde_json::json!({
-                "data_views": views,
-                "total": total,
-                "hint": "Используй view_id и metric_id при создании BI-индикатора (a024). \
-                         Для drill-down детализации используй id из dimensions в качестве group_by."
-            })
-        }
-
-        "execute_query" => execute_query_tool(&call.arguments, chat_id, agent_id).await,
-
         "create_drilldown_report" => {
             create_drilldown_report_tool(&call.arguments, chat_id, agent_id).await
         }
@@ -654,9 +554,9 @@ pub async fn execute_tool_call(
             "error": format!(
                 "Unknown tool: '{}'. Available tools depend on agent type. \
                  BusinessAnalyst: list_entities, get_entity_schema, get_join_hint, \
-                 search_knowledge, get_knowledge, list_data_views, execute_query, \
+                 search_knowledge, get_knowledge, list_data_sources, execute_query, \
                  create_drilldown_report, list_gl_turnovers. \
-                 SystemAdmin: get_entity_schema, get_knowledge, list_data_views, \
+                 SystemAdmin: get_entity_schema, get_knowledge, \
                  check_system_health, get_performance_stats, list_background_jobs, \
                  get_data_integrity_report.",
                 unknown
@@ -767,7 +667,7 @@ async fn create_drilldown_report_tool(
     let registry = crate::data_view::DataViewRegistry::new();
     if !registry.has_view(&view_id) {
         return serde_json::json!({
-            "error": format!("DataView '{}' not found. Use list_data_views to see available views.", view_id)
+            "error": format!("DataView '{}' not found. Use list_data_sources(kind=\"dataview\") to see available views.", view_id)
         });
     }
 
@@ -863,168 +763,6 @@ async fn create_drilldown_report_tool(
                 "session_id": session_id,
                 "error": format!("Session created but artifact save failed: {}", e)
             })
-        }
-    }
-}
-
-// ─── execute_query implementation ────────────────────────────────────────────
-
-/// Максимальное число строк в результате execute_query.
-const QUERY_MAX_ROWS: usize = 200;
-/// Лимит по умолчанию если LLM не указал LIMIT.
-const QUERY_DEFAULT_LIMIT: usize = 50;
-
-async fn execute_query_tool(
-    arguments_json: &str,
-    chat_id: &str,
-    agent_id: &str,
-) -> serde_json::Value {
-    use sea_orm::{DatabaseBackend, FromQueryResult, Statement};
-
-    // 1. Парсим аргументы
-    let args: serde_json::Value = match serde_json::from_str(arguments_json) {
-        Ok(v) => v,
-        Err(e) => {
-            return serde_json::json!({
-                "error": format!("Failed to parse tool arguments: {}", e)
-            })
-        }
-    };
-
-    let raw_sql = match args.get("sql").and_then(|v| v.as_str()) {
-        Some(s) => s.trim().to_string(),
-        None => return serde_json::json!({ "error": "Missing required parameter: sql" }),
-    };
-    let description = args
-        .get("description")
-        .and_then(|v| v.as_str())
-        .unwrap_or("SQL-запрос")
-        .to_string();
-
-    // 2. Валидация: только SELECT
-    let upper = raw_sql.to_uppercase();
-    let trimmed_upper = upper.trim_start();
-    let is_select = trimmed_upper.starts_with("SELECT") || trimmed_upper.starts_with("WITH");
-    if !is_select {
-        return serde_json::json!({
-            "error": "Only SELECT queries are allowed. INSERT/UPDATE/DELETE/DROP are forbidden."
-        });
-    }
-    // Запрет модифицирующих операций даже внутри CTE
-    for forbidden in &[
-        "INSERT ", "UPDATE ", "DELETE ", "DROP ", "ATTACH ", "PRAGMA ",
-    ] {
-        if upper.contains(forbidden) {
-            return serde_json::json!({
-                "error": format!("Forbidden keyword '{}' found in query.", forbidden.trim())
-            });
-        }
-    }
-
-    // 3. Принудительный LIMIT
-    let sql = enforce_limit(&raw_sql, QUERY_DEFAULT_LIMIT, QUERY_MAX_ROWS);
-
-    // 4. Выполняем запрос — через FromQueryResult для serde_json::Value
-    // (sea-orm with-json feature даёт Vec<JsonValue> с именами колонок)
-    let db = crate::shared::data::db::get_connection();
-    let stmt = Statement::from_string(DatabaseBackend::Sqlite, sql.clone());
-    let json_rows_result = serde_json::Value::find_by_statement(stmt).all(db).await;
-
-    let json_rows: Vec<serde_json::Value> = match json_rows_result {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::warn!("execute_query SQL error: {}", e);
-            return serde_json::json!({
-                "error": format!("SQL execution error: {}", e),
-                "sql": sql,
-            });
-        }
-    };
-
-    let actual_count = json_rows.len();
-    let truncated = actual_count >= QUERY_MAX_ROWS;
-
-    // 6. Сохраняем как a019_llm_artifact (SqlQuery)
-    let artifact_id_opt =
-        save_query_artifact(&sql, &description, chat_id, agent_id, actual_count).await;
-
-    let mut result = serde_json::json!({
-        "rows": json_rows,
-        "row_count": actual_count,
-        "truncated": truncated,
-        "sql": sql,
-    });
-
-    if let Some(ref id) = artifact_id_opt {
-        result["artifact_id"] = serde_json::Value::String(id.clone());
-        result["hint"] = serde_json::Value::String(
-            "Запрос сохранён как артефакт. Если нашёл нужные UUID — \
-             используй их в create_drilldown_report.connection_mp_refs."
-                .to_string(),
-        );
-    }
-
-    result
-}
-
-/// Добавить/скорректировать LIMIT в SQL-запросе.
-fn enforce_limit(sql: &str, default_limit: usize, max_limit: usize) -> String {
-    let upper = sql.to_uppercase();
-    // Ищем LIMIT N (последнее вхождение)
-    if let Some(pos) = upper.rfind("LIMIT") {
-        // Парсим число после LIMIT
-        let after = sql[pos + 5..].trim_start();
-        let num_end = after
-            .find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(after.len());
-        if let Ok(n) = after[..num_end].parse::<usize>() {
-            if n > max_limit {
-                // Заменяем превышающий лимит
-                let limit_start = pos;
-                let limit_full_end = pos + 5 + (after.len() - after.trim_start().len()) + num_end;
-                return format!("{} LIMIT {}", sql[..limit_start].trim_end(), max_limit)
-                    + &sql[limit_full_end..];
-            }
-            // Лимит в пределах нормы — не меняем
-            return sql.to_string();
-        }
-    }
-    // LIMIT не найден — добавляем
-    format!(
-        "{} LIMIT {}",
-        sql.trim_end().trim_end_matches(';'),
-        default_limit
-    )
-}
-
-/// Сохранить SQL-запрос как a019_llm_artifact.
-async fn save_query_artifact(
-    sql: &str,
-    description: &str,
-    chat_id: &str,
-    agent_id: &str,
-    row_count: usize,
-) -> Option<String> {
-    let dto = crate::domain::a019_llm_artifact::service::LlmArtifactDto {
-        id: None,
-        code: None,
-        description: description.to_string(),
-        comment: Some(format!("Возвращено строк: {}", row_count)),
-        chat_id: chat_id.to_string(),
-        agent_id: agent_id.to_string(),
-        artifact_type: Some("sql_query".to_string()),
-        sql_query: sql.to_string(),
-        query_params: None,
-        visualization_config: None,
-    };
-    match crate::domain::a019_llm_artifact::service::create(dto).await {
-        Ok(uuid) => {
-            tracing::info!("execute_query: saved artifact {}", uuid);
-            Some(uuid.to_string())
-        }
-        Err(e) => {
-            tracing::warn!("execute_query: failed to save artifact: {}", e);
-            None
         }
     }
 }

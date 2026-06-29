@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::domain::a019_llm_artifact;
-use contracts::domain::a019_llm_artifact::aggregate::LlmArtifact;
+use contracts::domain::a019_llm_artifact::aggregate::{LlmArtifact, LlmArtifactListItem};
 
 #[derive(Deserialize)]
 pub struct LlmArtifactListParams {
@@ -24,9 +24,9 @@ pub struct LlmArtifactPaginatedResponse {
 }
 
 /// GET /api/a019-llm-artifact
-pub async fn list_all() -> Result<Json<Vec<LlmArtifact>>, axum::http::StatusCode> {
+pub async fn list_all() -> Result<Json<Vec<LlmArtifactListItem>>, axum::http::StatusCode> {
     match a019_llm_artifact::service::list_all().await {
-        Ok(v) => Ok(Json(v)),
+        Ok(v) => Ok(Json(v.into_iter().map(LlmArtifactListItem::from).collect())),
         Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
