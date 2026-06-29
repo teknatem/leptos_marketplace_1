@@ -30,7 +30,7 @@ ORDER BY description
 }
 ```
 
-Доступные `view_id` и `metric_id` — получай через инструмент `list_data_views()`.
+Доступные `view_id` и `metric_id` — получай через инструмент `list_data_sources(kind="dataview")`.
 
 ## Создание индикатора через API
 

@@ -14,7 +14,7 @@ related: [data-view, bi-indicators]
 ### Доступные инструменты (актуально)
 - `list_entities`, `get_entity_schema`, `get_join_hint` — работают
 - `search_knowledge`, `get_knowledge` — работают
-- `list_data_views` — работает, DataView: `dv001_revenue`
+- `list_data_sources` — единый каталог источников (base-схемы, DataView, raw); DataView, напр.: `dv001_revenue`
 - `execute_query` — работает, только SELECT, автолимит 50 строк
 - `create_drilldown_report` — работает, создаёт артефакт с кнопкой отчёта
 

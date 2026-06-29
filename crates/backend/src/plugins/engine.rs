@@ -5,8 +5,7 @@
 //! to the application database and `host.log.*` writes to the invocation log.
 
 use contracts::plugins::{
-    is_read_only_sql, PluginCapability, PluginDefinition, PluginError, PluginInvokeRequest,
-    PluginValidateReport,
+    PluginCapability, PluginDefinition, PluginError, PluginInvokeRequest, PluginValidateReport,
 };
 use rquickjs::{
     prelude::{Async, Func},
@@ -16,6 +15,8 @@ use rquickjs::{
 use sea_orm::{DatabaseBackend, FromQueryResult, Statement, Value as DbValue};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+use crate::shared::data_access::sql_guard::{inspect_read_query, wrap_limited_sql};
 
 const READ_ROW_LIMIT: usize = 5_000;
 
@@ -92,51 +93,6 @@ fn json_param_to_db(value: serde_json::Value) -> Result<DbValue, String> {
     }
 }
 
-fn normalize_ident(raw: &str) -> Option<String> {
-    let ident = raw
-        .trim_matches(|c: char| {
-            matches!(
-                c,
-                '"' | '\'' | '`' | '[' | ']' | '(' | ')' | ',' | ';' | '\n' | '\r' | '\t'
-            )
-        })
-        .split('.')
-        .last()
-        .unwrap_or(raw)
-        .trim()
-        .to_ascii_lowercase();
-    if ident.is_empty()
-        || ident.starts_with("select")
-        || ident.starts_with('$')
-        || ident
-            .chars()
-            .any(|c| !(c.is_ascii_alphanumeric() || c == '_'))
-    {
-        None
-    } else {
-        Some(ident)
-    }
-}
-
-fn sql_table_refs(sql: &str) -> Vec<String> {
-    let mut refs = Vec::new();
-    let tokens: Vec<&str> = sql
-        .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';'))
-        .filter(|token| !token.trim().is_empty())
-        .collect();
-    for pair in tokens.windows(2) {
-        let head = pair[0].trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_');
-        if matches!(head.to_ascii_uppercase().as_str(), "FROM" | "JOIN") {
-            if let Some(table) = normalize_ident(pair[1]) {
-                if !refs.contains(&table) {
-                    refs.push(table);
-                }
-            }
-        }
-    }
-    refs
-}
-
 fn table_scopes(table: &str) -> Vec<String> {
     let table = table.to_ascii_lowercase();
     let mut scopes = vec![table.clone()];
@@ -179,7 +135,7 @@ fn capability_allows_table(capabilities: &[PluginCapability], table: &str) -> bo
 }
 
 fn enforce_sql_capabilities(sql: &str, capabilities: &[PluginCapability]) -> Result<(), String> {
-    let tables = sql_table_refs(sql);
+    let tables = inspect_read_query(sql)?.tables;
     if tables.is_empty() {
         return Ok(());
     }
@@ -198,8 +154,7 @@ fn enforce_sql_capabilities(sql: &str, capabilities: &[PluginCapability]) -> Res
 }
 
 fn limit_read_sql(sql: &str) -> String {
-    let statement = sql.trim().trim_end_matches(';').trim();
-    format!("SELECT * FROM ({statement}) AS plugin_limited_result LIMIT {READ_ROW_LIMIT}")
+    wrap_limited_sql(sql, READ_ROW_LIMIT, "plugin_limited_result")
 }
 
 async fn read_sql(
@@ -208,9 +163,6 @@ async fn read_sql(
     capabilities: &[PluginCapability],
 ) -> Result<Vec<serde_json::Value>, String> {
     let trimmed = sql.trim();
-    if !is_read_only_sql(trimmed) {
-        return Err("host.db.query allows only SELECT/WITH statements".to_string());
-    }
     enforce_sql_capabilities(trimmed, capabilities)?;
 
     let values = params
@@ -699,7 +651,9 @@ export function unmount() {}
     #[test]
     fn extracts_table_refs_for_capability_checks() {
         assert_eq!(
-            sql_table_refs("SELECT * FROM a004_nomenclature n JOIN p900_x x ON 1=1"),
+            inspect_read_query("SELECT * FROM a004_nomenclature n JOIN p900_x x ON 1=1")
+                .unwrap()
+                .tables,
             vec!["a004_nomenclature".to_string(), "p900_x".to_string()]
         );
     }

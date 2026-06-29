@@ -72,6 +72,7 @@ fn field_to_pivot_def(field: &FieldMetadata, resolver: &impl RefResolver) -> Fie
 fn map_field_type(field: &FieldMetadata) -> (PivotFieldType, bool, bool) {
     // Check rust_type for numeric types
     match field.rust_type {
+        "bool" => (PivotFieldType::Integer, true, false),
         // Numeric types - can aggregate, cannot group
         "f64" | "f32" | "Decimal" => (PivotFieldType::Numeric, false, true),
         "i64" | "i32" | "u64" | "u32" | "usize" | "isize" => (PivotFieldType::Integer, false, true),
@@ -99,14 +100,28 @@ fn map_field_type(field: &FieldMetadata) -> (PivotFieldType, bool, bool) {
 
 /// Determine if a field should be included in pivot schema
 fn should_include_field(field: &FieldMetadata) -> bool {
-    // Exclude fields not visible in list
-    if !field.ui.visible_in_list {
+    // IDs are intentionally available for safe reference lookup even though they
+    // are normally hidden in list UIs.
+    if field.name != "id" && !field.ui.visible_in_list {
         return false;
     }
 
     // Exclude system/sensitive fields
-    let excluded_names = ["id", "created_at", "updated_at", "is_deleted", "password"];
+    let excluded_names = [
+        "created_at",
+        "updated_at",
+        "is_deleted",
+        "password",
+        "api_key",
+        "api_key_stats",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+    ];
     if excluded_names.contains(&field.name) {
+        return false;
+    }
+    if matches!(field.ui.widget, Some("password")) {
         return false;
     }
 

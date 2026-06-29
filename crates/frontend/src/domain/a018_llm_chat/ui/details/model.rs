@@ -24,33 +24,47 @@ async fn sleep_ms(ms: i32) {
     wasm_bindgen_futures::JsFuture::from(promise).await.ok();
 }
 
-/// Poll job until done/error or max_attempts reached (each attempt waits interval_ms).
+/// Чем закончился опрос задачи.
+pub enum PollOutcome {
+    /// Ассистент ответил — сообщение уже в БД (вызывающий перезагружает ленту сам).
+    Done,
+    /// Бэкенд сообщил об ошибке выполнения задачи.
+    Error(String),
+    /// Истёк бюджет ожидания на клиенте. Задача на сервере, скорее всего, ещё
+    /// выполняется и допишет ответ в чат — это НЕ ошибка, а «ещё не готово».
+    /// `waited_secs` — сколько ждали (для понятного сообщения пользователю).
+    StillRunning { waited_secs: u32 },
+}
+
+/// Опрашивать задачу, пока она не завершится (done/error) или не выйдет бюджет ожидания.
+/// `Err` — только инфраструктурный сбой самого опроса (сеть/HTTP), не статус задачи.
 pub async fn poll_until_done(
     job_id: &str,
     max_attempts: u32,
     interval_ms: i32,
-) -> Result<LlmChatMessage, String> {
+) -> Result<PollOutcome, String> {
     for _ in 0..max_attempts {
         sleep_ms(interval_ms).await;
         let resp = poll_job(job_id).await?;
         match resp.status.as_str() {
             "done" => {
-                return resp
-                    .message
-                    .ok_or_else(|| "done status but no message".to_string())
+                return if resp.message.is_some() {
+                    Ok(PollOutcome::Done)
+                } else {
+                    Err("done status but no message".to_string())
+                }
             }
             "error" => {
-                return Err(resp
-                    .error
-                    .unwrap_or_else(|| "Unknown LLM error".to_string()))
+                return Ok(PollOutcome::Error(
+                    resp.error
+                        .unwrap_or_else(|| "Unknown LLM error".to_string()),
+                ))
             }
             _ => {} // "pending" — continue polling
         }
     }
-    Err(format!(
-        "Timeout: LLM did not respond after {} attempts",
-        max_attempts
-    ))
+    let waited_secs = (max_attempts.saturating_mul(interval_ms.max(0) as u32)) / 1000;
+    Ok(PollOutcome::StillRunning { waited_secs })
 }
 
 /// Get current job status from backend.

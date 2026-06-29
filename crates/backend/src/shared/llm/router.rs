@@ -16,6 +16,8 @@ pub const KNOWN_INTENTS: &[&str] = &[
     "func_help",      // вопрос по функционалу приложения
     "data_query",     // аналитика по данным (SQL/drilldown/индикаторы)
     "bi_authoring",   // создание индикатора/дашборда
+    "chart_build",    // построить график/диаграмму по данным
+    "table_build",    // построить таблицу данных (плагин-таблица)
     "plugin_dev",     // создание/доработка плагина
     "sys_admin",      // системная диагностика
     "kb_curation",    // работа с базой знаний
@@ -50,6 +52,8 @@ fn classifier_system_prompt() -> String {
          - func_help: как пользоваться приложением, где найти функцию, что делает фича.\n\
          - data_query: аналитика по данным — продажи, выручка, остатки, отчёты, SQL, drilldown, индикаторы.\n\
          - bi_authoring: просьба СОЗДАТЬ индикатор/дашборд/KPI.\n\
+         - chart_build: построить ГРАФИК/диаграмму/визуализацию по данным (линия, столбцы, доли).\n\
+         - table_build: построить ТАБЛИЦУ данных по данным (колонки/строки, фильтры, сортировка, итоги).\n\
          - plugin_dev: создать/доработать/протестировать плагин (JS).\n\
          - sys_admin: состояние системы, производительность, фоновые задачи, целостность данных.\n\
          - kb_curation: работа с базой знаний — прочитать/исправить статью, тикет правки.\n\
@@ -155,6 +159,13 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
 
     let any = |needles: &[&str]| needles.iter().any(|n| m.contains(n));
 
+    if any(&["график", "графік", "диаграмм", "chart", "чарт", "визуализ"])
+    {
+        return IntentResult::new("chart_build", 0.5, "rules");
+    }
+    if any(&["таблиц", "table", "грид", "grid", "data-grid"]) {
+        return IntentResult::new("table_build", 0.5, "rules");
+    }
     if any(&["плагин", "plugin", "виджет"]) {
         return IntentResult::new("plugin_dev", 0.45, "rules");
     }

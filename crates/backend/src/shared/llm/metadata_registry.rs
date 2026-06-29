@@ -27,6 +27,14 @@ use contracts::domain::a025_bi_dashboard::{ENTITY_METADATA as A025_META, FIELDS 
 use contracts::domain::a026_wb_advert_daily::{
     ENTITY_METADATA as A026_META, FIELDS as A026_FIELDS,
 };
+use contracts::domain::a027_wb_documents::{ENTITY_METADATA as A027_META, FIELDS as A027_FIELDS};
+use contracts::domain::a032_wb_returns_claims::{
+    ENTITY_METADATA as A032_META, FIELDS as A032_FIELDS,
+};
+use contracts::domain::a034_ym_realization::{ENTITY_METADATA as A034_META, FIELDS as A034_FIELDS};
+use contracts::domain::a035_ym_settlement_recon::{
+    ENTITY_METADATA as A035_META, FIELDS as A035_FIELDS,
+};
 use contracts::general_ledger::{ENTITY_METADATA as GL_META, FIELDS as GL_FIELDS};
 use contracts::projections::p909_mp_order_line_turnovers::{
     ENTITY_METADATA as P909_META, FIELDS as P909_FIELDS,
@@ -58,6 +66,10 @@ pub static METADATA_REGISTRY: Lazy<MetadataRegistry> = Lazy::new(MetadataRegistr
 // ─── Реализация ─────────────────────────────────────────────────────────────
 
 impl MetadataRegistry {
+    /// Реестр сущностей, видимых LLM (`list_entities` / `get_entity_schema` / `get_join_hint`).
+    /// Источник полей — сгенерированные `metadata_gen` контрактов. При добавлении metadata
+    /// в новый домен впиши его сюда И в `tests::EXPECTED_INDICES` — тест ловит «тихий»
+    /// дрейф покрытия (иначе для raw SQL LLM «слепа» к колонкам новой таблицы).
     fn build() -> Self {
         Self {
             entries: vec![
@@ -107,9 +119,29 @@ impl MetadataRegistry {
                     tags: &["wb", "advertising"],
                 },
                 RegistryEntry {
+                    meta: &A027_META,
+                    fields: A027_FIELDS,
+                    tags: &["wb", "accounting"],
+                },
+                RegistryEntry {
+                    meta: &A032_META,
+                    fields: A032_FIELDS,
+                    tags: &["wb", "returns"],
+                },
+                RegistryEntry {
                     meta: &A013_META,
                     fields: A013_FIELDS,
                     tags: &["ym", "sales"],
+                },
+                RegistryEntry {
+                    meta: &A034_META,
+                    fields: A034_FIELDS,
+                    tags: &["ym", "accounting", "sales", "ybuh"],
+                },
+                RegistryEntry {
+                    meta: &A035_META,
+                    fields: A035_FIELDS,
+                    tags: &["ym", "accounting"],
                 },
                 RegistryEntry {
                     meta: &A017_META,
@@ -462,5 +494,59 @@ impl MetadataRegistry {
             t if t.ends_with("Id") || t.contains("Option<String>") => "TEXT (UUID or NULL)",
             _ => "TEXT",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Сущности/проекции, которые ДОЛЖНЫ быть видимы LLM через `get_entity_schema`.
+    /// Это явный «контракт покрытия»: если домен с `metadata_gen` забыли
+    /// зарегистрировать в `build()`, тест краснеет, а не молча оставляет LLM
+    /// слепой к колонкам таблицы при raw SQL.
+    const EXPECTED_INDICES: &[&str] = &[
+        "a001", "a002", "a004", "a005", "a006", "a012", "a013", "a015", "a017", "a018", "a019",
+        "a020", "a024", "a025", "a026", "a027", "a032", "a034", "a035", "p909", "p910", "p914",
+        "gl",
+    ];
+
+    #[test]
+    fn registry_exposes_every_expected_entity_with_fields() {
+        for index in EXPECTED_INDICES {
+            let schema = METADATA_REGISTRY.get_entity_schema(index);
+            assert!(
+                schema.get("error").is_none(),
+                "entity '{index}' must be reachable via get_entity_schema, got: {schema}"
+            );
+            let has_fields = schema
+                .get("fields")
+                .and_then(Value::as_array)
+                .is_some_and(|fields| !fields.is_empty());
+            assert!(has_fields, "entity '{index}' must expose non-empty fields");
+        }
+    }
+
+    #[test]
+    fn finance_tables_for_raw_sql_are_available() {
+        // Регрессия на главную дыру: официальный слой реализации YM (ybuh, a034),
+        // сверка расчётов (a035) и WB-возвраты (a032) должны быть видимы для raw SQL.
+        for index in ["a034", "a035", "a032", "a027"] {
+            let schema = METADATA_REGISTRY.get_entity_schema(index);
+            assert!(schema.get("error").is_none(), "{index} missing: {schema}");
+        }
+    }
+
+    #[test]
+    fn ym_realization_links_to_payment_report() {
+        // a034 объявляет related → p907_ym_payment_report; карта связей не должна теряться.
+        let schema = METADATA_REGISTRY.get_entity_schema("a034");
+        let related = schema.get("related").and_then(Value::as_array);
+        assert!(
+            related.is_some_and(|items| items.iter().any(|item| item
+                .as_str()
+                .is_some_and(|name| name.contains("p907")))),
+            "a034 related must include p907_ym_payment_report, got: {schema}"
+        );
     }
 }

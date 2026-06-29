@@ -57,5 +57,6 @@ pub fn is_supported_favorite_target_kind(value: &str) -> bool {
             | "a027_wb_documents_details"
             | "a026_wb_advert_daily_details"
             | "a007_marketplace_product_details"
+            | "plugin"
     )
 }

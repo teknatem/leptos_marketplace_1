@@ -7,12 +7,16 @@
 
 use crate::plugins::api;
 use crate::plugins::frame::PluginFrame;
+use crate::system::favorites::ui::FavoriteButton;
 use contracts::plugins::{PluginDefinition, PluginRunContext};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 #[component]
 pub fn PluginView(plugin_id: String) -> impl IntoView {
+    // Идентификатор/ключ вкладки для «Избранного» (target_id и tab_key plugin__<id>).
+    let fav_target_id = plugin_id.clone();
+    let fav_tab_key = format!("plugin__{}", plugin_id);
     let (def, set_def) = signal(None::<PluginDefinition>);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
@@ -52,14 +56,30 @@ pub fn PluginView(plugin_id: String) -> impl IntoView {
         restart.update(|value| *value += 1);
     };
 
+    // Заголовок для карточки «Избранного»: имя плагина (или код/«Плагин», пока грузится).
+    let fav_title = Signal::derive(move || {
+        def.get()
+            .map(|p| p.bundle.manifest.title)
+            .filter(|t| !t.is_empty())
+            .or_else(|| def.get().map(|p| p.bundle.manifest.code))
+            .filter(|t| !t.is_empty())
+            .unwrap_or_else(|| "Плагин".into())
+    });
+
     view! {
         <div class="plugin-host plugin-host--view">
             {move || error.get().map(|message| view! {
                 <div class="plugin-host__alert plugin-host__alert--error">{message}</div>
             })}
 
-            // Узкий заголовок: Наименование · код · Restart · Журнал.
+            // Узкий заголовок: ★ · Наименование · код · Restart · Журнал.
             <div class="plugin-host__bar">
+                <FavoriteButton
+                    target_kind="plugin".to_string()
+                    target_id=fav_target_id
+                    target_title=fav_title
+                    tab_key=fav_tab_key
+                />
                 <h2
                     class="plugin-host__title"
                     title=move || def.get().and_then(|p| p.bundle.manifest.description).unwrap_or_default()

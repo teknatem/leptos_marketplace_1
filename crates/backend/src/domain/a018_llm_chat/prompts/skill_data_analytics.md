@@ -2,13 +2,34 @@
 
 Работа с данными маркетплейсов через SQL и семантический слой.
 
-Инструменты: `list_entities([category])`, `get_join_hint(from, to)`, `execute_query(sql, description)`,
-`list_data_views()`, `get_chart_of_accounts()`, `list_gl_turnovers([report_group])` (+ базовые из core:
-`get_architecture_overview`, `get_entity_schema`, `search_knowledge`/`get_knowledge`).
+Инструменты: `list_data_sources([kind])`, `query_data_schema(...)`, `run_data_view_scalar(...)`,
+`run_data_view_drilldown(...)`, `execute_query(sql, params, description)`, `list_entities([category])`,
+`get_join_hint(from, to)`, `get_chart_of_accounts()`, `list_gl_turnovers([report_group])`
+(+ базовые из core: `get_architecture_overview`, `get_entity_schema`, `search_knowledge`/`get_knowledge`).
+
+### Источники данных: три роли (выбирай осознанно)
+
+Доступ к аналитике — три независимых движка (подробно: ADR-0010):
+- **DataView (`dvXX`)** — курируемые «виртуальные таблицы»: благословлённые метрики, сравнение
+  **2 периодов**, кэш. Обнаруживай через `list_data_sources("dataview")`, читай данные через
+  `run_data_view_scalar` или `run_data_view_drilldown`. Это **источник истины определений**
+  (выручка, себестоимость и т.п.) — НЕ переизобретай их в сыром SQL.
+- **Схемы таблиц (`dsXX`, kind=base)** — декларативное описание таблиц БД (поля/типы/связи) для
+  гибкого ad-hoc (группировки/фильтры/агрегаты по «сырым» полям). В UI: «Схемы таблиц» (каталог) и
+  «Конструктор запросов» (построитель). Обнаруживай через `list_data_sources("base")`, читай через
+  `query_data_schema`. Сюда входят безопасные metadata-проекции справочников, например `a006`
+  без API-ключей.
+- **Сырой SQL (`execute_query`)** — только fallback для нестандартного и разового; один SELECT/WITH,
+  bind-параметры через `params`. Таблицы подключений с credentials недоступны.
+
+Дерево выбора: нужен благословлённый показатель / 2 периода / составная метрика → DataView; нужен
+произвольный разрез одной таблицы → схема/SQL; остальное → сырой SQL. Если одна таблица доступна и как
+схема, и как DataView (напр. `p904`: ds03 гибкий, dv001 курируемый) — для официальных цифр бери DataView.
 
 ### Правила работы с SQL
 
-1. Если знаешь entity_index — сразу `get_entity_schema`, НЕ вызывай `list_entities`.
+1. Для получения аналитических строк сначала используй `list_data_sources`, DataView и base-схемы.
+   `get_entity_schema`/`list_entities` нужны для нестандартного Raw SQL.
    Если индекс неизвестен — `list_entities` с нужным category (wb/ozon/ym/ref/llm/bi), не без фильтра.
 2. Имена таблиц и колонок должны ТОЧНО совпадать со схемой. Только SELECT (INSERT/UPDATE/DELETE запрещены).
 3. Пиши SQL в блоках ```sql … ```. Давай краткое объяснение результата (2–3 предложения).
@@ -24,9 +45,9 @@
 
 ### Поиск UUID в справочниках
 
-а) `get_entity_schema("a006")` — точные имена колонок;
-б) `execute_query("SELECT id, code, description FROM a006_connection_mp WHERE …", "…")`;
-в) из rows берёшь нужные id (UUID).
+а) `list_data_sources("base")` — найди безопасную схему `a006`;
+б) `query_data_schema` с `fields=["id","code","description"]` и фильтром `is_used = 1`;
+в) из `rows` возьми нужные id (UUID). Raw SQL к `a006_connection_mp` запрещён.
 
 ### General Ledger
 

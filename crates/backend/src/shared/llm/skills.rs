@@ -22,6 +22,10 @@ const PROMPT_BI_AUTHORING: &str =
     include_str!("../../domain/a018_llm_chat/prompts/skill_bi_authoring.md");
 const PROMPT_PLUGIN: &str =
     include_str!("../../domain/a018_llm_chat/prompts/plugin_admin_agent.md");
+const PROMPT_CHART: &str =
+    include_str!("../../domain/a018_llm_chat/prompts/skill_chart_builder.md");
+const PROMPT_TABLE: &str =
+    include_str!("../../domain/a018_llm_chat/prompts/skill_table_builder.md");
 const PROMPT_SYS_ADMIN: &str =
     include_str!("../../domain/a018_llm_chat/prompts/system_admin_agent.md");
 const PROMPT_KB: &str = include_str!("../../domain/a018_llm_chat/prompts/kb_admin_analyze.md");
@@ -65,8 +69,11 @@ pub static SKILLS: &[Skill] = &[
         tool_names: &[
             "list_entities",
             "get_join_hint",
+            "list_data_sources",
+            "query_data_schema",
+            "run_data_view_scalar",
+            "run_data_view_drilldown",
             "execute_query",
-            "list_data_views",
             "get_chart_of_accounts",
             "list_gl_turnovers",
         ],
@@ -82,8 +89,10 @@ pub static SKILLS: &[Skill] = &[
         tool_names: &[
             "list_entities",
             "get_join_hint",
+            "list_data_sources",
+            "run_data_view_scalar",
+            "run_data_view_drilldown",
             "execute_query",
-            "list_data_views",
             "create_drilldown_report",
         ],
     },
@@ -98,6 +107,9 @@ pub static SKILLS: &[Skill] = &[
         tool_names: &[
             "list_entities",
             "get_join_hint",
+            "list_data_sources",
+            "query_data_schema",
+            "run_data_view_drilldown",
             "execute_query",
             "plugin_list",
             "plugin_get",
@@ -109,6 +121,57 @@ pub static SKILLS: &[Skill] = &[
             "plugin_examples",
             "get_plugin_ui_contract",
             "plugin_data_catalog",
+            "plugin_runs",
+        ],
+    },
+    Skill {
+        id: "chart-builder",
+        title: "Графики и диаграммы",
+        description:
+            "Построение графиков из данных: пользователь описывает, что показать — агент собирает \
+                      SELECT, выбирает тип (линия/столбцы/доли) и публикует график-плагин (Chart.js).",
+        intents: &["chart_build"],
+        prompt: PROMPT_CHART,
+        tool_names: &[
+            "list_entities",
+            "get_join_hint",
+            "list_data_sources",
+            "query_data_schema",
+            "run_data_view_drilldown",
+            "execute_query",
+            "chart_template",
+            "chart_examples",
+            "get_chart_ui_contract",
+            "plugin_validate",
+            "plugin_smoke_test",
+            "plugin_upsert",
+            "plugin_invoke",
+            "plugin_runs",
+        ],
+    },
+    Skill {
+        id: "table-builder",
+        title: "Таблицы данных",
+        description:
+            "Построение таблиц из данных: пользователь описывает, что показать — агент собирает \
+                      SELECT, задаёт колонки/форматы/условное форматирование и публикует таблицу-плагин \
+                      (фильтры, сортировка, итоги, экспорт).",
+        intents: &["table_build"],
+        prompt: PROMPT_TABLE,
+        tool_names: &[
+            "list_entities",
+            "get_join_hint",
+            "list_data_sources",
+            "query_data_schema",
+            "run_data_view_drilldown",
+            "execute_query",
+            "table_template",
+            "table_examples",
+            "get_table_ui_contract",
+            "plugin_validate",
+            "plugin_smoke_test",
+            "plugin_upsert",
+            "plugin_invoke",
             "plugin_runs",
         ],
     },
@@ -227,15 +290,30 @@ pub fn default_skills_for(agent_type: &AgentType) -> Vec<&'static str> {
         AgentType::PluginAdmin => vec!["plugin-authoring"],
         AgentType::General => vec!["data-analytics"],
     }
+    // chart-builder активируется по интенту chart_build (см. router), не как default-bias.
 }
 
 /// Allow-list навыков по роли — граница безопасности `use_skill`.
 pub fn allowed_skills_for(agent_type: &AgentType) -> Vec<&'static str> {
     match agent_type {
-        AgentType::BusinessAnalyst => vec!["data-analytics", "bi-authoring"],
+        AgentType::BusinessAnalyst => {
+            vec![
+                "data-analytics",
+                "bi-authoring",
+                "chart-builder",
+                "table-builder",
+            ]
+        }
         AgentType::SystemAdmin => vec!["system-admin"],
         AgentType::KbAdmin => vec!["kb-curation"],
-        AgentType::PluginAdmin => vec!["plugin-authoring", "data-analytics"],
+        AgentType::PluginAdmin => {
+            vec![
+                "plugin-authoring",
+                "data-analytics",
+                "chart-builder",
+                "table-builder",
+            ]
+        }
         AgentType::General => SKILLS.iter().map(|s| s.id).collect(),
     }
 }
@@ -245,12 +323,14 @@ pub fn allowed_skills_for(agent_type: &AgentType) -> Vec<&'static str> {
 /// «Вселенная» всех определений инструментов (core + все бандлы + мета).
 fn tool_universe() -> Vec<ToolDefinition> {
     let mut v = Vec::new();
+    v.extend(super::data_tools::tool_definitions());
     v.extend(super::tool_executor::shared_tool_definitions());
     v.extend(super::tool_executor::analyst_tool_definitions());
-    v.push(super::tool_executor::execute_query_tool_definition());
     v.extend(super::admin_tools::admin_tool_definitions());
     v.extend(super::kb_admin_tools::kb_admin_tool_definitions());
     v.extend(super::plugin_tools::plugin_tool_definitions());
+    v.extend(super::chart_tools::chart_tool_definitions());
+    v.extend(super::table_tools::table_tool_definitions());
     v.extend(meta_tool_definitions());
     v
 }
@@ -354,6 +434,19 @@ mod tests {
     }
 
     #[test]
+    fn data_skill_exposes_semantic_queries_and_raw_fallback() {
+        let names: HashSet<_> = assemble_tools(&["data-analytics"])
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect();
+        assert!(names.contains("list_data_sources"));
+        assert!(names.contains("query_data_schema"));
+        assert!(names.contains("run_data_view_scalar"));
+        assert!(names.contains("run_data_view_drilldown"));
+        assert!(names.contains("execute_query"));
+    }
+
+    #[test]
     fn allow_list_blocks_escalation() {
         let allowed = allowed_skills_for(&AgentType::BusinessAnalyst);
         assert!(!allowed.contains(&"system-admin"));
@@ -368,6 +461,8 @@ mod tests {
             "plugin-authoring"
         );
         assert_eq!(skill_for_intent("data_query").unwrap().id, "data-analytics");
+        assert_eq!(skill_for_intent("chart_build").unwrap().id, "chart-builder");
+        assert_eq!(skill_for_intent("table_build").unwrap().id, "table-builder");
         assert!(skill_for_intent("meta_smalltalk").is_none());
     }
 }

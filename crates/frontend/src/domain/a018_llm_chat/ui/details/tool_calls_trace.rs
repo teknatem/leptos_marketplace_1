@@ -1,6 +1,6 @@
 //! ToolCallsTrace — компактное отображение инструментов в ответе ассистента.
 //!
-//! Рендерит одну строку с иконками-пилюлями: [🔧 list_data_views 12ms] [✓ execute_query 340ms] ...
+//! Рендерит одну строку с иконками-пилюлями: [🔧 list_data_sources 12ms] [✓ execute_query 340ms] ...
 //! По клику раскрывается полный список с деталями.
 
 use crate::shared::icons::icon;
@@ -46,7 +46,10 @@ fn short_tool_name(name: &str) -> &str {
         "get_join_hint" => "join",
         "search_knowledge" => "search",
         "get_knowledge" => "knowledge",
-        "list_data_views" => "data_views",
+        "list_data_sources" => "sources",
+        "query_data_schema" => "data_schema",
+        "run_data_view_scalar" => "data_value",
+        "run_data_view_drilldown" => "data_rows",
         "execute_query" => "query",
         "create_drilldown_report" => "drilldown",
         other => other,

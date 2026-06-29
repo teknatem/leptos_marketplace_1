@@ -61,11 +61,23 @@ cargo build --release --bin backend        # → target/release/backend.exe
 | `a0XX` | **Агрегат** (домен-сущность/документ) | `domain/a0XX_*` | a001–a035 |
 | `p9XX` | **Проекция** (производная read-модель) | `projections/p9XX_*` | p900–p915 |
 | `u5XX` | **Use-case** (импорты, репост) | `usecases/u5XX_*` | u501–u508 |
-| `dsXX` | **Data scheme** (схемы universal dashboard) | `data_schemes/dsXX_*` | ds01–ds03 |
-| `d4XX` | **Dashboard** (готовый дашборд) | `dashboards/d4XX_*` | d400 |
+| `dsXX` | **Базовая схема данных** (роль *base schema*, движок universal_dashboard; UI: «Схемы таблиц») | `data_schemes/dsXX_*` | ds01–ds03 |
+| `dvXX` | **DataView** (роль *виртуальная таблица*: курируемые метрики, 2 периода, кэш; UI: «DataView») | `data_view/dvXXX_*` | dv001–dv007 |
+| `d4XX` | **Dashboard** (готовый дашборд — *потребитель* слоя) | `dashboards/d4XX_*` | d400–d405 |
 | `task0XX` | **Запланированная задача** (поллинг/импорт) | `system/tasks/managers/task0XX_*` | task001+ |
 
-Примеры: a013 = YM order, a015 = WB orders, a034 = YM realization; p904 = sales_data, p907 = YM payment report; u503 = import from Yandex; ds01/ds02 = схемы дашбордов (в API доступны и как d401/d402).
+Примеры: a013 = YM order, a015 = WB orders, a034 = YM realization; p904 = sales_data, p907 = YM payment report; u503 = import from Yandex; ds01–ds03 = базовые схемы для «Конструктора запросов» (ds01→p903, ds02→p900, ds03→p904). d400–d405 = готовые дашборды (d400 сводка за месяц, d401 WB Finance, d402/d403 история заказов WB/YM, d404 отчёт по рекламе WB, d405 метаданные) — это **потребители** слоя, НЕ схемы (прежняя пометка «ds01/ds02 доступны как d401/d402» была неверной; коллизия двух d401 устранена — метаданные перенесены на d405).
+
+## Слой данных: три роли источников (см. `memory-bank/decisions/ADR-0010-data-source-roles.md`)
+
+Доступ к аналитическим данным — три независимых движка с разными ролями (выбирай по дереву):
+- **DataView `dvXX`** (`data_view/`) — курируемые «виртуальные таблицы»: составные метрики, **2 периода**, кэш. Для благословлённых показателей и BI (a024/a025). Сложные метрики (revenue = customer_in+customer_out, GL turnover CASE) живут здесь.
+- **Базовая схема `dsXX`** (`data_schemes/` + движок `shared/universal_dashboard/`; UI: «Схемы таблиц») — декларативное описание таблицы; гибкий ad-hoc (группировки/фильтры/агрегаты) через `QueryBuilder`. Governance по построению (поля — allowlist).
+- **Сырой SQL** (`execute_query`) — нестандартные/разовые случаи; укреплённый escape-hatch.
+
+Перекрытие источников по одной таблице допустимо только при разных ролях (напр. `p904`: ds03 — гибкий, dv001 — курируемый 2-периодный). UI-инструменты слоя собраны в sidebar-группе «Источники данных».
+
+**Термины код ↔ UI** (код-идентификаторы не меняются, в интерфейсе свои подписи): `dsXX` → «Схемы таблиц» (каталог) + «Конструктор запросов» (построитель); `dvXX` → «DataView»; сайдбар-группа `semantic_layer` → «Источники данных».
 
 ---
 

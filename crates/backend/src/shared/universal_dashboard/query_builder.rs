@@ -2,11 +2,12 @@
 
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use contracts::shared::universal_dashboard::{
-    ComparisonOp, ConditionDef, DashboardConfig, DataSourceSchema, DatePreset, FieldDef, FieldType,
-    FilterCondition, FilterOperator,
+    AggregateFunction, ComparisonOp, ConditionDef, DashboardConfig, DataSourceSchemaOwned,
+    DatePreset, FieldDefOwned, FilterCondition, FilterOperator, SortDirection, ValueType,
 };
 
 /// Result of query building
+#[derive(Debug)]
 pub struct QueryResult {
     /// SQL query string
     pub sql: String,
@@ -24,24 +25,24 @@ pub enum QueryParam {
 
 /// Dynamic SQL query builder
 pub struct QueryBuilder<'a> {
-    schema: &'a DataSourceSchema,
+    schema: &'a DataSourceSchemaOwned,
     config: &'a DashboardConfig,
     table_name: String,
 }
 
 impl<'a> QueryBuilder<'a> {
-    fn filter_expr_for_field(column_ref: &str, field_type: &FieldType) -> String {
-        match field_type {
+    fn filter_expr_for_field(column_ref: &str, value_type: &ValueType) -> String {
+        match value_type {
             // Date fields are often stored as RFC3339 text in SQLite.
             // Normalize to YYYY-MM-DD so the period end includes the whole last day.
-            FieldType::Date => format!("substr({}, 1, 10)", column_ref),
+            ValueType::Date | ValueType::DateTime => format!("substr({}, 1, 10)", column_ref),
             _ => column_ref.to_string(),
         }
     }
 
     /// Create a new query builder
     pub fn new(
-        schema: &'a DataSourceSchema,
+        schema: &'a DataSourceSchemaOwned,
         config: &'a DashboardConfig,
         table_name: String,
     ) -> Self {
@@ -60,6 +61,7 @@ impl<'a> QueryBuilder<'a> {
 
     /// Build the SQL query
     pub fn build(&self) -> Result<QueryResult, String> {
+        self.validate_config()?;
         // Build SELECT clause
         let select_clause = self.build_select_clause()?;
 
@@ -100,6 +102,58 @@ impl<'a> QueryBuilder<'a> {
         Ok(QueryResult { sql, params })
     }
 
+    fn validate_config(&self) -> Result<(), String> {
+        for field_id in &self.config.groupings {
+            let field = self.find_field(field_id)?;
+            if !field.can_group {
+                return Err(format!("Field '{}' cannot be used for grouping", field_id));
+            }
+        }
+
+        for selected in &self.config.selected_fields {
+            let field = self.find_field(&selected.field_id)?;
+            if let Some(aggregate) = selected.aggregate {
+                if !field.can_aggregate {
+                    return Err(format!(
+                        "Field '{}' cannot be aggregated",
+                        selected.field_id
+                    ));
+                }
+                if matches!(aggregate, AggregateFunction::Sum | AggregateFunction::Avg)
+                    && !matches!(&field.value_type, ValueType::Integer | ValueType::Numeric)
+                {
+                    return Err(format!(
+                        "Aggregate {:?} requires a numeric field, got '{}'",
+                        aggregate, selected.field_id
+                    ));
+                }
+            }
+        }
+
+        for field_id in &self.config.display_fields {
+            self.find_field(field_id)?;
+        }
+
+        for rule in &self.config.sort.rules {
+            self.find_field(&rule.field_id)?;
+            let is_output = self.config.groupings.contains(&rule.field_id)
+                || self.config.display_fields.contains(&rule.field_id)
+                || self
+                    .config
+                    .selected_fields
+                    .iter()
+                    .any(|field| field.field_id == rule.field_id);
+            if !is_output {
+                return Err(format!(
+                    "Sort field '{}' must be present in query output",
+                    rule.field_id
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Build SELECT clause with grouping and aggregated columns
     fn build_select_clause(&self) -> Result<String, String> {
         let mut columns = Vec::new();
@@ -113,13 +167,16 @@ impl<'a> QueryBuilder<'a> {
             let field = self.find_field(grouping_field_id)?;
 
             // Determine source table (use source_table if specified, otherwise main_table)
-            let source_table = field.source_table.unwrap_or(main_table);
+            let source_table = field.source_table.as_deref().unwrap_or(main_table);
 
             // For ref fields, select both UUID and display name
             if field.ref_table.is_some() {
-                columns.push(format!("{}.{}", source_table, field.db_column));
-                if let Some(ref_table) = field.ref_table {
-                    if let Some(ref_display_col) = field.ref_display_column {
+                columns.push(format!(
+                    "{}.{} AS {}",
+                    source_table, field.db_column, field.id
+                ));
+                if let Some(ref_table) = field.ref_table.as_deref() {
+                    if let Some(ref_display_col) = field.ref_display_column.as_deref() {
                         columns.push(format!(
                             "{}.{} AS {}_display",
                             ref_table, ref_display_col, field.id
@@ -127,7 +184,10 @@ impl<'a> QueryBuilder<'a> {
                     }
                 }
             } else {
-                columns.push(format!("{}.{}", source_table, field.db_column));
+                columns.push(format!(
+                    "{}.{} AS {}",
+                    source_table, field.db_column, field.id
+                ));
             }
         }
 
@@ -140,13 +200,16 @@ impl<'a> QueryBuilder<'a> {
                 let field = self.find_field(display_field_id)?;
 
                 // Determine source table (use source_table if specified, otherwise main_table)
-                let source_table = field.source_table.unwrap_or(main_table);
+                let source_table = field.source_table.as_deref().unwrap_or(main_table);
 
                 // For ref fields, select both UUID and display name
                 if field.ref_table.is_some() {
-                    columns.push(format!("{}.{}", source_table, field.db_column));
-                    if let Some(ref_table) = field.ref_table {
-                        if let Some(ref_display_col) = field.ref_display_column {
+                    columns.push(format!(
+                        "{}.{} AS {}",
+                        source_table, field.db_column, field.id
+                    ));
+                    if let Some(ref_table) = field.ref_table.as_deref() {
+                        if let Some(ref_display_col) = field.ref_display_column.as_deref() {
                             columns.push(format!(
                                 "{}.{} AS {}_display",
                                 ref_table, ref_display_col, field.id
@@ -170,7 +233,7 @@ impl<'a> QueryBuilder<'a> {
             let field = self.find_field(&selected_field.field_id)?;
 
             // Determine source table (use source_table if specified, otherwise main_table)
-            let source_table = field.source_table.unwrap_or(main_table);
+            let source_table = field.source_table.as_deref().unwrap_or(main_table);
 
             if let Some(aggregate) = &selected_field.aggregate {
                 // Aggregated field
@@ -216,9 +279,10 @@ impl<'a> QueryBuilder<'a> {
             let field = self.find_field(grouping_field_id)?;
 
             // Handle source_table JOINs (for fields from other tables)
-            if let (Some(source_table), Some(join_on_column)) =
-                (field.source_table, field.join_on_column)
-            {
+            if let (Some(source_table), Some(join_on_column)) = (
+                field.source_table.as_deref(),
+                field.join_on_column.as_deref(),
+            ) {
                 let join = format!(
                     "LEFT JOIN {} ON {}.{} = {}.id",
                     source_table, main_table, join_on_column, source_table
@@ -229,8 +293,8 @@ impl<'a> QueryBuilder<'a> {
             }
 
             // Handle ref_table JOINs (for reference fields)
-            if let Some(ref_table) = field.ref_table {
-                let source_table_name = field.source_table.unwrap_or(main_table);
+            if let Some(ref_table) = field.ref_table.as_deref() {
+                let source_table_name = field.source_table.as_deref().unwrap_or(main_table);
                 let join = format!(
                     "LEFT JOIN {} ON {}.{} = {}.id",
                     ref_table, source_table_name, field.db_column, ref_table
@@ -249,9 +313,10 @@ impl<'a> QueryBuilder<'a> {
             let field = self.find_field(display_field_id)?;
 
             // Handle source_table JOINs (for fields from other tables)
-            if let (Some(source_table), Some(join_on_column)) =
-                (field.source_table, field.join_on_column)
-            {
+            if let (Some(source_table), Some(join_on_column)) = (
+                field.source_table.as_deref(),
+                field.join_on_column.as_deref(),
+            ) {
                 let join = format!(
                     "LEFT JOIN {} ON {}.{} = {}.id",
                     source_table, main_table, join_on_column, source_table
@@ -262,8 +327,8 @@ impl<'a> QueryBuilder<'a> {
             }
 
             // Handle ref_table JOINs (for reference fields)
-            if let Some(ref_table) = field.ref_table {
-                let source_table_name = field.source_table.unwrap_or(main_table);
+            if let Some(ref_table) = field.ref_table.as_deref() {
+                let source_table_name = field.source_table.as_deref().unwrap_or(main_table);
                 let join = format!(
                     "LEFT JOIN {} ON {}.{} = {}.id",
                     ref_table, source_table_name, field.db_column, ref_table
@@ -291,14 +356,14 @@ impl<'a> QueryBuilder<'a> {
                 .schema
                 .fields
                 .iter()
-                .find(|f| f.field_type == FieldType::Date)
+                .find(|f| matches!(&f.value_type, ValueType::Date | ValueType::DateTime))
                 .ok_or("No date field found in schema")?;
 
-            let source_table = date_field.source_table.unwrap_or(main_table);
+            let source_table = date_field.source_table.as_deref().unwrap_or(main_table);
             let column_ref = format!("{}.{}", source_table, date_field.db_column);
             conditions.push(format!(
                 "{} >= ?",
-                Self::filter_expr_for_field(&column_ref, &date_field.field_type)
+                Self::filter_expr_for_field(&column_ref, &date_field.value_type)
             ));
             params.push(QueryParam::Text(date_from.clone()));
         }
@@ -308,14 +373,14 @@ impl<'a> QueryBuilder<'a> {
                 .schema
                 .fields
                 .iter()
-                .find(|f| f.field_type == FieldType::Date)
+                .find(|f| matches!(&f.value_type, ValueType::Date | ValueType::DateTime))
                 .ok_or("No date field found in schema")?;
 
-            let source_table = date_field.source_table.unwrap_or(main_table);
+            let source_table = date_field.source_table.as_deref().unwrap_or(main_table);
             let column_ref = format!("{}.{}", source_table, date_field.db_column);
             conditions.push(format!(
                 "{} <= ?",
-                Self::filter_expr_for_field(&column_ref, &date_field.field_type)
+                Self::filter_expr_for_field(&column_ref, &date_field.value_type)
             ));
             params.push(QueryParam::Text(date_to.clone()));
         }
@@ -327,7 +392,10 @@ impl<'a> QueryBuilder<'a> {
             }
 
             let field = self.find_field(field_id)?;
-            let source_table = field.source_table.unwrap_or(main_table);
+            if !field.can_filter {
+                return Err(format!("Field '{}' is not filterable", field_id));
+            }
+            let source_table = field.source_table.as_deref().unwrap_or(main_table);
             let placeholders: Vec<_> = (0..values.len()).map(|_| "?").collect();
             conditions.push(format!(
                 "{}.{} IN ({})",
@@ -337,14 +405,14 @@ impl<'a> QueryBuilder<'a> {
             ));
 
             for value in values {
-                match field.field_type {
-                    FieldType::Integer => {
+                match &field.value_type {
+                    ValueType::Integer => {
                         let int_val = value
                             .parse::<i64>()
                             .map_err(|_| format!("Invalid integer value: {}", value))?;
                         params.push(QueryParam::Integer(int_val));
                     }
-                    FieldType::Numeric => {
+                    ValueType::Numeric => {
                         let num_val = value
                             .parse::<f64>()
                             .map_err(|_| format!("Invalid numeric value: {}", value))?;
@@ -360,8 +428,12 @@ impl<'a> QueryBuilder<'a> {
         // Field-specific filters with operators
         for filter in &self.config.filters.field_filters {
             let field = self.find_field(&filter.field_id)?;
-            let column_ref = format!("{}.{}", main_table, field.db_column);
-            let filter_expr = Self::filter_expr_for_field(&column_ref, &field.field_type);
+            if !field.can_filter {
+                return Err(format!("Field '{}' is not filterable", filter.field_id));
+            }
+            let source_table = field.source_table.as_deref().unwrap_or(main_table);
+            let column_ref = format!("{}.{}", source_table, field.db_column);
+            let filter_expr = Self::filter_expr_for_field(&column_ref, &field.value_type);
 
             match filter.operator {
                 FilterOperator::IsNull => {
@@ -370,8 +442,8 @@ impl<'a> QueryBuilder<'a> {
                 FilterOperator::Between => {
                     if let Some(value2) = &filter.value2 {
                         conditions.push(format!("{} BETWEEN ? AND ?", filter_expr));
-                        self.push_typed_param(&mut params, &filter.value, &field.field_type)?;
-                        self.push_typed_param(&mut params, value2, &field.field_type)?;
+                        self.push_typed_param(&mut params, &filter.value, &field.value_type)?;
+                        self.push_typed_param(&mut params, value2, &field.value_type)?;
                     } else {
                         return Err("BETWEEN operator requires two values".to_string());
                     }
@@ -385,7 +457,7 @@ impl<'a> QueryBuilder<'a> {
                     let placeholders: Vec<_> = (0..values.len()).map(|_| "?").collect();
                     conditions.push(format!("{} IN ({})", filter_expr, placeholders.join(", ")));
                     for value in values {
-                        self.push_typed_param(&mut params, value, &field.field_type)?;
+                        self.push_typed_param(&mut params, value, &field.value_type)?;
                     }
                 }
                 FilterOperator::Like => {
@@ -395,7 +467,7 @@ impl<'a> QueryBuilder<'a> {
                 _ => {
                     // Standard comparison operators: =, <>, <, >, <=, >=
                     conditions.push(format!("{} {} ?", filter_expr, filter.operator.to_sql()));
-                    self.push_typed_param(&mut params, &filter.value, &field.field_type)?;
+                    self.push_typed_param(&mut params, &filter.value, &field.value_type)?;
                 }
             }
         }
@@ -430,13 +502,13 @@ impl<'a> QueryBuilder<'a> {
                 continue;
             }
             let field = self.find_field(grouping_field_id)?;
-            let source_table = field.source_table.unwrap_or(main_table);
+            let source_table = field.source_table.as_deref().unwrap_or(main_table);
             columns.push(format!("{}.{}", source_table, field.db_column));
 
             // Also group by display column for ref fields
             if field.ref_table.is_some() {
-                if let Some(ref_table) = field.ref_table {
-                    if let Some(ref_display_col) = field.ref_display_column {
+                if let Some(ref_table) = field.ref_table.as_deref() {
+                    if let Some(ref_display_col) = field.ref_display_column.as_deref() {
                         columns.push(format!("{}.{}", ref_table, ref_display_col));
                     }
                 }
@@ -450,12 +522,13 @@ impl<'a> QueryBuilder<'a> {
             }
             if !self.config.groupings.contains(display_field_id) {
                 let field = self.find_field(display_field_id)?;
-                columns.push(format!("{}.{}", main_table, field.db_column));
+                let source_table = field.source_table.as_deref().unwrap_or(main_table);
+                columns.push(format!("{}.{}", source_table, field.db_column));
 
                 // Also group by display column for ref fields
                 if field.ref_table.is_some() {
-                    if let Some(ref_table) = field.ref_table {
-                        if let Some(ref_display_col) = field.ref_display_column {
+                    if let Some(ref_table) = field.ref_table.as_deref() {
+                        if let Some(ref_display_col) = field.ref_display_column.as_deref() {
                             columns.push(format!("{}.{}", ref_table, ref_display_col));
                         }
                     }
@@ -468,12 +541,37 @@ impl<'a> QueryBuilder<'a> {
 
     /// Build ORDER BY clause
     fn build_order_by_clause(&self) -> Result<String, String> {
-        if self.config.groupings.is_empty() {
+        if self.config.sort.rules.is_empty() && self.config.groupings.is_empty() {
             return Ok(String::new());
         }
 
         let mut columns = Vec::new();
         let main_table = self.table_name.as_str();
+
+        if !self.config.sort.rules.is_empty() {
+            for rule in &self.config.sort.rules {
+                let field = self.find_field(&rule.field_id)?;
+                let expression = if self.config.selected_fields.iter().any(|selected| {
+                    selected.field_id == rule.field_id && selected.aggregate.is_some()
+                }) {
+                    field.id.clone()
+                } else if let (Some(ref_table), Some(display_column)) = (
+                    field.ref_table.as_deref(),
+                    field.ref_display_column.as_deref(),
+                ) {
+                    format!("{}.{}", ref_table, display_column)
+                } else {
+                    let source_table = field.source_table.as_deref().unwrap_or(main_table);
+                    format!("{}.{}", source_table, field.db_column)
+                };
+                let direction = match rule.direction {
+                    SortDirection::Asc => "ASC",
+                    SortDirection::Desc => "DESC",
+                };
+                columns.push(format!("{} {}", expression, direction));
+            }
+            return Ok(columns.join(", "));
+        }
 
         for grouping_field_id in &self.config.groupings {
             if !self.is_field_enabled(grouping_field_id) {
@@ -482,15 +580,15 @@ impl<'a> QueryBuilder<'a> {
             let field = self.find_field(grouping_field_id)?;
 
             // Determine the correct table prefix for ORDER BY
-            let table_prefix = if let Some(ref_table) = field.ref_table {
+            let table_prefix = if let Some(ref_table) = field.ref_table.as_deref() {
                 // For reference fields, order by display column
-                if let Some(ref_display_col) = field.ref_display_column {
+                if let Some(ref_display_col) = field.ref_display_column.as_deref() {
                     columns.push(format!("{}.{}", ref_table, ref_display_col));
                     continue;
                 } else {
                     main_table
                 }
-            } else if let Some(source_table) = field.source_table {
+            } else if let Some(source_table) = field.source_table.as_deref() {
                 // For fields from joined tables (e.g., dim1_category from a004_nomenclature)
                 source_table
             } else {
@@ -505,7 +603,7 @@ impl<'a> QueryBuilder<'a> {
     }
 
     /// Find a field definition by ID
-    fn find_field(&self, field_id: &str) -> Result<&FieldDef, String> {
+    fn find_field(&self, field_id: &str) -> Result<&FieldDefOwned, String> {
         self.schema
             .fields
             .iter()
@@ -518,16 +616,16 @@ impl<'a> QueryBuilder<'a> {
         &self,
         params: &mut Vec<QueryParam>,
         value: &str,
-        field_type: &FieldType,
+        value_type: &ValueType,
     ) -> Result<(), String> {
-        match field_type {
-            FieldType::Integer => {
+        match value_type {
+            ValueType::Integer => {
                 let int_val = value
                     .parse::<i64>()
                     .map_err(|_| format!("Invalid integer value: {}", value))?;
                 params.push(QueryParam::Integer(int_val));
             }
-            FieldType::Numeric => {
+            ValueType::Numeric => {
                 let num_val = value
                     .parse::<f64>()
                     .map_err(|_| format!("Invalid numeric value: {}", value))?;
@@ -553,28 +651,29 @@ impl<'a> QueryBuilder<'a> {
                 condition.field_id
             ));
         }
-        let column_ref = format!("{}.{}", table_alias, field.db_column);
-        let filter_expr = Self::filter_expr_for_field(&column_ref, &field.field_type);
+        let source_table = field.source_table.as_deref().unwrap_or(table_alias);
+        let column_ref = format!("{}.{}", source_table, field.db_column);
+        let filter_expr = Self::filter_expr_for_field(&column_ref, &field.value_type);
 
         let mut params = Vec::new();
 
         let sql = match &condition.definition {
             ConditionDef::Comparison { operator, value } => {
-                self.push_typed_param(&mut params, value, &field.field_type)?;
+                self.push_typed_param(&mut params, value, &field.value_type)?;
                 format!("{} {} ?", filter_expr, comparison_op_to_sql(*operator))
             }
             ConditionDef::Range { from, to } => match (from, to) {
                 (Some(f), Some(t)) => {
-                    self.push_typed_param(&mut params, f, &field.field_type)?;
-                    self.push_typed_param(&mut params, t, &field.field_type)?;
+                    self.push_typed_param(&mut params, f, &field.value_type)?;
+                    self.push_typed_param(&mut params, t, &field.value_type)?;
                     format!("{} BETWEEN ? AND ?", filter_expr)
                 }
                 (Some(f), None) => {
-                    self.push_typed_param(&mut params, f, &field.field_type)?;
+                    self.push_typed_param(&mut params, f, &field.value_type)?;
                     format!("{} >= ?", filter_expr)
                 }
                 (None, Some(t)) => {
-                    self.push_typed_param(&mut params, t, &field.field_type)?;
+                    self.push_typed_param(&mut params, t, &field.value_type)?;
                     format!("{} <= ?", filter_expr)
                 }
                 (None, None) => {
@@ -625,7 +724,7 @@ impl<'a> QueryBuilder<'a> {
                 }
                 let placeholders = vec!["?"; values.len()].join(", ");
                 for value in values {
-                    self.push_typed_param(&mut params, value, &field.field_type)?;
+                    self.push_typed_param(&mut params, value, &field.value_type)?;
                 }
                 if *negated {
                     format!("{} NOT IN ({})", column_ref, placeholders)
@@ -838,6 +937,7 @@ mod tests {
             filters: DashboardFilters::default(),
         };
 
+        let schema: DataSourceSchemaOwned = (&schema).into();
         let builder = QueryBuilder::new(&schema, &config, "test_table".to_string());
         let result = builder.build().unwrap();
 
@@ -882,10 +982,100 @@ mod tests {
             },
         };
 
+        let schema: DataSourceSchemaOwned = (&schema).into();
         let builder = QueryBuilder::new(&schema, &config, "test_table".to_string());
         let result = builder.build().unwrap();
 
         assert!(result.sql.contains("substr(test_table.date, 1, 10) >= ?"));
         assert!(result.sql.contains("substr(test_table.date, 1, 10) <= ?"));
+    }
+
+    #[test]
+    fn rejects_invalid_field_roles() {
+        let schema = DataSourceSchema {
+            id: "test_table",
+            name: "Test Table",
+            fields: &[
+                FieldDef {
+                    id: "category",
+                    name: "Category",
+                    field_type: FieldType::Text,
+                    can_group: true,
+                    can_aggregate: false,
+                    can_filter: true,
+                    db_column: "category",
+                    ref_table: None,
+                    ref_display_column: None,
+                    source_table: None,
+                    join_on_column: None,
+                },
+                FieldDef {
+                    id: "amount",
+                    name: "Amount",
+                    field_type: FieldType::Numeric,
+                    can_group: false,
+                    can_aggregate: true,
+                    can_filter: false,
+                    db_column: "amount",
+                    ref_table: None,
+                    ref_display_column: None,
+                    source_table: None,
+                    join_on_column: None,
+                },
+            ],
+            schema_filters: &[],
+        };
+        let schema: DataSourceSchemaOwned = (&schema).into();
+        let config = DashboardConfig {
+            data_source: "test_table".to_string(),
+            groupings: vec!["amount".to_string()],
+            ..DashboardConfig::default()
+        };
+        let error = QueryBuilder::new(&schema, &config, "test_table".to_string())
+            .build()
+            .unwrap_err();
+        assert!(error.contains("cannot be used for grouping"));
+    }
+
+    #[test]
+    fn applies_explicit_sort_direction() {
+        let schema = DataSourceSchema {
+            id: "test_table",
+            name: "Test Table",
+            fields: &[FieldDef {
+                id: "amount",
+                name: "Amount",
+                field_type: FieldType::Numeric,
+                can_group: false,
+                can_aggregate: true,
+                can_filter: false,
+                db_column: "amount",
+                ref_table: None,
+                ref_display_column: None,
+                source_table: None,
+                join_on_column: None,
+            }],
+            schema_filters: &[],
+        };
+        let schema: DataSourceSchemaOwned = (&schema).into();
+        let config = DashboardConfig {
+            data_source: "test_table".to_string(),
+            selected_fields: vec![SelectedField {
+                field_id: "amount".to_string(),
+                aggregate: Some(AggregateFunction::Sum),
+            }],
+            sort: DashboardSort {
+                rules: vec![SortRule {
+                    field_id: "amount".to_string(),
+                    direction: SortDirection::Desc,
+                }],
+            },
+            ..DashboardConfig::default()
+        };
+        let sql = QueryBuilder::new(&schema, &config, "test_table".to_string())
+            .build()
+            .unwrap()
+            .sql;
+        assert!(sql.contains("ORDER BY amount DESC"), "got: {sql}");
     }
 }

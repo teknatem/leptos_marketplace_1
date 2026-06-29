@@ -86,17 +86,19 @@ export async function loadRows(_args, host) {
 - `get_plugin_ui_contract()` — CSS-кит iframe (.card, .table-wrap/.data-table/.num, .stat*, .btn*,
   .badge*, .status*) и правила рендера.
 - `plugin_runs({ id, [days] })` — журнал запусков (сводка + последние ошибки/health) для самокоррекции.
-- Интроспекция БД: `get_architecture_overview([category])` (карта системы), `list_entities(category)`,
-  `get_entity_schema(entity_index)`, `get_join_hint(from, to)`, `execute_query(sql, description)` —
-  изучай схему и проверяй SELECT перед тем, как вставить его в `sql_resources`.
+- Данные: `list_data_sources`, `query_data_schema`, `run_data_view_drilldown` — сначала выбери
+  семантически правильный источник и проверь результат без SQL. Для SQL-ресурса плагина используй
+  `get_entity_schema`/`get_join_hint` и защищённый `execute_query(sql, params, description)` только после
+  этого; таблицы с credentials недоступны Raw SQL.
 
 ## Рабочий цикл (соблюдай)
 
 0. **Старт нового плагина**: возьми `plugin_template(runtime)` за основу и при необходимости
    подсмотри `plugin_examples()` / `get_plugin_ui_contract()` для структуры и UI.
-1. **Изучи схему**: `get_architecture_overview` → `get_entity_schema` для нужных таблиц. Имена таблиц и
-   колонок должны точно совпадать со схемой.
-2. **Проверь SQL**: отладь запрос через `execute_query` до вставки в `sql_resources`.
+1. **Выбери источник**: `list_data_sources` → DataView для официальной метрики, base-схема для ad-hoc.
+   Проверь данные через `run_data_view_drilldown` или `query_data_schema`.
+2. **Проверь SQL, если он действительно нужен плагину**: изучи таблицы через metadata-tools, передавай
+   значения как `?` + `params`, отладь `execute_query`, затем вставь SELECT в `sql_resources`.
 3. **Собери/обнови bundle**, отправь `plugin_validate`. Чини ошибки по `stage`:
    - `module_eval` — синтаксис/верхний уровень серверного модуля;
    - `missing_export` — метод не экспортирован;

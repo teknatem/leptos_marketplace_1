@@ -13,7 +13,7 @@
 @import url("./layout.css") layer(layout);
 @import url("./components.css") layer(components);
 @import url("./fields.css") layer(components);
-@import url("./dashboards/d401_metadata_dashboard.css") layer(components);
+@import url("./dashboards/d405_metadata_dashboard.css") layer(components);
 @import url("./general_ledger_dimensions.css") layer(components);
 @import url("./general_ledger_details.css") layer(components);
 @import url("./navigator.css") layer(components);

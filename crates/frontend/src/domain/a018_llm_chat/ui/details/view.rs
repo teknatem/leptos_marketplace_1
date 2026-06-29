@@ -4,7 +4,9 @@
 //! Агент отображается по имени (agent_name из API), а не по UUID.
 
 use super::artifact_card::ArtifactCard;
-use super::model::{fetch_chat, fetch_chat_context, fetch_messages, poll_until_done, send_message};
+use super::model::{
+    fetch_chat, fetch_chat_context, fetch_messages, poll_until_done, send_message, PollOutcome,
+};
 use super::tool_calls_trace::ToolCallsTrace;
 use super::view_model::LlmChatDetailsVm;
 use crate::domain::a018_llm_chat::ui::pending_first_message_key;
@@ -188,6 +190,9 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     let context_pkgs = RwSignal::new(Vec::<
         contracts::domain::a018_llm_chat::context::ContextPackageSummary,
     >::new());
+    // Сколько секунд выполняется текущий запрос к LLM (тикает раз в секунду,
+    // пока vm.is_sending == true). Показывается под индикатором набора.
+    let elapsed_secs = RwSignal::new(0u32);
     let nav_ctx = use_context::<AppGlobalContext>();
 
     // Scroll to bottom helper
@@ -214,6 +219,22 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
 
             vm.is_sending.set(true);
             vm.new_message.set(String::new());
+
+            // Запустить секундный таймер на время ожидания ответа LLM.
+            elapsed_secs.set(0);
+            {
+                let start = js_sys::Date::now();
+                let is_sending = vm.is_sending;
+                wasm_bindgen_futures::spawn_local(async move {
+                    while is_sending.get_untracked() {
+                        gloo_timers::future::TimeoutFuture::new(1000).await;
+                        if !is_sending.get_untracked() {
+                            break;
+                        }
+                        elapsed_secs.set(((js_sys::Date::now() - start) / 1000.0) as u32);
+                    }
+                });
+            }
 
             // Create optimistic user message
             let chat_uuid = Uuid::parse_str(&chat_id).unwrap_or_else(|_| Uuid::new_v4());
@@ -247,8 +268,9 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     }
                 };
 
-                // 2. Poll every 2s until done or error (max 90 attempts = 3 min)
-                let poll_result = poll_until_done(&job_id, 90, 2000).await;
+                // 2. Опрос статуса каждые 2с. Бюджет — 6 минут: агентные навыки
+                //    (графики/плагины) делают много шагов tool-calling и идут дольше.
+                let poll_result = poll_until_done(&job_id, 180, 2000).await;
 
                 // 3. Always reload messages from DB after completion
                 match fetch_messages(&chat_id).await {
@@ -270,12 +292,26 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                 }
 
                 match poll_result {
-                    Ok(_) => {
+                    Ok(PollOutcome::Done) => {
                         vm.uploaded_files.set(Vec::new());
                         vm.error.set(None);
                     }
+                    Ok(PollOutcome::StillRunning { waited_secs }) => {
+                        // Задача не уложилась в бюджет ожидания, но продолжает выполняться
+                        // на сервере и допишет ответ сама. Это не ошибка — мягко поясняем.
+                        vm.error.set(Some(format!(
+                            "Ответ готовится дольше обычного (прошло ~{} мин, сложная задача \
+                             с несколькими шагами). Он появится в чате автоматически — \
+                             обновите страницу через минуту, если не появился.",
+                            waited_secs.max(60) / 60
+                        )));
+                    }
+                    Ok(PollOutcome::Error(msg)) => {
+                        vm.error.set(Some(format!("Ошибка LLM: {}", msg)));
+                    }
                     Err(e) => {
-                        vm.error.set(Some(format!("Ошибка LLM: {}", e)));
+                        vm.error
+                            .set(Some(format!("Ошибка связи при ожидании ответа: {}", e)));
                     }
                 }
 
@@ -476,7 +512,9 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                                     <span class="chat-typing__dot"></span>
                                     <span class="chat-typing__dot"></span>
                                     <span class="chat-typing__dot"></span>
-                                    <span class="chat-typing__label">" LLM обрабатывает запрос..."</span>
+                                    <span class="chat-typing__label">
+                                        {move || format!(" LLM обрабатывает запрос… {} с", elapsed_secs.get())}
+                                    </span>
                                 </div>
                             </div>
                         })

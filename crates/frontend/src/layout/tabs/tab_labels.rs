@@ -114,7 +114,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "p908_wb_goods_prices" => "WB Цены товаров",
 
         "d400_monthly_summary" => "Сводка за месяц",
-        "d401_metadata_dashboard" => "Метаданные",
+        "d405_metadata_dashboard" => "Метаданные",
         "d401_wb_finance" => "WB Finance",
         "d402_wb_order_flow" => "WB История заказов",
         k if k.starts_with("d402_wb_order_flow_srid_") => "Вся история",
@@ -133,9 +133,9 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "sys_thaw_test" => "Тест Thaw UI",
         "dom_inspector" => "DOM Inspector",
 
-        "universal_dashboard" => "Универсальный дашборд",
+        "universal_dashboard" => "Конструктор запросов",
         "all_reports" => "Все отчеты",
-        "schema_browser" => "Схемы данных",
+        "schema_browser" => "Схемы таблиц",
 
         "data_view" => "DataView",
         "filter_registry" => "Реестр фильтров",

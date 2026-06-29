@@ -1,4 +1,6 @@
 pub mod admin_tools;
+pub mod chart_tools;
+pub mod data_tools;
 pub mod kb_admin_tools;
 pub mod knowledge_base;
 pub mod metadata_registry;
@@ -8,10 +10,11 @@ pub mod plugin_tools;
 pub mod provider_factory;
 pub mod router;
 pub mod skills;
+pub mod table_tools;
 pub mod tool_executor;
 pub mod types;
 
 pub use metadata_registry::METADATA_REGISTRY;
 pub use provider_factory::create_provider;
-pub use tool_executor::{execute_tool_call, metadata_tool_definitions, tool_definitions_for};
+pub use tool_executor::execute_tool_call;
 pub use types::*;

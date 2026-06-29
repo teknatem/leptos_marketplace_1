@@ -1,4 +1,4 @@
-//! DataView — Семантический слой (frontend)
+//! DataView — Источники данных (frontend)
 //!
 //! Типы, API-клиент и UI-страницы для каталога DataView.
 
