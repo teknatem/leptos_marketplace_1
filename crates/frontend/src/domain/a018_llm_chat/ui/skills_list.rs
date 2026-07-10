@@ -46,16 +46,6 @@ pub fn LlmSkillList() -> impl IntoView {
         });
     });
 
-    let chip = |text: String, color: &'static str| {
-        view! {
-            <span style=format!(
-                "display:inline-block; padding:2px 8px; margin:2px 4px 2px 0; border-radius:10px; \
-                 font-size:12px; background:{}1a; color:{}; border:1px solid {}40;", color, color, color)>
-                {text}
-            </span>
-        }
-    };
-
     view! {
         <PageFrame page_id="llm_skills--list" category=PAGE_CAT_LIST class="llm-skills-list">
             <div class="page__header">
@@ -77,37 +67,36 @@ pub fn LlmSkillList() -> impl IntoView {
                 {move || data.get().map(|c| {
                     let core = c.core_tools.join(", ");
                     let cards = c.skills.into_iter().map(|s| {
-                        let intents = s.intents.into_iter().map(|i| chip(i, "#2563eb")).collect_view();
-                        let roles = s.allowed_for.into_iter().map(|r| chip(r, "#16a34a")).collect_view();
+                        let intents = s.intents.into_iter().map(|i| badge(i, "primary")).collect_view();
+                        let roles = s.allowed_for.into_iter().map(|r| badge(r, "success")).collect_view();
                         let tools = s.tools.join(", ");
                         view! {
-                            <div style="padding:14px 16px; margin-bottom:12px; background:var(--colorNeutralBackground1); \
-                                        border:1px solid var(--colorNeutralStroke2); border-radius:8px;">
-                                <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
-                                    <strong style="font-size:15px;">{s.title}</strong>
-                                    <code style="font-size:12px; color:var(--colorNeutralForeground3);">{s.id}</code>
+                            <div class="llm-skills__card">
+                                <div class="llm-skills__card-head">
+                                    <strong class="llm-skills__title">{s.title}</strong>
+                                    <code class="llm-skills__id">{s.id}</code>
                                 </div>
-                                <div style="margin:6px 0 10px; color:var(--colorNeutralForeground2); font-size:13px;">
-                                    {s.description}
+                                <div class="llm-skills__desc">{s.description}</div>
+                                <div class="llm-skills__meta">
+                                    <span class="llm-skills__label">"Триггеры (интенты):"</span>
+                                    <span class="llm-skills__badges">{intents}</span>
                                 </div>
-                                <div style="font-size:12px; color:var(--colorNeutralForeground3); margin-bottom:4px;">
-                                    "Триггеры (интенты): " {intents}
+                                <div class="llm-skills__meta">
+                                    <span class="llm-skills__label">"Доступен ролям:"</span>
+                                    <span class="llm-skills__badges">{roles}</span>
                                 </div>
-                                <div style="font-size:12px; color:var(--colorNeutralForeground3); margin-bottom:6px;">
-                                    "Доступен ролям: " {roles}
-                                </div>
-                                <div style="font-size:12px; color:var(--colorNeutralForeground3);">
-                                    "Инструменты: " <span style="color:var(--colorNeutralForeground2);">{tools}</span>
+                                <div class="llm-skills__meta">
+                                    <span class="llm-skills__label">"Инструменты:"</span>
+                                    <span class="llm-skills__tools">{tools}</span>
                                 </div>
                             </div>
                         }
                     }).collect_view();
 
                     view! {
-                        <div style="padding:12px 14px; margin-bottom:14px; background:var(--colorNeutralBackground2); \
-                                    border:1px solid var(--colorNeutralStroke2); border-radius:8px; font-size:13px;">
+                        <div class="llm-skills__core">
                             <strong>"Core (всегда активен): "</strong>
-                            <span style="color:var(--colorNeutralForeground2);">{core}</span>
+                            <span class="llm-skills__tools">{core}</span>
                         </div>
                         {cards}
                     }
@@ -115,6 +104,11 @@ pub fn LlmSkillList() -> impl IntoView {
             </div>
         </PageFrame>
     }
+}
+
+/// Бейдж в стиле страницы sys_users (глобальные классы `badge badge--*`).
+fn badge(text: String, variant: &'static str) -> impl IntoView {
+    view! { <span class=format!("badge badge--{variant}")>{text}</span> }
 }
 
 async fn fetch_catalog() -> Result<Catalog, String> {

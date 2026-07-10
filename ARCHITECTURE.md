@@ -11,7 +11,7 @@
 | `a001` | Подключение 1С | `a001_connection_1c_database` | Настройки подключения к базе данных 1С:Управление торговлей. Используется для импорта справочников (номенклатура, организации, контрагенты)… | u501_import_from_ut, a002_organization, a003_counterparty, a004_nomenclature |
 | `a002` | Организация | `a002_organization` | Юридические лица и ИП, от имени которых ведётся торговля на маркетплейсах. Импортируются из 1С:УТ. Используются для группировки продаж и фин… | a001_connection_1c, a006_connection_mp, a012_wb_sales |
 | `a003` | Контрагент | `a003_counterparty` | Контрагенты (поставщики, покупатели, партнёры), импортируемые из 1С:Управление торговлей. Поддерживает иерархическую структуру (папки). Соде… | a001_connection_1c, u501_import_from_ut, a023_purchase_of_goods |
-| `a004` | Номенклатура | `a004_nomenclature` | Справочник товаров и категорий из 1С:УТ. Является иерархическим — записи с is_folder=1 это папки-категории, is_folder=0 это конкретные товар… | a001_connection_1c, a007_marketplace_product, a012_wb_sales, a013_ym_order |
+| `a004` | Номенклатура | `a004_nomenclature` | Справочник товаров и категорий из 1С:УТ. Синонимы: товар, номенклатура, позиция, SKU, артикул, карточка товара — упоминание любого из них БЕ… | a001_connection_1c, a007_marketplace_product, a012_wb_sales, a013_ym_order |
 | `a005` | Маркетплейс | `a005_marketplace` | Справочник торговых площадок: Wildberries, Ozon, Яндекс.Маркет. Системные записи, создаются при инициализации. Используется как справочник т… | a006_connection_mp |
 | `a006` | Подключение маркетплейса | `a006_connection_mp` | Подключения к торговым площадкам — один магазин на WB, Ozon или Яндекс.Маркет. Содержит API-ключи и идентификаторы магазинов. Используется к… | a002_organization, a005_marketplace, a012_wb_sales, a013_ym_order |
 | `a007` | Товар маркетплейса | `a007_marketplace_product` | A007 — канонический регистр сопоставления позиции маркетплейса с номенклатурой 1С. Ключ идентификации всегда рассматривается в пределах conn… | a004_nomenclature, a005_marketplace, a006_connection_mp, a008_marketplace_sales |
@@ -24,7 +24,7 @@
 | `a014` | Транзакция OZON | `a014_ozon_transactions` | Финансовая транзакция OZON из раздела финансов. Содержит тип операции, суммы начислений, комиссий и доставки. Является основным источником д… | a006_connection_mp, a005_marketplace, a010_ozon_fbs_posting, a011_ozon_fbo_posting |
 | `a015` | Документ WB Заказы | `a015_wb_orders` | Заказ Wildberries (один заказ = одна строка). Содержит артикул продавца, nmId, штрихкод, категорию, цены со скидками, статус, дату заказа и… | a006_connection_mp, a005_marketplace, a007_marketplace_product, a004_nomenclature |
 | `a016` | Возврат Yandex Market | `a016_ym_returns` | Возврат товара с Yandex Market. Содержит ID возврата и заказа, тип операции (RETURN или UNREDEEMED — невыкуп), статус возврата денег, строки… | a006_connection_mp, a005_marketplace, a013_ym_order |
-| `a017` | Агент LLM | `a017_llm_agent` | Настройки подключения к провайдерам LLM (OpenAI, OpenRouter, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_tokens) и систем… | a018_llm_chat, a019_llm_artifact |
+| `a017` | Агент LLM | `a017_llm_agent` | Настройки подключения к провайдерам LLM (OpenAI, OpenRouter, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_toke… | a018_llm_chat, a019_llm_artifact |
 | `a018` | Чат LLM | `a018_llm_chat` | Сессии чатов с LLM агентами. Содержит историю диалогов с языковыми моделями, включая сообщения пользователя и ответы ассистента. Каждый чат… | a017_llm_agent, a019_llm_artifact |
 | `a019` | Артефакт LLM | `a019_llm_artifact` | SQL-запросы и другие артефакты, созданные LLM агентами в процессе работы с чатами. Каждый артефакт связан с конкретным чатом и агентом, соде… | a017_llm_agent, a018_llm_chat |
 | `a020` | Акция WB | `a020_wb_promotion` | Календарные акции Wildberries. Каждая запись — одна акция из WB Calendar API с датами проведения и списком товаров (nmId). Данные загружаютс… | a006_connection_mp, a002_organization, a007_marketplace_product |
@@ -43,6 +43,9 @@
 | `a033` | wb day close | | _(no metadata.json)_ | |
 | `a034` | Реализация YM | `a034_ym_realization` | Официальный «Отчёт о реализации» Yandex Market, импортируемый как суточный документ (один кабинет, одна дата). Содержит выручку по покупател… | a006_connection_mp, a002_organization, p907_ym_payment_report |
 | `a035` | Сверка перечислений YM | `a035_ym_settlement_recon` | Документ-сверка одного банковского ордера YM (bank_order_id из p907_ym_payment_report). Таблица операций ордера сгруппирована по нашим оборо… | p907_ym_payment_report, a006_connection_mp, a002_organization |
+| `a036` | Воронка продаж WB | `a036_wb_sales_funnel_daily` | Ежедневная воронка продаж Wildberries в разрезе номенклатуры. Одна запись — один кабинет WB и одна дата; JSON детализация по товарам (nm_id)… | a006_connection_mp, a002_organization, a007_marketplace_product, a026_wb_advert_daily |
+| `a037` | Данные по товарам WB | `a037_wb_product_snapshot` | Ежедневные снимки состояния товаров Wildberries в разрезе номенклатуры: остатки на складах WB и продавца, сумма остатков, рейтинг карточки и… | a006_connection_mp, a002_organization, a007_marketplace_product, a036_wb_sales_funnel_daily |
+| `a038` | Подключение LLM | `a038_llm_connection` | Подключение к провайдеру LLM (OpenAI, OpenRouter). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tokens), системный промпт… | a018_llm_chat, a019_llm_artifact |
 
 ## Projections (p9XX)
 
@@ -115,6 +118,7 @@
 | `task017` | wb returns claims |
 | `task018` | ym returns |
 | `task019` | ym payment report |
+| `task020` | wb product snapshot |
 
 ## Chart of accounts (account_registry)
 
@@ -189,7 +193,7 @@
 | `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
 | `commission_percent` | Процент комиссии |  |  |  |
 
-## API routes (353)
+## API routes (379)
 
 ### `/a004`
 - `GET` /api/a004/nomenclature
@@ -279,13 +283,19 @@
 - `GET` /api/a017-llm-agent/primary
 
 ### `/a018-llm-chat`
-- `GET POST` /api/a018-llm-chat
 - `GET DELETE` /api/a018-llm-chat/:id
+- `GET POST` /api/a018-llm-chat/:id/context
 - `GET POST` /api/a018-llm-chat/:id/messages
+- `POST` /api/a018-llm-chat/:id/rating
 - `POST` /api/a018-llm-chat/:id/upload
 - `GET` /api/a018-llm-chat/jobs/:job_id
+- `POST` /api/a018-llm-chat/jobs/:job_id/cancel
 - `GET` /api/a018-llm-chat/list
+- `GET` /api/a018-llm-chat/message/:message_id/tool-trace
 - `GET` /api/a018-llm-chat/with-stats
+
+### `/a018-llm-chat-context`
+- `GET` /api/a018-llm-chat-context/:id
 
 ### `/a019-llm-artifact`
 - `GET POST` /api/a019-llm-artifact
@@ -420,6 +430,25 @@
 - `POST` /api/a035/ym-settlement-recon/generate
 - `GET` /api/a035/ym-settlement-recon/list
 
+### `/a036`
+- `GET` /api/a036/wb-sales-funnel/:id
+- `GET` /api/a036/wb-sales-funnel/list
+- `GET` /api/a036/wb-sales-funnel/product-metrics
+
+### `/a037`
+- `GET` /api/a037/wb-product-snapshot/:id
+- `GET` /api/a037/wb-product-snapshot/list
+- `GET` /api/a037/wb-product-snapshot/rating-changes
+- `GET` /api/a037/wb-product-snapshot/series
+
+### `/a038-llm-connection`
+- `GET POST` /api/a038-llm-connection
+- `GET DELETE` /api/a038-llm-connection/:id
+- `POST` /api/a038-llm-connection/:id/fetch-models
+- `POST` /api/a038-llm-connection/:id/test
+- `GET` /api/a038-llm-connection/list
+- `GET` /api/a038-llm-connection/primary
+
 ### `/bi-timeline`
 - `GET` /api/bi-timeline/indicators
 - `POST` /api/bi-timeline/series
@@ -524,6 +553,9 @@
 - `GET` /api/llm-knowledge
 - `GET` /api/llm-knowledge/:id
 
+### `/llm-skills`
+- `GET POST` /api/llm-skills
+
 ### `/marketplace`
 - `GET POST` /api/marketplace
 - `GET DELETE` /api/marketplace/:id
@@ -541,6 +573,7 @@
 ### `/nomenclature`
 - `GET POST` /api/nomenclature
 - `GET DELETE` /api/nomenclature/:id
+- `GET` /api/nomenclature/:id/orders
 - `GET` /api/nomenclature/dimensions
 - `POST` /api/nomenclature/import-excel
 - `GET` /api/nomenclature/search
@@ -628,8 +661,15 @@
 
 ### `/plugin`
 - `GET POST` /api/plugin
-- `POST` /api/plugin/:id/data
-- `GET POST DELETE` /api/plugin/all
+- `GET DELETE` /api/plugin/:id
+- `POST` /api/plugin/:id/apply-update
+- `GET POST` /api/plugin/:id/export
+- `POST` /api/plugin/:id/invoke
+- `POST` /api/plugin/:id/rating
+- `GET POST` /api/plugin/all
+- `GET` /api/plugin/migration-version
+- `POST GET` /api/plugin/testdata
+- `GET POST` /api/plugin/updates
 
 ### `/projections`
 - `GET` /api/projections/p900/:registrator_ref

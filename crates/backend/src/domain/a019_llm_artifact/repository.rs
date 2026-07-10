@@ -7,8 +7,92 @@ use contracts::domain::a019_llm_artifact::aggregate::{
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
 use sea_orm::prelude::Expr;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, Set, Statement,
+};
 use uuid::Uuid;
+
+/// Idempotently create/update the plugin card for the latest user message.
+/// Accepting a generic connection lets the plugin workflow include this write
+/// in the same transaction as plugin, revision and snapshot.
+pub async fn upsert_plugin_artifact<C: ConnectionTrait>(
+    conn: &C,
+    plugin_id: &str,
+    plugin_code: &str,
+    plugin_title: &str,
+    chat_id: &str,
+    agent_id: &str,
+) -> Result<(String, Option<String>), DbErr> {
+    let source_message_id = conn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT id FROM a018_llm_chat_message \
+             WHERE chat_id = ? AND role = 'user' ORDER BY created_at DESC, id DESC LIMIT 1",
+            vec![chat_id.into()],
+        ))
+        .await?
+        .and_then(|row| row.try_get::<String>("", "id").ok());
+    let code = source_message_id
+        .as_deref()
+        .map(|message_id| {
+            format!(
+                "PLUGIN-{plugin_code}-{}",
+                message_id.chars().take(8).collect::<String>()
+            )
+        })
+        .unwrap_or_else(|| format!("PLUGIN-{plugin_code}"));
+    let query_params = serde_json::json!({
+        "plugin_id": plugin_id,
+        "code": plugin_code,
+        "title": plugin_title,
+        "source_message_id": source_message_id,
+    })
+    .to_string();
+
+    if let Some(row) = conn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT id FROM a019_llm_artifact WHERE code = ? AND is_deleted = 0 LIMIT 1",
+            vec![code.clone().into()],
+        ))
+        .await?
+    {
+        let artifact_id = row.try_get::<String>("", "id")?;
+        conn.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE a019_llm_artifact SET description = ?, query_params = ?, updated_at = datetime('now'), \
+             version = version + 1 WHERE id = ?",
+            vec![
+                plugin_title.into(),
+                query_params.into(),
+                artifact_id.clone().into(),
+            ],
+        ))
+        .await?;
+        return Ok((artifact_id, source_message_id));
+    }
+
+    let artifact_id = Uuid::new_v4().to_string();
+    conn.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO a019_llm_artifact \
+         (id, code, description, comment, chat_id, agent_id, artifact_type, status, sql_query, \
+          query_params, execution_count, is_deleted, is_posted, created_at, updated_at, version) \
+         VALUES (?, ?, ?, ?, ?, ?, 'plugin', 'active', '', ?, 0, 0, 0, datetime('now'), datetime('now'), 1)",
+        vec![
+            artifact_id.clone().into(),
+            code.into(),
+            plugin_title.into(),
+            format!("Плагин {plugin_code}").into(),
+            chat_id.into(),
+            agent_id.into(),
+            query_params.into(),
+        ],
+    ))
+    .await?;
+    Ok((artifact_id, source_message_id))
+}
 
 mod artifact {
     use sea_orm::entity::prelude::*;

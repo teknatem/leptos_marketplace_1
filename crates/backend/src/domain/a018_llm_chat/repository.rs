@@ -2,7 +2,7 @@ use chrono::Utc;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
     ArtifactAction, ChatRole, LlmChat, LlmChatAttachment, LlmChatId, LlmChatListItem,
-    LlmChatMessage,
+    LlmChatMessage, ToolTraceEntry,
 };
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
 use contracts::domain::common::{AggregateId, BaseAggregate, EntityMetadata};
@@ -32,6 +32,7 @@ mod chat {
         pub created_at: Option<chrono::DateTime<chrono::Utc>>,
         pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
         pub version: i32,
+        pub rating: Option<i32>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -119,6 +120,35 @@ pub mod context_package {
     impl ActiveModelBehavior for ActiveModel {}
 }
 
+mod tool_trace {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "sys_tool_trace")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub chat_id: String,
+        pub message_id: String,
+        pub iteration: i64,
+        pub call_index: i64,
+        pub stage: String,
+        pub tool: String,
+        pub ok: bool,
+        pub ms: i64,
+        pub summary: Option<String>,
+        pub input_json: Option<String>,
+        pub output_json: Option<String>,
+        pub created_at: String,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
 /// Входные данные для вставки пакета контекста.
 pub struct NewContextPackage {
     pub id: String,
@@ -156,6 +186,7 @@ impl From<chat::Model> for LlmChat {
             },
             agent_id: LlmAgentId::new(agent_uuid),
             model_name: m.model_name,
+            rating: m.rating,
         }
     }
 }
@@ -260,6 +291,7 @@ struct ChatWithStats {
     created_at: Option<chrono::DateTime<chrono::Utc>>,
     message_count: Option<i64>,
     last_message_at: Option<String>,
+    rating: Option<i32>,
 }
 
 /// Получить список чатов с подсчетом сообщений и временем последнего сообщения
@@ -274,13 +306,14 @@ pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListI
             a.agent_type as agent_type,
             c.model_name,
             c.created_at,
+            c.rating,
             COUNT(m.id) as message_count,
             MAX(m.created_at) as last_message_at
         FROM a018_llm_chat c
-        LEFT JOIN a017_llm_agent a ON c.agent_id = a.id
+        LEFT JOIN a038_llm_connection a ON c.agent_id = a.id
         LEFT JOIN a018_llm_chat_message m ON c.id = m.chat_id
         WHERE c.is_deleted = 0
-        GROUP BY c.id, c.code, c.description, c.agent_id, a.description, a.agent_type, c.model_name, c.created_at
+        GROUP BY c.id, c.code, c.description, c.agent_id, a.description, a.agent_type, c.model_name, c.created_at, c.rating
         ORDER BY c.created_at DESC
     "#;
 
@@ -312,6 +345,7 @@ pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListI
                 created_at: r.created_at.unwrap_or_else(Utc::now),
                 message_count: r.message_count,
                 last_message_at,
+                rating: r.rating,
             }
         })
         .collect())
@@ -338,6 +372,7 @@ pub async fn insert(db: &DatabaseConnection, chat: &LlmChat) -> Result<(), DbErr
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         version: Set(1),
+        rating: Set(chat.rating),
     };
 
     active_model.insert(db).await?;
@@ -359,6 +394,7 @@ pub async fn update(db: &DatabaseConnection, chat: &LlmChat) -> Result<(), DbErr
         created_at: Set(Some(chat.base.metadata.created_at)),
         updated_at: Set(Some(now)),
         version: Set(chat.base.metadata.version + 1),
+        rating: Set(chat.rating),
     };
 
     chat::Entity::update(active_model).exec(db).await?;
@@ -421,6 +457,80 @@ pub async fn insert_message(
 
     active_model.insert(db).await?;
     Ok(())
+}
+
+// ============================================================================
+// Tool Trace Repository Functions (sys_tool_trace)
+// ============================================================================
+
+impl From<tool_trace::Model> for ToolTraceEntry {
+    fn from(m: tool_trace::Model) -> Self {
+        let created_at = chrono::DateTime::parse_from_rfc3339(&m.created_at)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+        ToolTraceEntry {
+            id: m.id,
+            chat_id: m.chat_id,
+            message_id: m.message_id,
+            iteration: m.iteration,
+            call_index: m.call_index,
+            stage: m.stage,
+            tool: m.tool,
+            ok: m.ok,
+            ms: m.ms,
+            summary: m.summary,
+            input: m.input_json.and_then(|s| serde_json::from_str(&s).ok()),
+            output: m.output_json.and_then(|s| serde_json::from_str(&s).ok()),
+            created_at,
+        }
+    }
+}
+
+/// Записать пачку строк журнала вызовов инструментов одним batch-insert'ом.
+pub async fn insert_tool_trace_batch(
+    db: &DatabaseConnection,
+    entries: &[ToolTraceEntry],
+) -> Result<(), DbErr> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    let models: Vec<tool_trace::ActiveModel> = entries
+        .iter()
+        .map(|e| tool_trace::ActiveModel {
+            id: Set(e.id.clone()),
+            chat_id: Set(e.chat_id.clone()),
+            message_id: Set(e.message_id.clone()),
+            iteration: Set(e.iteration),
+            call_index: Set(e.call_index),
+            stage: Set(e.stage.clone()),
+            tool: Set(e.tool.clone()),
+            ok: Set(e.ok),
+            ms: Set(e.ms),
+            summary: Set(e.summary.clone()),
+            input_json: Set(e.input.as_ref().and_then(|v| serde_json::to_string(v).ok())),
+            output_json: Set(e
+                .output
+                .as_ref()
+                .and_then(|v| serde_json::to_string(v).ok())),
+            created_at: Set(e.created_at.to_rfc3339()),
+        })
+        .collect();
+    tool_trace::Entity::insert_many(models).exec(db).await?;
+    Ok(())
+}
+
+/// Получить полный журнал вызовов инструментов для сообщения (по порядку вызовов).
+pub async fn find_tool_trace_by_message(
+    db: &DatabaseConnection,
+    message_id: &str,
+) -> Result<Vec<ToolTraceEntry>, DbErr> {
+    let models = tool_trace::Entity::find()
+        .filter(tool_trace::Column::MessageId.eq(message_id))
+        .order_by_asc(tool_trace::Column::Iteration)
+        .order_by_asc(tool_trace::Column::CallIndex)
+        .all(db)
+        .await?;
+    Ok(models.into_iter().map(Into::into).collect())
 }
 
 // ============================================================================

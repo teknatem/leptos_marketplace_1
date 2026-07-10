@@ -1,5 +1,6 @@
 use super::repository;
 use contracts::domain::a004_nomenclature::aggregate::{Nomenclature, NomenclatureDto};
+use contracts::domain::a004_nomenclature::orders_dto::NomenclatureOrderRowDto;
 use uuid::Uuid;
 
 fn normalize_validation_error(message: &str) -> String {
@@ -127,4 +128,80 @@ pub async fn list_paginated(
 pub async fn sync_kit_variant_links(
 ) -> anyhow::Result<super::kit_variant_link_sync::KitVariantLinkSyncStats> {
     super::kit_variant_link_sync::sync_links().await
+}
+
+/// Объединённый список заказов WB + YM за последние `days` дней, относящихся
+/// к номенклатуре `nomenclature_ref` (напрямую или через её деривативы,
+/// у которых base_nomenclature_ref указывает на неё). Для вкладки «Заказы»
+/// на карточке номенклатуры.
+pub async fn list_related_orders(
+    nomenclature_ref: &str,
+    days: u32,
+) -> anyhow::Result<Vec<NomenclatureOrderRowDto>> {
+    let date_from = (chrono::Utc::now().date_naive() - chrono::Duration::days(days as i64))
+        .format("%Y-%m-%d")
+        .to_string();
+
+    let wb_rows = crate::domain::a015_wb_orders::repository::list_orders_for_nomenclature(
+        nomenclature_ref,
+        &date_from,
+    )
+    .await?;
+    let ym_rows = crate::domain::a013_ym_order::repository::list_lines_for_nomenclature(
+        nomenclature_ref,
+        &date_from,
+    )
+    .await?;
+
+    let mut items: Vec<NomenclatureOrderRowDto> = Vec::with_capacity(wb_rows.len() + ym_rows.len());
+
+    for r in wb_rows {
+        items.push(NomenclatureOrderRowDto {
+            id: r.id,
+            marketplace: "WB".to_string(),
+            document_no: r.document_no,
+            order_date: r.document_date,
+            is_cancel: r.is_cancel,
+            is_supply: r.is_supply,
+            is_realization: r.is_realization,
+            line_status: None,
+            status_norm: None,
+            qty: r.qty.unwrap_or(1.0),
+            price_before_discount: r.total_price.or(r.price),
+            price_after_discount: r.price_with_disc.or(r.finished_price),
+            final_buyer_price: r.finished_price,
+            dealer_price_ut: r.dealer_price_ut,
+            margin_pro: r.margin_pro,
+        });
+    }
+
+    for r in ym_rows {
+        // Маржа заказа относится ко всему заказу целиком, поэтому переносим её
+        // на строку, только если заказ однострочный — иначе некорректно.
+        let margin_pro = match r.order_lines_count {
+            Some(1) => r.order_margin_pro,
+            _ => None,
+        };
+        items.push(NomenclatureOrderRowDto {
+            id: r.order_id,
+            marketplace: "YM".to_string(),
+            document_no: r.document_no,
+            order_date: r.creation_date,
+            is_cancel: None,
+            is_supply: None,
+            is_realization: None,
+            line_status: r.line_status,
+            status_norm: r.status_norm,
+            qty: r.qty,
+            price_before_discount: r.price_list,
+            price_after_discount: r.price_effective,
+            final_buyer_price: r.buyer_price,
+            dealer_price_ut: r.dealer_price_ut,
+            margin_pro,
+        });
+    }
+
+    items.sort_by(|a, b| b.order_date.cmp(&a.order_date));
+
+    Ok(items)
 }

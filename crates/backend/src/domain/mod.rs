@@ -33,3 +33,6 @@ pub mod a032_wb_returns_claims;
 pub mod a033_wb_day_close;
 pub mod a034_ym_realization;
 pub mod a035_ym_settlement_recon;
+pub mod a036_wb_sales_funnel_daily;
+pub mod a037_wb_product_snapshot;
+pub mod a038_llm_connection;

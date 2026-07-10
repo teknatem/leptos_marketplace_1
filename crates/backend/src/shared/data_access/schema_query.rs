@@ -1,20 +1,19 @@
 use super::catalog::{DataSourceKind, DataSourceRef};
-use super::sql_guard::wrap_limited_sql;
+use super::row_json::{fetch_json_rows, JsonBind};
+use super::sql_guard::{inspect_read_query, wrap_limited_sql};
 use super::TabularResult;
-use crate::shared::data::db::get_connection;
 use crate::shared::universal_dashboard::{get_registry, QueryBuilder, QueryParam};
 use contracts::shared::universal_dashboard::{
     AggregateFunction, ComparisonOp, ConditionDef, DashboardConfig, DashboardFilters,
     DashboardSort, FilterCondition, SelectedField, SortDirection, SortRule,
 };
-use sea_orm::{DatabaseBackend, FromQueryResult, Statement, Value as DbValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 const DEFAULT_LIMIT: usize = 50;
-const MAX_LIMIT: usize = 200;
+const MAX_LIMIT: usize = 2_000;
 const QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -165,12 +164,37 @@ fn filter_definition(filter: &SchemaFilter) -> Result<ConditionDef, String> {
     }
 }
 
-fn query_param_to_db(value: &QueryParam) -> DbValue {
+fn query_param_to_bind(value: &QueryParam) -> JsonBind {
     match value {
-        QueryParam::Text(value) => DbValue::String(Some(Box::new(value.clone()))),
-        QueryParam::Integer(value) => DbValue::BigInt(Some(*value)),
-        QueryParam::Numeric(value) => DbValue::Double(Some(*value)),
+        QueryParam::Text(value) => JsonBind::Text(value.clone()),
+        QueryParam::Integer(value) => JsonBind::Int(*value),
+        QueryParam::Numeric(value) => JsonBind::Float(*value),
     }
+}
+
+/// Подставить bind-параметры (`?`) в SQL литералами — для читаемого «образца» запроса,
+/// который модель может скопировать. Только для отображения: строки экранируются (`''`),
+/// числа печатаются как есть. Исполняется всегда параметризованный вариант, не этот.
+fn inline_sql_params(sql: &str, params: &[QueryParam]) -> String {
+    let mut out = String::with_capacity(sql.len() + params.len() * 8);
+    let mut next = params.iter();
+    for ch in sql.chars() {
+        if ch == '?' {
+            match next.next() {
+                Some(QueryParam::Text(s)) => {
+                    out.push('\'');
+                    out.push_str(&s.replace('\'', "''"));
+                    out.push('\'');
+                }
+                Some(QueryParam::Integer(n)) => out.push_str(&n.to_string()),
+                Some(QueryParam::Numeric(f)) => out.push_str(&f.to_string()),
+                None => out.push('?'),
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 pub async fn query_schema(request: SchemaQueryRequest) -> Result<TabularResult, String> {
@@ -249,11 +273,11 @@ pub async fn query_schema(request: SchemaQueryRequest) -> Result<TabularResult, 
     let built = QueryBuilder::new(&schema, &config, table)
         .build()
         .map_err(|error| format!("Schema query validation failed: {error}"))?;
+    inspect_read_query(&built.sql)
+        .map_err(|error| format!("Schema query field policy rejected the query: {error}"))?;
     let sql = wrap_limited_sql(&built.sql, limit + 1, "semantic_limited_result");
-    let params: Vec<DbValue> = built.params.iter().map(query_param_to_db).collect();
-    let statement = Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, params);
-    let rows_future = Value::find_by_statement(statement).all(get_connection());
-    let mut rows = tokio::time::timeout(QUERY_TIMEOUT, rows_future)
+    let binds: Vec<JsonBind> = built.params.iter().map(query_param_to_bind).collect();
+    let (mut rows, columns) = tokio::time::timeout(QUERY_TIMEOUT, fetch_json_rows(&sql, binds))
         .await
         .map_err(|_| "Schema query timed out after 10 seconds".to_string())?
         .map_err(|error| format!("Schema query failed: {error}"))?;
@@ -261,11 +285,9 @@ pub async fn query_schema(request: SchemaQueryRequest) -> Result<TabularResult, 
     if truncated {
         rows.truncate(limit);
     }
-    let columns = rows
-        .first()
-        .and_then(Value::as_object)
-        .map(|row| row.keys().cloned().collect())
-        .unwrap_or_default();
+    // Канонический SQL схемы (реальные JOIN-ы/колонки, литералы вместо bind-параметров) —
+    // отдаём модели как готовый пример: его можно переиспользовать в raw SQL/build_chart.
+    let generated_sql = Some(inline_sql_params(&built.sql, &built.params));
     let result = TabularResult {
         source: DataSourceRef {
             kind: DataSourceKind::Base,
@@ -275,6 +297,7 @@ pub async fn query_schema(request: SchemaQueryRequest) -> Result<TabularResult, 
         rows,
         columns,
         truncated,
+        generated_sql,
     };
     tracing::info!(
         source_kind = "base",

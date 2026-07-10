@@ -11,7 +11,7 @@ use super::kb_admin_tools::execute_kb_admin_tool;
 use super::knowledge_base::KNOWLEDGE_BASE;
 use super::metadata_registry::METADATA_REGISTRY;
 use super::plugin_tools::{execute_plugin_tool, PLUGIN_TOOL_NAMES};
-use super::table_tools::{execute_table_tool, TABLE_TOOL_NAMES};
+use super::table_tools::{execute_build_table, execute_table_tool, TABLE_TOOL_NAMES};
 use super::types::{ToolCall, ToolDefinition};
 use contracts::domain::a017_llm_agent::aggregate::AgentType;
 use once_cell::sync::Lazy;
@@ -34,6 +34,31 @@ const CACHEABLE_TOOLS: &[&str] = &[
 /// процесса (метаданные/схема статичны в рамках запуска).
 static METADATA_TOOL_CACHE: Lazy<Mutex<HashMap<String, String>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn tool_result_ok(result: &serde_json::Value) -> bool {
+    result
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or_else(|| result.get("error").is_none())
+}
+
+#[cfg(test)]
+mod result_status_tests {
+    use super::tool_result_ok;
+    use serde_json::json;
+
+    #[test]
+    fn explicit_ok_false_wins_even_without_error_field() {
+        assert!(!tool_result_ok(
+            &json!({ "ok": false, "failures": ["render"] })
+        ));
+        assert!(tool_result_ok(
+            &json!({ "ok": true, "error": "diagnostic only" })
+        ));
+        assert!(!tool_result_ok(&json!({ "error": "failed" })));
+        assert!(tool_result_ok(&json!({ "result": 1 })));
+    }
+}
 
 /// Ключ кэша. Включает agent_type, т.к. часть инструментов отдаёт ошибку доступа
 /// для отдельных ролей (напр. list_entities для SystemAdmin).
@@ -91,7 +116,7 @@ pub(crate) fn shared_tool_definitions() -> Vec<ToolDefinition> {
                 "properties": {
                     "entity_index": {
                         "type": "string",
-                        "description": "Индекс сущности из list_entities, например: 'a012', 'a004', 'a006'."
+                        "description": "Короткий индекс сущности из list_entities, например 'a012', 'a004', 'a006'. Это НЕ schema_id из list_data_sources (напр. ds03_p904_sales) и не имя таблицы — для запроса данных по безопасной схеме используй query_data_schema."
                     }
                 },
                 "required": ["entity_index"]
@@ -294,7 +319,7 @@ pub async fn execute_tool_call(
             | "write_kb_document"
     ) {
         let result = execute_kb_admin_tool(&call.name, &call.arguments, agent_id).await;
-        let is_ok = result.get("error").is_none();
+        let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
             map.insert(
@@ -310,7 +335,7 @@ pub async fn execute_tool_call(
     if DATA_TOOL_NAMES.contains(&call.name.as_str()) {
         let result =
             execute_data_tool(&call.name, &call.arguments, agent_type, chat_id, agent_id).await;
-        let is_ok = result.get("error").is_none();
+        let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
             map.insert(
@@ -332,10 +357,43 @@ pub async fn execute_tool_call(
         return output;
     }
 
+    // build_chart — высокоуровневый сборщик: async + контекст чата (отдельная ветка,
+    // т.к. он выполняет SQL и сохраняет плагин, в отличие от заготовок-инструментов).
+    if call.name == "build_chart" {
+        let result =
+            super::chart_tools::execute_build_chart(&call.arguments, chat_id, agent_id).await;
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    if call.name == "build_table" {
+        let result = execute_build_table(&call.arguments, chat_id, agent_id).await;
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
     // Chart builder tools — dispatch to chart_tools module (заготовки, без БД)
     if CHART_TOOL_NAMES.contains(&call.name.as_str()) {
         let result = execute_chart_tool(&call.name, &call.arguments);
-        let is_ok = result.get("error").is_none();
+        let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
             map.insert(
@@ -351,7 +409,7 @@ pub async fn execute_tool_call(
     // Table builder tools — dispatch to table_tools module (заготовки, без БД)
     if TABLE_TOOL_NAMES.contains(&call.name.as_str()) {
         let result = execute_table_tool(&call.name, &call.arguments);
-        let is_ok = result.get("error").is_none();
+        let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
             map.insert(
@@ -367,7 +425,7 @@ pub async fn execute_tool_call(
     // Plugin developer tools — dispatch to plugin_tools module
     if PLUGIN_TOOL_NAMES.contains(&call.name.as_str()) {
         let result = execute_plugin_tool(&call.name, &call.arguments, chat_id, agent_id).await;
-        let is_ok = result.get("error").is_none();
+        let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
             map.insert(
@@ -389,7 +447,7 @@ pub async fn execute_tool_call(
             | "get_data_integrity_report"
     ) {
         let result = execute_admin_tool(&call.name, &call.arguments).await;
-        let is_ok = result.get("error").is_none();
+        let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
             map.insert(
@@ -565,7 +623,7 @@ pub async fn execute_tool_call(
     };
 
     // Добавляем отладочные метаданные: _tool и _ok
-    let is_ok = result.get("error").is_none();
+    let is_ok = tool_result_ok(&result);
     let mut result = result;
     if let serde_json::Value::Object(ref mut map) = result {
         map.insert(

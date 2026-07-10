@@ -8,9 +8,13 @@ use super::model::{
     NomenclatureBarcodeDto,
 };
 use contracts::domain::a004_nomenclature::aggregate::NomenclatureDto;
+use contracts::domain::a004_nomenclature::orders_dto::NomenclatureOrderRowDto;
 use contracts::domain::common::AggregateId;
 use contracts::projections::p912_nomenclature_costs::dto::NomenclatureCostDto;
 use leptos::prelude::*;
+
+/// Период по умолчанию для вкладки «Заказы» на карточке номенклатуры.
+const DEFAULT_ORDERS_DAYS: u32 = 180;
 
 /// Helper to convert empty strings to None
 fn opt(v: String) -> Option<String> {
@@ -71,6 +75,11 @@ pub struct NomenclatureDetailsVm {
     pub production_costs_count: RwSignal<usize>,
     pub production_costs_loaded: RwSignal<bool>,
     pub production_costs_loading: RwSignal<bool>,
+
+    pub orders: RwSignal<Vec<NomenclatureOrderRowDto>>,
+    pub orders_count: RwSignal<usize>,
+    pub orders_loaded: RwSignal<bool>,
+    pub orders_loading: RwSignal<bool>,
 
     // === Reference data (dropdown options) ===
     pub dimension_options: RwSignal<Option<DimensionValuesResponse>>,
@@ -134,6 +143,11 @@ impl NomenclatureDetailsVm {
             production_costs_count: RwSignal::new(0),
             production_costs_loaded: RwSignal::new(false),
             production_costs_loading: RwSignal::new(false),
+
+            orders: RwSignal::new(Vec::new()),
+            orders_count: RwSignal::new(0),
+            orders_loaded: RwSignal::new(false),
+            orders_loading: RwSignal::new(false),
 
             // Reference data
             dimension_options: RwSignal::new(None),
@@ -247,10 +261,20 @@ impl NomenclatureDetailsVm {
         });
 
         let this_production = self.clone();
+        let nom_id_production = nom_id.clone();
         leptos::task::spawn_local(async move {
-            match model::fetch_production_costs(&nom_id).await {
+            match model::fetch_production_costs(&nom_id_production).await {
                 Ok(items) => this_production.production_costs_count.set(items.len()),
                 Err(_) => this_production.production_costs_count.set(0),
+            }
+        });
+
+        // Load orders count
+        let this_orders = self.clone();
+        leptos::task::spawn_local(async move {
+            match model::fetch_nomenclature_orders(&nom_id, DEFAULT_ORDERS_DAYS).await {
+                Ok(items) => this_orders.orders_count.set(items.len()),
+                Err(_) => this_orders.orders_count.set(0),
             }
         });
     }
@@ -355,6 +379,37 @@ impl NomenclatureDetailsVm {
         });
     }
 
+    /// Load related marketplace orders (lazy, called when orders tab is activated)
+    pub fn load_orders(&self) {
+        let Some(nom_id) = self.id.get() else {
+            return;
+        };
+
+        if self.orders_loaded.get() {
+            return;
+        }
+
+        let this = self.clone();
+        this.orders_loading.set(true);
+
+        leptos::task::spawn_local(async move {
+            match model::fetch_nomenclature_orders(&nom_id, DEFAULT_ORDERS_DAYS).await {
+                Ok(items) => {
+                    this.orders_count.set(items.len());
+                    this.orders.set(items);
+                    this.orders_loaded.set(true);
+                    this.orders_loading.set(false);
+                }
+                Err(_) => {
+                    this.orders.set(Vec::new());
+                    this.orders_count.set(0);
+                    this.orders_loaded.set(true);
+                    this.orders_loading.set(false);
+                }
+            }
+        });
+    }
+
     // === Commands ===
 
     /// Save the form
@@ -433,6 +488,11 @@ impl NomenclatureDetailsVm {
         self.production_costs_count.set(0);
         self.production_costs_loaded.set(false);
         self.production_costs_loading.set(false);
+
+        self.orders.set(Vec::new());
+        self.orders_count.set(0);
+        self.orders_loaded.set(false);
+        self.orders_loading.set(false);
 
         self.active_tab.set("general");
         self.error.set(None);

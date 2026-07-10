@@ -1,5 +1,8 @@
+use super::job_store;
 use super::repository;
-use crate::domain::a017_llm_agent::repository as agent_repository;
+// Чат работает через «Подключение LLM» (a038). Связь хранится как UUID (chat.agent_id);
+// после миграции a017→a038 (те же id) существующие чаты резолвятся против a038.
+use crate::domain::a038_llm_connection::repository as agent_repository;
 use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole};
 use crate::shared::llm::{create_provider, execute_tool_call};
 use axum::extract::Multipart;
@@ -31,7 +34,8 @@ fn utf8_truncate(s: &str, max_bytes: usize) -> &str {
 /// (progressive disclosure) + интроспекция схемы + execute_query + шаблон + smoke-тест +
 /// upsert, плюс возможный цикл починки — это легко 12–14 шагов. 16 даёт запас; при
 /// исчерпании лимит обрабатывается мягко (финальный ответ без инструментов, см. ниже).
-const MAX_TOOL_ITERATIONS: usize = 16;
+const MAX_TOOL_ITERATIONS: usize = 10;
+const MAX_TOOL_FAILURES: usize = 6;
 
 /// Системные промпты вынесены в реестр навыков (см. shared/llm/skills.rs):
 /// базовый core-промпт + промпт-фрагменты активных навыков.
@@ -55,6 +59,9 @@ pub struct SendMessageRequest {
     pub model_name: Option<String>,
     #[serde(default)]
     pub attachment_ids: Vec<String>,
+    /// Client-generated idempotency key for background execution retries.
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// Создание нового чата
@@ -143,6 +150,29 @@ pub async fn update(dto: LlmChatDto) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Установить пользовательскую оценку чата (1..5; None — снять оценку).
+pub async fn set_rating(id: &str, rating: Option<i32>) -> anyhow::Result<()> {
+    if let Some(r) = rating {
+        if !(1..=5).contains(&r) {
+            return Err(anyhow::anyhow!("Rating must be between 1 and 5"));
+        }
+    }
+
+    let chat_uuid = Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
+    let chat_id = LlmChatId::new(chat_uuid);
+
+    let db = crate::shared::data::db::get_connection();
+    let mut aggregate = repository::find_by_id(&db, &chat_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Chat not found"))?;
+
+    aggregate.rating = rating;
+    aggregate.before_write();
+    repository::update(&db, &aggregate).await?;
+
+    Ok(())
+}
+
 /// Удаление чата (soft delete)
 pub async fn delete(id: &str) -> anyhow::Result<()> {
     let chat_uuid = Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
@@ -207,10 +237,149 @@ pub async fn get_messages(chat_id: &str) -> anyhow::Result<Vec<LlmChatMessage>> 
     Ok(messages)
 }
 
-/// Отправить сообщение пользователя и получить ответ от LLM
+/// Полный журнал вызовов инструментов для сообщения ассистента (sys_tool_trace).
+pub async fn get_tool_trace(
+    message_id: &str,
+) -> anyhow::Result<Vec<contracts::domain::a018_llm_chat::aggregate::ToolTraceEntry>> {
+    let db = crate::shared::data::db::get_connection();
+    let entries = repository::find_tool_trace_by_message(&db, message_id).await?;
+    Ok(entries)
+}
+
+/// Человекочитаемая подпись инструмента для индикатора прогресса (показывается
+/// пользователю, не модели). Неизвестные имена показываем как есть.
+fn human_tool_label(name: &str) -> String {
+    let label = match name {
+        "find_data_sources" => "Поиск источника данных",
+        "preview_data" => "Проверка данных",
+        "build_chart" => "Создание графика",
+        "build_table" => "Создание таблицы",
+        "list_data_sources" => "Просмотр источников данных",
+        "query_data_schema" => "Запрос данных по схеме",
+        "run_data_view_scalar" | "run_data_view_drilldown" => "Расчёт по DataView",
+        "execute_query" => "SQL-запрос",
+        "list_entities" => "Просмотр каталога объектов",
+        "get_entity_schema" => "Чтение схемы объекта",
+        "get_join_hint" => "Поиск связи таблиц",
+        "get_architecture_overview" => "Обзор архитектуры",
+        "search_knowledge" => "Поиск в базе знаний",
+        "get_knowledge" => "Чтение базы знаний",
+        "chart_template" | "chart_examples" | "get_chart_ui_contract" => "Подготовка графика",
+        "plugin_validate" => "Проверка плагина",
+        "plugin_smoke_test" => "Проверка графика/таблицы",
+        "plugin_upsert" => "Сохранение плагина",
+        "plugin_invoke" => "Запуск плагина",
+        "plugin_runs" => "История запусков плагина",
+        "list_skills" | "use_skill" => "Подбор навыка",
+        "check_system_health" => "Проверка состояния системы",
+        "get_performance_stats" => "Метрики производительности",
+        "list_background_jobs" => "Фоновые задачи",
+        "get_data_integrity_report" => "Проверка целостности данных",
+        other => return format!("Инструмент: {other}"),
+    };
+    label.to_string()
+}
+
+/// Стабильный этап workflow для диагностики и UI. Имя инструмента остается техническим
+/// идентификатором, а stage описывает его место в конвейере.
+fn tool_stage(name: &str) -> &'static str {
+    match name {
+        "find_data_sources" => "discovery",
+        "preview_data" => "preview",
+        "build_chart" | "build_table" => "publish",
+        _ => "tool",
+    }
+}
+
+fn bounded_trace_value(value: serde_json::Value, max_bytes: usize) -> serde_json::Value {
+    let encoded = serde_json::to_string(&value).unwrap_or_default();
+    if encoded.len() <= max_bytes {
+        value
+    } else {
+        serde_json::json!({
+            "truncated": true,
+            "preview": utf8_truncate(&encoded, max_bytes),
+        })
+    }
+}
+
+/// Вход этапа сохраняется отдельно от выхода. Это делает trace пригодным не только
+/// для таймингов, но и для проверки фактического контракта между этапами.
+fn trace_input(arguments: &str) -> serde_json::Value {
+    let value = serde_json::from_str(arguments)
+        .unwrap_or_else(|_| serde_json::json!({ "raw": utf8_truncate(arguments, 2_000) }));
+    bounded_trace_value(value, 6_000)
+}
+
+/// Выход trace намеренно компактный: строки preview могут занимать сотни килобайт,
+/// а для диагностики контракта нужны колонки, готовность, IDs и структурированная ошибка.
+fn trace_output(value: Option<&serde_json::Value>) -> serde_json::Value {
+    let Some(value) = value else {
+        return serde_json::json!({ "error": "Tool returned non-JSON output" });
+    };
+    let mut out = serde_json::Map::new();
+    for key in [
+        "ok",
+        "stage",
+        "error_code",
+        "error",
+        "recommended_fix",
+        "row_count",
+        "total",
+        "build_ready",
+        "truncated",
+        "source",
+        "columns",
+        "effective_context",
+        "next_step",
+        "artifact_id",
+        "plugin_id",
+        "revision_id",
+        "session_id",
+        "status",
+        "data_modes",
+        "presentation",
+    ] {
+        if let Some(item) = value.get(key) {
+            out.insert(key.to_string(), item.clone());
+        }
+    }
+    if let Some(sources) = value.get("sources").and_then(serde_json::Value::as_array) {
+        let compact = sources
+            .iter()
+            .take(5)
+            .map(|source| {
+                serde_json::json!({
+                    "id": source.get("id"),
+                    "kind": source.get("kind"),
+                    "name": source.get("name"),
+                    "table": source.get("table"),
+                    "source_template": source.get("source_template"),
+                })
+            })
+            .collect::<Vec<_>>();
+        out.insert("sources".to_string(), serde_json::Value::Array(compact));
+    }
+    if out.is_empty() {
+        out.insert("result".to_string(), value.clone());
+    }
+    bounded_trace_value(serde_json::Value::Object(out), 8_000)
+}
+
+/// Записать текущий этап выполнения в job_store (если задача отслеживается).
+async fn report_progress(job_id: Option<&str>, step: u32, stage: impl Into<String>) {
+    if let Some(id) = job_id {
+        job_store::set_progress(id, job_store::JobProgress::new(step, stage)).await;
+    }
+}
+
+/// Отправить сообщение пользователя и получить ответ от LLM.
+/// `job_id` — идентификатор фоновой задачи для отчёта о прогрессе (None для
+/// синхронных вызовов из фоновых тасков, где прогресс не нужен).
 pub async fn send_message(
     chat_id: &str,
     request: SendMessageRequest,
+    job_id: Option<&str>,
 ) -> anyhow::Result<LlmChatMessage> {
     let chat_uuid =
         Uuid::parse_str(chat_id).map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
@@ -317,21 +486,28 @@ pub async fn send_message(
     // Системный промпт и набор инструментов собираются из АКТИВНЫХ навыков (skills).
     use crate::shared::llm::skills;
     let allowed = skills::allowed_skills_for(&agent.agent_type);
-    // Быстрая (rule-based) предактивация навыка по интенту сообщения; полный LLM-роутер
-    // идёт конкурентно ниже, а модель может добрать навыки через use_skill.
+    // Прогрессивное раскрытие: стартуем с ТОНКОЙ базы (только core-инструменты). Домен-навык
+    // модель активирует сама первым шагом через use_skill, увидев каталог ниже. Это экономит
+    // токены (полные схемы инструментов не висят каждый ход) и не «роняет» навык на follow-up.
+    // quick_intent оставляем как МЯГКИЙ fallback: если модель за первый ход навык не выбрала —
+    // подстрахуем его в цикле ниже.
     let quick = crate::shared::llm::router::quick_intent(
         utf8_truncate(&content_with_attachments, 2000),
         &agent.agent_type,
     );
-    let mut active_skills: Vec<&'static str> = match skills::skill_for_intent(&quick) {
-        Some(s) if allowed.contains(&s.id) => vec![s.id],
+    let fallback_skill: Option<&'static skills::Skill> = match skills::skill_for_intent(&quick) {
+        Some(s) if allowed.contains(&s.id) => Some(s),
         _ => skills::default_skills_for(&agent.agent_type)
             .into_iter()
-            .filter(|id| allowed.contains(id))
-            .collect(),
+            .find(|id| allowed.contains(id))
+            .and_then(skills::skill_by_id),
     };
+    let mut active_skills: Vec<&'static str> = fallback_skill
+        .filter(|skill| matches!(skill.id, "chart-builder" | "table-builder"))
+        .map(|skill| vec![skill.id])
+        .unwrap_or_default();
 
-    // Базовый промпт: кастомный из агента, иначе role-agnostic core. Далее — фрагменты навыков.
+    // Базовый промпт: кастомный из агента, иначе role-agnostic core.
     let base_prompt = agent
         .system_prompt
         .clone()
@@ -344,17 +520,30 @@ pub async fn send_message(
         now.format("%m.%Y"),
         now.format("%Y")
     );
+    // Краткий каталог доступных навыков (id + описание) — чтобы модель выбрала и активировала
+    // нужный через use_skill БЕЗ отдельного round-trip на list_skills. Полные инструменты и
+    // инструкции навыка подгружаются только после активации.
+    if active_skills.is_empty() && !allowed.is_empty() {
+        system_text.push_str(
+            "\n\n---\nДоступные навыки (активируй ОДИН подходящий первым шагом — use_skill(\"<id>\")):\n",
+        );
+        for &id in &allowed {
+            if let Some(sk) = skills::skill_by_id(id) {
+                system_text.push_str(&format!("- {} — {}\n", sk.id, sk.description));
+            }
+        }
+    }
     for id in &active_skills {
-        if let Some(sk) = skills::skill_by_id(id) {
+        if let Some(skill) = skills::skill_by_id(id) {
             system_text.push_str("\n\n---\n");
-            system_text.push_str(sk.prompt);
+            system_text.push_str(skill.prompt);
         }
     }
     tracing::info!(
-        "[skills] chat_id='{}' quick_intent='{}' active={:?}",
+        "[skills] chat_id='{}' quick_intent='{}' fallback={:?} (thin base)",
         chat_id,
         quick,
-        active_skills
+        fallback_skill.map(|s| s.id)
     );
     llm_messages.push(ChatMessage::system(system_text));
 
@@ -407,13 +596,23 @@ pub async fn send_message(
 
     // Добавить историю
     for msg in &history {
+        let mut content = msg.content.clone();
+        if msg.role == ChatRole::Assistant {
+            if let Some(trace) = msg.tool_trace.as_deref().filter(|trace| !trace.is_empty()) {
+                const MAX_HISTORY_TRACE_BYTES: usize = 12_000;
+                content.push_str(
+                    "\n\n[Служебная трассировка выполнения предыдущего ответа; используй её для точного продолжения и диагностики:]\n",
+                );
+                content.push_str(utf8_truncate(trace, MAX_HISTORY_TRACE_BYTES));
+            }
+        }
         let chat_msg = ChatMessage {
             role: match msg.role {
                 ChatRole::System => LlmChatRole::System,
                 ChatRole::User => LlmChatRole::User,
                 ChatRole::Assistant => LlmChatRole::Assistant,
             },
-            content: Some(msg.content.clone()),
+            content: Some(content),
             tool_calls: None,
             tool_call_id: None,
         };
@@ -439,7 +638,14 @@ pub async fn send_message(
     // 9. Tool calling цикл: набор инструментов = core ∪ активные навыки.
     // tool_defs/active_tools/active_skills мутабельны — модель может активировать навыки
     // через use_skill (progressive disclosure), и набор пересобирается на лету.
+    let chart_workflow = active_skills.as_slice() == ["chart-builder"];
+    let table_workflow = active_skills.as_slice() == ["table-builder"];
+    let builder_workflow = chart_workflow || table_workflow;
+    let mut builder_next_tool = builder_workflow.then_some("find_data_sources");
     let mut tool_defs = skills::assemble_tools(&active_skills);
+    if let Some(next) = builder_next_tool {
+        tool_defs.retain(|tool| tool.name == next);
+    }
     let mut active_tools = skills::active_tool_names(&active_skills);
     let start = std::time::Instant::now();
 
@@ -459,12 +665,23 @@ pub async fn send_message(
         let mut final_response: Option<crate::shared::llm::types::LlmResponse> = None;
         let mut artifact_to_attach: Option<LlmArtifactId> = None;
         let mut tool_trace: Vec<serde_json::Value> = Vec::new();
+        let mut total_tokens_used: i64 = 0;
+        let mut tool_failures = 0usize;
 
         for iteration in 0..MAX_TOOL_ITERATIONS {
+            if let Some(id) = job_id {
+                if job_store::is_cancelled(id).await {
+                    return Err(anyhow::anyhow!("LLM job cancelled"));
+                }
+            }
+            let step = (iteration + 1) as u32;
+            report_progress(job_id, step, "Модель думает…").await;
+
             let response = provider
                 .chat_completion_with_tools(&llm_messages, &tool_defs)
                 .await
                 .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
+            total_tokens_used += response.tokens_used.unwrap_or(0) as i64;
 
             tracing::info!(
                 "[llm_iter] iter={} has_tool_calls={} finish_reason={:?} tokens={:?}",
@@ -476,6 +693,7 @@ pub async fn send_message(
 
             if !response.has_tool_calls() {
                 // Финальный ответ — LLM завершил работу
+                report_progress(job_id, step, "Формирую ответ…").await;
                 final_response = Some(response);
                 break;
             }
@@ -496,7 +714,25 @@ pub async fn send_message(
             let mut newly_activated: Vec<&'static skills::Skill> = Vec::new();
 
             // Выполнить каждый tool call и добавить результаты
-            for tool_call in &response.tool_calls {
+            let tool_count = response.tool_calls.len();
+            for (tool_idx, tool_call) in response.tool_calls.iter().enumerate() {
+                if let Some(id) = job_id {
+                    if job_store::is_cancelled(id).await {
+                        return Err(anyhow::anyhow!("LLM job cancelled"));
+                    }
+                }
+                let stage = if tool_count > 1 {
+                    format!(
+                        "{} ({}/{})",
+                        human_tool_label(&tool_call.name),
+                        tool_idx + 1,
+                        tool_count
+                    )
+                } else {
+                    human_tool_label(&tool_call.name)
+                };
+                report_progress(job_id, step, stage).await;
+
                 let call_start = std::time::Instant::now();
                 tracing::info!(
                     "[tool_call] iter={} tool='{}' args={}",
@@ -528,6 +764,36 @@ pub async fn send_message(
                     .as_ref()
                     .map(|v| v.get("_ok").and_then(|b| b.as_bool()).unwrap_or(true))
                     .unwrap_or(true);
+                if !is_ok {
+                    tool_failures += 1;
+                }
+
+                // Детерминированная передача управления для builder-workflow. Модель выбирает
+                // конкретный source/spec, но не может бесконечно возвращаться к discovery после
+                // успешного preview или пропустить publish.
+                if builder_workflow {
+                    builder_next_tool = match tool_call.name.as_str() {
+                        "find_data_sources" if is_ok => Some("preview_data"),
+                        "find_data_sources" => Some("find_data_sources"),
+                        "preview_data"
+                            if is_ok
+                                && (!chart_workflow
+                                    || parsed.as_ref().and_then(|v| {
+                                        v.get("build_ready").and_then(|ready| ready.as_bool())
+                                    }) == Some(true)) =>
+                        {
+                            Some(if chart_workflow {
+                                "build_chart"
+                            } else {
+                                "build_table"
+                            })
+                        }
+                        "preview_data" => Some("preview_data"),
+                        "build_chart" | "build_table" if is_ok => None,
+                        "build_chart" | "build_table" => Some("preview_data"),
+                        _ => builder_next_tool,
+                    };
+                }
 
                 // Если tool call создал артефакт — запомнить его ID
                 if let Some(ref v) = parsed {
@@ -588,13 +854,33 @@ pub async fn send_message(
                 };
 
                 tool_trace.push(serde_json::json!({
+                    "iteration": iteration + 1,
+                    "call":     tool_idx + 1,
+                    "stage":    tool_stage(&tool_call.name),
                     "tool":    tool_call.name,
                     "ok":      is_ok,
                     "ms":      call_ms,
                     "summary": summary,
+                    "input":   trace_input(&tool_call.arguments),
+                    "output":  trace_output(parsed.as_ref()),
                 }));
 
                 llm_messages.push(ChatMessage::tool_result(tool_call.id.clone(), result));
+            }
+
+            // Мягкий fallback: модель за этот ход не активировала навык и ни один ещё не активен —
+            // подстрахуем по quick_intent, чтобы появились доменные инструменты (а не только core).
+            // Срабатывает один раз (после активации active_skills уже непустой).
+            if active_skills.is_empty() && newly_activated.is_empty() {
+                if let Some(sk) = fallback_skill {
+                    active_skills.push(sk.id);
+                    newly_activated.push(sk);
+                    tracing::info!(
+                        "[skill] fallback-activated '{}' (quick_intent, chat='{}')",
+                        sk.id,
+                        chat_id
+                    );
+                }
             }
 
             // Применить активированные навыки: пересобрать инструменты и дописать
@@ -610,24 +896,76 @@ pub async fn send_message(
                     )));
                 }
             }
+
+            if let Some(next) = builder_next_tool {
+                tool_defs = skills::assemble_tools(&active_skills);
+                tool_defs.retain(|tool| tool.name == next);
+            }
+
+            // Публикация является терминальным выходом builder-workflow. После получения
+            // artifact_id больше не даём модели запускать discovery/preview повторно.
+            if builder_workflow && artifact_to_attach.is_some() {
+                break;
+            }
+
+            if tool_failures >= MAX_TOOL_FAILURES {
+                tracing::warn!(
+                    "[llm_loop] stopped after {} failed tool calls (chat='{}')",
+                    tool_failures,
+                    chat_id
+                );
+                llm_messages.push(ChatMessage::system(
+                    "Лимит технических ошибок инструментов исчерпан. Не вызывай инструменты снова; кратко сообщи пользователю, какой контракт аргументов не удалось выполнить."
+                        .to_string(),
+                ));
+                break;
+            }
         }
 
-        // Лимит итераций исчерпан, а модель всё ещё звала инструменты: вместо жёсткой
-        // ошибки просим финальный ТЕКСТОВЫЙ ответ без инструментов — пользователь получит
-        // связный итог (в т.ч. про уже созданные артефакты, напр. график-плагин), а не сбой.
-        if final_response.is_none() {
+        if builder_workflow && artifact_to_attach.is_none() {
+            tool_trace.push(serde_json::json!({
+                "iteration": MAX_TOOL_ITERATIONS + 1,
+                "call": 0,
+                "stage": "publish",
+                "tool": "workflow",
+                "ok": false,
+                "ms": 0,
+                "summary": if chart_workflow { "График не создан" } else { "Таблица не создана" },
+                "input": { "expected": if chart_workflow { "build_chart" } else { "build_table" } },
+                "output": {
+                    "error_code": "workflow_incomplete",
+                    "error": "Builder workflow завершился без artifact_id",
+                    "next_step": builder_next_tool,
+                },
+            }));
+        }
+
+        // Запрашиваем финальный ТЕКСТОВЫЙ ответ, если:
+        //  - исчерпан лимит итераций (модель всё ещё звала инструменты), ИЛИ
+        //  - модель завершила работу, но вернула ПУСТОЙ текст (наблюдается у DeepSeek: после
+        //    серии tool-call'ов отдаёт пустой content — пользователь иначе получит пустое
+        //    сообщение). В обоих случаях просим связный итог без инструментов.
+        let final_is_blank = final_response
+            .as_ref()
+            .map(|r| r.content.trim().is_empty())
+            .unwrap_or(true);
+        if final_is_blank {
             tracing::warn!(
-                "[llm_iter] исчерпан лимит {} итераций — запрашиваю финальный ответ без инструментов",
+                "[llm_iter] финальный ответ пуст/не получен (лимит {} итераций?) — запрашиваю текстовый итог",
                 MAX_TOOL_ITERATIONS
             );
             llm_messages.push(ChatMessage::system(
-                "Достигнут лимит вызовов инструментов. Больше инструменты НЕ вызывай. \
-                 Подведи краткий итог пользователю: что уже сделано и его статус \
-                 (созданные/обновлённые объекты и артефакты), и предложи следующий шаг."
+                "Заверши диалог: больше инструменты НЕ вызывай и НЕ возвращай пустой ответ. \
+                 Подведи краткий итог пользователю на естественном языке: что уже сделано и его \
+                 статус (полученные данные, созданные/обновлённые объекты и артефакты) и предложи \
+                 следующий шаг."
                     .to_string(),
             ));
             match provider.chat_completion(&llm_messages).await {
-                Ok(resp) => final_response = Some(resp),
+                Ok(resp) => {
+                    total_tokens_used += resp.tokens_used.unwrap_or(0) as i64;
+                    final_response = Some(resp);
+                }
                 Err(e) => tracing::warn!(
                     "[llm_iter] финальный ответ без инструментов не удался: {:?}",
                     e
@@ -635,12 +973,41 @@ pub async fn send_message(
             }
         }
 
+        if let Some(response) = final_response.as_mut() {
+            response.tokens_used = Some(total_tokens_used.min(i32::MAX as i64) as i32);
+        }
+        let fallback_text = if artifact_to_attach.is_some() {
+            "Результат создан, но модель не сформировала итоговый текст. Откройте карточку артефакта ниже."
+        } else {
+            "Не удалось завершить построение: модель исчерпала лимит технических попыток. Повторите запрос — диагностические детали сохранены в tool trace."
+        };
+        match final_response.as_mut() {
+            Some(response) if response.content.trim().is_empty() => {
+                response.content = fallback_text.to_string();
+            }
+            None => {
+                final_response = Some(crate::shared::llm::types::LlmResponse {
+                    content: fallback_text.to_string(),
+                    tool_calls: vec![],
+                    tokens_used: Some(total_tokens_used.min(i32::MAX as i64) as i32),
+                    model: model_to_use.clone(),
+                    finish_reason: Some("local_fallback".to_string()),
+                    confidence: None,
+                });
+            }
+            _ => {}
+        }
         Ok::<_, anyhow::Error>((final_response, artifact_to_attach, tool_trace))
     };
 
     // Конкурентный запуск: роутер не добавляет серийную задержку.
     let (intent_result, loop_result) = tokio::join!(router_fut, loop_fut);
-    let (final_response, artifact_to_attach, tool_trace) = loop_result?;
+    let (mut final_response, artifact_to_attach, tool_trace) = loop_result?;
+    if let Some(response) = final_response.as_mut() {
+        let combined =
+            response.tokens_used.unwrap_or(0) as i64 + intent_result.tokens_used.max(0) as i64;
+        response.tokens_used = Some(combined.min(i32::MAX as i64) as i32);
+    }
 
     tracing::info!(
         "[router] chat_id='{}' intent='{}' confidence={:.2} source={}",
@@ -651,6 +1018,16 @@ pub async fn send_message(
     );
 
     let duration_ms = start.elapsed().as_millis() as i64;
+
+    if builder_workflow {
+        let stage = match (chart_workflow, artifact_to_attach.is_some()) {
+            (true, true) => "График создан",
+            (true, false) => "График не создан",
+            (false, true) => "Таблица создана",
+            (false, false) => "Таблица не создана",
+        };
+        report_progress(job_id, MAX_TOOL_ITERATIONS as u32 + 1, stage).await;
+    }
 
     let llm_response = final_response.ok_or_else(|| {
         anyhow::anyhow!(
@@ -676,14 +1053,69 @@ pub async fn send_message(
             Some(contracts::domain::a018_llm_chat::aggregate::ArtifactAction::Created);
     }
 
+    // Трасса вызовов инструментов теперь ведётся в двух местах с разной ролью:
+    //  - tool_trace_json на сообщении — МИНИМУМ для пилюль (tool, ok, ms);
+    //  - sys_tool_trace — полная запись на каждый вызов (вход/выход/summary),
+    //    для детальной карточки в UI и кросс-чат аналитики.
     if !tool_trace.is_empty() {
-        assistant_msg.tool_trace = serde_json::to_string(&tool_trace).ok();
+        let pills: Vec<serde_json::Value> = tool_trace
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "tool": e.get("tool"),
+                    "ok": e.get("ok"),
+                    "ms": e.get("ms"),
+                })
+            })
+            .collect();
+        assistant_msg.tool_trace = serde_json::to_string(&pills).ok();
     }
 
     // Метка интента от роутера (Фаза 0): для аналитики и UI-бейджа.
     assistant_msg.intent = Some(intent_result.intent.clone());
 
     repository::insert_message(&db, &assistant_msg).await?;
+
+    // Полный журнал вызовов — отдельной пачкой, уже с известным message_id.
+    if !tool_trace.is_empty() {
+        let message_id = assistant_msg.id.to_string();
+        let created_at = assistant_msg.created_at;
+        let rows: Vec<contracts::domain::a018_llm_chat::aggregate::ToolTraceEntry> = tool_trace
+            .iter()
+            .map(
+                |e| contracts::domain::a018_llm_chat::aggregate::ToolTraceEntry {
+                    id: Uuid::new_v4().to_string(),
+                    chat_id: chat_id.to_string(),
+                    message_id: message_id.clone(),
+                    iteration: e.get("iteration").and_then(|v| v.as_i64()).unwrap_or(0),
+                    call_index: e.get("call").and_then(|v| v.as_i64()).unwrap_or(0),
+                    stage: e
+                        .get("stage")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("tool")
+                        .to_string(),
+                    tool: e
+                        .get("tool")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    ok: e.get("ok").and_then(|v| v.as_bool()).unwrap_or(true),
+                    ms: e.get("ms").and_then(|v| v.as_i64()).unwrap_or(0),
+                    summary: e
+                        .get("summary")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    input: e.get("input").cloned(),
+                    output: e.get("output").cloned(),
+                    created_at,
+                },
+            )
+            .collect();
+        if let Err(err) = repository::insert_tool_trace_batch(&db, &rows).await {
+            // Журнал вспомогательный — его сбой не должен рушить ответ ассистента.
+            tracing::warn!("[tool_trace] failed to persist sys_tool_trace: {}", err);
+        }
+    }
 
     Ok(assistant_msg)
 }

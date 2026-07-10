@@ -143,7 +143,9 @@ impl TaskManager for Task016KbIntakeManager {
                 content: trigger,
                 model_name: Some(agent.model_name.clone()),
                 attachment_ids: Vec::new(),
+                request_id: None,
             },
+            None,
         )
         .await?;
 

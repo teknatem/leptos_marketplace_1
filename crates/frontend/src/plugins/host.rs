@@ -14,9 +14,10 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::plugins::api;
 use crate::plugins::editor::CodeEditor;
 use crate::plugins::frame::PluginFrame;
+use crate::shared::modal_frame::ModalFrame;
 use contracts::plugins::{
-    PluginDefinition, PluginInvokeRequest, PluginRunContext, PluginStats, PluginUpsert,
-    PluginValidateReport,
+    PluginDefinition, PluginInvokeRequest, PluginPublishResult, PluginRunContext, PluginStats,
+    PluginUpsert, PluginValidateReport,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -53,6 +54,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
 
     let runner_context = RwSignal::new("{}".to_string());
     let preview_context = RwSignal::new(PluginRunContext::default());
+    let preview_data_mode = RwSignal::new(contracts::plugins::PluginDataMode::Live);
     let preview_restart = RwSignal::new(0_u64);
     let preview_console = RwSignal::new(Vec::<String>::new());
     let preview_events = RwSignal::new(Vec::<String>::new());
@@ -65,6 +67,10 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
     let stats = RwSignal::new(None::<PluginStats>);
     let stats_busy = RwSignal::new(false);
     let stats_error = RwSignal::new(None::<String>);
+
+    // Публикация в S3.
+    let show_publish_dialog = RwSignal::new(false);
+    let (migration_version_current, set_migration_version_current) = signal(None::<i64>);
 
     let has_server = Signal::derive(move || !server_src.get().trim().is_empty());
 
@@ -110,6 +116,12 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
         });
     }
 
+    spawn_local(async move {
+        if let Ok(version) = api::migration_version().await {
+            set_migration_version_current.set(Some(version));
+        }
+    });
+
     let save = {
         let id = plugin_id.clone();
         move |_| {
@@ -136,6 +148,8 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                 owner_user_id: None,
                 created_by_agent_id: None,
                 version: Some(version.get_untracked()),
+                capture_snapshot: saved_bundle.data.source.is_some(),
+                allow_live_only: false,
             };
 
             set_saving.set(true);
@@ -302,6 +316,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
             method,
             args,
             context,
+            data_mode: contracts::plugins::PluginDataMode::Live,
         };
         let id = invoke_plugin_id.clone();
         runner_busy.set(true);
@@ -404,15 +419,41 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     >
                         "Экспорт .zip"
                     </button>
+                    <button
+                        class="plugin-host__run plugin-host__run--server"
+                        on:click=move |_| show_publish_dialog.set(true)
+                    >
+                        "Опубликовать в S3"
+                    </button>
                 </div>
                 {move || def.get()
                     .and_then(|plugin| plugin.bundle.manifest.description)
                     .map(|description| view! { <p class="plugin-host__desc">{description}</p> })}
+                {move || {
+                    let built_for = def.get()
+                        .and_then(|plugin| plugin.bundle.manifest.built_for_migration)
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "—".to_string());
+                    let current = migration_version_current.get()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "…".to_string());
+                    view! {
+                        <p class="plugin-host__desc text-muted" style="font-size: 12px;">
+                            {format!("Миграция БД: {current} / плагин рассчитан на: {built_for}")}
+                        </p>
+                    }
+                }}
             </div>
+
+            <PluginPublishDialog
+                plugin_id=plugin_id.clone()
+                show=show_publish_dialog
+                def=def
+            />
 
             <div class="plugin-host__tabs">
                 <TabList selected_value=selected_tab>
-                    <Tab value="app".to_string()>"РџСЂРёР»РѕР¶РµРЅРёРµ"</Tab>
+                    <Tab value="app".to_string()>"Приложение"</Tab>
                     <Tab value="server".to_string()>"Сервер"</Tab>
                     <Tab value="stats".to_string()>"Статистика"</Tab>
                     <Tab value="code".to_string()>"Код"</Tab>
@@ -428,6 +469,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     client_src=client_src
                     styles_src=styles_src
                     context=preview_context
+                    data_mode=preview_data_mode
                     restart=preview_restart
                     console=preview_console
                     events=preview_events
@@ -746,5 +788,85 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                 </div>
             </div>
         </div>
+    }
+}
+
+/// Модальное подтверждение публикации текущей сохранённой версии плагина в S3.
+#[component]
+fn PluginPublishDialog(
+    plugin_id: String,
+    show: RwSignal<bool>,
+    def: ReadSignal<Option<PluginDefinition>>,
+) -> impl IntoView {
+    let plugin_id = StoredValue::new(plugin_id);
+    let (publishing, set_publishing) = signal(false);
+    let (result, set_result) = signal(None::<Result<PluginPublishResult, String>>);
+
+    let close = Callback::new(move |_: ()| {
+        set_result.set(None);
+        set_publishing.set(false);
+        show.set(false);
+    });
+
+    let publish = move |_| {
+        let id = plugin_id.get_value();
+        set_publishing.set(true);
+        set_result.set(None);
+        spawn_local(async move {
+            let outcome = api::publish(&id).await;
+            set_result.set(Some(outcome));
+            set_publishing.set(false);
+        });
+    };
+
+    view! {
+        <Show when=move || show.get() fallback=|| view! {}>
+            <ModalFrame on_close=close modal_style="max-width: 480px; width: 92vw;".to_string()>
+                <div class="modal-header">
+                    <span class="modal-title">"Публикация плагина в S3"</span>
+                </div>
+
+                <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+                    {move || def.get().map(|plugin| {
+                        let previous = match (plugin.s3_published_version, plugin.s3_published_at) {
+                            (Some(v), Some(at)) => {
+                                format!("Ранее опубликовано: v{v} от {}", at.format("%Y-%m-%d %H:%M"))
+                            }
+                            _ => "Ещё не публиковался в S3".to_string(),
+                        };
+                        view! {
+                            <div>
+                                <div style="font-weight: 600;">{plugin.bundle.manifest.title.clone()}</div>
+                                <div class="text-muted" style="font-size: 13px;">
+                                    {plugin.bundle.manifest.code.clone()}
+                                </div>
+                            </div>
+                            <div style="font-size: 13px;">
+                                {format!("Публикуется последняя сохранённая версия: v{}", plugin.version)}
+                            </div>
+                            <div class="text-muted" style="font-size: 13px;">{previous}</div>
+                        }
+                    })}
+
+                    {move || result.get().map(|outcome| match outcome {
+                        Ok(published) => view! {
+                            <div class="plugins-alert plugins-alert--info">
+                                {format!("Опубликовано: v{} от {}", published.version, published.uploaded_at.format("%Y-%m-%d %H:%M"))}
+                            </div>
+                        }.into_any(),
+                        Err(err) => view! { <div class="plugins-alert plugins-alert--error">{err}</div> }.into_any(),
+                    })}
+                </div>
+
+                <div class="modal-footer">
+                    <button class="button button--secondary" on:click=move |_| close.run(()) disabled=publishing>
+                        "Закрыть"
+                    </button>
+                    <button class="button button--primary" on:click=publish disabled=publishing>
+                        {move || if publishing.get() { "Публикация…" } else { "Опубликовать" }}
+                    </button>
+                </div>
+            </ModalFrame>
+        </Show>
     }
 }

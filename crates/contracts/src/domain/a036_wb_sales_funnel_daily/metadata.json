@@ -1,0 +1,305 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+
+  "entity_type": "aggregate",
+  "entity_name": "WbSalesFunnelDaily",
+  "entity_index": "a036",
+  "collection_name": "wb_sales_funnel_daily",
+  "table_name": "a036_wb_sales_funnel_daily",
+
+  "ui": {
+    "element_name": "Воронка продаж WB",
+    "element_name_en": "WB Sales Funnel Daily",
+    "list_name": "Воронка продаж WB по дням",
+    "list_name_en": "WB Sales Funnel Daily Stats",
+    "icon": "filter"
+  },
+
+  "ai": {
+    "description": "Ежедневная воронка продаж Wildberries в разрезе номенклатуры. Одна запись — один кабинет WB и одна дата; JSON детализация по товарам (nm_id): переходы в карточку, добавления в корзину, заказы, выкупы, конверсии, отложенные. Источник — WB Analytics API /api/analytics/v3/sales-funnel/products/history. Используется для анализа поведения покупателей и конверсий по товарам.",
+    "questions": [
+      "Сколько переходов в карточки товаров WB за период?",
+      "Какая конверсия из корзины в заказ по товарам WB?",
+      "Какие товары чаще всего добавляли в корзину?",
+      "Какой процент выкупа по товарам WB?",
+      "Сколько товаров добавили в отложенные?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a007_marketplace_product",
+      "a026_wb_advert_daily"
+    ]
+  },
+
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "WbSalesFunnelDailyId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": { "required": true }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": { "required": true },
+      "ai_hint": "Внутренний код документа воронки продаж WB."
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Описание",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 260
+      },
+      "validation": { "required": true },
+      "ai_hint": "Человекочитаемое описание документа: дата воронки продаж."
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Номер документа",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": { "required": true },
+      "ai_hint": "Технический номер документа воронки продаж."
+    },
+    {
+      "name": "document_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "date",
+        "column_width": 120
+      },
+      "validation": { "required": true },
+      "ai_hint": "Дата воронки продаж WB. Для периода используй document_date >= 'YYYY-MM-DD' AND document_date < 'YYYY-MM-DD'."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a006_connection_mp",
+      "ui": {
+        "label": "Подключение (магазин WB)",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 220
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID подключения магазина WB из a006_connection_mp. Для названия кабинета: JOIN a006_connection_mp ON a036_wb_sales_funnel_daily.connection_id = a006_connection_mp.id."
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a002_organization",
+      "ui": {
+        "label": "Организация",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 220
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID организации из a002_organization."
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ref_aggregate": "a005_marketplace",
+      "ui": {
+        "label": "Маркетплейс",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 180
+      },
+      "validation": { "required": true },
+      "ai_hint": "UUID маркетплейса из a005_marketplace. Для WB обычно marketplace code = 'mp-wb'."
+    },
+    {
+      "name": "currency",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Валюта",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 90
+      },
+      "validation": { "required": false },
+      "ai_hint": "Валюта отчёта воронки продаж (обычно RUB)."
+    },
+    {
+      "name": "lines_count",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Строк",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 90
+      },
+      "validation": { "required": true },
+      "ai_hint": "Количество товарных строк в JSON детализации lines_json."
+    },
+    {
+      "name": "total_open_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Переходы",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 110
+      },
+      "validation": { "required": true },
+      "ai_hint": "Суммарные переходы в карточки товаров за дату."
+    },
+    {
+      "name": "total_cart_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "В корзину",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 110
+      },
+      "validation": { "required": true },
+      "ai_hint": "Суммарные добавления в корзину за дату, шт."
+    },
+    {
+      "name": "total_order_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Заказы",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": { "required": true },
+      "ai_hint": "Суммарное количество заказанных товаров за дату, шт."
+    },
+    {
+      "name": "total_order_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма заказов",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "number",
+        "column_width": 130
+      },
+      "validation": { "required": true },
+      "ai_hint": "Сумма заказов за дату в валюте отчёта."
+    },
+    {
+      "name": "total_buyout_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Выкупы",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": { "required": true },
+      "ai_hint": "Суммарное количество выкупленных товаров за дату, шт."
+    },
+    {
+      "name": "total_buyout_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма выкупов",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "number",
+        "column_width": 130
+      },
+      "validation": { "required": true },
+      "ai_hint": "Сумма выкупов за дату в валюте отчёта."
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Строки JSON",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "widget": "textarea"
+      },
+      "validation": { "required": true },
+      "ai_hint": "JSON-массив детализации по товарам (одна запись = один nm_id за дату). Ключи строки: nm_id, title, vendor_code, brand_name, subject, open_count, cart_count, order_count, order_sum, buyout_count, buyout_sum, add_to_wishlist_count (плюс конверсии). Для анализа В РАЗРЕЗЕ НОМЕНКЛАТУРЫ разворачивай массив через json_each и доставай поля через json_extract(j.value,'$.поле'). Пример (топ товаров по добавлениям в корзину за период): SELECT json_extract(j.value,'$.nm_id') AS nm_id, json_extract(j.value,'$.title') AS title, SUM(json_extract(j.value,'$.cart_count')) AS cart FROM a036_wb_sales_funnel_daily d, json_each(d.lines_json) j WHERE d.is_deleted=0 AND d.document_date >= '2025-01-01' AND d.document_date < '2025-02-01' GROUP BY 1,2 ORDER BY cart DESC. Для дневных ИТОГОВ (без разреза по товарам) используй готовые колонки total_open_count/total_cart_count/total_order_count/total_order_sum/total_buyout_count/total_buyout_sum — json_each не нужен."
+    },
+    {
+      "name": "fetched_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Загружено",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "widget": "datetime",
+        "column_width": 160
+      },
+      "validation": { "required": true },
+      "ai_hint": "Дата и время получения данных из WB Analytics API."
+    }
+  ],
+
+  "access": {
+    "scope_id": "a036_wb_sales_funnel_daily",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

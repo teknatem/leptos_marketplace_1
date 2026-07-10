@@ -3,10 +3,12 @@ pub mod details;
 pub mod header_button;
 pub mod list;
 pub mod skills_list;
+pub mod tools_list;
 
 pub use context_details::LlmContextDetails;
 pub use header_button::AiChatHeaderButton;
 pub use skills_list::LlmSkillList;
+pub use tools_list::LlmToolList;
 
 /// Ключ для `AppGlobalContext.form_states`: первое сообщение, которое нужно
 /// автоматически отправить при открытии только что созданного чата.

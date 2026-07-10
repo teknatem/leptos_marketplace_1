@@ -450,6 +450,7 @@ pub struct ChangeTokensDto {
     pub a015_wb_orders: u64,
     pub a012_wb_sales: u64,
     pub a013_ym_order: u64,
+    pub plugins: u64,
 }
 
 pub async fn fetch_change_tokens() -> Result<ChangeTokensDto, String> {
@@ -479,6 +480,7 @@ pub async fn fetch_change_tokens() -> Result<ChangeTokensDto, String> {
         a015_wb_orders: json["a015_wb_orders"].as_u64().unwrap_or(0),
         a012_wb_sales: json["a012_wb_sales"].as_u64().unwrap_or(0),
         a013_ym_order: json["a013_ym_order"].as_u64().unwrap_or(0),
+        plugins: json["plugins"].as_u64().unwrap_or(0),
     })
 }
 

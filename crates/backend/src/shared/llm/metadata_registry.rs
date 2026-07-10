@@ -35,6 +35,12 @@ use contracts::domain::a034_ym_realization::{ENTITY_METADATA as A034_META, FIELD
 use contracts::domain::a035_ym_settlement_recon::{
     ENTITY_METADATA as A035_META, FIELDS as A035_FIELDS,
 };
+use contracts::domain::a036_wb_sales_funnel_daily::{
+    ENTITY_METADATA as A036_META, FIELDS as A036_FIELDS,
+};
+use contracts::domain::a037_wb_product_snapshot::{
+    ENTITY_METADATA as A037_META, FIELDS as A037_FIELDS,
+};
 use contracts::general_ledger::{ENTITY_METADATA as GL_META, FIELDS as GL_FIELDS};
 use contracts::projections::p909_mp_order_line_turnovers::{
     ENTITY_METADATA as P909_META, FIELDS as P909_FIELDS,
@@ -117,6 +123,16 @@ impl MetadataRegistry {
                     meta: &A026_META,
                     fields: A026_FIELDS,
                     tags: &["wb", "advertising"],
+                },
+                RegistryEntry {
+                    meta: &A036_META,
+                    fields: A036_FIELDS,
+                    tags: &["wb", "analytics"],
+                },
+                RegistryEntry {
+                    meta: &A037_META,
+                    fields: A037_FIELDS,
+                    tags: &["wb", "analytics", "stocks"],
                 },
                 RegistryEntry {
                     meta: &A027_META,
@@ -507,8 +523,8 @@ mod tests {
     /// слепой к колонкам таблицы при raw SQL.
     const EXPECTED_INDICES: &[&str] = &[
         "a001", "a002", "a004", "a005", "a006", "a012", "a013", "a015", "a017", "a018", "a019",
-        "a020", "a024", "a025", "a026", "a027", "a032", "a034", "a035", "p909", "p910", "p914",
-        "gl",
+        "a020", "a024", "a025", "a026", "a027", "a032", "a034", "a035", "a036", "a037", "p909",
+        "p910", "p914", "gl",
     ];
 
     #[test]
@@ -543,9 +559,9 @@ mod tests {
         let schema = METADATA_REGISTRY.get_entity_schema("a034");
         let related = schema.get("related").and_then(Value::as_array);
         assert!(
-            related.is_some_and(|items| items.iter().any(|item| item
-                .as_str()
-                .is_some_and(|name| name.contains("p907")))),
+            related.is_some_and(|items| items
+                .iter()
+                .any(|item| item.as_str().is_some_and(|name| name.contains("p907")))),
             "a034 related must include p907_ym_payment_report, got: {schema}"
         );
     }

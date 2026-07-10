@@ -18,7 +18,9 @@ pub async fn store_document_with_raw(mut document: OzonFbsPosting, raw_json: &st
     .await?;
 
     // Обновляем ссылку в метаданных
-    document.source_meta.raw_payload_ref = raw_ref;
+    if let Some(raw_ref) = raw_ref {
+        document.source_meta.raw_payload_ref = raw_ref;
+    }
 
     // Валидируем
     document

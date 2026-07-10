@@ -9,10 +9,19 @@ function emit(level, message) {
   window.parent.postMessage({ type: "plugin_event", instanceId: INSTANCE_ID, secret: BRIDGE_SECRET, level, message }, "*");
 }
 
+function makeRequestId() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 const host = Object.freeze({
   get context() { return hostContext; },
   invoke(method, args = {}) {
-    const requestId = crypto.randomUUID();
+    const requestId = makeRequestId();
     window.parent.postMessage({
       type: "plugin_invoke",
       instanceId: INSTANCE_ID,

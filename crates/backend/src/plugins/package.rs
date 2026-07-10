@@ -31,11 +31,13 @@ const MANIFEST_FILE: &str = "plugin.json";
 const CLIENT_FILE: &str = "client.js";
 const SERVER_FILE: &str = "server.js";
 const STYLES_FILE: &str = "styles.css";
+const SNAPSHOT_FILE: &str = "snapshot.json";
 const SQL_DIR: &str = "sql/";
 const ASSETS_DIR: &str = "assets/";
 const MAX_ARCHIVE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_ARCHIVE_FILES: usize = 128;
 const MAX_ENTRY_BYTES: u64 = 512 * 1024;
+const MAX_SNAPSHOT_ENTRY_BYTES: u64 = 1024 * 1024;
 const MAX_TOTAL_UNPACKED_BYTES: u64 = 4 * 1024 * 1024;
 
 /// Конверт `plugin.json` — метаданные бандла (скрипты/SQL/стили/вложения хранятся файлами).
@@ -53,6 +55,13 @@ struct Envelope {
 
 /// Собрать zip-архив переносимого бандла. Возвращает байты архива.
 pub fn export_bundle(bundle: &PluginBundle) -> anyhow::Result<Vec<u8>> {
+    export_bundle_with_snapshot(bundle, None)
+}
+
+pub fn export_bundle_with_snapshot(
+    bundle: &PluginBundle,
+    snapshot: Option<&serde_json::Value>,
+) -> anyhow::Result<Vec<u8>> {
     let mut zip = ZipWriter::new(Cursor::new(Vec::<u8>::new()));
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
@@ -81,6 +90,9 @@ pub fn export_bundle(bundle: &PluginBundle) -> anyhow::Result<Vec<u8>> {
     if let Some(styles) = bundle.styles.as_deref().filter(|s| !s.is_empty()) {
         write_text(STYLES_FILE, styles)?;
     }
+    if let Some(snapshot) = snapshot {
+        write_text(SNAPSHOT_FILE, &serde_json::to_string(snapshot)?)?;
+    }
     for (name, sql) in &bundle.sql_resources {
         write_text(&format!("{SQL_DIR}{name}.sql"), sql)?;
     }
@@ -93,6 +105,12 @@ pub fn export_bundle(bundle: &PluginBundle) -> anyhow::Result<Vec<u8>> {
 
 /// Разобрать zip-архив в `PluginBundle`. Не валидирует и не сохраняет.
 pub fn import_archive(bytes: &[u8]) -> anyhow::Result<PluginBundle> {
+    import_archive_with_snapshot(bytes).map(|(bundle, _)| bundle)
+}
+
+pub fn import_archive_with_snapshot(
+    bytes: &[u8],
+) -> anyhow::Result<(PluginBundle, Option<serde_json::Value>)> {
     if bytes.len() > MAX_ARCHIVE_BYTES {
         anyhow::bail!("Plugin archive is too large");
     }
@@ -112,7 +130,12 @@ pub fn import_archive(bytes: &[u8]) -> anyhow::Result<PluginBundle> {
         }
         let name = entry.name().to_string();
         validate_entry_name(&name)?;
-        if entry.size() > MAX_ENTRY_BYTES {
+        let entry_limit = if name == SNAPSHOT_FILE {
+            MAX_SNAPSHOT_ENTRY_BYTES
+        } else {
+            MAX_ENTRY_BYTES
+        };
+        if entry.size() > entry_limit {
             anyhow::bail!("Plugin archive entry '{name}' is too large");
         }
         total_unpacked = total_unpacked.saturating_add(entry.size());
@@ -120,10 +143,8 @@ pub fn import_archive(bytes: &[u8]) -> anyhow::Result<PluginBundle> {
             anyhow::bail!("Plugin archive unpacked size is too large");
         }
         let mut raw = Vec::new();
-        (&mut entry)
-            .take(MAX_ENTRY_BYTES + 1)
-            .read_to_end(&mut raw)?;
-        if raw.len() as u64 > MAX_ENTRY_BYTES {
+        (&mut entry).take(entry_limit + 1).read_to_end(&mut raw)?;
+        if raw.len() as u64 > entry_limit {
             anyhow::bail!("Plugin archive entry '{name}' is too large");
         }
         let text = String::from_utf8(raw)
@@ -155,7 +176,7 @@ pub fn import_archive(bytes: &[u8]) -> anyhow::Result<PluginBundle> {
         }
     }
 
-    Ok(PluginBundle {
+    let bundle = PluginBundle {
         manifest: envelope.manifest,
         params: envelope.params,
         data: envelope.data,
@@ -165,7 +186,13 @@ pub fn import_archive(bytes: &[u8]) -> anyhow::Result<PluginBundle> {
         styles: files.get(STYLES_FILE).cloned(),
         sql_resources,
         assets,
-    })
+    };
+    let snapshot = files
+        .get(SNAPSHOT_FILE)
+        .map(|value| serde_json::from_str(value))
+        .transpose()
+        .map_err(|error| anyhow::anyhow!("Invalid {SNAPSHOT_FILE}: {error}"))?;
+    Ok((bundle, snapshot))
 }
 
 /// Безопасное имя файла архива из кода плагина.
@@ -182,7 +209,7 @@ fn validate_entry_name(name: &str) -> anyhow::Result<()> {
 
     if matches!(
         name,
-        MANIFEST_FILE | CLIENT_FILE | SERVER_FILE | STYLES_FILE
+        MANIFEST_FILE | CLIENT_FILE | SERVER_FILE | STYLES_FILE | SNAPSHOT_FILE
     ) {
         return Ok(());
     }
@@ -235,6 +262,7 @@ mod tests {
                 api_version: "2".into(),
                 description: Some("desc".into()),
                 capabilities: vec!["data:read".into()],
+                built_for_migration: None,
             },
             params: vec![],
             data: DataBinding::default(),
@@ -264,6 +292,16 @@ mod tests {
         assert_eq!(restored.styles, original.styles);
         assert_eq!(restored.sql_resources, original.sql_resources);
         assert_eq!(restored.assets, original.assets);
+    }
+
+    #[test]
+    fn export_import_round_trip_with_snapshot() {
+        let original = sample_bundle();
+        let snapshot = serde_json::json!([{ "name": "A", "value": 42 }]);
+        let bytes = export_bundle_with_snapshot(&original, Some(&snapshot)).unwrap();
+        let (restored, restored_snapshot) = import_archive_with_snapshot(&bytes).unwrap();
+        assert_eq!(restored.manifest.code, original.manifest.code);
+        assert_eq!(restored_snapshot, Some(snapshot));
     }
 
     #[test]

@@ -860,3 +860,98 @@ pub async fn delivery_dates_by_order_nos(
 
     Ok(out)
 }
+
+/// Строка позиции заказа YM для вкладки «Заказы» на карточке номенклатуры.
+#[derive(Debug, Clone)]
+pub struct YmOrderLineForNomenclature {
+    pub order_id: String,
+    pub document_no: String,
+    pub creation_date: Option<String>,
+    pub status_norm: Option<String>,
+    pub order_margin_pro: Option<f64>,
+    pub order_lines_count: Option<i32>,
+    pub qty: f64,
+    pub price_list: Option<f64>,
+    pub price_effective: Option<f64>,
+    pub buyer_price: Option<f64>,
+    pub dealer_price_ut: Option<f64>,
+    pub line_status: Option<String>,
+}
+
+/// Строки заказов YM, отнесённые к номенклатуре `nomenclature_ref` напрямую
+/// (li.nomenclature_ref) либо через a004_nomenclature.base_nomenclature_ref
+/// (позиция строки — производная от искомой номенклатуры). Источник —
+/// a013_ym_order_items (индексирована по nomenclature_ref, всегда в синхроне
+/// с lines_json через save_items()), поэтому многострочные заказы естественно
+/// дают ровно одну строку на совпавшую позицию, без доп. дедупликации.
+pub async fn list_lines_for_nomenclature(
+    nomenclature_ref: &str,
+    date_from: &str,
+) -> Result<Vec<YmOrderLineForNomenclature>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = conn();
+
+    let sql = r#"
+        SELECT
+            d.id            AS order_id,
+            d.document_no   AS document_no,
+            d.creation_date AS creation_date,
+            d.status_norm   AS status_norm,
+            d.margin_pro    AS order_margin_pro,
+            d.lines_count   AS order_lines_count,
+            li.qty              AS qty,
+            li.price_list       AS price_list,
+            li.price_effective  AS price_effective,
+            li.buyer_price      AS buyer_price,
+            li.dealer_price_ut  AS dealer_price_ut,
+            li.status           AS line_status
+        FROM a013_ym_order_items li
+        JOIN a013_ym_order d ON d.id = li.order_id
+        WHERE d.is_deleted = 0
+          AND substr(d.creation_date, 1, 10) >= ?
+          AND (
+              li.nomenclature_ref = ?
+              OR EXISTS (
+                  SELECT 1 FROM a004_nomenclature n
+                  WHERE n.id = li.nomenclature_ref
+                    AND n.base_nomenclature_ref = ?
+              )
+          )
+        ORDER BY d.creation_date DESC
+    "#;
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+            [
+                date_from.into(),
+                nomenclature_ref.into(),
+                nomenclature_ref.into(),
+            ],
+        ))
+        .await?;
+
+    let items = rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(YmOrderLineForNomenclature {
+                order_id: row.try_get("", "order_id").ok()?,
+                document_no: row.try_get("", "document_no").ok()?,
+                creation_date: row.try_get("", "creation_date").ok(),
+                status_norm: row.try_get("", "status_norm").ok(),
+                order_margin_pro: row.try_get("", "order_margin_pro").ok(),
+                order_lines_count: row.try_get("", "order_lines_count").ok(),
+                qty: row.try_get("", "qty").unwrap_or(0.0),
+                price_list: row.try_get("", "price_list").ok(),
+                price_effective: row.try_get("", "price_effective").ok(),
+                buyer_price: row.try_get("", "buyer_price").ok(),
+                dealer_price_ut: row.try_get("", "dealer_price_ut").ok(),
+                line_status: row.try_get("", "line_status").ok(),
+            })
+        })
+        .collect();
+
+    Ok(items)
+}

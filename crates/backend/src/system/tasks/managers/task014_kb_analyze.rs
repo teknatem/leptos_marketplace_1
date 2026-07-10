@@ -120,7 +120,9 @@ impl TaskManager for Task014KbAnalyzeManager {
                 content: trigger,
                 model_name: Some(agent.model_name.clone()),
                 attachment_ids: Vec::new(),
+                request_id: None,
             },
+            None,
         )
         .await?;
 

@@ -130,8 +130,15 @@
     rows = Array.isArray(rows) ? rows : [];
 
     if (isPie(type)) {
-      var labels = rows.map(function (r) { return String(r[spec.category]); });
-      var values = rows.map(function (r) { return num(r[spec.value]); });
+      // Поддержка ОБОИХ форматов spec: pie-форма (category/value) и картезианская
+      // (x/series) — чтобы переключение bar/line ↔ pie/doughnut через альтернативы
+      // работало, даже если spec описан как картезианский.
+      var catKey = spec.category || spec.x;
+      var valKey = spec.value
+        || (Array.isArray(spec.series) && spec.series[0] && spec.series[0].y)
+        || spec.y;
+      var labels = rows.map(function (r) { return String(r[catKey]); });
+      var values = rows.map(function (r) { return num(r[valKey]); });
       return {
         type: type,
         data: {
@@ -154,10 +161,13 @@
     if (type === "stacked-bar") baseType = "bar";
     var horizontal = !!spec.horizontal;
 
-    var xLabels = rows.map(function (r) { return String(r[spec.x]); });
+    // Симметрично pie: если spec в pie-форме (category/value), а переключились на
+    // картезианский тип — берём x из category, меру из value.
+    var xKey = spec.x || spec.category;
+    var xLabels = rows.map(function (r) { return String(r[xKey]); });
     var series = Array.isArray(spec.series) && spec.series.length
       ? spec.series
-      : [{ y: spec.y, label: spec.label || spec.y }];
+      : [{ y: spec.y || spec.value, label: spec.label || spec.y || spec.value }];
 
     var datasets = series.map(function (s, i) {
       var c = colorAt(i);

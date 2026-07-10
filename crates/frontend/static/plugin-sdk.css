@@ -91,24 +91,36 @@ a {
 .field__label,
 label {
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-medium);
   color: var(--form-label-text);
 }
 
+/* Matches the app's .form__input geometry (height 30px, radius-sm, padding 5px 12px)
+   so plugin forms look identical to the rest of the app, not just same-colored. */
 .input,
 input,
 select,
 textarea {
   font: inherit;
   font-size: var(--font-size-base);
+  line-height: 1.4;
+  height: 30px;
   color: var(--color-text-primary);
   background: var(--form-input-bg);
   border: 1px solid var(--form-input-border);
-  border-radius: var(--radius-md);
-  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+}
+
+input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  accent-color: var(--color-primary);
 }
 
 textarea {
+  height: auto;
   min-height: 80px;
   resize: vertical;
 }
@@ -126,17 +138,28 @@ textarea:focus {
   color: var(--form-placeholder);
 }
 
+/* Matches the app's .button geometry exactly (height 28px, padding 4px 16px,
+   font-weight 500) — same colors as before, but no longer visibly chunkier/bolder
+   than buttons in the rest of the app. */
 .btn {
   appearance: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
   font: inherit;
   font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  padding: 8px 16px;
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  height: 28px;
+  padding: 4px 16px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: var(--btn-primary-bg);
   color: var(--btn-primary-text);
+  white-space: nowrap;
+  user-select: none;
   transition: background 0.15s, opacity 0.15s;
 }
 

@@ -14,6 +14,7 @@ pub mod dv004;
 pub mod dv005;
 pub mod dv006;
 pub mod dv007;
+pub mod dv008;
 pub mod filters;
 
 use std::collections::HashMap;
@@ -228,6 +229,12 @@ impl DataViewRegistry {
             |ctx| Box::pin(dv007::compute_scalar(ctx)),
             |ctx, g, ids| Box::pin(dv007::compute_drilldown_multi(ctx, g, ids)),
             |ctx| Box::pin(Self::static_capabilities(dv007::meta(), ctx)),
+        );
+        registry.register(
+            dv008::meta(),
+            |ctx| Box::pin(dv008::compute_scalar(ctx)),
+            |ctx, g, ids| Box::pin(dv008::compute_drilldown_multi(ctx, g, ids)),
+            |ctx| Box::pin(Self::static_capabilities(dv008::meta(), ctx)),
         );
 
         registry

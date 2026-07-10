@@ -45,6 +45,9 @@ pub fn App() -> impl IntoView {
                 if tokens.a013_ym_order != ct.a013_ym_order.get_untracked() {
                     ct.a013_ym_order.set(tokens.a013_ym_order);
                 }
+                if tokens.plugins != ct.plugins.get_untracked() {
+                    ct.plugins.set(tokens.plugins);
+                }
             }
         }
     });

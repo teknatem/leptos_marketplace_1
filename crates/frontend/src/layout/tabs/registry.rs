@@ -34,6 +34,7 @@ use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
 use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::domain::a017_llm_agent::ui::list::LlmAgentList;
+use crate::domain::a038_llm_connection::ui::list::LlmConnectionList;
 use crate::domain::a018_llm_chat::ui::context_details::LlmContextDetails;
 use crate::domain::a018_llm_chat::ui::details::LlmChatDetails;
 use crate::domain::a018_llm_chat::ui::list::LlmChatList;
@@ -70,6 +71,10 @@ use crate::domain::a033_wb_day_close::ui::details::{WbDayCloseDetails, WbDayClos
 use crate::domain::a033_wb_day_close::ui::list::WbDayCloseList;
 use crate::domain::a034_ym_realization::{YmRealizationDetail, YmRealizationList};
 use crate::domain::a035_ym_settlement_recon::{YmSettlementReconDetail, YmSettlementReconList};
+use crate::domain::a036_wb_sales_funnel_daily::ui::details::WbSalesFunnelDailyDetail;
+use crate::domain::a036_wb_sales_funnel_daily::ui::list::WbSalesFunnelDailyList;
+use crate::domain::a037_wb_product_snapshot::ui::details::WbProductSnapshotDetail;
+use crate::domain::a037_wb_product_snapshot::ui::list::WbProductSnapshotList;
 use crate::general_ledger::ui::{
     GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerEntitiesPage,
     GeneralLedgerLayerTurnoverMatrixPage, GeneralLedgerLayersPage, GeneralLedgerPage,
@@ -98,6 +103,7 @@ use crate::shared::drilldown_report::DrilldownReportPage;
 use crate::shared::knowledge_base::ui::{KnowledgeArticlePage, KnowledgeBaseWorkspace};
 use crate::shared::universal_dashboard::{SchemaBrowser, UniversalDashboard};
 use crate::system::pages::thaw_test::ThawTestPage;
+use crate::system::raw_storage::ui::RawStoragePage;
 use crate::system::s3::ui::list::S3FilesPage;
 use crate::system::tasks::ui::details::ScheduledTaskDetails;
 use crate::system::tasks::ui::list::ScheduledTaskList;
@@ -475,6 +481,44 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             }
             .into_any()
         }
+        "a036_wb_sales_funnel_daily" => view! { <WbSalesFunnelDailyList /> }.into_any(),
+        k if k.starts_with("a036_wb_sales_funnel_daily_details_") => {
+            let id = k
+                .strip_prefix("a036_wb_sales_funnel_daily_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <WbSalesFunnelDailyDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        "a037_wb_product_snapshot" => view! { <WbProductSnapshotList /> }.into_any(),
+        k if k.starts_with("a037_wb_product_snapshot_details_") => {
+            let id = k
+                .strip_prefix("a037_wb_product_snapshot_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <WbProductSnapshotDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
         "a027_wb_documents" => view! { <WbDocumentsList /> }.into_any(),
         k if k.starts_with("a027_wb_documents_details_") => {
             let id = k
@@ -663,8 +707,14 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         // a017: LLM Agents
         "a017_llm_agent" => view! { <LlmAgentList /> }.into_any(),
 
+        // a038: LLM Connections (подключения)
+        "a038_llm_connection" => view! { <LlmConnectionList /> }.into_any(),
+
         // Каталог LLM-навыков (skills)
         "llm_skills" => view! { <crate::domain::a018_llm_chat::ui::LlmSkillList /> }.into_any(),
+
+        // Каталог LLM-инструментов (tools)
+        "llm_tools" => view! { <crate::domain::a018_llm_chat::ui::LlmToolList /> }.into_any(),
 
         // a018: LLM Chat
         "a018_llm_chat" => view! { <LlmChatList /> }.into_any(),
@@ -1215,6 +1265,7 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         }
         "sys_audit" => view! { <crate::system::audit::AuditPage /> }.into_any(),
         "sys_s3_files" => view! { <S3FilesPage /> }.into_any(),
+        "sys_raw_storage" => view! { <RawStoragePage /> }.into_any(),
         k if k.starts_with("sys_role_details_") => {
             let id = k.strip_prefix("sys_role_details_").unwrap().to_string();
             view! { <crate::system::roles::ui::details::RoleDetailsPage role_id=id /> }.into_any()

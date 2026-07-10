@@ -333,18 +333,65 @@ async fn plugin_upsert(args: &Value, chat_id: &str, agent_id: &str) -> Value {
         Ok(b) => b,
         Err(e) => return e,
     };
+    upsert_bundle(
+        bundle,
+        args.get("id").and_then(Value::as_str).map(str::to_string),
+        args.get("status")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        args.get("is_enabled").and_then(Value::as_bool),
+        chat_id,
+        agent_id,
+    )
+    .await
+}
 
+/// Атомарно сохранить готовый bundle: валидация (server+client+SQL) → upsert-by-code →
+/// карточка-превью в чате. Реюзается и `plugin_upsert`, и высокоуровневыми сборщиками
+/// артефактов (напр. `build_chart`), чтобы поведение сохранения было единым.
+/// Возвращает `{ ok, id, version, validate, artifact_id }` либо `{ ok:false, error, .. }`.
+pub(crate) async fn upsert_bundle(
+    bundle: PluginBundle,
+    id: Option<String>,
+    status: Option<String>,
+    is_enabled: Option<bool>,
+    chat_id: &str,
+    agent_id: &str,
+) -> Value {
+    let capture_snapshot = bundle.data.source.is_some();
+    upsert_bundle_with_snapshot(
+        bundle,
+        id,
+        status,
+        is_enabled,
+        chat_id,
+        agent_id,
+        None,
+        capture_snapshot,
+        false,
+    )
+    .await
+}
+
+pub(crate) async fn upsert_bundle_with_snapshot(
+    bundle: PluginBundle,
+    id: Option<String>,
+    status: Option<String>,
+    is_enabled: Option<bool>,
+    chat_id: &str,
+    agent_id: &str,
+    prepared_snapshot: Option<Value>,
+    capture_snapshot: bool,
+    allow_live_only: bool,
+) -> Value {
     // Атомарность: невалидный плагин не сохраняется.
     let report = service::validate(&bundle).await;
     if !report.ok {
         return json!({ "ok": false, "error": "Валидация не пройдена", "validate": report });
     }
 
-    let plugin_code = bundle.manifest.code.clone();
-    let plugin_title = bundle.manifest.title.clone();
-
     // Идентичность по code: если id не задан, но плагин с таким code уже есть — обновляем его.
-    let mut id = args.get("id").and_then(Value::as_str).map(str::to_string);
+    let mut id = id;
     let mut version = None;
     if id.is_none() {
         if let Ok(Some(existing)) = service::get_by_code(&bundle.manifest.code).await {
@@ -356,75 +403,54 @@ async fn plugin_upsert(args: &Value, chat_id: &str, agent_id: &str) -> Value {
     let dto = PluginUpsert {
         id,
         bundle,
-        status: args
-            .get("status")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        is_enabled: args.get("is_enabled").and_then(Value::as_bool),
+        status,
+        is_enabled,
         owner_user_id: None,
         created_by_agent_id: Some(agent_id.to_string()),
         version,
+        capture_snapshot,
+        allow_live_only,
     };
 
-    match service::upsert(dto).await {
-        Ok(saved_id) => {
-            let saved_version = service::get_by_id(&saved_id)
-                .await
-                .ok()
-                .flatten()
-                .map(|d| d.version);
-            // Карточка-превью в чате: пользователь откроет плагин в один клик.
-            let artifact_id =
-                create_plugin_artifact(&saved_id, &plugin_code, &plugin_title, chat_id, agent_id)
-                    .await;
+    let retry_dto = dto.clone();
+    let retry_snapshot = prepared_snapshot.clone();
+    let mut saved_result = service::upsert_prepared(
+        dto,
+        prepared_snapshot,
+        Some(service::PluginArtifactOrigin { chat_id, agent_id }),
+        Some(report.clone()),
+    )
+    .await;
+    if saved_result.is_err() && retry_dto.id.is_none() {
+        // Concurrent builders with the same stable code may both observe "not found".
+        // The unique code constraint chooses a winner; the loser retries as an update.
+        if let Ok(Some(existing)) = service::get_by_code(&retry_dto.bundle.manifest.code).await {
+            let mut update = retry_dto;
+            update.id = Some(existing.id);
+            update.version = Some(existing.version);
+            saved_result = service::upsert_prepared(
+                update,
+                retry_snapshot,
+                Some(service::PluginArtifactOrigin { chat_id, agent_id }),
+                Some(report.clone()),
+            )
+            .await;
+        }
+    }
+    match saved_result {
+        Ok(saved) => {
             let mut result = json!({
                 "ok": true,
-                "id": saved_id,
-                "version": saved_version,
+                "id": saved.id,
+                "version": saved.version,
                 "validate": report,
             });
-            if let Some(id) = artifact_id {
+            if let Some(id) = saved.artifact_id {
                 result["artifact_id"] = Value::String(id);
             }
             result
         }
         Err(e) => json!({ "ok": false, "error": e.to_string() }),
-    }
-}
-
-/// Создать артефакт a019 типа `plugin` — чат покажет карточку с кнопками
-/// «Превью» / «Редактор». Возвращает id артефакта (None при сбое — сохранение
-/// плагина от этого не страдает).
-async fn create_plugin_artifact(
-    plugin_id: &str,
-    code: &str,
-    title: &str,
-    chat_id: &str,
-    agent_id: &str,
-) -> Option<String> {
-    let query_params = json!({
-        "plugin_id": plugin_id,
-        "code": code,
-        "title": title,
-    });
-    let dto = crate::domain::a019_llm_artifact::service::LlmArtifactDto {
-        id: None,
-        code: Some(format!("PLUGIN-{code}")),
-        description: title.to_string(),
-        comment: Some(format!("Плагин {code}")),
-        chat_id: chat_id.to_string(),
-        agent_id: agent_id.to_string(),
-        artifact_type: Some("plugin".to_string()),
-        sql_query: String::new(),
-        query_params: Some(query_params.to_string()),
-        visualization_config: None,
-    };
-    match crate::domain::a019_llm_artifact::service::create(dto).await {
-        Ok(uuid) => Some(uuid.to_string()),
-        Err(e) => {
-            tracing::warn!("plugin_upsert: failed to save plugin artifact: {e}");
-            None
-        }
     }
 }
 
@@ -450,6 +476,17 @@ async fn plugin_invoke(args: &Value) -> Value {
             .get("context")
             .cloned()
             .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default(),
+        data_mode: args
+            .get("data_mode")
+            .and_then(Value::as_str)
+            .map(|mode| {
+                if mode == "snapshot" {
+                    contracts::plugins::PluginDataMode::Snapshot
+                } else {
+                    contracts::plugins::PluginDataMode::Live
+                }
+            })
             .unwrap_or_default(),
     };
 
@@ -594,7 +631,7 @@ fn plugin_data_catalog() -> Value {
             {
                 "tag": "wb",
                 "tables": ["a012_wb_sales", "a015_wb_orders", "a020_wb_promotion", "a026_wb_advert_daily", "p909_mp_order_line_turnovers", "p914_mp_finance_turnovers"],
-                "starter_sql": "SELECT date, article, quantity, total_price FROM a012_wb_sales WHERE is_deleted = 0 ORDER BY date DESC LIMIT 50"
+                "starter_sql": "SELECT sale_date, supplier_article, qty, total_price FROM a012_wb_sales WHERE is_deleted = 0 ORDER BY sale_date DESC LIMIT 50"
             },
             {
                 "tag": "gl",

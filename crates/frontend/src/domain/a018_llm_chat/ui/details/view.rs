@@ -5,8 +5,17 @@
 
 use super::artifact_card::ArtifactCard;
 use super::model::{
-    fetch_chat, fetch_chat_context, fetch_messages, poll_until_done, send_message, PollOutcome,
+    delete_chat, fetch_chat, fetch_chat_context, fetch_connection_allowed_models, fetch_messages,
+    poll_until_done, send_message, set_rating, JobProgress, PollOutcome,
 };
+
+/// Предопределённое сообщение для кнопки «Диагностика»: модель разбирает текущий диалог
+/// текстом, без вызова инструментов. Комментарий пользователя (если есть) дописывается следом.
+const DIAGNOSTIC_PROMPT: &str = "Проведи диагностику этого диалога. Только ТЕКСТОВЫЙ разбор — \
+НЕ вызывай инструменты и ничего не создавай/не пересоздавай.\n\nПроанализируй:\n\
+1) что хотел пользователь;\n2) какие шаги и инструменты выполнялись, какие ошибки встречались;\n\
+3) что не получилось и почему (корневая причина);\n4) конкретные следующие шаги для решения.\n\n\
+Ответь кратко и по делу на русском.";
 use super::tool_calls_trace::ToolCallsTrace;
 use super::view_model::LlmChatDetailsVm;
 use crate::domain::a018_llm_chat::ui::pending_first_message_key;
@@ -17,6 +26,7 @@ use crate::shared::knowledge_base::links::KbLinkedText;
 use crate::shared::markdown::Markdown;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
+use crate::shared::speech::{DictationButton, DictationDiagnostics};
 use contracts::domain::a018_llm_chat::aggregate::{ChatRole, LlmChatMessage};
 use contracts::domain::a018_llm_chat::context::ContextPackageSummary;
 use contracts::domain::common::AggregateId;
@@ -37,17 +47,20 @@ struct FeedRow {
     item: FeedItem,
 }
 
-/// Левый «жёлоб» строки ленты: имя автора и время (до секунд), выровненные
-/// по левой границе блока.
+/// Левый «жёлоб» строки ленты: аватар блока, имя автора и время (до секунд),
+/// выровненные по левой границе блока.
 #[allow(non_snake_case)]
-fn FeedGutter(author: &'static str, time: String) -> impl IntoView {
+fn FeedGutter(avatar: &'static str, author: &'static str, time: String) -> impl IntoView {
     view! {
-        <div style="flex: 0 0 96px; display: flex; flex-direction: column; gap: 2px; text-align: left;">
-            <div style="font-size: 11px; font-weight: 600; letter-spacing: .02em; opacity: 0.6;">
-                {author}
-            </div>
-            <div style="font-size: 11px; opacity: 0.45; font-variant-numeric: tabular-nums;">
-                {time}
+        <div style="flex: 0 0 104px; display: flex; align-items: flex-start; gap: 8px;">
+            <div style="flex: 0 0 auto; line-height: 0; margin-top: 1px;">{icon(avatar)}</div>
+            <div style="display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0;">
+                <div style="font-size: 11px; font-weight: 600; letter-spacing: .02em; opacity: 0.6;">
+                    {author}
+                </div>
+                <div style="font-size: 11px; opacity: 0.45; font-variant-numeric: tabular-nums;">
+                    {time}
+                </div>
             </div>
         </div>
     }
@@ -64,22 +77,25 @@ fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
     let intent = msg.intent.clone();
     let artifact_id = msg.artifact_id.as_ref().map(|id| id.as_string());
     let tool_trace = msg.tool_trace.clone();
+    let message_id = msg.id.to_string();
     let content = msg.content.clone();
     let time = format_utc_local(&msg.created_at, "%d.%m %H:%M:%S");
-    let author = if is_user {
-        "ВЫ"
+    let (avatar, author) = if is_user {
+        ("avatar-user", "ВЫ")
     } else {
-        "АССИСТЕНТ"
+        ("avatar-assistant", "АССИСТЕНТ")
     };
+    // Нейтральные оттенки серого вместо синеватого фона: пользователь — чуть
+    // темнее (Background3), ассистент — базовый фон (Background1).
     let row_style = if is_user {
-        "width: 100%; padding: 12px 16px; background: var(--colorBrandBackground2);"
+        "width: 100%; padding: 12px 16px; background: var(--colorNeutralBackground3);"
     } else {
         "width: 100%; padding: 12px 16px; background: var(--colorNeutralBackground1);"
     };
     view! {
         <div style=row_style>
             <div style="max-width: 980px; margin: 0 auto; display: flex; gap: 16px;">
-                {FeedGutter(author, time)}
+                {FeedGutter(avatar, author, time)}
                 <div style="flex: 1; min-width: 0;">
                     {if is_user {
                         view! { <KbLinkedText text=content /> }.into_any()
@@ -128,7 +144,7 @@ fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
 
                     {move || {
                         if !is_user {
-                            Some(view! { <ToolCallsTrace tool_trace=tool_trace.clone() /> })
+                            Some(view! { <ToolCallsTrace tool_trace=tool_trace.clone() message_id=message_id.clone() /> })
                         } else {
                             None
                         }
@@ -156,7 +172,7 @@ fn ContextRow(p: ContextPackageSummary, nav_ctx: Option<AppGlobalContext>) -> im
     view! {
         <div style="width: 100%; padding: 10px 16px; background: var(--colorNeutralBackground2);">
             <div style="max-width: 980px; margin: 0 auto; display: flex; gap: 16px;">
-                {FeedGutter("КОНТЕКСТ", time)}
+                {FeedGutter("avatar-context", "КОНТЕКСТ", time)}
                 <div style="flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
                     <span style="opacity: 0.7; font-size: 13px;">"Добавлен документ в контекст:"</span>
                     <a
@@ -193,6 +209,16 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     // Сколько секунд выполняется текущий запрос к LLM (тикает раз в секунду,
     // пока vm.is_sending == true). Показывается под индикатором набора.
     let elapsed_secs = RwSignal::new(0u32);
+    // Текущий этап выполнения LLM-задачи (с бэкенда через polling). None — пока
+    // не известен; тогда показываем дефолтную подпись.
+    let progress = RwSignal::new(None::<JobProgress>);
+    // Панель «Диагностика»: открыта ли и текст опционального комментария пользователя.
+    let diag_open = RwSignal::new(false);
+    let diag_comment = RwSignal::new(String::new());
+    // Переключатель модели в чате: allowed_models — курируемый список моделей подключения,
+    // selected_model — текущий выбор (прокидывается на каждое сообщение).
+    let allowed_models = RwSignal::new(Vec::<String>::new());
+    let selected_model = RwSignal::new(String::new());
     let nav_ctx = use_context::<AppGlobalContext>();
 
     // Scroll to bottom helper
@@ -222,6 +248,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
 
             // Запустить секундный таймер на время ожидания ответа LLM.
             elapsed_secs.set(0);
+            progress.set(None);
             {
                 let start = js_sys::Date::now();
                 let is_sending = vm.is_sending;
@@ -259,7 +286,8 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                 .collect();
             wasm_bindgen_futures::spawn_local(async move {
                 // 1. POST → immediately get job_id (server returns 202)
-                let job_id = match send_message(&chat_id, &content, attachment_ids).await {
+                let model_choice = Some(selected_model.get_untracked());
+                let job_id = match send_message(&chat_id, &content, attachment_ids, model_choice).await {
                     Ok(id) => id,
                     Err(e) => {
                         vm.error.set(Some(format!("Ошибка отправки: {}", e)));
@@ -270,7 +298,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
 
                 // 2. Опрос статуса каждые 2с. Бюджет — 6 минут: агентные навыки
                 //    (графики/плагины) делают много шагов tool-calling и идут дольше.
-                let poll_result = poll_until_done(&job_id, 180, 2000).await;
+                let poll_result = poll_until_done(&job_id, 180, 2000, progress).await;
 
                 // 3. Always reload messages from DB after completion
                 match fetch_messages(&chat_id).await {
@@ -316,6 +344,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                 }
 
                 vm.is_sending.set(false);
+                progress.set(None);
             });
         }
     });
@@ -334,7 +363,15 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                 // Load chat
                 match fetch_chat(&chat_id).await {
                     Ok(chat) => {
+                        let conn_id = chat.chat.agent_id.as_string();
+                        if selected_model.get_untracked().is_empty() {
+                            selected_model.set(chat.chat.model_name.clone());
+                        }
                         vm.chat.set(Some(chat));
+                        // Курируемый список моделей подключения для переключателя.
+                        if let Ok(models) = fetch_connection_allowed_models(&conn_id).await {
+                            allowed_models.set(models);
+                        }
                     }
                     Err(e) => vm.error.set(Some(e)),
                 }
@@ -407,11 +444,15 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
         }
     });
 
+    // Клон chat_id для виджета оценки (остальные клоны разошлись по замыканиям выше).
+    let chat_id_for_rating = chat_id.clone();
+    let chat_id_for_delete = chat_id.clone();
+
     view! {
         <PageFrame page_id="a018_llm_chat--detail" category=PAGE_CAT_DETAIL class="a018-llm-chat-detail">
-            <div class="page__header">
-                <div class="page__header-left">
-                    <h1 class="page__title">
+            <div class="page__header" style="flex-wrap: wrap; height: auto; gap: 8px 12px;">
+                <div class="page__header-left" style="flex-wrap: wrap;">
+                    <h1 class="page__title" style="white-space: normal; overflow-wrap: anywhere;">
                         {move || {
                             vm.chat
                                 .get()
@@ -428,25 +469,121 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         }}
                     </span>
                     <span class="page__header-meta">
-                        {move || {
-                            vm.chat
-                                .get()
-                                .map(|c| format!("Модель: {}", c.chat.model_name))
-                                .unwrap_or_default()
-                        }}
+                        "Модель: "
+                        <select
+                            style="height: 24px; padding: 0 4px; border: 1px solid var(--colorNeutralStroke2); border-radius: 4px; background: var(--color-surface); color: var(--color-text);"
+                            prop:value=move || selected_model.get()
+                            on:change=move |ev| selected_model.set(event_target_value(&ev))
+                            title="Модель ограничена списком allowed_models подключения"
+                        >
+                            {move || {
+                                let mut list = allowed_models.get();
+                                let current = selected_model.get();
+                                if !current.is_empty() && !list.contains(&current) {
+                                    list.insert(0, current);
+                                }
+                                if list.is_empty() {
+                                    let m = selected_model.get();
+                                    if !m.is_empty() {
+                                        list = vec![m];
+                                    }
+                                }
+                                list.into_iter()
+                                    .map(|m| {
+                                        let label = m.clone();
+                                        view! { <option value=m>{label}</option> }
+                                    })
+                                    .collect_view()
+                            }}
+                        </select>
                     </span>
                     <span class="page__header-meta">
                         {move || format!("Сообщений: {}", vm.messages.get().len())}
                     </span>
                 </div>
-                <div class="page__header-right">
-                    <Button
-                        appearance=ButtonAppearance::Secondary
-                        on_click=move |_| on_close.run(())
+                <div class="page__header-right" style="display: flex; align-items: center; gap: 12px;">
+                    // Оценка чата: 5 звёзд. Клик по текущей звезде снимает оценку.
+                    // Звёзды идут перед кнопками.
+                    <div
+                        title="Оценить чат"
+                        style="display: inline-flex; gap: 2px; font-size: 20px; line-height: 1;"
                     >
-                        {icon("x")}
-                        " Закрыть"
-                    </Button>
+                        {move || {
+                            let cid = chat_id_for_rating.clone();
+                            let current = vm.chat.get().and_then(|c| c.chat.rating).unwrap_or(0);
+                            (1..=5)
+                                .map(|n| {
+                                    let cid = cid.clone();
+                                    let filled = n <= current;
+                                    view! {
+                                        <button
+                                            type="button"
+                                            title=move || format!("Оценка: {}", n)
+                                            style=move || format!(
+                                                "background:none;border:none;cursor:pointer;padding:0 1px;line-height:1;color:{};",
+                                                if filled { "#f5a623" } else { "var(--color-text-secondary, #9ca3af)" }
+                                            )
+                                            on:click=move |_| {
+                                                let cid = cid.clone();
+                                                let target = if current == n { None } else { Some(n) };
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    match set_rating(&cid, target).await {
+                                                        Ok(()) => vm.chat.update(|opt| {
+                                                            if let Some(c) = opt { c.chat.rating = target; }
+                                                        }),
+                                                        Err(e) => vm.error.set(Some(format!("Ошибка оценки: {}", e))),
+                                                    }
+                                                });
+                                            }
+                                        >
+                                            {if filled { "★" } else { "☆" }}
+                                        </button>
+                                    }
+                                })
+                                .collect_view()
+                        }}
+                    </div>
+                    // Кнопки заголовка идут рядом, после звёзд.
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        // Диагностика: открывает модальный диалог с комментарием;
+                        // запуск проверки закрывает диалог и отправляет промпт в чат.
+                        <Button
+                            appearance=ButtonAppearance::Secondary
+                            disabled=vm.is_sending
+                            on_click=move |_| diag_open.set(true)
+                        >
+                            {icon("search")}
+                            " Диагностика"
+                        </Button>
+                        <Button
+                            appearance=ButtonAppearance::Secondary
+                            on_click=move |_| on_close.run(())
+                        >
+                            {icon("x")}
+                            " Закрыть"
+                        </Button>
+                        <Button
+                            appearance=ButtonAppearance::Subtle
+                            on_click=move |_| {
+                                let confirmed = web_sys::window()
+                                    .and_then(|win| win.confirm_with_message("Удалить чат?").ok())
+                                    .unwrap_or(false);
+                                if !confirmed {
+                                    return;
+                                }
+                                let id = chat_id_for_delete.clone();
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    match delete_chat(&id).await {
+                                        Ok(()) => on_close.run(()),
+                                        Err(e) => vm.error.set(Some(format!("Ошибка удаления: {}", e))),
+                                    }
+                                });
+                            }
+                        >
+                            {icon("delete")}
+                            " Удалить"
+                        </Button>
+                    </div>
                 </div>
             </div>
 
@@ -513,7 +650,16 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                                     <span class="chat-typing__dot"></span>
                                     <span class="chat-typing__dot"></span>
                                     <span class="chat-typing__label">
-                                        {move || format!(" LLM обрабатывает запрос… {} с", elapsed_secs.get())}
+                                        {move || {
+                                            let secs = elapsed_secs.get();
+                                            match progress.get() {
+                                                Some(p) if p.step > 0 => {
+                                                    format!(" Шаг {} · {} · {} с", p.step, p.stage, secs)
+                                                }
+                                                Some(p) => format!(" {} · {} с", p.stage, secs),
+                                                None => format!(" LLM обрабатывает запрос… {} с", secs),
+                                            }
+                                        }}
                                     </span>
                                 </div>
                             </div>
@@ -524,8 +670,9 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                 }}
                 </div>
 
-                // Input area
-                <div style="display: flex; flex-direction: column; gap: 8px;">
+                // Input area — фиксированная ширина по колонке ленты, по центру,
+                // чтобы поле ввода не растягивалось на весь экран.
+                <div style="display: flex; flex-direction: column; gap: 8px; max-width: 980px; width: 100%; margin: 0 auto;">
                 // File attachments display
                 {move || {
                     let files = vm.uploaded_files.get();
@@ -616,9 +763,24 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         />
                     </div>
 
+                    // Голосовой ввод: распознанный текст дописывается в поле ввода,
+                    // дальше работает обычный handle_send. Компонент самодостаточен.
+                    <DictationButton
+                        target=vm.new_message
+                        disabled=vm.is_sending
+                        on_error=Callback::new(move |m: String| vm.error.set(Some(m)))
+                    />
+
+                    // Диагностика микрофона + подсказка по разблокировке на HTTP
+                    // (chrome-флаг unsafely-treat-insecure-origin-as-secure).
+                    <DictationDiagnostics />
+
+                    // Компактные иконочные кнопки (узкие по ширине): прикрепить и отправить.
                     <Button
                         appearance=ButtonAppearance::Secondary
                         disabled=vm.is_sending
+                        attr:title="Прикрепить файл"
+                        attr:style="min-width: 40px; padding-left: 8px; padding-right: 8px;"
                         on_click=move |_| {
                             if let Some(window) = web_sys::window() {
                                 if let Some(document) = window.document() {
@@ -638,14 +800,75 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     <Button
                         appearance=ButtonAppearance::Primary
                         disabled=vm.is_sending
+                        attr:title=move || if vm.is_sending.get() { "Отправка…" } else { "Отправить" }
+                        attr:style="min-width: 40px; padding-left: 8px; padding-right: 8px;"
                         on_click=move |_| handle_send.run(())
                     >
                         {icon("send")}
-                        {move || if vm.is_sending.get() { " Отправка..." } else { " Отправить" }}
                     </Button>
                 </Flex>
                 </div>
             </div>
+
+            // Диалог диагностики: предопределённый разбор диалога моделью + опц.
+            // комментарий. «Запустить проверку» закрывает диалог и отправляет промпт.
+            <Dialog open=diag_open>
+                <DialogSurface>
+                    <DialogBody>
+                        <DialogTitle>"Диагностика диалога"</DialogTitle>
+                        <DialogContent>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <span style="font-size: 13px; opacity: 0.7;">
+                                    "Модель разберёт диалог текстом (без вызова инструментов): что хотел \
+                                     пользователь, какие шаги/ошибки были и что делать дальше."
+                                </span>
+                                <Textarea
+                                    value=diag_comment
+                                    placeholder="Комментарий или вопрос для проверки (необязательно)…"
+                                    attr:style="width: 100%; min-height: 80px;"
+                                    disabled=vm.is_sending
+                                />
+                                // Голосовой ввод комментария (обычный размер кнопки).
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <DictationButton
+                                        target=diag_comment
+                                        disabled=vm.is_sending
+                                        on_error=Callback::new(move |m: String| vm.error.set(Some(m)))
+                                    />
+                                    <span style="font-size: 12px; opacity: 0.6;">"Голосовой ввод"</span>
+                                </div>
+                            </div>
+                        </DialogContent>
+                        <DialogActions>
+                            <Button
+                                appearance=ButtonAppearance::Secondary
+                                on_click=move |_| diag_open.set(false)
+                            >
+                                "Отмена"
+                            </Button>
+                            <Button
+                                appearance=ButtonAppearance::Primary
+                                disabled=vm.is_sending
+                                on_click=move |_| {
+                                    let comment = diag_comment.get();
+                                    let mut msg = String::from(DIAGNOSTIC_PROMPT);
+                                    if !comment.trim().is_empty() {
+                                        msg.push_str("\n\nКомментарий/вопрос пользователя: ");
+                                        msg.push_str(comment.trim());
+                                    }
+                                    vm.new_message.set(msg);
+                                    diag_open.set(false);
+                                    diag_comment.set(String::new());
+                                    handle_send.run(());
+                                }
+                            >
+                                {icon("search")}
+                                " Запустить проверку"
+                            </Button>
+                        </DialogActions>
+                    </DialogBody>
+                </DialogSurface>
+            </Dialog>
         </PageFrame>
     }
 }

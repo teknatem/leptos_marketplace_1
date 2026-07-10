@@ -25,7 +25,7 @@ fn hmac_sha256(key: &[u8], data: &str) -> anyhow::Result<Vec<u8>> {
     Ok(mac.finalize().into_bytes().to_vec())
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     hex_lower(&Sha256::digest(bytes))
 }
 
@@ -150,21 +150,17 @@ pub async fn put_object(
         .map(ToString::to_string))
 }
 
-pub async fn get_object(config: &S3Config, key: &str) -> anyhow::Result<S3Object> {
+async fn get_object_response(config: &S3Config, key: &str) -> anyhow::Result<reqwest::Response> {
     let payload_hash = sha256_hex(&[]);
     let headers = signed_headers(config, &Method::GET, key, &payload_hash, None)?;
-    let response = reqwest::Client::new()
+    Ok(reqwest::Client::new()
         .get(request_url(config, key))
         .headers(headers)
         .send()
-        .await?;
+        .await?)
+}
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(anyhow::anyhow!("S3 GET failed with {}: {}", status, body));
-    }
-
+async fn read_object_body(response: reqwest::Response) -> anyhow::Result<S3Object> {
     let content_type = response
         .headers()
         .get(CONTENT_TYPE)
@@ -175,6 +171,34 @@ pub async fn get_object(config: &S3Config, key: &str) -> anyhow::Result<S3Object
         bytes,
         content_type,
     })
+}
+
+pub async fn get_object(config: &S3Config, key: &str) -> anyhow::Result<S3Object> {
+    let response = get_object_response(config, key).await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!("S3 GET failed with {}: {}", status, body));
+    }
+    read_object_body(response).await
+}
+
+/// Как `get_object`, но возвращает `None` вместо ошибки, если объекта ещё не существует (404) —
+/// нужно для чтения `catalog.json` до самой первой публикации какого-либо плагина.
+pub(crate) async fn get_object_opt(
+    config: &S3Config,
+    key: &str,
+) -> anyhow::Result<Option<S3Object>> {
+    let response = get_object_response(config, key).await?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!("S3 GET failed with {}: {}", status, body));
+    }
+    Ok(Some(read_object_body(response).await?))
 }
 
 pub async fn delete_object(config: &S3Config, key: &str) -> anyhow::Result<()> {

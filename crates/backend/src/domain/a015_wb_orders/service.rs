@@ -523,7 +523,9 @@ pub async fn store_document_with_raw(mut document: WbOrders, raw_json: &str) -> 
     )
     .await?;
 
-    document.source_meta.raw_payload_ref = raw_ref;
+    if let Some(raw_ref) = raw_ref {
+        document.source_meta.raw_payload_ref = raw_ref;
+    }
 
     // Preserve income_id and numeric order ID set by Marketplace API.
     // Marketplace API populates supplyId in real-time; statistics API lags 1-3 days.
@@ -600,9 +602,12 @@ pub async fn store_marketplace_raw_payload(
         .ok()
         .and_then(|value| marketplace_field_rubles(&value, "salePrice"));
 
-    let updated =
-        repository::update_marketplace_payload_by_document_no(document_no, &raw_ref, sale_price)
-            .await?;
+    let updated = repository::update_marketplace_payload_by_document_no(
+        document_no,
+        raw_ref.as_deref(),
+        sale_price,
+    )
+    .await?;
 
     // Привязка свежего Marketplace-пейлоада приносит `salePrice`, который является
     // основным источником `base_price` для `margin_pro` у FBS-заказов (Statistics API
@@ -624,7 +629,7 @@ pub async fn store_marketplace_raw_payload(
         }
     }
 
-    Ok(updated.then_some(raw_ref))
+    Ok(if updated { raw_ref } else { None })
 }
 
 pub async fn get_by_id(id: Uuid) -> Result<Option<WbOrders>> {

@@ -33,6 +33,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a017_routes())
         .merge(a018_routes())
         .merge(llm_skills_routes())
+        .merge(llm_tools_routes())
         .merge(a019_routes())
         .merge(a020_routes())
         .merge(a021_routes())
@@ -41,6 +42,9 @@ pub fn configure_business_routes() -> Router {
         .merge(a024_routes())
         .merge(a025_routes())
         .merge(a026_routes())
+        .merge(a036_routes())
+        .merge(a037_routes())
+        .merge(a038_routes())
         .merge(a034_routes())
         .merge(a035_routes())
         .merge(a027_routes())
@@ -131,9 +135,23 @@ fn plugin_routes() -> Router {
             "/api/plugin/runs/summary",
             get(handlers::plugins::runs_summary),
         )
+        .route("/api/plugin/updates", get(handlers::plugins::check_updates))
+        .route("/api/plugin/catalog", get(handlers::plugins::get_catalog))
+        .route(
+            "/api/plugin/catalog/:code/install",
+            post(handlers::plugins::install_from_catalog),
+        )
+        .route(
+            "/api/plugin/migration-version",
+            get(handlers::plugins::migration_version),
+        )
         .route(
             "/api/plugin/:id",
             get(handlers::plugins::get_by_id).delete(handlers::plugins::delete),
+        )
+        .route(
+            "/api/plugin/:id/rating",
+            post(handlers::plugins::set_rating),
         )
         .route("/api/plugin/:id/export", get(handlers::plugins::export))
         .route("/api/plugin/:id/stats", get(handlers::plugins::stats))
@@ -143,6 +161,14 @@ fn plugin_routes() -> Router {
             post(handlers::plugins::dev_invoke),
         )
         .route("/api/plugin/:id/invoke", post(handlers::plugins::invoke))
+        .route(
+            "/api/plugin/:id/publish",
+            post(handlers::plugins::publish_to_s3),
+        )
+        .route(
+            "/api/plugin/:id/apply-update",
+            post(handlers::plugins::apply_update),
+        )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move { require_admin(req, next).await },
         ))
@@ -251,6 +277,10 @@ fn a004_routes() -> Router {
         .route(
             "/api/nomenclature/dimensions",
             get(handlers::a004_nomenclature::get_dimensions),
+        )
+        .route(
+            "/api/nomenclature/:id/orders",
+            get(handlers::a004_nomenclature::get_orders),
         )
         .route(
             "/api/nomenclature/search",
@@ -718,9 +748,49 @@ fn a017_routes() -> Router {
         ))
 }
 
+fn a038_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a038-llm-connection",
+            get(handlers::a038_llm_connection::list_all)
+                .post(handlers::a038_llm_connection::upsert),
+        )
+        .route(
+            "/api/a038-llm-connection/list",
+            get(handlers::a038_llm_connection::list_paginated),
+        )
+        .route(
+            "/api/a038-llm-connection/primary",
+            get(handlers::a038_llm_connection::get_primary),
+        )
+        .route(
+            "/api/a038-llm-connection/:id",
+            get(handlers::a038_llm_connection::get_by_id)
+                .delete(handlers::a038_llm_connection::delete),
+        )
+        .route(
+            "/api/a038-llm-connection/:id/test",
+            post(handlers::a038_llm_connection::test_connection),
+        )
+        .route(
+            "/api/a038-llm-connection/:id/fetch-models",
+            post(handlers::a038_llm_connection::fetch_models),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a038_llm_connection", req, next).await
+            },
+        ))
+}
+
 /// Каталог LLM-навыков (read-only обзор реестра для UI).
 fn llm_skills_routes() -> Router {
     Router::new().route("/api/llm-skills", get(handlers::llm_skills::list))
+}
+
+/// Каталог LLM-инструментов (read-only обзор реестра для UI).
+fn llm_tools_routes() -> Router {
+    Router::new().route("/api/llm-tools", get(handlers::llm_tools::list))
 }
 
 fn a018_routes() -> Router {
@@ -742,12 +812,24 @@ fn a018_routes() -> Router {
             get(handlers::a018_llm_chat::poll_job),
         )
         .route(
+            "/api/a018-llm-chat/jobs/:job_id/cancel",
+            post(handlers::a018_llm_chat::cancel_job),
+        )
+        .route(
             "/api/a018-llm-chat/:id",
             get(handlers::a018_llm_chat::get_by_id).delete(handlers::a018_llm_chat::delete),
         )
         .route(
             "/api/a018-llm-chat/:id/messages",
             get(handlers::a018_llm_chat::get_messages).post(handlers::a018_llm_chat::send_message),
+        )
+        .route(
+            "/api/a018-llm-chat/message/:message_id/tool-trace",
+            get(handlers::a018_llm_chat::get_tool_trace),
+        )
+        .route(
+            "/api/a018-llm-chat/:id/rating",
+            post(handlers::a018_llm_chat::set_rating),
         )
         .route(
             "/api/a018-llm-chat/:id/upload",
@@ -898,6 +980,52 @@ fn a026_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a026_wb_advert_daily", req, next).await
+            },
+        ))
+}
+
+fn a036_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a036/wb-sales-funnel/list",
+            get(handlers::a036_wb_sales_funnel_daily::list_paginated),
+        )
+        .route(
+            "/api/a036/wb-sales-funnel/product-metrics",
+            get(handlers::a036_wb_sales_funnel_daily::get_product_metrics),
+        )
+        .route(
+            "/api/a036/wb-sales-funnel/:id",
+            get(handlers::a036_wb_sales_funnel_daily::get_by_id),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a036_wb_sales_funnel_daily", req, next).await
+            },
+        ))
+}
+
+fn a037_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a037/wb-product-snapshot/list",
+            get(handlers::a037_wb_product_snapshot::list_paginated),
+        )
+        .route(
+            "/api/a037/wb-product-snapshot/series",
+            get(handlers::a037_wb_product_snapshot::get_series),
+        )
+        .route(
+            "/api/a037/wb-product-snapshot/rating-changes",
+            get(handlers::a037_wb_product_snapshot::get_rating_changes),
+        )
+        .route(
+            "/api/a037/wb-product-snapshot/:id",
+            get(handlers::a037_wb_product_snapshot::get_by_id),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a037_wb_product_snapshot", req, next).await
             },
         ))
 }

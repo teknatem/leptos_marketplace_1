@@ -16,6 +16,9 @@ struct SidebarItem {
     /// Optional access scope. When set, the item is hidden unless the user
     /// has at least `read` access to this scope. `None` = always visible.
     scope_id: Option<&'static str>,
+    /// Hide the item from non-admin users even when they have its scope as a
+    /// dependency of another feature.
+    admin_only: bool,
 }
 
 impl SidebarItem {
@@ -25,6 +28,7 @@ impl SidebarItem {
             label,
             icon,
             scope_id: None,
+            admin_only: false,
         }
     }
 
@@ -35,7 +39,13 @@ impl SidebarItem {
             label,
             icon,
             scope_id: Some(id),
+            admin_only: false,
         }
+    }
+
+    fn admin_only(mut self) -> Self {
+        self.admin_only = true;
+        self
     }
 }
 
@@ -138,6 +148,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     label: tab_label_for_key("a004_nomenclature_list"),
                     icon: "table",
                     scope_id: Some("a004_nomenclature"),
+                    admin_only: false,
                 },
                 SidebarItem::with_scope(
                     "a005_marketplace",
@@ -171,6 +182,16 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "a026_wb_advert_daily",
                     tab_label_for_key("a026_wb_advert_daily"),
                     "activity",
+                ),
+                SidebarItem::with_scope(
+                    "a036_wb_sales_funnel_daily",
+                    tab_label_for_key("a036_wb_sales_funnel_daily"),
+                    "filter",
+                ),
+                SidebarItem::with_scope(
+                    "a037_wb_product_snapshot",
+                    tab_label_for_key("a037_wb_product_snapshot"),
+                    "package",
                 ),
                 SidebarItem::with_scope(
                     "a033_wb_day_close",
@@ -375,15 +396,26 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "a019_llm_artifact",
                     tab_label_for_key("a019_llm_artifact"),
                     "file-text",
-                ),
+                )
+                .admin_only(),
                 SidebarItem::with_scope(
                     "a017_llm_agent",
                     tab_label_for_key("a017_llm_agent"),
                     "robot",
-                ),
-                SidebarItem::new("llm_skills", tab_label_for_key("llm_skills"), "list"),
+                )
+                .admin_only(),
+                SidebarItem::with_scope(
+                    "a038_llm_connection",
+                    tab_label_for_key("a038_llm_connection"),
+                    "plug-connected",
+                )
+                .admin_only(),
+                SidebarItem::new("llm_skills", tab_label_for_key("llm_skills"), "list")
+                    .admin_only(),
+                SidebarItem::new("llm_tools", tab_label_for_key("llm_tools"), "wrench")
+                    .admin_only(),
             ],
-            admin_only: true,
+            admin_only: false,
         },
         MenuGroup {
             id: "reports",
@@ -415,6 +447,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     label: tab_label_for_key("report_a026_wb_advert_daily"),
                     icon: "download",
                     scope_id: Some("a026_wb_advert_daily"),
+                    admin_only: false,
                 },
             ],
             admin_only: true,
@@ -567,6 +600,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "download-cloud",
                 ),
                 SidebarItem::new(
+                    "sys_raw_storage",
+                    tab_label_for_key("sys_raw_storage"),
+                    "database",
+                ),
+                SidebarItem::new(
                     "quality_checks",
                     tab_label_for_key("quality_checks"),
                     "check-circle",
@@ -620,9 +658,14 @@ pub fn Sidebar() -> impl IntoView {
                     let visible_items: Vec<SidebarItem> = group
                         .items
                         .into_iter()
-                        .filter(|item| match item.scope_id {
-                            None => true,
-                            Some(scope) => has_read_access(auth_state, scope),
+                        .filter(|item| {
+                            if item.admin_only && !is_admin_untracked {
+                                return false;
+                            }
+                            match item.scope_id {
+                                None => true,
+                                Some(scope) => has_read_access(auth_state, scope),
+                            }
                         })
                         .collect();
 

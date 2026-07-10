@@ -14,7 +14,9 @@ pub async fn store_document_with_raw(mut document: WbSupply, raw_json: &str) -> 
     )
     .await?;
 
-    document.source_meta.raw_payload_ref = raw_ref;
+    if let Some(raw_ref) = raw_ref {
+        document.source_meta.raw_payload_ref = raw_ref;
+    }
 
     document
         .validate()

@@ -6,15 +6,24 @@
 //! the application.
 
 pub mod bundle;
+pub mod publish;
 pub mod runs;
 
 pub use bundle::{
     is_read_only_sql, is_valid_plugin_code, is_valid_resource_name, DataBinding, ParamSpec,
-    ParamType, PluginBundle, PluginCapability, PluginDefinition, PluginError, PluginInvokeRequest,
-    PluginListItem, PluginManifest, PluginRunContext, PluginRuntime, PluginSmokeFailure,
-    PluginSmokeMethod, PluginSmokeReport, PluginSmokeRequest, PluginStatus, PluginUpsert,
-    PluginValidateReport, ViewSpec, Widget, WidgetKind,
+    ParamType, PluginBundle, PluginCapability, PluginDataMode, PluginDataSource,
+    PluginDataViewContext, PluginDefinition, PluginError, PluginInvokeRequest, PluginListItem,
+    PluginManifest, PluginRunContext, PluginRuntime, PluginSchemaAggregate, PluginSchemaFilter,
+    PluginSchemaFilterOperator, PluginSchemaMetric, PluginSchemaSortDirection,
+    PluginSchemaSortRule, PluginSmokeFailure, PluginSmokeMethod, PluginSmokeReport,
+    PluginSmokeRequest, PluginSnapshotMeta, PluginStatus, PluginUpsert, PluginValidateReport,
+    ViewSpec, Widget, WidgetKind,
+};
+pub use publish::{
+    PluginApplyUpdateRequest, PluginCatalog, PluginCatalogEntry, PluginPublishResult,
+    PluginUpdateStatus,
 };
 pub use runs::{
-    PluginHealth, PluginRunBrief, PluginRunRecord, PluginRunSummary, PluginStats, StageCount,
+    PluginHealth, PluginModeStats, PluginRunBrief, PluginRunRecord, PluginRunSummary, PluginStats,
+    StageCount,
 };

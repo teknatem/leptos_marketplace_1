@@ -4,7 +4,8 @@
 //! сырым SQL (как в `shared/llm/admin_tools.rs`), классификация «здоровья» — в Rust.
 
 use contracts::plugins::{
-    PluginHealth, PluginRunBrief, PluginRunRecord, PluginRunSummary, PluginStats, StageCount,
+    PluginDataMode, PluginHealth, PluginModeStats, PluginRunBrief, PluginRunRecord,
+    PluginRunSummary, PluginStats, StageCount,
 };
 use sea_orm::{DatabaseBackend, FromQueryResult, Statement, Value as DbValue};
 
@@ -31,6 +32,7 @@ pub async fn record(
     error_stage: Option<&str>,
     row_count: Option<i64>,
     triggered_by: Option<&str>,
+    data_mode: PluginDataMode,
 ) {
     use sea_orm::ConnectionTrait;
 
@@ -38,8 +40,8 @@ pub async fn record(
     let id = uuid::Uuid::new_v4().to_string();
     let stmt = json_rows(
         "INSERT INTO plugin_run \
-           (id, plugin_id, code, method, started_at, duration_ms, status, error_stage, row_count, triggered_by) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+           (id, plugin_id, code, method, started_at, duration_ms, status, error_stage, row_count, triggered_by, data_mode) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         vec![
             id.into(),
             plugin_id.into(),
@@ -51,6 +53,7 @@ pub async fn record(
             error_stage.map(str::to_string).into(),
             row_count.into(),
             triggered_by.map(str::to_string).into(),
+            match data_mode { PluginDataMode::Live => "live", PluginDataMode::Snapshot => "snapshot" }.into(),
         ],
     );
     if let Err(error) = db().execute(stmt).await {
@@ -96,7 +99,7 @@ pub async fn stats(plugin_id: &str, days: i64, recent_limit: i64) -> anyhow::Res
     let summary = summary(plugin_id, days).await?;
 
     let recent_rows = serde_json::Value::find_by_statement(json_rows(
-        "SELECT id, method, started_at, duration_ms, status, error_stage, row_count \
+        "SELECT id, method, started_at, duration_ms, status, error_stage, row_count, data_mode \
          FROM plugin_run WHERE plugin_id = ? ORDER BY started_at DESC LIMIT ?",
         vec![plugin_id.into(), recent_limit.max(1).into()],
     ))
@@ -160,6 +163,22 @@ pub async fn summary(plugin_id: &str, days: i64) -> anyhow::Result<PluginRunSumm
         .filter_map(|row| serde_json::from_value::<StageCount>(row).ok())
         .collect();
 
+    let mode_rows = serde_json::Value::find_by_statement(json_rows(
+        "SELECT data_mode, COUNT(*) AS total, \
+           SUM(CASE WHEN status != 'ok' THEN 1 ELSE 0 END) AS errors, \
+           CAST(COALESCE(AVG(duration_ms), 0) AS INTEGER) AS avg_ms \
+         FROM plugin_run \
+         WHERE plugin_id = ? AND datetime(started_at) >= datetime('now', ?) \
+         GROUP BY data_mode ORDER BY data_mode",
+        vec![plugin_id.into(), window_arg(days).into()],
+    ))
+    .all(db())
+    .await?;
+    let by_data_mode = mode_rows
+        .into_iter()
+        .filter_map(|row| serde_json::from_value::<PluginModeStats>(row).ok())
+        .collect();
+
     let error_rate = if total > 0 {
         errors as f64 / total as f64
     } else {
@@ -176,6 +195,7 @@ pub async fn summary(plugin_id: &str, days: i64) -> anyhow::Result<PluginRunSumm
         avg_ms,
         max_ms,
         by_stage,
+        by_data_mode,
         last_run_at,
         last_status,
         health,

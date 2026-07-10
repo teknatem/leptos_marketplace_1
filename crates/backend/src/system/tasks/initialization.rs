@@ -15,8 +15,8 @@ use super::{
         Task009WbPromotionsManager, Task010WbDocumentsManager, Task011WbAdvertManager,
         Task012WbAdvertCampaignsManager, Task013YmOrdersPollingManager, Task014KbAnalyzeManager,
         Task015KbPostManager, Task016KbIntakeManager, Task017WbReturnsClaimsManager,
-        Task018YmReturnsManager, Task019YmPaymentReportManager, U501ImportUtManager,
-        U502ImportOzonManager, U503ImportYandexManager,
+        Task018YmReturnsManager, Task019YmPaymentReportManager, Task020WbProductSnapshotManager,
+        U501ImportUtManager, U502ImportOzonManager, U503ImportYandexManager,
     },
     registry::{set_global_registry, TaskManagerRegistry},
     worker::ScheduledTaskWorker,
@@ -76,6 +76,7 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
     registry.register(Task010WbDocumentsManager::new(wb_executor!()));
     registry.register(Task011WbAdvertManager::new(wb_executor!()));
     registry.register(Task012WbAdvertCampaignsManager::new(wb_executor!()));
+    registry.register(Task020WbProductSnapshotManager::new(wb_executor!()));
 
     // ---- Yandex atomic task managers ----
 

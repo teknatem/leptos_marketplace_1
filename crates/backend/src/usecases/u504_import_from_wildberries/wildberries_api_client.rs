@@ -3524,6 +3524,444 @@ impl WildberriesApiClient {
 
         Ok(parsed)
     }
+
+    /// POST /api/analytics/v3/sales-funnel/products — статистика карточек за период.
+    /// Используется как discovery: возвращает nmID товаров с активностью и признак
+    /// наличия следующей страницы (пагинация через limit/offset). Лимит: 3 запроса/мин.
+    pub async fn fetch_sales_funnel_products(
+        &self,
+        connection: &ConnectionMP,
+        date_from: &str,
+        date_to: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<(Vec<i64>, bool)> {
+        let url =
+            "https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products";
+
+        let request_body = serde_json::json!({
+            "selectedPeriod": { "start": date_from, "end": date_to },
+            "orderBy": { "field": "openCard", "mode": "desc" },
+            "skipDeletedNm": false,
+            "limit": limit,
+            "offset": offset
+        });
+        let body = serde_json::to_string(&request_body)?;
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nPOST {}\nAuthorization: ****\n{}",
+            url, body
+        ));
+
+        let response = match self
+            .client
+            .post(url)
+            .header("Authorization", &connection.api_key)
+            .header("Content-Type", "application/json")
+            // Аналитика WB (сравнение периодов по всем товарам) считается дольше
+            // обычных запросов — переопределяем глобальный 60с-таймаут клиента.
+            .timeout(std::time::Duration::from_secs(180))
+            .body(body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                self.log_to_file(&format!("CONNECTION ERROR (products): {e:?}"));
+                tracing::error!("WB sales-funnel products connection error: {}", e);
+                anyhow::bail!("Connection error for sales-funnel products: {}", e);
+            }
+        };
+
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        self.log_to_file(&format!("Response status: {}", status));
+        self.log_to_file(&format!(
+            "Response X-Ratelimit headers: {}",
+            rate_limit.to_log_fields()
+        ));
+
+        if !status.is_success() {
+            let resp_body = self.read_body_tracked(response).await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", resp_body));
+            let body_preview: String = resp_body.chars().take(200).collect();
+            let body_preview = body_preview.trim();
+            anyhow::bail!(
+                "WB sales-funnel products: {} — {}{}",
+                status,
+                if body_preview.is_empty() {
+                    "(пустой ответ)"
+                } else {
+                    body_preview
+                },
+                rate_limit.to_error_suffix()
+            );
+        }
+
+        let resp_body = self.read_body_tracked(response).await?;
+        let body_preview: String = resp_body.chars().take(2000).collect();
+        self.log_to_file(&format!(
+            "=== SALES FUNNEL PRODUCTS RESPONSE (offset {}) ===\n{}\n",
+            offset, body_preview
+        ));
+
+        if resp_body.trim() == "null" || resp_body.trim().is_empty() {
+            return Ok((Vec::new(), false));
+        }
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body).map_err(|e| {
+            let snippet: String = resp_body.chars().take(400).collect();
+            anyhow::anyhow!(
+                "Failed to parse WB sales-funnel products: {} | body: {}",
+                e,
+                snippet
+            )
+        })?;
+
+        // Ответ обёрнут в {"data": {"products": [...], "currency": ...}}.
+        // Каждый элемент products — {"product": {nmId, ...}, "statistic": {...}};
+        // извлекаем nmID толерантно (product.nmId либо nmId в корне элемента).
+        let data = parsed.get("data").unwrap_or(&parsed);
+        let items = data
+            .get("products")
+            .or_else(|| data.get("cards"))
+            .or_else(|| data.get("items"))
+            .or_else(|| Some(data))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut nm_ids = Vec::with_capacity(items.len());
+        for item in &items {
+            let nm_id = item
+                .get("product")
+                .and_then(|p| p.get("nmId").or_else(|| p.get("nmID")))
+                .or_else(|| item.get("nmId"))
+                .or_else(|| item.get("nmID"))
+                .and_then(|v| v.as_i64());
+            if let Some(id) = nm_id {
+                nm_ids.push(id);
+            }
+        }
+
+        // Пагинация по offset: следующая страница есть, если вернули полную страницу.
+        let is_next_page = items.len() >= limit;
+
+        tracing::info!(
+            "WB sales-funnel products: offset={}, nm_ids={}, is_next_page={}",
+            offset,
+            nm_ids.len(),
+            is_next_page
+        );
+
+        Ok((nm_ids, is_next_page))
+    }
+
+    /// POST /api/analytics/v3/sales-funnel/products — тот же эндпоинт, что и discovery,
+    /// но извлекает полные карточки (`products[].product`) с остатками и рейтингами
+    /// для ежедневного снимка a037. Пагинация limit/offset, лимит 3 запроса/мин.
+    pub async fn fetch_sales_funnel_products_full(
+        &self,
+        connection: &ConnectionMP,
+        date_from: &str,
+        date_to: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<(Vec<WbProductSnapshotRow>, bool)> {
+        let url =
+            "https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products";
+
+        let request_body = serde_json::json!({
+            "selectedPeriod": { "start": date_from, "end": date_to },
+            "orderBy": { "field": "openCard", "mode": "desc" },
+            "skipDeletedNm": false,
+            "limit": limit,
+            "offset": offset
+        });
+        let body = serde_json::to_string(&request_body)?;
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nPOST {}\nAuthorization: ****\n{}",
+            url, body
+        ));
+
+        let response = match self
+            .client
+            .post(url)
+            .header("Authorization", &connection.api_key)
+            .header("Content-Type", "application/json")
+            .timeout(std::time::Duration::from_secs(180))
+            .body(body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                self.log_to_file(&format!("CONNECTION ERROR (products_full): {e:?}"));
+                tracing::error!("WB sales-funnel products_full connection error: {}", e);
+                anyhow::bail!(
+                    "Connection error for sales-funnel products (snapshot): {}",
+                    e
+                );
+            }
+        };
+
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        self.log_to_file(&format!("Response status: {}", status));
+        self.log_to_file(&format!(
+            "Response X-Ratelimit headers: {}",
+            rate_limit.to_log_fields()
+        ));
+
+        if !status.is_success() {
+            let resp_body = self.read_body_tracked(response).await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", resp_body));
+            let body_preview: String = resp_body.chars().take(200).collect();
+            let body_preview = body_preview.trim();
+            anyhow::bail!(
+                "WB sales-funnel products (snapshot): {} — {}{}",
+                status,
+                if body_preview.is_empty() {
+                    "(пустой ответ)"
+                } else {
+                    body_preview
+                },
+                rate_limit.to_error_suffix()
+            );
+        }
+
+        let resp_body = self.read_body_tracked(response).await?;
+        let body_preview: String = resp_body.chars().take(2000).collect();
+        self.log_to_file(&format!(
+            "=== SALES FUNNEL PRODUCTS FULL RESPONSE (offset {}) ===\n{}\n",
+            offset, body_preview
+        ));
+
+        if resp_body.trim() == "null" || resp_body.trim().is_empty() {
+            return Ok((Vec::new(), false));
+        }
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body).map_err(|e| {
+            let snippet: String = resp_body.chars().take(400).collect();
+            anyhow::anyhow!(
+                "Failed to parse WB sales-funnel products (snapshot): {} | body: {}",
+                e,
+                snippet
+            )
+        })?;
+
+        // {"data": {"products": [{"product": {nmId, stocks{wb,mp,balanceSum}, productRating, ...}}]}}
+        let data = parsed.get("data").unwrap_or(&parsed);
+        let items = data
+            .get("products")
+            .or_else(|| data.get("cards"))
+            .or_else(|| data.get("items"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut rows = Vec::with_capacity(items.len());
+        for item in &items {
+            let product = item.get("product").unwrap_or(item);
+            let nm_id = product
+                .get("nmId")
+                .or_else(|| product.get("nmID"))
+                .and_then(|v| v.as_i64());
+            let Some(nm_id) = nm_id else { continue };
+            let stocks = product.get("stocks");
+            rows.push(WbProductSnapshotRow {
+                nm_id,
+                title: product
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                vendor_code: product
+                    .get("vendorCode")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                brand_name: product
+                    .get("brandName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                subject_id: product
+                    .get("subjectId")
+                    .or_else(|| product.get("subjectID"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                subject_name: product
+                    .get("subjectName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                stock_wb: stocks
+                    .and_then(|s| s.get("wb"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                stock_mp: stocks
+                    .and_then(|s| s.get("mp"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                stock_balance_sum: stocks
+                    .and_then(|s| s.get("balanceSum"))
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0),
+                product_rating: product
+                    .get("productRating")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0),
+                feedback_rating: product
+                    .get("feedbackRating")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0),
+            });
+        }
+
+        let is_next_page = items.len() >= limit;
+        tracing::info!(
+            "WB sales-funnel products_full: offset={}, rows={}, is_next_page={}",
+            offset,
+            rows.len(),
+            is_next_page
+        );
+
+        Ok((rows, is_next_page))
+    }
+
+    /// POST /api/analytics/v3/sales-funnel/products/history — воронка продаж
+    /// по карточкам товаров по дням. Лимит: 3 запроса/мин, данные ~за последнюю неделю.
+    pub async fn fetch_sales_funnel_history(
+        &self,
+        connection: &ConnectionMP,
+        nm_ids: &[i64],
+        date_from: &str,
+        date_to: &str,
+    ) -> Result<Vec<WbSalesFunnelHistoryItem>> {
+        if nm_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let url = "https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products/history";
+
+        let request_body = serde_json::json!({
+            "selectedPeriod": { "start": date_from, "end": date_to },
+            "nmIds": nm_ids,
+            "skipDeletedNm": false,
+            "aggregationLevel": "day"
+        });
+        let body = serde_json::to_string(&request_body)?;
+
+        self.log_to_file(&format!(
+            "=== REQUEST ===\nPOST {}\nAuthorization: ****\n{}",
+            url, body
+        ));
+
+        let response = match self
+            .client
+            .post(url)
+            .header("Authorization", &connection.api_key)
+            .header("Content-Type", "application/json")
+            // Аналитика WB считается дольше обычных запросов —
+            // переопределяем глобальный 60с-таймаут клиента.
+            .timeout(std::time::Duration::from_secs(180))
+            .body(body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                self.log_to_file(&format!("CONNECTION ERROR (history): {e:?}"));
+                tracing::error!("WB sales-funnel history connection error: {}", e);
+                anyhow::bail!("Connection error for sales-funnel history: {}", e);
+            }
+        };
+
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        self.log_to_file(&format!("Response status: {}", status));
+        self.log_to_file(&format!(
+            "Response X-Ratelimit headers: {}",
+            rate_limit.to_log_fields()
+        ));
+
+        if !status.is_success() {
+            let resp_body = self.read_body_tracked(response).await.unwrap_or_default();
+            self.log_to_file(&format!("ERROR Response body:\n{}", resp_body));
+            tracing::warn!(
+                "WB sales-funnel history failed: {} - {}{}",
+                status,
+                resp_body,
+                rate_limit.to_error_suffix()
+            );
+            let body_preview: String = resp_body.chars().take(200).collect();
+            let body_preview = body_preview.trim();
+            anyhow::bail!(
+                "WB sales-funnel history: {} — {}{}",
+                status,
+                if body_preview.is_empty() {
+                    "(пустой ответ)"
+                } else {
+                    body_preview
+                },
+                rate_limit.to_error_suffix()
+            );
+        }
+
+        let resp_body = self.read_body_tracked(response).await?;
+        let body_preview: String = resp_body.chars().take(2000).collect();
+        self.log_to_file(&format!(
+            "=== SALES FUNNEL HISTORY RESPONSE ===\n{}\n",
+            body_preview
+        ));
+
+        if resp_body.trim() == "null" || resp_body.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body).map_err(|e| {
+            let snippet: String = resp_body.chars().take(400).collect();
+            anyhow::anyhow!(
+                "Failed to parse WB sales-funnel history: {} | body: {}",
+                e,
+                snippet
+            )
+        })?;
+
+        // Ответ — массив items либо обёртка {"data": [...]}.
+        let items_value = if parsed.is_array() {
+            parsed
+        } else {
+            parsed
+                .get("data")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        };
+
+        if items_value.is_null() {
+            return Ok(Vec::new());
+        }
+
+        let items: Vec<WbSalesFunnelHistoryItem> =
+            serde_json::from_value(items_value).map_err(|e| {
+                let snippet: String = resp_body.chars().take(400).collect();
+                anyhow::anyhow!(
+                    "Failed to decode WB sales-funnel history items: {} | body: {}",
+                    e,
+                    snippet
+                )
+            })?;
+
+        tracing::info!(
+            "WB sales-funnel history: {} products for {} nm_ids",
+            items.len(),
+            nm_ids.len()
+        );
+
+        Ok(items)
+    }
 }
 
 impl Default for WildberriesApiClient {
@@ -5285,4 +5723,76 @@ struct WbClaimsResponse {
     pub claims: Vec<WbClaimRow>,
     #[serde(default)]
     pub total: Option<i64>,
+}
+
+// ============================================================================
+// WB Sales Funnel (Analytics API v3)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesFunnelHistoryItem {
+    pub product: WbSalesFunnelProduct,
+    #[serde(default)]
+    pub history: Vec<WbSalesFunnelHistoryDay>,
+    #[serde(default)]
+    pub currency: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesFunnelProduct {
+    #[serde(rename = "nmId", alias = "nmID", default)]
+    pub nm_id: i64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(rename = "vendorCode", default)]
+    pub vendor_code: String,
+    #[serde(rename = "brandName", default)]
+    pub brand_name: String,
+    #[serde(rename = "subjectId", alias = "subjectID", default)]
+    pub subject_id: i64,
+    #[serde(rename = "subjectName", default)]
+    pub subject_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WbSalesFunnelHistoryDay {
+    #[serde(rename = "date", alias = "dt", default)]
+    pub date: String,
+    #[serde(rename = "openCount", default)]
+    pub open_count: i64,
+    #[serde(rename = "cartCount", default)]
+    pub cart_count: i64,
+    #[serde(rename = "orderCount", default)]
+    pub order_count: i64,
+    #[serde(rename = "orderSum", default)]
+    pub order_sum: f64,
+    #[serde(rename = "buyoutCount", default)]
+    pub buyout_count: i64,
+    #[serde(rename = "buyoutSum", default)]
+    pub buyout_sum: f64,
+    #[serde(rename = "buyoutPercent", default)]
+    pub buyout_percent: f64,
+    #[serde(rename = "addToCartConversion", default)]
+    pub add_to_cart_conversion: f64,
+    #[serde(rename = "cartToOrderConversion", default)]
+    pub cart_to_order_conversion: f64,
+    #[serde(rename = "addToWishlistCount", default)]
+    pub add_to_wishlist_count: i64,
+}
+
+/// Строка ежедневного снимка товара WB (для агрегата a037): сырые остатки и рейтинги
+/// из `products[].product` эндпоинта /api/analytics/v3/sales-funnel/products.
+#[derive(Debug, Clone)]
+pub struct WbProductSnapshotRow {
+    pub nm_id: i64,
+    pub title: String,
+    pub vendor_code: String,
+    pub brand_name: String,
+    pub subject_id: i64,
+    pub subject_name: String,
+    pub stock_wb: i64,
+    pub stock_mp: i64,
+    pub stock_balance_sum: f64,
+    pub product_rating: f64,
+    pub feedback_rating: f64,
 }

@@ -102,6 +102,12 @@ pub async fn resolve_many(kind: &str, ids: &[String]) -> HashMap<String, Aggrega
         "a034_ym_realization" => {
             crate::domain::a034_ym_realization::representation::represent_many(ids).await
         }
+        "a036_wb_sales_funnel_daily" => {
+            crate::domain::a036_wb_sales_funnel_daily::representation::represent_many(ids).await
+        }
+        "a037_wb_product_snapshot" => {
+            crate::domain::a037_wb_product_snapshot::representation::represent_many(ids).await
+        }
         "a028_missing_cost_registry" => {
             crate::domain::a028_missing_cost_registry::representation::represent_many(ids).await
         }

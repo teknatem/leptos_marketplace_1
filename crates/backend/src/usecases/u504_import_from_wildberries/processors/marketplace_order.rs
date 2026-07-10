@@ -80,7 +80,7 @@ pub async fn process_marketplace_order(
         // (non-null salePrice or finalPrice) and the new payload lacks those fields, keep the
         // existing payload to prevent losing price information.
         let new_has_rich_prices = order.final_price.is_some() || order.sale_price.is_some();
-        let existing_has_rich_prices = existing.source_meta.marketplace_raw_payload_ref.is_some();
+        let existing_has_rich_prices = existing.line.sale_price.is_some();
         if new_has_rich_prices || !existing_has_rich_prices {
             let raw_json = serde_json::to_string(order)?;
             let _ = a015_wb_orders::service::store_marketplace_raw_payload(&document_no, &raw_json)

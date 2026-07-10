@@ -6769,57 +6769,165 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
   vertical-align: middle;
 }
 
-.tool-trace__details {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 6px 8px;
-  background: var(--color-surface-1, var(--colorNeutralBackground3));
-  border-radius: 6px;
-  border: 1px solid var(--color-border, var(--colorNeutralStroke2));
+/* Детальный журнал вызовов инструментов в боковой панели (drawer). */
+.tool-trace__drawer-status {
+  padding: 12px 4px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
 }
 
-.tool-trace__detail-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 11px;
-}
-
-.tool-trace__status {
-  font-weight: bold;
-  width: 12px;
-  flex-shrink: 0;
-}
-
-.tool-trace__status--ok {
-  color: var(--color-success, #16a34a);
-}
-
-.tool-trace__status--err {
+.tool-trace__drawer-status--err {
   color: var(--color-error, #dc2626);
 }
 
-.tool-trace__tool-name {
-  font-weight: 500;
-  color: var(--color-text-primary);
-  min-width: 120px;
+.tool-trace__calls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.tool-trace__detail-ms {
+.tool-call {
+  border: 1px solid var(--color-border, var(--colorNeutralStroke2));
+  border-left: 3px solid var(--color-border, var(--colorNeutralStroke2));
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--color-surface-1, var(--colorNeutralBackground2));
+}
+
+.tool-call--ok {
+  border-left-color: var(--color-success, #16a34a);
+}
+
+.tool-call--err {
+  border-left-color: var(--color-error, #dc2626);
+}
+
+.tool-call__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.tool-call__index {
   color: var(--color-text-secondary);
-  opacity: 0.7;
   font-variant-numeric: tabular-nums;
-  min-width: 50px;
 }
 
-.tool-trace__detail-summary {
+.tool-call__stage {
+  font-weight: 500;
   color: var(--color-text-secondary);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.tool-call__name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.tool-call__status {
+  font-weight: bold;
+}
+
+.tool-call__status--ok {
+  color: var(--color-success, #16a34a);
+}
+
+.tool-call__status--err {
+  color: var(--color-error, #dc2626);
+}
+
+.tool-call__ms {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.tool-call__summary {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.tool-call__io {
+  margin-top: 8px;
+}
+
+.tool-call__io > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-brand, var(--colorBrandForeground1));
+  user-select: none;
+}
+
+.tool-call__io pre {
+  max-height: 320px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 4px;
+  background: var(--color-surface-2, var(--colorNeutralBackground3));
+  color: var(--color-text-primary);
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Collapsible tool-call tree: chevron toggles the node open/closed. */
+.tool-call__chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.tool-call__chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tool-call__details {
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-call__io-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tool-call__io-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-brand, var(--colorBrandForeground1));
+}
+
+.tool-call__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border, var(--colorNeutralStroke2));
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tool-call__copy:hover {
+  background: var(--color-surface-2, var(--colorNeutralBackground3));
+}
+
+.tool-call__copy svg {
+  width: 12px;
+  height: 12px;
 }
 
 /* BI Timeline */

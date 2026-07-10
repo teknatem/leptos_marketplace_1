@@ -254,13 +254,13 @@ async fn http_request(method: &str, url: &str, body: Option<String>) -> Result<S
     text.as_string().ok_or_else(|| "bad text".to_string())
 }
 
-/// Агент по умолчанию: основной (is_primary), иначе первый. Возвращает (id, model).
+/// Подключение по умолчанию: основное (is_primary), иначе первое. Возвращает (id, model).
 async fn fetch_default_agent() -> Result<(String, String), String> {
-    let url = format!("{}/api/a017-llm-agent", api_base());
+    let url = format!("{}/api/a038-llm-connection", api_base());
     let text = http_request("GET", &url, None).await?;
     let agents: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     if agents.is_empty() {
-        return Err("Нет доступных LLM-агентов".to_string());
+        return Err("Нет доступных LLM-подключений".to_string());
     }
     let chosen = agents
         .iter()

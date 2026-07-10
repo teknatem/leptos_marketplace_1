@@ -31,6 +31,7 @@ pub struct IntentResult {
     pub confidence: f64,
     /// Откуда получен результат — для аналитики/отладки ("llm" | "rules").
     pub source: &'static str,
+    pub tokens_used: i32,
 }
 
 impl IntentResult {
@@ -39,6 +40,7 @@ impl IntentResult {
             intent: intent.into(),
             confidence,
             source,
+            tokens_used: 0,
         }
     }
 }
@@ -94,7 +96,10 @@ pub async fn classify_intent(
 
     match provider.chat_completion(&messages).await {
         Ok(resp) => match parse_intent_json(&resp.content) {
-            Some(result) => result,
+            Some(mut result) => {
+                result.tokens_used = resp.tokens_used.unwrap_or(0);
+                result
+            }
             None => {
                 tracing::warn!(
                     "[router] не удалось распарсить ответ классификатора, fallback на правила: {}",

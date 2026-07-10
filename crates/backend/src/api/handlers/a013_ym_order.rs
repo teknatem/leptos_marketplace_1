@@ -169,18 +169,12 @@ pub async fn get_order_detail(
 pub async fn get_raw_json(
     axum::extract::Path(ref_id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
-    let raw_json_str = raw_storage::get_by_ref(&ref_id)
+    let json_value = raw_storage::get_json_value_by_ref(&ref_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get raw JSON: {}", e);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
-
-    let json_value: serde_json::Value = serde_json::from_str(&raw_json_str).map_err(|e| {
-        tracing::error!("Failed to parse raw JSON: {}", e);
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+        })?;
 
     Ok(Json(json_value))
 }

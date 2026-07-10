@@ -18,6 +18,13 @@ use contracts::domain::a002_organization::{ENTITY_METADATA as A002_META, FIELDS 
 use contracts::domain::a004_nomenclature::{ENTITY_METADATA as A004_META, FIELDS as A004_FIELDS};
 use contracts::domain::a005_marketplace::{ENTITY_METADATA as A005_META, FIELDS as A005_FIELDS};
 use contracts::domain::a006_connection_mp::{ENTITY_METADATA as A006_META, FIELDS as A006_FIELDS};
+use contracts::domain::a012_wb_sales::{ENTITY_METADATA as A012_META, FIELDS as A012_FIELDS};
+use contracts::domain::a036_wb_sales_funnel_daily::{
+    ENTITY_METADATA as A036_META, FIELDS as A036_FIELDS,
+};
+use contracts::domain::a037_wb_product_snapshot::{
+    ENTITY_METADATA as A037_META, FIELDS as A037_FIELDS,
+};
 
 /// Information about a registered entity with metadata
 pub struct RegisteredEntity {
@@ -85,6 +92,12 @@ impl SchemaRegistry {
         self.register_metadata_schema(&A004_META, A004_FIELDS);
         self.register_metadata_schema(&A005_META, A005_FIELDS);
         self.register_metadata_schema(&A006_META, A006_FIELDS);
+        self.register_metadata_schema(&A012_META, A012_FIELDS);
+        // WB daily snapshots: flat daily totals per cabinet/date exposed as a base schema.
+        // Per-nomenclature detail (lines_json) is visible_in_list=false and thus excluded
+        // here — that detail is reachable via raw SQL + json_each (see field ai_hint).
+        self.register_metadata_schema(&A036_META, A036_FIELDS);
+        self.register_metadata_schema(&A037_META, A037_FIELDS);
     }
 
     fn register_metadata_schema(
@@ -225,6 +238,7 @@ mod tests {
         let registry = SchemaRegistry::new();
         assert!(registry.has_schema("ds01_wb_finance_report"));
         assert!(registry.has_schema("ds02_mp_sales_register"));
+        assert!(registry.has_schema("a012"));
     }
 
     #[test]

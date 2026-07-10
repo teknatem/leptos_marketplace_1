@@ -35,6 +35,16 @@ pub struct PluginRunRecord {
     pub error_stage: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row_count: Option<i64>,
+    #[serde(default)]
+    pub data_mode: super::PluginDataMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginModeStats {
+    pub data_mode: super::PluginDataMode,
+    pub total: i64,
+    pub errors: i64,
+    pub avg_ms: i64,
 }
 
 /// Агрегированная статистика по окну (days дней).
@@ -49,6 +59,8 @@ pub struct PluginRunSummary {
     pub max_ms: i64,
     #[serde(default)]
     pub by_stage: Vec<StageCount>,
+    #[serde(default)]
+    pub by_data_mode: Vec<PluginModeStats>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
