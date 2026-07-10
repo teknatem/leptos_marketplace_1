@@ -471,7 +471,9 @@ pub async fn store_document_with_raw(mut document: YmOrder, raw_json: &str) -> R
     )
     .await?;
 
-    document.source_meta.raw_payload_ref = raw_ref;
+    if let Some(raw_ref) = raw_ref {
+        document.source_meta.raw_payload_ref = raw_ref;
+    }
     document
         .validate()
         .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
@@ -593,13 +595,28 @@ pub async fn refill_from_raw_json(document: &mut YmOrder) -> Result<bool> {
         return Ok(false);
     }
 
-    let raw_json_str = crate::shared::data::raw_storage::get_by_ref(raw_ref)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Raw JSON not found for ref: {}", raw_ref))?;
+    let Some(raw_json_str) = crate::shared::data::raw_storage::get_by_ref(raw_ref).await? else {
+        tracing::warn!(
+            "Raw JSON not found for document {}, ref {}; skipping refill",
+            document.header.document_no,
+            raw_ref
+        );
+        return Ok(false);
+    };
 
     // Парсим JSON
-    let ym_order_json: YmOrderJson = serde_json::from_str(&raw_json_str)
-        .map_err(|e| anyhow::anyhow!("Failed to parse raw JSON: {}", e))?;
+    let ym_order_json: YmOrderJson = match serde_json::from_str(&raw_json_str) {
+        Ok(value) => value,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to parse raw JSON for document {}, ref {}; skipping refill: {}",
+                document.header.document_no,
+                raw_ref,
+                e
+            );
+            return Ok(false);
+        }
+    };
 
     let mut fields_updated = false;
 

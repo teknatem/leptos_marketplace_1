@@ -442,7 +442,7 @@ pub async fn update_income_id_by_document_no(document_no: &str, income_id: i64) 
 /// margin_pro не читал raw-payload отдельным запросом.
 pub async fn update_marketplace_payload_by_document_no(
     document_no: &str,
-    raw_payload_ref: &str,
+    raw_payload_ref: Option<&str>,
     sale_price: Option<f64>,
 ) -> Result<bool> {
     use sea_orm::{ConnectionTrait, Statement};
@@ -455,13 +455,20 @@ pub async fn update_marketplace_payload_by_document_no(
         ),
         None => String::new(),
     };
+    let source_meta_set = match raw_payload_ref {
+        Some(raw_payload_ref) => format!(
+            "source_meta_json = json_set(source_meta_json, '$.marketplace_raw_payload_ref', '{}')",
+            raw_payload_ref.replace('\'', "''")
+        ),
+        None => "source_meta_json = source_meta_json".to_string(),
+    };
     let sql = format!(
         "UPDATE a015_wb_orders \
-         SET source_meta_json = json_set(source_meta_json, '$.marketplace_raw_payload_ref', '{}'){} , \
+         SET {}{} , \
              updated_at = datetime('now') \
          WHERE document_no = '{}' \
            AND is_deleted = 0",
-        raw_payload_ref.replace('\'', "''"),
+        source_meta_set,
         line_set,
         document_no.replace('\'', "''")
     );
@@ -1039,4 +1046,93 @@ pub async fn list_sql(query: WbOrdersListQuery) -> Result<WbOrdersListResult> {
         .collect();
 
     Ok(WbOrdersListResult { items, total })
+}
+
+/// Строка WB-заказа для вкладки «Заказы» на карточке номенклатуры.
+#[derive(Debug, Clone)]
+pub struct WbOrderForNomenclatureRow {
+    pub id: String,
+    pub document_no: String,
+    pub document_date: Option<String>,
+    pub qty: Option<f64>,
+    pub total_price: Option<f64>,
+    pub price: Option<f64>,
+    pub price_with_disc: Option<f64>,
+    pub finished_price: Option<f64>,
+    pub dealer_price_ut: Option<f64>,
+    pub margin_pro: Option<f64>,
+    pub is_cancel: Option<bool>,
+    pub is_supply: Option<bool>,
+    pub is_realization: Option<bool>,
+}
+
+/// Заказы WB, отнесённые к номенклатуре `nomenclature_ref` напрямую или через
+/// её base_nomenclature_ref (для деривативных/вариантных позиций).
+pub async fn list_orders_for_nomenclature(
+    nomenclature_ref: &str,
+    date_from: &str,
+) -> Result<Vec<WbOrderForNomenclatureRow>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+
+    let sql = r#"
+        SELECT
+            w.id,
+            w.document_no,
+            w.document_date,
+            json_extract(w.line_json, '$.qty')             as qty,
+            json_extract(w.line_json, '$.total_price')      as total_price,
+            json_extract(w.line_json, '$.price')            as price,
+            json_extract(w.line_json, '$.price_with_disc')  as price_with_disc,
+            json_extract(w.line_json, '$.finished_price')   as finished_price,
+            COALESCE(w.dealer_price_ut, json_extract(w.line_json, '$.dealer_price_ut')) as dealer_price_ut,
+            json_extract(w.line_json, '$.margin_pro')       as margin_pro,
+            w.is_cancel,
+            json_extract(w.state_json, '$.is_supply')       as is_supply,
+            json_extract(w.state_json, '$.is_realization')  as is_realization
+        FROM a015_wb_orders w
+        WHERE w.is_deleted = 0
+          AND substr(w.document_date, 1, 10) >= ?
+          AND (w.nomenclature_ref = ? OR w.base_nomenclature_ref = ?)
+        ORDER BY w.document_date DESC
+    "#;
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+            [
+                date_from.into(),
+                nomenclature_ref.into(),
+                nomenclature_ref.into(),
+            ],
+        ))
+        .await?;
+
+    let items = rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(WbOrderForNomenclatureRow {
+                id: row.try_get("", "id").ok()?,
+                document_no: row.try_get("", "document_no").ok()?,
+                document_date: row.try_get("", "document_date").ok(),
+                qty: row.try_get("", "qty").ok(),
+                total_price: row.try_get("", "total_price").ok(),
+                price: row.try_get("", "price").ok(),
+                price_with_disc: row.try_get("", "price_with_disc").ok(),
+                finished_price: row.try_get("", "finished_price").ok(),
+                dealer_price_ut: row.try_get("", "dealer_price_ut").ok(),
+                margin_pro: row.try_get("", "margin_pro").ok(),
+                is_cancel: row.try_get::<i32>("", "is_cancel").ok().map(|v| v != 0),
+                is_supply: row.try_get::<i32>("", "is_supply").ok().map(|v| v != 0),
+                is_realization: row
+                    .try_get::<i32>("", "is_realization")
+                    .ok()
+                    .map(|v| v != 0),
+            })
+        })
+        .collect();
+
+    Ok(items)
 }

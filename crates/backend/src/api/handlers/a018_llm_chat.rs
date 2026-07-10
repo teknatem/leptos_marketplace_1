@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::domain::a018_llm_chat;
 use crate::domain::a018_llm_chat::job_store::{self, LlmJobStatus};
 use contracts::domain::a018_llm_chat::aggregate::{
-    LlmChat, LlmChatDetail, LlmChatListItem, LlmChatMessage,
+    LlmChat, LlmChatDetail, LlmChatListItem, LlmChatMessage, ToolTraceEntry,
 };
 use contracts::domain::a018_llm_chat::context::{AddContextRequest, ContextPackageSummary};
 
@@ -125,6 +125,37 @@ pub async fn get_messages(
     }
 }
 
+/// GET /api/a018-llm-chat/message/:message_id/tool-trace
+/// Полный журнал вызовов инструментов для сообщения ассистента.
+pub async fn get_tool_trace(
+    Path(message_id): Path<String>,
+) -> Result<Json<Vec<ToolTraceEntry>>, axum::http::StatusCode> {
+    match a018_llm_chat::service::get_tool_trace(&message_id).await {
+        Ok(v) => Ok(Json(v)),
+        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SetRatingRequest {
+    /// 1..5, либо null чтобы снять оценку.
+    pub rating: Option<i32>,
+}
+
+/// POST /api/a018-llm-chat/:id/rating
+pub async fn set_rating(
+    Path(id): Path<String>,
+    Json(payload): Json<SetRatingRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    match a018_llm_chat::service::set_rating(&id, payload.rating).await {
+        Ok(()) => Ok(Json(json!({ "success": true }))),
+        Err(e) => {
+            tracing::warn!("set_rating failed for chat {}: {}", id, e);
+            Err(axum::http::StatusCode::BAD_REQUEST)
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct SendJobResponse {
     pub job_id: String,
@@ -137,6 +168,9 @@ pub struct JobStatusResponse {
     pub message: Option<LlmChatMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Текущий этап выполнения (только для status == "pending").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<job_store::JobProgress>,
 }
 
 /// POST /api/a018-llm-chat/:id/messages
@@ -146,14 +180,26 @@ pub async fn send_message(
     Path(id): Path<String>,
     Json(payload): Json<a018_llm_chat::service::SendMessageRequest>,
 ) -> Result<(StatusCode, Json<SendJobResponse>), StatusCode> {
-    let job_id = Uuid::new_v4().to_string();
+    let proposed_job_id = Uuid::new_v4().to_string();
+    let request_id = payload
+        .request_id
+        .clone()
+        .unwrap_or_else(|| proposed_job_id.clone());
+    let (job_id, should_start) = job_store::register(&proposed_job_id, &id, &request_id)
+        .await
+        .map_err(|error| {
+            tracing::error!("failed to register durable LLM job: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
-    job_store::register(&job_id).await;
+    if !should_start {
+        return Ok((StatusCode::ACCEPTED, Json(SendJobResponse { job_id })));
+    }
 
     let job_id_clone = job_id.clone();
     tokio::spawn(async move {
         tracing::info!("[llm_job] started job_id={} chat_id={}", job_id_clone, id);
-        match a018_llm_chat::service::send_message(&id, payload).await {
+        match a018_llm_chat::service::send_message(&id, payload, Some(&job_id_clone)).await {
             Ok(msg) => {
                 tracing::info!("[llm_job] done job_id={}", job_id_clone);
                 job_store::complete(&job_id_clone, msg).await;
@@ -168,25 +214,40 @@ pub async fn send_message(
     Ok((StatusCode::ACCEPTED, Json(SendJobResponse { job_id })))
 }
 
+/// POST /api/a018-llm-chat/jobs/:job_id/cancel
+pub async fn cancel_job(Path(job_id): Path<String>) -> Result<Json<serde_json::Value>, StatusCode> {
+    let cancelled = job_store::cancel(&job_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if cancelled {
+        Ok(Json(json!({ "ok": true })))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
 /// GET /api/a018-llm-chat/jobs/:job_id
 /// Returns current status of a background LLM job.
 pub async fn poll_job(Path(job_id): Path<String>) -> Result<Json<JobStatusResponse>, StatusCode> {
     match job_store::take(&job_id).await {
         None => Err(StatusCode::NOT_FOUND),
-        Some(LlmJobStatus::Pending) => Ok(Json(JobStatusResponse {
+        Some(LlmJobStatus::Pending(progress)) => Ok(Json(JobStatusResponse {
             status: "pending".to_string(),
             message: None,
             error: None,
+            progress: Some(progress),
         })),
         Some(LlmJobStatus::Done(msg)) => Ok(Json(JobStatusResponse {
             status: "done".to_string(),
             message: Some(msg),
             error: None,
+            progress: None,
         })),
         Some(LlmJobStatus::Error(e)) => Ok(Json(JobStatusResponse {
             status: "error".to_string(),
             message: None,
             error: Some(e),
+            progress: None,
         })),
     }
 }

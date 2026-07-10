@@ -23,17 +23,20 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+/* Matches .page__title used by every other list page in the app (font-size-lg, 600) —
+   this page previously ran a bespoke larger/bolder heading that stood out from the rest. */
 .plugins-page__title {
   margin: 0;
-  font-size: 22px;
-  font-weight: 700;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: 1.2;
   color: var(--color-text-primary);
   letter-spacing: 0;
 }
 
 .plugins-page__subtitle {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
 }
 
@@ -45,18 +48,28 @@
 
 /* ── Кнопки ───────────────────────────────────────────────────────────── */
 
+/* Geometry matches the app's .button exactly (height 28px, padding 4px 16px,
+   font-weight 500) — same tokens/colors as before, just no longer chunkier/bolder
+   than buttons anywhere else in the app. */
 .plugins-btn {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
   border: 1px solid var(--color-border);
   background: var(--color-bg-elevated, var(--color-bg-secondary));
   color: var(--color-text-primary);
-  padding: 8px 14px;
-  border-radius: var(--radius-md, 8px);
-  font-size: 13px;
-  font-weight: 600;
+  height: 28px;
+  padding: 4px 16px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s, transform 0.05s;
   white-space: nowrap;
+  user-select: none;
 }
 
 .plugins-btn:hover {
@@ -362,13 +375,15 @@
   color: var(--color-text-secondary);
 }
 
+/* Matches the app's .form__input geometry (height 30px, radius-sm, padding 5px 12px). */
 .plugin-host__input {
-  padding: 7px 10px;
+  height: 30px;
+  padding: 5px 12px;
   border: 1px solid var(--form-input-border, var(--color-border));
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-sm);
   background: var(--form-input-bg, var(--color-surface));
   color: var(--color-text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-base);
 }
 
 .plugin-host__input:focus {
@@ -377,16 +392,25 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
+/* Matches the app's .button geometry (height 28px, padding 4px 16px, font-weight 500). */
 .plugin-host__run {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
   border: 1px solid transparent;
   background: var(--btn-primary-bg, var(--color-primary));
   color: var(--btn-primary-text, #fff);
-  padding: 8px 18px;
-  border-radius: var(--radius-md, 8px);
+  height: 28px;
+  padding: 4px 16px;
+  border-radius: var(--radius-md);
   font-size: var(--font-size-base, 13px);
-  font-weight: var(--font-weight-semibold, 600);
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
   transition: background 0.15s, opacity 0.15s, transform 0.05s;
 }
 
@@ -566,7 +590,56 @@
 }
 
 .plugin-host__bar-spacer {
-  flex: 1 1 auto;
+    flex: 1 1 auto;
+}
+
+.plugin-data-mode {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--color-border, #d1d5db);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.plugin-data-mode__button {
+    border: 0;
+    background: transparent;
+    color: var(--color-text-secondary, #6b7280);
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.plugin-data-mode__button + .plugin-data-mode__button {
+    border-left: 1px solid var(--color-border, #d1d5db);
+}
+
+.plugin-data-mode__button--live.plugin-data-mode__button--active {
+    color: #15803d;
+    background: rgba(34, 197, 94, .12);
+}
+
+.plugin-data-mode__button--snapshot.plugin-data-mode__button--active {
+    color: #b45309;
+    background: rgba(245, 158, 11, .14);
+}
+
+.plugin-data-mode__button:disabled {
+    cursor: not-allowed;
+    opacity: .45;
+}
+
+.plugin-data-mode__dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 5px;
+    border-radius: 50%;
+    background: #22c55e;
+}
+
+.plugin-data-mode__dot--snapshot {
+    background: #f59e0b;
 }
 
 .plugin-host__run--active {
@@ -718,17 +791,19 @@
 .plugin-host__resource-select,
 .plugin-host__resource-name,
 .plugin-host__resource-action {
-  min-height: 36px;
+  height: 30px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm);
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   font: inherit;
-  padding: 0 10px;
+  font-size: var(--font-size-base);
+  padding: 0 12px;
 }
 
 .plugin-host__resource-action {
   cursor: pointer;
+  font-weight: 500;
 }
 
 .plugin-host__resource-action--danger {
@@ -887,10 +962,10 @@
 }
 
 .plugin-host__context-field input {
-  height: 32px;
-  padding: 0 8px;
+  height: 30px;
+  padding: 5px 12px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-sm);
   background: var(--color-bg-elevated, var(--color-bg-secondary));
   color: var(--color-text-primary);
   font: inherit;
@@ -1068,6 +1143,28 @@
 .plugins-health--nodata {
   color: var(--color-text-secondary);
   background: color-mix(in srgb, var(--color-text-secondary, #667085) 12%, transparent);
+}
+
+/* ── Доступное обновление плагина (реестр) ────────────────────────────── */
+
+.plugins-update {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.plugins-update--available {
+  color: var(--badge-warning-text, var(--color-warning));
+  background: var(--badge-warning-bg, color-mix(in srgb, var(--color-warning) 16%, transparent));
+  cursor: pointer;
+}
+
+.plugins-update--available:hover {
+  background: var(--badge-warning-bg, color-mix(in srgb, var(--color-warning) 26%, transparent));
 }
 
 .plugin-host__stats {

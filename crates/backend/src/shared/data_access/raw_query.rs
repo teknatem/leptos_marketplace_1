@@ -1,14 +1,13 @@
 use super::catalog::{DataSourceKind, DataSourceRef};
+use super::row_json::{fetch_json_rows, JsonBind};
 use super::sql_guard::{inspect_read_query, wrap_limited_sql};
 use super::TabularResult;
-use crate::shared::data::db::get_connection;
-use sea_orm::{DatabaseBackend, FromQueryResult, Statement, Value as DbValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
 const DEFAULT_LIMIT: usize = 50;
-const MAX_LIMIT: usize = 200;
+const MAX_LIMIT: usize = 2_000;
 const QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +27,10 @@ pub struct RawQueryRequest {
 }
 
 fn is_secret_table(table: &str) -> bool {
-    matches!(table, "a001_connection_1c" | "a006_connection_mp")
+    // a006_connection_mp намеренно разблокирован для raw SQL (нужен JOIN по marketplace в
+    // аналитике/графиках) — ВНИМАНИЕ: таблица содержит credentials (api_key и т.п.), которые
+    // тем самым становятся доступны LLM-генерируемому SQL. a001_connection_1c остаётся секретной.
+    matches!(table, "a001_connection_1c")
 }
 
 fn is_knowledge_table(table: &str) -> bool {
@@ -74,22 +76,20 @@ pub fn enforce_access_profile(profile: SqlAccessProfile, tables: &[String]) -> R
     }
 }
 
-fn json_param_to_db(value: Value) -> Result<DbValue, String> {
+fn json_param_to_bind(value: Value) -> Result<JsonBind, String> {
     match value {
-        Value::Null => Ok(DbValue::String(None)),
-        Value::Bool(value) => Ok(DbValue::Bool(Some(value))),
+        Value::Null => Ok(JsonBind::Null),
+        Value::Bool(value) => Ok(JsonBind::Bool(value)),
         Value::Number(value) => {
             if let Some(value) = value.as_i64() {
-                Ok(DbValue::BigInt(Some(value)))
-            } else if let Some(value) = value.as_u64() {
-                Ok(DbValue::BigUnsigned(Some(value)))
+                Ok(JsonBind::Int(value))
             } else if let Some(value) = value.as_f64() {
-                Ok(DbValue::Double(Some(value)))
+                Ok(JsonBind::Float(value))
             } else {
                 Err("Unsupported numeric SQL parameter".to_string())
             }
         }
-        Value::String(value) => Ok(DbValue::String(Some(Box::new(value)))),
+        Value::String(value) => Ok(JsonBind::Text(value)),
         Value::Array(_) | Value::Object(_) => {
             Err("SQL parameters must be scalar JSON values".to_string())
         }
@@ -114,15 +114,13 @@ pub async fn execute_raw_query(
     if !(1..=MAX_LIMIT).contains(&limit) {
         return Err(format!("limit must be between 1 and {MAX_LIMIT}"));
     }
-    let params = request
+    let binds = request
         .params
         .into_iter()
-        .map(json_param_to_db)
+        .map(json_param_to_bind)
         .collect::<Result<Vec<_>, _>>()?;
     let sql = wrap_limited_sql(&request.sql, limit + 1, "llm_limited_result");
-    let statement = Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, params);
-    let rows_future = Value::find_by_statement(statement).all(get_connection());
-    let mut rows = tokio::time::timeout(QUERY_TIMEOUT, rows_future)
+    let (mut rows, columns) = tokio::time::timeout(QUERY_TIMEOUT, fetch_json_rows(&sql, binds))
         .await
         .map_err(|_| "Raw SQL query timed out after 10 seconds".to_string())?
         .map_err(|error| format!("SQL execution error: {error}"))?;
@@ -130,11 +128,6 @@ pub async fn execute_raw_query(
     if truncated {
         rows.truncate(limit);
     }
-    let columns = rows
-        .first()
-        .and_then(Value::as_object)
-        .map(|row| row.keys().cloned().collect())
-        .unwrap_or_default();
     let result = TabularResult {
         source: DataSourceRef {
             kind: DataSourceKind::Raw,
@@ -144,6 +137,7 @@ pub async fn execute_raw_query(
         rows,
         columns,
         truncated,
+        generated_sql: None,
     };
     tracing::info!(
         source_kind = "raw",
@@ -162,9 +156,10 @@ mod tests {
 
     #[test]
     fn analytics_profile_blocks_secret_and_system_tables() {
+        // a001_connection_1c остаётся секретной (credentials 1С).
         assert!(enforce_access_profile(
             SqlAccessProfile::Analytics,
-            &["a006_connection_mp".to_string()]
+            &["a001_connection_1c".to_string()]
         )
         .is_err());
         assert!(enforce_access_profile(
@@ -178,6 +173,16 @@ mod tests {
                 "p904_sales_data".to_string(),
                 "sys_general_ledger".to_string()
             ]
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn analytics_profile_allows_connection_mp_after_unblock() {
+        // a006_connection_mp намеренно разблокирован для raw SQL (JOIN по marketplace).
+        assert!(enforce_access_profile(
+            SqlAccessProfile::Analytics,
+            &["a006_connection_mp".to_string()]
         )
         .is_ok());
     }

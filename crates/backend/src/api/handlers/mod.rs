@@ -34,6 +34,9 @@ pub mod a032_wb_returns_claims;
 pub mod a033_wb_day_close;
 pub mod a034_ym_realization;
 pub mod a035_ym_settlement_recon;
+pub mod a036_wb_sales_funnel_daily;
+pub mod a037_wb_product_snapshot;
+pub mod a038_llm_connection;
 
 // Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;
@@ -85,6 +88,7 @@ pub mod debug;
 pub mod kb_read;
 pub mod llm_knowledge;
 pub mod llm_skills;
+pub mod llm_tools;
 
 // Универсальный резолвер представлений ссылок (*_ref)
 pub mod refs;

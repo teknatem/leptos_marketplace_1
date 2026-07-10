@@ -13,7 +13,9 @@ pub async fn store_document_with_raw(mut document: OzonFboPosting, raw_json: &st
     )
     .await?;
 
-    document.source_meta.raw_payload_ref = raw_ref;
+    if let Some(raw_ref) = raw_ref {
+        document.source_meta.raw_payload_ref = raw_ref;
+    }
     document
         .validate()
         .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;

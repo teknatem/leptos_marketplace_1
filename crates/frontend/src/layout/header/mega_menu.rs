@@ -144,6 +144,16 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "activity",
         },
         MegaMenuItem {
+            key: "a036_wb_sales_funnel_daily",
+            title: tab_label_for_key("a036_wb_sales_funnel_daily"),
+            icon_name: "filter",
+        },
+        MegaMenuItem {
+            key: "a037_wb_product_snapshot",
+            title: tab_label_for_key("a037_wb_product_snapshot"),
+            icon_name: "package",
+        },
+        MegaMenuItem {
             key: "a027_wb_documents",
             title: tab_label_for_key("a027_wb_documents"),
             icon_name: "file-text",

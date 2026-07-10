@@ -68,6 +68,9 @@ pub struct LlmChat {
     pub base: BaseAggregate<LlmChatId>,
     pub agent_id: LlmAgentId,
     pub model_name: String,
+    /// Пользовательская оценка чата (1..5; None — не оценён).
+    #[serde(default)]
+    pub rating: Option<i32>,
 }
 
 impl LlmChat {
@@ -83,6 +86,7 @@ impl LlmChat {
             base,
             agent_id,
             model_name,
+            rating: None,
         }
     }
 
@@ -99,6 +103,7 @@ impl LlmChat {
             base,
             agent_id,
             model_name,
+            rating: None,
         }
     }
 
@@ -363,6 +368,33 @@ impl LlmChatMessage {
     }
 }
 
+/// Одна запись журнала вызовов инструментов (`sys_tool_trace`).
+///
+/// Полная запись на КАЖДЫЙ вызов инструмента: вход/выход хранятся целиком,
+/// чтобы UI мог показать детальную карточку вызова. В `LlmChatMessage.tool_trace`
+/// остаётся только минимум для пилюль (`tool`, `ok`, `ms`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolTraceEntry {
+    pub id: String,
+    pub chat_id: String,
+    pub message_id: String,
+    pub iteration: i64,
+    pub call_index: i64,
+    pub stage: String,
+    pub tool: String,
+    pub ok: bool,
+    pub ms: i64,
+    #[serde(default)]
+    pub summary: Option<String>,
+    /// Аргументы вызова (JSON-контракт входа).
+    #[serde(default)]
+    pub input: Option<serde_json::Value>,
+    /// Результат вызова (компактный JSON-контракт выхода).
+    #[serde(default)]
+    pub output: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+}
+
 /// DTO для элемента списка чатов
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmChatListItem {
@@ -376,6 +408,9 @@ pub struct LlmChatListItem {
     pub created_at: DateTime<Utc>,
     pub message_count: Option<i64>,
     pub last_message_at: Option<DateTime<Utc>>,
+    /// Пользовательская оценка чата (1..5; None — не оценён).
+    #[serde(default)]
+    pub rating: Option<i32>,
 }
 
 impl From<LlmChat> for LlmChatListItem {
@@ -391,6 +426,7 @@ impl From<LlmChat> for LlmChatListItem {
             created_at: chat.base.metadata.created_at,
             message_count: None,
             last_message_at: None,
+            rating: chat.rating,
         }
     }
 }

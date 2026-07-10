@@ -21,7 +21,8 @@ pub async fn store_document_with_raw(document: WbPromotion, raw_json: &str) -> R
         )
         .await
         {
-            Ok(ref_id) => ref_id,
+            Ok(Some(ref_id)) => ref_id,
+            Ok(None) => String::new(),
             Err(e) => {
                 tracing::warn!("Failed to store raw JSON: {}", e);
                 String::new()

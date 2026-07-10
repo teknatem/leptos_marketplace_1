@@ -7,7 +7,9 @@
 //! - Routes to tab components
 //! - Handles lazy loading for nested data
 
-use super::tabs::{BarcodesTab, DealerPricesTab, DimensionsTab, GeneralTab, ProductionTab};
+use super::tabs::{
+    BarcodesTab, DealerPricesTab, DimensionsTab, GeneralTab, OrdersTab, ProductionTab,
+};
 use super::view_model::NomenclatureDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
@@ -55,6 +57,16 @@ pub fn NomenclatureDetails(
         move || {
             if vm.active_tab.get() == "production" && !vm.production_costs_loaded.get() {
                 vm.load_production_costs();
+            }
+        }
+    });
+
+    // Lazy loading for orders tab
+    Effect::new({
+        let vm = vm.clone();
+        move || {
+            if vm.active_tab.get() == "orders" && !vm.orders_loaded.get() {
+                vm.load_orders();
             }
         }
     });
@@ -133,6 +145,7 @@ fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
     let barcodes_count = vm.barcodes_count;
     let dealer_prices_count = vm.dealer_prices_count;
     let production_costs_count = vm.production_costs_count;
+    let orders_count = vm.orders_count;
 
     view! {
         <div class="page__tabs">
@@ -203,7 +216,10 @@ fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
                 class="page__tab"
                 class:page__tab--active=move || active_tab.get() == "dealer_prices"
                 disabled=move || !is_edit_mode.get()
-                on:click=move |_| vm.set_tab("dealer_prices")
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("dealer_prices")
+                }
             >
                 {icon("dollar-sign")} "Дилерские цены"
                 <Badge
@@ -221,6 +237,29 @@ fn TabBar(vm: NomenclatureDetailsVm) -> impl IntoView {
                     {move || dealer_prices_count.get().to_string()}
                 </Badge>
             </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "orders"
+                disabled=move || !is_edit_mode.get()
+                on:click=move |_| vm.set_tab("orders")
+            >
+                {icon("shopping-cart")} "Заказы"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "orders" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || orders_count.get().to_string()}
+                </Badge>
+            </button>
         </div>
     }
 }
@@ -235,6 +274,7 @@ fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
     let vm_barcodes = vm.clone();
     let vm_production = vm.clone();
     let vm_dealer_prices = vm.clone();
+    let vm_orders = vm.clone();
 
     view! {
         {move || match active_tab.get() {
@@ -246,6 +286,9 @@ fn TabContent(vm: NomenclatureDetailsVm) -> impl IntoView {
             }.into_any(),
             "production" => view! {
                 <ProductionTab vm=vm_production.clone() />
+            }.into_any(),
+            "orders" => view! {
+                <OrdersTab vm=vm_orders.clone() />
             }.into_any(),
             _ => view! {
                 <div class="detail-grid">

@@ -19,7 +19,7 @@ pub struct DownloadedFile {
     pub content_type: Option<String>,
 }
 
-fn s3_config() -> Result<config::S3Config> {
+pub(crate) fn s3_config() -> Result<config::S3Config> {
     let cfg = config::load_config()?;
     cfg.s3.validate_ready()?;
     Ok(cfg.s3)

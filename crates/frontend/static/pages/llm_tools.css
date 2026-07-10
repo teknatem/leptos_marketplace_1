@@ -1,0 +1,215 @@
+/* Per-page styles for the LLM tools registry (llm_tools).
+   All selectors are scoped under the page root class `.llm-tools-list`
+   (PageFrame `class` prop). Master-detail: left list + right details card. */
+
+.llm-tools-list .llm-tools__split {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 10px 14px 16px;
+}
+
+.llm-tools-list .llm-tools__master {
+  flex: 0 0 300px;
+  max-width: 300px;
+}
+
+.llm-tools-list .llm-tools__detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Держим карточку в видимой области при прокрутке длинного списка:
+     `.page` — скролл-контейнер, `.page__header` (sticky, ~48px) сверху,
+     поэтому смещаем ниже шапки. */
+  position: sticky;
+  top: 56px;
+  align-self: flex-start;
+}
+
+/* ── Master: search + grouped list (компактно по вертикали) ────── */
+
+.llm-tools-list .llm-tools__search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: 6px;
+  background: var(--colorNeutralBackground1);
+  color: var(--colorNeutralForeground1);
+}
+
+.llm-tools-list .llm-tools__group {
+  margin-bottom: 8px;
+}
+
+.llm-tools-list .llm-tools__group-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--colorNeutralForeground3);
+  margin: 0 0 2px 2px;
+}
+
+.llm-tools-list .llm-tools__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  line-height: 1.35;
+}
+
+.llm-tools-list .llm-tools__row:hover {
+  background: var(--colorNeutralBackground2);
+}
+
+.llm-tools-list .llm-tools__row--active {
+  background: var(--colorNeutralBackground2);
+  border-color: var(--colorBrandStroke1, #2563eb);
+}
+
+.llm-tools-list .llm-tools__row-name {
+  font-family: var(--fontFamilyMonospace, monospace);
+  font-size: 12.5px;
+  color: var(--colorNeutralForeground1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.llm-tools-list .llm-tools__row-badges {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* ── Detail: card ──────────────────────────────────────────────── */
+
+.llm-tools-list .llm-tools__placeholder {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--colorNeutralForeground3);
+  font-size: 14px;
+  background: var(--colorNeutralBackground1);
+  border: 1px dashed var(--colorNeutralStroke2);
+  border-radius: 8px;
+}
+
+.llm-tools-list .llm-tools__card {
+  padding: 16px 18px;
+  background: var(--colorNeutralBackground1);
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: 8px;
+}
+
+.llm-tools-list .llm-tools__card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+
+.llm-tools-list .llm-tools__card-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.llm-tools-list .llm-tools__card-cat {
+  font-size: 12px;
+  color: var(--colorNeutralForeground3);
+}
+
+.llm-tools-list .llm-tools__card-skills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+
+.llm-tools-list .llm-tools__badges {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.llm-tools-list .llm-tools__card-desc {
+  font-size: 13px;
+  color: var(--colorNeutralForeground2);
+  white-space: pre-wrap;
+  margin: 0 0 16px;
+}
+
+.llm-tools-list .llm-tools__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--colorNeutralForeground3);
+}
+
+/* ── Detail: params table ──────────────────────────────────────── */
+
+.llm-tools-list .llm-tools__params {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 16px;
+  font-size: 13px;
+}
+
+.llm-tools-list .llm-tools__params th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--colorNeutralForeground3);
+  border-bottom: 1px solid var(--colorNeutralStroke2);
+  padding: 4px 8px;
+}
+
+.llm-tools-list .llm-tools__params td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--colorNeutralStroke3, var(--colorNeutralStroke2));
+  vertical-align: top;
+}
+
+.llm-tools-list .llm-tools__params tr:last-child td {
+  border-bottom: none;
+}
+
+.llm-tools-list .llm-tools__type {
+  font-family: var(--fontFamilyMonospace, monospace);
+  font-size: 12px;
+  color: var(--colorNeutralForeground2);
+}
+
+.llm-tools-list .llm-tools__pdesc {
+  color: var(--colorNeutralForeground2);
+}
+
+/* ── Detail: raw JSON schema ────────────────────────────────────── */
+
+.llm-tools-list .llm-tools__raw {
+  margin-top: 4px;
+}
+
+.llm-tools-list .llm-tools__raw summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--colorNeutralForeground3);
+}
+
+.llm-tools-list .llm-tools__raw pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--colorNeutralBackground2);
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: 6px;
+  font-size: 12px;
+  overflow: auto;
+  max-height: 320px;
+}

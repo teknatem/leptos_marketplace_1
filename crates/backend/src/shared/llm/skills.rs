@@ -122,6 +122,12 @@ pub static SKILLS: &[Skill] = &[
             "get_plugin_ui_contract",
             "plugin_data_catalog",
             "plugin_runs",
+            "chart_template",
+            "chart_examples",
+            "get_chart_ui_contract",
+            "table_template",
+            "table_examples",
+            "get_table_ui_contract",
         ],
     },
     Skill {
@@ -133,20 +139,9 @@ pub static SKILLS: &[Skill] = &[
         intents: &["chart_build"],
         prompt: PROMPT_CHART,
         tool_names: &[
-            "list_entities",
-            "get_join_hint",
-            "list_data_sources",
-            "query_data_schema",
-            "run_data_view_drilldown",
-            "execute_query",
-            "chart_template",
-            "chart_examples",
-            "get_chart_ui_contract",
-            "plugin_validate",
-            "plugin_smoke_test",
-            "plugin_upsert",
-            "plugin_invoke",
-            "plugin_runs",
+            "find_data_sources",
+            "preview_data",
+            "build_chart",
         ],
     },
     Skill {
@@ -159,20 +154,9 @@ pub static SKILLS: &[Skill] = &[
         intents: &["table_build"],
         prompt: PROMPT_TABLE,
         tool_names: &[
-            "list_entities",
-            "get_join_hint",
-            "list_data_sources",
-            "query_data_schema",
-            "run_data_view_drilldown",
-            "execute_query",
-            "table_template",
-            "table_examples",
-            "get_table_ui_contract",
-            "plugin_validate",
-            "plugin_smoke_test",
-            "plugin_upsert",
-            "plugin_invoke",
-            "plugin_runs",
+            "find_data_sources",
+            "preview_data",
+            "build_table",
         ],
     },
     Skill {
@@ -321,6 +305,8 @@ pub fn allowed_skills_for(agent_type: &AgentType) -> Vec<&'static str> {
 // ─── Сборка инструментов/guard ───────────────────────────────────────────────
 
 /// «Вселенная» всех определений инструментов (core + все бандлы + мета).
+/// NB: при добавлении нового бандла обнови также `tools_catalog()` (там бандлы
+/// перечислены заново парами `(category, defs)`, т.к. здесь метка категории теряется).
 fn tool_universe() -> Vec<ToolDefinition> {
     let mut v = Vec::new();
     v.extend(super::data_tools::tool_definitions());
@@ -338,6 +324,19 @@ fn tool_universe() -> Vec<ToolDefinition> {
 /// Множество имён активных инструментов (core ∪ инструменты активных навыков).
 /// Единый источник истины для авторизации в `execute_tool_call`.
 pub fn active_tool_names(active_skills: &[&str]) -> HashSet<String> {
+    // Confident chart/table intents use a deliberately closed three-tool workflow.
+    // Meta/introspection tools in this case only compete with the canonical path.
+    if active_skills.len() == 1 && matches!(active_skills[0], "chart-builder" | "table-builder") {
+        return skill_by_id(active_skills[0])
+            .map(|skill| {
+                skill
+                    .tool_names
+                    .iter()
+                    .map(|name| name.to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
     let mut names: HashSet<String> = CORE_TOOLS.iter().map(|s| s.to_string()).collect();
     for id in active_skills {
         if let Some(s) = skill_by_id(id) {
@@ -352,10 +351,20 @@ pub fn active_tool_names(active_skills: &[&str]) -> HashSet<String> {
 /// Собрать определения инструментов для передачи LLM: core + активные навыки, дедуп по имени.
 pub fn assemble_tools(active_skills: &[&str]) -> Vec<ToolDefinition> {
     let wanted = active_tool_names(active_skills);
+    let chart_builder = active_skills == ["chart-builder"];
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = Vec::new();
-    for def in tool_universe() {
+    for mut def in tool_universe() {
         if wanted.contains(def.name.as_str()) && seen.insert(def.name.clone()) {
+            // В общем data-analysis preview может быть без presentation. В chart-builder
+            // это другой контракт: без chart невозможно получить build_ready, и модель
+            // раньше зацикливалась на успешных, но бесполезных preview.
+            if chart_builder && def.name == "preview_data" {
+                def.parameters["required"] = serde_json::json!(["source", "chart"]);
+                def.parameters["properties"]["chart"]["description"] = serde_json::json!(
+                    "Обязательный presentation-спек. Preview должен вернуть build_ready перед build_chart."
+                );
+            }
             out.push(def);
         }
     }
@@ -400,6 +409,53 @@ pub fn catalog() -> Value {
         "skills": items,
         "total": items.len(),
     })
+}
+
+/// Каталог инструментов для UI/обзора: полное определение каждого инструмента
+/// (name, description, JSON-схема параметров) + производные поля (category, is_core,
+/// список навыков, в которых он используется). Дедуп по имени.
+///
+/// NB: бандлы перечислены заново парами `(category, defs)` — при добавлении нового
+/// бандла в `tool_universe()` продублируй его и здесь с меткой категории.
+pub fn tools_catalog() -> Value {
+    let bundles: Vec<(&str, Vec<ToolDefinition>)> = vec![
+        ("data", super::data_tools::tool_definitions()),
+        ("shared", super::tool_executor::shared_tool_definitions()),
+        ("analyst", super::tool_executor::analyst_tool_definitions()),
+        ("admin", super::admin_tools::admin_tool_definitions()),
+        ("kb", super::kb_admin_tools::kb_admin_tool_definitions()),
+        ("plugin", super::plugin_tools::plugin_tool_definitions()),
+        ("chart", super::chart_tools::chart_tool_definitions()),
+        ("table", super::table_tools::table_tool_definitions()),
+        ("meta", meta_tool_definitions()),
+    ];
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut tools: Vec<Value> = Vec::new();
+    for (category, defs) in bundles {
+        for def in defs {
+            if !seen.insert(def.name.clone()) {
+                continue;
+            }
+            let is_core = CORE_TOOLS.contains(&def.name.as_str());
+            let skills: Vec<&str> = SKILLS
+                .iter()
+                .filter(|s| s.tool_names.contains(&def.name.as_str()))
+                .map(|s| s.id)
+                .collect();
+            tools.push(json!({
+                "name": def.name,
+                "description": def.description,
+                "parameters": def.parameters,
+                "category": category,
+                "is_core": is_core,
+                "skills": skills,
+            }));
+        }
+    }
+
+    let total = tools.len();
+    json!({ "tools": tools, "total": total })
 }
 
 #[cfg(test)]
@@ -464,5 +520,39 @@ mod tests {
         assert_eq!(skill_for_intent("chart_build").unwrap().id, "chart-builder");
         assert_eq!(skill_for_intent("table_build").unwrap().id, "table-builder");
         assert!(skill_for_intent("meta_smalltalk").is_none());
+    }
+
+    #[test]
+    fn builder_skills_expose_only_the_canonical_three_tools() {
+        let chart: HashSet<_> = assemble_tools(&["chart-builder"])
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect();
+        assert_eq!(
+            chart,
+            ["find_data_sources", "preview_data", "build_chart"]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        );
+        let table: HashSet<_> = assemble_tools(&["table-builder"])
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect();
+        assert_eq!(
+            table,
+            ["find_data_sources", "preview_data", "build_table"]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        );
+        let preview = assemble_tools(&["chart-builder"])
+            .into_iter()
+            .find(|tool| tool.name == "preview_data")
+            .expect("chart preview definition");
+        assert_eq!(
+            preview.parameters["required"],
+            serde_json::json!(["source", "chart"])
+        );
     }
 }

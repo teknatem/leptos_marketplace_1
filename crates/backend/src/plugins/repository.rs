@@ -73,6 +73,10 @@ mod plugin {
         pub created_at: Option<chrono::DateTime<chrono::Utc>>,
         pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
         pub version: i32,
+        pub rating: Option<i32>,
+        pub s3_published_version: Option<i32>,
+        pub s3_published_at: Option<chrono::DateTime<chrono::Utc>>,
+        pub s3_sha256: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -91,6 +95,7 @@ impl From<plugin::Model> for PluginDefinition {
                 api_version: "1".to_string(),
                 description: None,
                 capabilities: vec![],
+                built_for_migration: None,
             });
         let params: Vec<ParamSpec> = serde_json::from_str(&m.params_json).unwrap_or_default();
         let data: DataBinding = serde_json::from_str(&m.data_json).unwrap_or_default();
@@ -119,6 +124,10 @@ impl From<plugin::Model> for PluginDefinition {
             version: m.version,
             created_at: m.created_at.unwrap_or_else(Utc::now),
             updated_at: m.updated_at.unwrap_or_else(Utc::now),
+            rating: m.rating,
+            snapshot: None,
+            s3_published_version: m.s3_published_version,
+            s3_published_at: m.s3_published_at,
         }
     }
 }
@@ -147,6 +156,12 @@ fn to_active(def: &PluginDefinition, is_insert: bool) -> plugin::ActiveModel {
         created_at: Set(Some(if is_insert { now } else { def.created_at })),
         updated_at: Set(Some(now)),
         version: Set(def.version),
+        rating: Set(def.rating),
+        // Публикация в S3 не затрагивается обычным сохранением бандла — обновляется
+        // только через mark_published() точечным UPDATE.
+        s3_published_version: sea_orm::ActiveValue::NotSet,
+        s3_published_at: sea_orm::ActiveValue::NotSet,
+        s3_sha256: sea_orm::ActiveValue::NotSet,
     }
 }
 
@@ -204,8 +219,8 @@ pub async fn list_enabled(db: &DatabaseConnection) -> Result<Vec<PluginDefinitio
     Ok(models.into_iter().map(Into::into).collect())
 }
 
-pub async fn find_by_id(
-    db: &DatabaseConnection,
+pub async fn find_by_id<C: ConnectionTrait>(
+    db: &C,
     id: &str,
 ) -> Result<Option<PluginDefinition>, DbErr> {
     let model = plugin::Entity::find_by_id(id.to_string()).one(db).await?;
@@ -226,13 +241,32 @@ pub async fn find_by_code(
     Ok(model.map(Into::into))
 }
 
-pub async fn insert(db: &DatabaseConnection, def: &PluginDefinition) -> Result<(), DbErr> {
+pub async fn insert<C: ConnectionTrait>(db: &C, def: &PluginDefinition) -> Result<(), DbErr> {
     to_active(def, true).insert(db).await?;
     Ok(())
 }
 
-pub async fn update(db: &DatabaseConnection, def: &PluginDefinition) -> Result<(), DbErr> {
+pub async fn update<C: ConnectionTrait>(db: &C, def: &PluginDefinition) -> Result<(), DbErr> {
     plugin::Entity::update(to_active(def, false))
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+/// Точечно фиксирует последнюю успешную публикацию плагина в S3, не трогая
+/// остальные колонки (bundle JSON и т.п.) — в отличие от полного `update()`.
+pub async fn mark_published<C: ConnectionTrait>(
+    db: &C,
+    id: &str,
+    version: i32,
+    published_at: chrono::DateTime<chrono::Utc>,
+    sha256: &str,
+) -> Result<(), DbErr> {
+    plugin::Entity::update_many()
+        .col_expr(plugin::Column::S3PublishedVersion, Expr::value(version))
+        .col_expr(plugin::Column::S3PublishedAt, Expr::value(published_at))
+        .col_expr(plugin::Column::S3Sha256, Expr::value(sha256.to_string()))
+        .filter(plugin::Column::Id.eq(id.to_string()))
         .exec(db)
         .await?;
     Ok(())
@@ -248,14 +282,18 @@ pub async fn soft_delete(db: &DatabaseConnection, id: &str) -> Result<(), DbErr>
     Ok(())
 }
 
-pub async fn insert_revision(
-    db: &DatabaseConnection,
+pub async fn insert_revision<C: ConnectionTrait>(
+    db: &C,
     plugin_id: &str,
     version: i32,
     bundle: &PluginBundle,
     validate_report: &contracts::plugins::PluginValidateReport,
     smoke_report_json: Option<&str>,
     created_by_agent_id: Option<&str>,
+    source_spec_json: Option<&str>,
+    source_hash: Option<&str>,
+    snapshot_meta_json: Option<&str>,
+    origin_json: Option<&str>,
 ) -> Result<(), DbErr> {
     let id = uuid::Uuid::new_v4().to_string();
     let bundle_json = serde_json::to_string(bundle).unwrap_or_else(|_| "{}".to_string());
@@ -263,8 +301,9 @@ pub async fn insert_revision(
     db.execute(sea_orm::Statement::from_sql_and_values(
         sea_orm::DatabaseBackend::Sqlite,
         "INSERT INTO plugin_revision \
-            (id, plugin_id, version, bundle_json, validate_report_json, smoke_report_json, created_by_agent_id, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+            (id, plugin_id, version, bundle_json, validate_report_json, smoke_report_json, created_by_agent_id, \
+             source_spec_json, source_hash, snapshot_meta_json, origin_json, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
         vec![
             id.into(),
             plugin_id.into(),
@@ -273,8 +312,100 @@ pub async fn insert_revision(
             validate_json.into(),
             smoke_report_json.map(str::to_string).into(),
             created_by_agent_id.map(str::to_string).into(),
+            source_spec_json.map(str::to_string).into(),
+            source_hash.map(str::to_string).into(),
+            snapshot_meta_json.map(str::to_string).into(),
+            origin_json.map(str::to_string).into(),
         ],
     ))
     .await?;
     Ok(())
+}
+
+pub async fn upsert_snapshot<C: ConnectionTrait>(
+    db: &C,
+    plugin_id: &str,
+    plugin_version: i32,
+    method: &str,
+    payload: &serde_json::Value,
+    row_count: usize,
+    size_bytes: usize,
+    source_hash: &str,
+) -> Result<contracts::plugins::PluginSnapshotMeta, DbErr> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let payload_json = serde_json::to_string(payload).unwrap_or_else(|_| "[]".to_string());
+    db.execute(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Sqlite,
+        "INSERT OR REPLACE INTO plugin_snapshot \
+            (id, plugin_id, plugin_version, method, payload_json, row_count, size_bytes, source_hash, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+        vec![
+            id.into(),
+            plugin_id.into(),
+            plugin_version.into(),
+            method.into(),
+            payload_json.into(),
+            (row_count as i64).into(),
+            (size_bytes as i64).into(),
+            source_hash.into(),
+        ],
+    ))
+    .await?;
+    Ok(contracts::plugins::PluginSnapshotMeta {
+        plugin_version,
+        created_at: Utc::now(),
+        row_count,
+        size_bytes,
+        source_hash: source_hash.to_string(),
+    })
+}
+
+pub async fn find_snapshot<C: ConnectionTrait>(
+    db: &C,
+    plugin_id: &str,
+    plugin_version: i32,
+    method: &str,
+) -> Result<Option<(contracts::plugins::PluginSnapshotMeta, serde_json::Value)>, DbErr> {
+    use sea_orm::FromQueryResult;
+    let rows = serde_json::Value::find_by_statement(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Sqlite,
+        "SELECT payload_json, row_count, size_bytes, source_hash, created_at \
+         FROM plugin_snapshot WHERE plugin_id = ? AND plugin_version = ? AND method = ? LIMIT 1",
+        vec![plugin_id.into(), plugin_version.into(), method.into()],
+    ))
+    .all(db)
+    .await?;
+    let Some(row) = rows.into_iter().next() else {
+        return Ok(None);
+    };
+    let payload_json = row
+        .get("payload_json")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("[]");
+    let payload = serde_json::from_str(payload_json).unwrap_or_else(|_| serde_json::json!([]));
+    let created_raw = row
+        .get("created_at")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let created_at = chrono::NaiveDateTime::parse_from_str(created_raw, "%Y-%m-%d %H:%M:%S")
+        .map(|value| chrono::DateTime::<Utc>::from_naive_utc_and_offset(value, Utc))
+        .unwrap_or_else(|_| Utc::now());
+    let meta = contracts::plugins::PluginSnapshotMeta {
+        plugin_version,
+        created_at,
+        row_count: row
+            .get("row_count")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0) as usize,
+        size_bytes: row
+            .get("size_bytes")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0) as usize,
+        source_hash: row
+            .get("source_hash")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+    };
+    Ok(Some((meta, payload)))
 }

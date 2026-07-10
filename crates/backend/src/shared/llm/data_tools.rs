@@ -5,10 +5,13 @@ use crate::shared::data_access::{
     SchemaQueryRequest, SqlAccessProfile,
 };
 use contracts::domain::a017_llm_agent::aggregate::AgentType;
+use contracts::plugins::PluginDataSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 pub const DATA_TOOL_NAMES: &[&str] = &[
+    "find_data_sources",
+    "preview_data",
     "list_data_sources",
     "query_data_schema",
     "run_data_view_scalar",
@@ -16,8 +19,119 @@ pub const DATA_TOOL_NAMES: &[&str] = &[
     "execute_query",
 ];
 
+/// Exact tagged-union schema shared by preview/build tools. Keeping this in one
+/// place prevents providers from treating `source` as an arbitrary object or a
+/// JSON-encoded string.
+pub(crate) fn plugin_data_source_schema() -> Value {
+    let filter = json!({
+        "type": "object",
+        "properties": {
+            "field_id": { "type": "string" },
+            "operator": { "type": "string", "enum": ["eq", "not_eq", "lt", "lte", "gt", "gte", "between", "in", "not_in", "contains", "is_null", "is_not_null"] },
+            "value": { "description": "Scalar literal or $context.<field> binding." },
+            "values": { "type": "array", "items": {} },
+            "from": { "description": "Scalar literal or $context.date_from." },
+            "to": { "description": "Scalar literal or $context.date_to." }
+        },
+        "required": ["field_id", "operator"],
+        "additionalProperties": false
+    });
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["schema"] },
+                    "schema_id": { "type": "string" },
+                    "fields": { "type": "array", "items": { "type": "string" } },
+                    "group_by": { "type": "array", "items": { "type": "string" } },
+                    "metrics": { "type": "array", "items": { "type": "object", "properties": { "field_id": {"type":"string"}, "aggregate": {"type":"string", "enum":["sum","count","avg","min","max"]} }, "required":["field_id","aggregate"], "additionalProperties":false } },
+                    "filters": { "type": "array", "items": filter },
+                    "sort": { "type": "array", "items": { "type":"object", "properties": { "field_id":{"type":"string"}, "direction":{"type":"string", "enum":["asc","desc"]} }, "required":["field_id","direction"], "additionalProperties":false } }
+                },
+                "required": ["kind", "schema_id"],
+                "additionalProperties": false
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["dataview"] },
+                    "view_id": { "type": "string" },
+                    "metric_ids": { "type": "array", "items": { "type":"string" }, "minItems":1 },
+                    "group_by": { "type": "string" },
+                    "context": {
+                        "type": "object",
+                        "properties": {
+                            "date_from": {"type":"string"}, "date_to": {"type":"string"},
+                            "period2_from": {"type":"string"}, "period2_to": {"type":"string"},
+                            "connection_mp_refs": {"type":"array", "items":{"type":"string"}},
+                            "params": {"type":"object", "additionalProperties":{"type":"string"}}
+                        },
+                        "required": ["date_from", "date_to"]
+                    }
+                },
+                "required": ["kind", "view_id", "metric_ids", "group_by", "context"],
+                "additionalProperties": false
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["sql"] },
+                    "sql": { "type": "string", "description": "One SQLite SELECT/WITH. Use ? placeholders, never :named params or PostgreSQL functions." },
+                    "params": { "type": "array", "items": { "description": "Scalar literal or $context.date_from/$context.date_to." } }
+                },
+                "required": ["kind", "sql", "params"],
+                "additionalProperties": false
+            }
+        ]
+    })
+}
+
 pub fn tool_definitions() -> Vec<ToolDefinition> {
     vec![
+        ToolDefinition {
+            name: "find_data_sources".into(),
+            description: "Найти до нескольких подходящих DataView/base-схем по тексту задачи. Возвращает компактные capabilities; raw_sql всегда доступен как fallback.".into(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Что требуется найти: сущность, метрика, маркетплейс или отчет." },
+                    "kind": { "type": "string", "enum": ["base", "dataview", "raw"] },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 10, "default": 5 }
+                },
+                "required": ["query"]
+            }),
+        },
+        ToolDefinition {
+            name: "preview_data".into(),
+            description: "Проверить единый источник данных БЕЗ сохранения SQL-артефакта. source.kind: schema (schema_id + fields/group_by/metrics/filters/sort), dataview (view_id + metric_ids + group_by + context) или sql (sql + params). Возвращает реальные строки, колонки и определенные типы. Передай намеченный `chart`, чтобы получить build_ready: тот же презентационный гейт, что и у build_chart, ещё ДО публикации.".into(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "source": plugin_data_source_schema(),
+                    "context": {
+                        "type": "object",
+                        "description": "Значения для $context bindings; если период не задан, используется последние 30 дней.",
+                        "properties": { "date_from":{"type":"string"}, "date_to":{"type":"string"}, "connection_mp_refs":{"type":"array","items":{"type":"string"}}, "params":{"type":"object","additionalProperties":{"type":"string"}} }
+                    },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 },
+                    "chart": {
+                        "type": "object",
+                        "description": "Необязательный presentation-спек для проверки build_ready ДО build_chart: те же поля, что у build_chart.chart, плюс title. Если задан — в ответе появятся build_ready и (при провале) presentation с error_code/columns.",
+                        "properties": {
+                            "type": { "type": "string", "enum": ["bar", "line", "area", "stacked-bar", "pie", "doughnut"] },
+                            "category": { "type": "string" },
+                            "series": { "type": "array", "items": { "type": "object", "properties": { "field": {"type":"string"}, "label": {"type":"string"} }, "required": ["field"] } },
+                            "format": { "type": "string", "enum": ["money", "int", "percent", "number"] },
+                            "horizontal": { "type": "boolean" },
+                            "alternatives": { "type": "array", "items": { "type": "string" } },
+                            "title": { "type": "string" }
+                        }
+                    }
+                },
+                "required": ["source"]
+            }),
+        },
         ToolDefinition {
             name: "list_data_sources".into(),
             description: "Единый каталог аналитических источников: безопасные base-схемы, \
@@ -45,7 +159,7 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "schema_id": { "type": "string", "description": "ID из list_data_sources, например ds03_p904_sales или a006." },
+                    "schema_id": { "type": "string", "description": "schema_id из list_data_sources целиком, например ds03_p904_sales или a006 — НЕ короткий индекс get_entity_schema (a004) и не имя таблицы." },
                     "fields": { "type": "array", "items": { "type": "string" }, "description": "Обычные поля результата без агрегации." },
                     "group_by": { "type": "array", "items": { "type": "string" }, "description": "Измерения группировки." },
                     "metrics": {
@@ -158,6 +272,28 @@ struct ListSourcesArgs {
 }
 
 #[derive(Deserialize)]
+struct FindSourcesArgs {
+    query: String,
+    #[serde(default)]
+    kind: Option<DataSourceKind>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct PreviewDataArgs {
+    source: PluginDataSource,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    context: contracts::plugins::PluginRunContext,
+    /// Необязательный chart-спек: если задан, preview прогоняет тот же презентационный
+    /// гейт, что и build_chart, и возвращает `build_ready` + диагностику до публикации.
+    #[serde(default)]
+    chart: Option<Value>,
+}
+
+#[derive(Deserialize)]
 struct ExecuteQueryArgs {
     sql: String,
     description: String,
@@ -204,6 +340,35 @@ async fn save_query_artifact(
         .map(|id| id.to_string())
 }
 
+fn source_template(source: &crate::shared::data_access::DataSourceCatalogItem) -> Value {
+    match source.kind {
+        DataSourceKind::Base => json!({
+            "kind": "schema", "schema_id": source.id,
+            "fields": [], "group_by": [], "metrics": [], "filters": [], "sort": []
+        }),
+        DataSourceKind::Dataview => json!({
+            "kind": "dataview", "view_id": source.id,
+            "metric_ids": [], "group_by": "",
+            "context": { "date_from": "YYYY-MM-DD", "date_to": "YYYY-MM-DD", "connection_mp_refs": [], "params": {} }
+        }),
+        DataSourceKind::Raw => json!({
+            "kind": "sql", "sql": "SELECT ... WHERE date_column BETWEEN ? AND ?",
+            "params": ["$context.date_from", "$context.date_to"]
+        }),
+    }
+}
+
+fn source_search_text(source: &crate::shared::data_access::DataSourceCatalogItem) -> String {
+    format!(
+        "{} {} {} {}",
+        source.id,
+        source.name,
+        source.description,
+        serde_json::to_string(&source.capabilities).unwrap_or_default()
+    )
+    .to_lowercase()
+}
+
 pub async fn execute_data_tool(
     name: &str,
     arguments: &str,
@@ -212,6 +377,112 @@ pub async fn execute_data_tool(
     agent_id: &str,
 ) -> Value {
     let result: Result<Value, String> = match name {
+        "find_data_sources" => parse_args::<FindSourcesArgs>(arguments).and_then(|args| {
+            let terms: Vec<String> = args
+                .query
+                .to_lowercase()
+                .split_whitespace()
+                .map(str::to_string)
+                .collect();
+            let limit = args.limit.unwrap_or(5).clamp(1, 10);
+            let mut ranked = list_sources(args.kind)
+                .into_iter()
+                .filter_map(|source| {
+                    let haystack = source_search_text(&source);
+                    let hits = terms.iter().filter(|term| haystack.contains(term.as_str())).count();
+                    if hits == 0 && source.kind != DataSourceKind::Raw && !terms.is_empty() {
+                        return None;
+                    }
+                    let kind_bonus = match source.kind {
+                        DataSourceKind::Dataview => 3,
+                        DataSourceKind::Base => 2,
+                        DataSourceKind::Raw => 0,
+                    };
+                    Some((hits * 10 + kind_bonus, source))
+                })
+                .collect::<Vec<_>>();
+            ranked.sort_by(|(left_score, left), (right_score, right)| {
+                right_score.cmp(left_score).then_with(|| left.id.cmp(&right.id))
+            });
+            let mut sources = ranked
+                .into_iter()
+                .take(limit)
+                .map(|(_, source)| {
+                    let template = source_template(&source);
+                    let mut value = serde_json::to_value(source).unwrap_or_default();
+                    value["source_template"] = template;
+                    value
+                })
+                .collect::<Vec<_>>();
+            if args.kind.is_none()
+                && !sources.iter().any(|source| source.get("kind").and_then(Value::as_str) == Some("raw"))
+            {
+                if let Some(raw) = list_sources(Some(DataSourceKind::Raw)).into_iter().next() {
+                    let mut value = serde_json::to_value(&raw).unwrap_or_default();
+                    value["source_template"] = source_template(&raw);
+                    if sources.len() == limit {
+                        sources.pop();
+                    }
+                    sources.push(value);
+                }
+            }
+            Ok(json!({
+                "ok": true,
+                "sources": sources,
+                "selection_order": ["dataview", "base", "raw"],
+                "instruction": "Copy source_template as an object (never as a JSON string), fill only IDs listed in capabilities, then call preview_data once."
+            }))
+        }),
+        "preview_data" => match parse_args::<PreviewDataArgs>(arguments) {
+            Ok(args) => match crate::plugins::data::execute_source_with_context(
+                &args.source,
+                args.limit.unwrap_or(50).clamp(1, 200),
+                Some(&args.context),
+            )
+            .await
+            {
+                Ok(tabular) => {
+                    let columns =
+                        crate::plugins::data::infer_columns(&tabular.rows, &tabular.columns);
+                    // Прогоняем тот же презентационный гейт, что и build_chart: если он
+                    // зелёный здесь, build не упадёт на презентации (никакого расхождения
+                    // «preview ok → build fail»).
+                    let build = args.chart.as_ref().map(|chart| {
+                        let title = chart.get("title").and_then(Value::as_str).unwrap_or("График");
+                        super::chart_tools::validate_chart_presentation(
+                            chart,
+                            &tabular.columns,
+                            &tabular.rows,
+                            title,
+                        )
+                    });
+                    let mut out = json!({
+                        "ok": true,
+                        "source": tabular.source,
+                        "columns": columns,
+                        "rows": tabular.rows,
+                        "row_count": tabular.row_count,
+                        "truncated": tabular.truncated,
+                        "effective_context": crate::plugins::data::effective_source_context(Some(&args.context)),
+                        "next_step": "Pass this exact source and context to build_chart/build_table; do not call find_data_sources again."
+                    });
+                    match build {
+                        Some(Ok(_)) => {
+                            out["build_ready"] = json!(true);
+                        }
+                        Some(Err(presentation)) => {
+                            out["build_ready"] = json!(false);
+                            out["presentation"] = presentation;
+                            out["next_step"] = json!("build_chart отклонит этот chart: исправьте поле по presentation (выберите category/series.field из columns) и снова вызовите preview_data с тем же source.");
+                        }
+                        None => {}
+                    }
+                    Ok(out)
+                }
+                Err(error) => Err(error),
+            },
+            Err(error) => Err(error),
+        },
         "list_data_sources" => parse_args::<ListSourcesArgs>(arguments)
             .map(|args| list_sources(args.kind))
             .and_then(|sources| {
@@ -289,6 +560,16 @@ mod tests {
         assert!(names.contains("query_data_schema"));
         assert!(names.contains("run_data_view_scalar"));
         assert!(names.contains("run_data_view_drilldown"));
+        let preview = definitions
+            .iter()
+            .find(|tool| tool.name == "preview_data")
+            .expect("preview_data definition");
+        assert_eq!(
+            preview.parameters["properties"]["source"]["oneOf"]
+                .as_array()
+                .map(Vec::len),
+            Some(3)
+        );
     }
 
     #[test]
@@ -303,5 +584,58 @@ mod tests {
         assert!(!names.contains("list_data_schemas"));
         assert!(!DATA_TOOL_NAMES.contains(&"list_data_views"));
         assert!(!DATA_TOOL_NAMES.contains(&"list_data_schemas"));
+    }
+
+    #[test]
+    fn wb_catalog_exposes_copyable_source_and_physical_columns() {
+        let source = list_sources(Some(DataSourceKind::Base))
+            .into_iter()
+            .find(|source| source.id == "a012")
+            .expect("WB sales source");
+        assert_eq!(source_template(&source)["kind"], "schema");
+        assert_eq!(source_template(&source)["schema_id"], "a012");
+        assert_eq!(source.table.as_deref(), Some("a012_wb_sales"));
+
+        let physical_columns: HashSet<_> = source
+            .capabilities
+            .dimensions
+            .iter()
+            .chain(source.capabilities.metrics.iter())
+            .chain(source.capabilities.filters.iter())
+            .filter_map(|field| field.db_column.as_deref())
+            .collect();
+        assert!(physical_columns.contains("sale_date"));
+        assert!(physical_columns.contains("total_price"));
+    }
+
+    #[test]
+    fn wb_weekday_source_is_typed_and_uses_live_period() {
+        let source: PluginDataSource = serde_json::from_value(json!({
+            "kind": "sql",
+            "sql": "SELECT ((CAST(strftime('%w', sale_date) AS INTEGER) + 6) % 7) + 1 AS weekday, SUM(COALESCE(amount_line, 0)) AS sales_amount FROM a012_wb_sales WHERE is_deleted = 0 AND substr(sale_date, 1, 10) BETWEEN ? AND ? GROUP BY 1 ORDER BY 1",
+            "params": ["$context.date_from", "$context.date_to"]
+        }))
+        .expect("weekday source must match the shared source contract");
+        assert!(crate::plugins::data::source_uses_period_context(&source));
+    }
+
+    #[tokio::test]
+    async fn wb_sales_query_returns_the_wb_sales_catalog_entry() {
+        let result = execute_data_tool(
+            "find_data_sources",
+            &json!({ "query": "график продаж WB по дням недели", "limit": 5 }).to_string(),
+            &AgentType::BusinessAnalyst,
+            "test-chat",
+            "test-agent",
+        )
+        .await;
+        let sources = result["sources"].as_array().expect("sources array");
+        assert!(
+            sources
+                .iter()
+                .any(|source| source["table"] == "a012_wb_sales"),
+            "ranked sources must include a012_wb_sales: {sources:?}"
+        );
+        assert!(sources.iter().any(|source| source["kind"] == "raw"));
     }
 }

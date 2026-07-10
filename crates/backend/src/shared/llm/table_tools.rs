@@ -1,13 +1,13 @@
 //! Инструменты агента-построителя таблиц (навык `table-builder`).
 //!
-//! Таблица = один hybrid-плагин: `server_script` тянет данные SELECT'ом, а
-//! `client_script` отдаёт строки + компактный table-spec в `window.PluginTables.render`
-//! (тема-aware HTML-таблица без зависимостей — см. `frontend/static/plugin-tables.js`).
-//!
-//! Эти инструменты дают только заготовки (шаблон/примеры/контракт). Валидация,
-//! smoke-тест, сохранение и запуск выполняются существующими `plugin_*`-инструментами.
+//! Канонический `build_table` создаёт declarative live/snapshot plugin. Старые
+//! template/example helpers остаются только для общего `plugin-authoring` workflow.
 
 use super::types::ToolDefinition;
+use contracts::plugins::{
+    DataBinding, ParamSpec, ParamType, PluginBundle, PluginDataMode, PluginDataSource,
+    PluginManifest, PluginRunContext, PluginRuntime, ViewSpec, Widget, WidgetKind,
+};
 use serde_json::{json, Value};
 
 /// Имена инструментов построителя таблиц (для guard'а в диспетчере).
@@ -41,6 +41,50 @@ export async function unmount() {{
 }}
 "##,
         spec = spec_json
+    )
+}
+
+fn table_client_script_with_period(spec_json: &str, date_from: &str, date_to: &str) -> String {
+    format!(
+        r##"let _table = null;
+export async function mount(root, host) {{
+  root.innerHTML = `<div class="plugin-period">
+    <label>С <input type="date" data-role="from" value="{date_from}"></label>
+    <label>По <input type="date" data-role="to" value="{date_to}"></label>
+    <button type="button" class="btn btn--secondary" data-role="apply">Применить</button>
+  </div><div data-role="table"><div class="status">Загрузка…</div></div>`;
+  const tableRoot = root.querySelector('[data-role="table"]');
+  const from = root.querySelector('[data-role="from"]');
+  const to = root.querySelector('[data-role="to"]');
+  const apply = root.querySelector('[data-role="apply"]');
+  const snapshotMode = host.context && host.context.params && host.context.params._plugin_data_mode === 'snapshot';
+  if (snapshotMode) {{ from.disabled = true; to.disabled = true; apply.disabled = true; apply.title = 'Снимок содержит период публикации'; }}
+  const spec = {spec};
+  async function load() {{
+    if (!from.value || !to.value || from.value > to.value) {{
+      tableRoot.innerHTML = '<div class="status status--error">Проверьте выбранный период</div>';
+      return;
+    }}
+    if (_table) {{ try {{ _table.destroy(); }} catch (e) {{}} _table = null; }}
+    apply.disabled = true;
+    tableRoot.innerHTML = '<div class="status">Загрузка…</div>';
+    try {{
+      const rows = await host.invoke("data", {{ date_from: from.value, date_to: to.value }});
+      _table = PluginTables.render(tableRoot, spec, rows);
+    }} catch (e) {{
+      tableRoot.innerHTML = '<div class="status status--error">' + (e && e.message ? e.message : String(e)) + '</div>';
+    }} finally {{ apply.disabled = snapshotMode; }}
+  }}
+  if (!snapshotMode) apply.addEventListener('click', load);
+  await load();
+}}
+export async function unmount() {{
+  if (_table) {{ try {{ _table.destroy(); }} catch (e) {{}} _table = null; }}
+}}
+"##,
+        spec = spec_json,
+        date_from = date_from,
+        date_to = date_to,
     )
 }
 
@@ -233,7 +277,7 @@ fn table_examples() -> Value {
             "pagination": { "enabled": true, "pageSize": 50 },
             "export": { "csv": true, "clipboard": true }
         }),
-        "SELECT article, SUM(total_price) AS revenue, COUNT(*) AS qty FROM a012_wb_sales WHERE is_deleted = 0 AND date BETWEEN ? AND ? GROUP BY article ORDER BY revenue DESC LIMIT 200",
+        "SELECT supplier_article AS article, SUM(total_price) AS revenue, COUNT(*) AS qty FROM a012_wb_sales WHERE is_deleted = 0 AND substr(sale_date, 1, 10) BETWEEN ? AND ? GROUP BY supplier_article ORDER BY revenue DESC LIMIT 200",
         true,
     );
 
@@ -258,7 +302,7 @@ fn table_examples() -> Value {
             "pagination": { "enabled": true, "pageSize": 50 },
             "export": { "csv": true, "clipboard": true }
         }),
-        "SELECT date AS d, SUM(total_price) AS revenue, COUNT(*) AS qty FROM a012_wb_sales WHERE is_deleted = 0 AND date BETWEEN ? AND ? GROUP BY date ORDER BY date",
+        "SELECT substr(sale_date, 1, 10) AS d, SUM(total_price) AS revenue, COUNT(*) AS qty FROM a012_wb_sales WHERE is_deleted = 0 AND substr(sale_date, 1, 10) BETWEEN ? AND ? GROUP BY substr(sale_date, 1, 10) ORDER BY d",
         true,
     );
 
@@ -326,6 +370,39 @@ fn table_ui_contract() -> Value {
 pub fn table_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
+            name: "build_table".into(),
+            description: "Построить и опубликовать live/snapshot таблицу одним вызовом по source из preview_data. Сервер проверяет реальные колонки и типы, создает снимок и карточку в чате.".into(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "source": super::data_tools::plugin_data_source_schema(),
+                    "context": { "type":"object", "description":"Начальные date_from/date_to и params для $context bindings; по умолчанию последние 30 дней.", "properties": { "date_from":{"type":"string"}, "date_to":{"type":"string"}, "connection_mp_refs":{"type":"array","items":{"type":"string"}}, "params":{"type":"object","additionalProperties":{"type":"string"}} } },
+                    "title": { "type": "string" },
+                    "code": { "type": "string" },
+                    "table": {
+                        "type": "object",
+                        "properties": {
+                            "columns": { "type": "array", "items": { "type": "object", "properties": { "field": {"type":"string"}, "label": {"type":"string"}, "type": {"type":"string", "enum":["text","number","int","money","percent","date"]} }, "required":["field"] } },
+                            "sort": { "type": "object" },
+                            "filters": { "type": "object" },
+                            "conditional_format": { "type": "array" },
+                            "totals": { "type": "object" },
+                            "page_size": { "type": "integer", "minimum": 1, "maximum": 200 }
+                        }
+                    },
+                    "snapshot": {
+                        "type": "object",
+                        "properties": {
+                            "capture": { "type": "boolean", "default": true },
+                            "allow_live_only": { "type": "boolean", "default": false }
+                        },
+                        "description": "По умолчанию снимок обязателен. Для live-only нужны capture=false и явный allow_live_only=true."
+                    }
+                },
+                "required": ["source", "title", "table"]
+            }),
+        },
+        ToolDefinition {
             name: "table_template".into(),
             description: "Минимальный ВАЛИДНЫЙ скелет плагина-таблицы (hybrid) по типу: \
                           basic | financial | pivot-lite. Возвращает { bundle, hint } с готовыми \
@@ -366,6 +443,306 @@ pub fn execute_table_tool(name: &str, arguments: &str) -> Value {
         "get_table_ui_contract" => table_ui_contract(),
         _ => json!({ "error": format!("Unknown table tool: '{}'", name) }),
     }
+}
+
+pub async fn execute_build_table(arguments: &str, chat_id: &str, agent_id: &str) -> Value {
+    let args: Value = serde_json::from_str(arguments).unwrap_or_else(|_| json!({}));
+    let source: PluginDataSource = match args
+        .get("source")
+        .cloned()
+        .ok_or_else(|| "source is required")
+        .and_then(|value| serde_json::from_value(value).map_err(|_| "invalid source"))
+    {
+        Ok(source) => source,
+        Err(error) => {
+            return json!({ "ok": false, "stage": "source", "error_code": "invalid_source", "error": error })
+        }
+    };
+    let title = args
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Таблица")
+        .to_string();
+    let requested_context: PluginRunContext = match args.get("context").cloned() {
+        Some(value) => match serde_json::from_value(value) {
+            Ok(context) => context,
+            Err(error) => {
+                return json!({ "ok": false, "stage": "source", "error_code": "invalid_context", "error": error.to_string() })
+            }
+        },
+        None => PluginRunContext::default(),
+    };
+    let effective_context =
+        crate::plugins::data::effective_source_context(Some(&requested_context));
+    let snapshot = args.get("snapshot").cloned().unwrap_or_else(|| json!({}));
+    let capture_snapshot = snapshot
+        .get("capture")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let allow_live_only = snapshot
+        .get("allow_live_only")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if !capture_snapshot && !allow_live_only {
+        return json!({
+            "ok": false,
+            "stage": "snapshot",
+            "error_code": "live_only_requires_confirmation",
+            "error": "Set snapshot.allow_live_only=true explicitly to publish without a snapshot"
+        });
+    }
+    let tabular = match crate::plugins::data::execute_source_with_context(
+        &source,
+        crate::plugins::data::TABLE_ROW_LIMIT,
+        Some(&effective_context),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            return json!({ "ok": false, "stage": "source", "error_code": "query_failed", "error": error, "recommended_fix": "Исправьте source и повторите preview_data; затем передайте тот же source в build_table." })
+        }
+    };
+    if tabular.truncated {
+        return json!({
+            "ok": false, "stage": "snapshot", "error_code": "snapshot_limit_exceeded",
+            "error": format!("Table source exceeds {} rows; add filters, aggregation or LIMIT", crate::plugins::data::TABLE_ROW_LIMIT)
+        });
+    }
+    if tabular.rows.is_empty() {
+        return json!({ "ok": false, "stage": "source", "error_code": "empty_result", "error": "Source returned no rows", "recommended_fix": "Расширьте период или ослабьте фильтры source." });
+    }
+    if capture_snapshot {
+        if let Err(error) = crate::plugins::data::validate_snapshot_payload(
+            &Value::Array(tabular.rows.clone()),
+            crate::plugins::data::TABLE_ROW_LIMIT,
+        ) {
+            return json!({
+                "ok": false, "stage": "snapshot", "error_code": "snapshot_limit_exceeded",
+                "error": error, "recommended_fix": "Сократите результат source: добавьте фильтр, агрегацию или LIMIT."
+            });
+        }
+    }
+    let inferred = crate::plugins::data::infer_columns(&tabular.rows, &tabular.columns);
+    let inferred_type = |name: &str| {
+        inferred.iter().find_map(|column| {
+            (column.get("name").and_then(Value::as_str) == Some(name))
+                .then(|| column.get("type").and_then(Value::as_str))
+                .flatten()
+        })
+    };
+    let table = args.get("table").cloned().unwrap_or_else(|| json!({}));
+    let requested = table
+        .get("columns")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let columns = if requested.is_empty() {
+        tabular
+            .columns
+            .iter()
+            .map(|field| {
+                let kind = inferred_type(field).unwrap_or("text");
+                json!({ "key": field, "label": field, "type": if kind == "number" { "number" } else { kind } })
+            })
+            .collect::<Vec<_>>()
+    } else {
+        let mut columns = Vec::new();
+        for column in requested {
+            let field = column
+                .get("field")
+                .or_else(|| column.get("key"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let Some(actual_type) = inferred_type(field) else {
+                return json!({ "ok": false, "stage": "presentation", "error_code": "column_not_found", "columns": inferred, "error": format!("Column '{field}' was not found"), "recommended_fix": "Используйте field из списка доступных колонок preview_data." });
+            };
+            let kind = column
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or(actual_type);
+            if ["number", "int", "money", "percent"].contains(&kind) && actual_type != "number" {
+                return json!({ "ok": false, "stage": "presentation", "error_code": "column_type_mismatch", "columns": inferred, "error": format!("Column '{field}' is not numeric"), "recommended_fix": "Используйте type=text/date либо выберите доступную колонку type=number." });
+            }
+            columns.push(json!({
+                "key": field,
+                "label": column.get("label").and_then(Value::as_str).unwrap_or(field),
+                "type": kind
+            }));
+        }
+        columns
+    };
+    let visible_fields: std::collections::HashSet<String> = columns
+        .iter()
+        .filter_map(|column| {
+            column
+                .get("key")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect();
+    if let Some(sort_field) = table
+        .get("sort")
+        .and_then(Value::as_object)
+        .and_then(|sort| sort.get("field").or_else(|| sort.get("key")))
+        .and_then(Value::as_str)
+    {
+        if !visible_fields.contains(sort_field) {
+            return json!({
+                "ok": false, "stage": "presentation", "error_code": "sort_column_not_found",
+                "columns": inferred, "error": format!("Sort column '{sort_field}' is not displayed"),
+                "recommended_fix": "Выберите table.sort.field/key из table.columns."
+            });
+        }
+    }
+    if let Some(rules) = table.get("conditional_format").and_then(Value::as_array) {
+        for rule in rules {
+            let field = rule
+                .get("column")
+                .or_else(|| rule.get("field"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !visible_fields.contains(field) {
+                return json!({
+                    "ok": false, "stage": "presentation", "error_code": "format_column_not_found",
+                    "columns": inferred, "error": format!("Conditional format column '{field}' is not displayed"),
+                    "recommended_fix": "Ссылайтесь только на показанные table.columns."
+                });
+            }
+            let kind = rule
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("threshold");
+            if matches!(kind, "threshold" | "dataBar" | "heatmap")
+                && inferred_type(field) != Some("number")
+            {
+                return json!({
+                    "ok": false, "stage": "presentation", "error_code": "format_column_type_mismatch",
+                    "columns": inferred, "error": format!("Conditional format '{kind}' requires numeric column '{field}'"),
+                    "recommended_fix": "Выберите числовую колонку либо удалите правило."
+                });
+            }
+        }
+    }
+    if let Some(aggregates) = table
+        .get("totals")
+        .and_then(Value::as_object)
+        .and_then(|totals| totals.get("agg"))
+        .and_then(Value::as_object)
+    {
+        for (field, aggregate) in aggregates {
+            let operation = aggregate.as_str().unwrap_or_default();
+            if !visible_fields.contains(field)
+                || !["sum", "avg", "count", "min", "max"].contains(&operation)
+                || (operation != "count" && inferred_type(field) != Some("number"))
+            {
+                return json!({
+                    "ok": false, "stage": "presentation", "error_code": "invalid_total",
+                    "columns": inferred, "error": format!("Invalid total '{operation}' for column '{field}'"),
+                    "recommended_fix": "Totals должны ссылаться на показанную колонку; sum/avg/min/max требуют type=number."
+                });
+            }
+        }
+    }
+    let spec = json!({
+        "title": title,
+        "columns": columns,
+        "sort": table.get("sort").cloned().unwrap_or(Value::Null),
+        "filters": table.get("filters").cloned().unwrap_or_else(|| json!({"global":true,"perColumn":true})),
+        "conditionalFormat": table.get("conditional_format").cloned().unwrap_or_else(|| json!([])),
+        "totals": table.get("totals").cloned().unwrap_or_else(|| json!({"enabled":false})),
+        "pagination": { "enabled": true, "pageSize": table.get("page_size").and_then(Value::as_u64).unwrap_or(50).clamp(1, 200) },
+        "export": { "csv": true, "clipboard": true }
+    });
+    let code = args
+        .get("code")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            crate::plugins::data::stable_builder_code("TABLE", chat_id, &title, &source)
+        });
+    let has_period = crate::plugins::data::source_uses_period_context(&source);
+    let params = if has_period {
+        vec![
+            ParamSpec {
+                key: "date_from".into(),
+                param_type: ParamType::Date,
+                label: "С".into(),
+                default_value: effective_context.date_from.clone(),
+                required: true,
+                global_filter_key: Some("date_from".into()),
+            },
+            ParamSpec {
+                key: "date_to".into(),
+                param_type: ParamType::Date,
+                label: "По".into(),
+                default_value: effective_context.date_to.clone(),
+                required: true,
+                global_filter_key: Some("date_to".into()),
+            },
+        ]
+    } else {
+        vec![]
+    };
+    let client_script = if has_period {
+        table_client_script_with_period(
+            &spec.to_string(),
+            effective_context.date_from.as_deref().unwrap_or_default(),
+            effective_context.date_to.as_deref().unwrap_or_default(),
+        )
+    } else {
+        table_client_script(&spec.to_string())
+    };
+    let bundle = PluginBundle {
+        manifest: PluginManifest {
+            code,
+            title: title.clone(),
+            runtime: PluginRuntime::Client,
+            api_version: "2".into(),
+            description: Some("Декларативная live/snapshot таблица, созданная из чата.".into()),
+            capabilities: vec!["network:none".into()],
+            built_for_migration: None,
+        },
+        params,
+        data: DataBinding {
+            source: Some(source),
+            default_mode: PluginDataMode::Live,
+            ..DataBinding::default()
+        },
+        client_script: Some(client_script),
+        server_script: None,
+        view_spec: ViewSpec {
+            widgets: vec![Widget {
+                kind: WidgetKind::Table,
+                title: Some(title),
+                config: spec,
+            }],
+            custom_html: None,
+        },
+        styles: Some(".ptables{padding:4px}.plugin-period{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:0 0 12px}.plugin-period label{display:grid;gap:4px;font-size:12px}.plugin-period input{padding:6px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:inherit}".into()),
+        sql_resources: Default::default(),
+        assets: Default::default(),
+    };
+    let mut result = super::plugin_tools::upsert_bundle_with_snapshot(
+        bundle,
+        None,
+        Some("active".into()),
+        Some(true),
+        chat_id,
+        agent_id,
+        capture_snapshot.then(|| Value::Array(tabular.rows.clone())),
+        capture_snapshot,
+        allow_live_only,
+    )
+    .await;
+    if let Value::Object(map) = &mut result {
+        map.insert("columns".into(), Value::Array(inferred));
+        map.insert("row_count".into(), json!(tabular.row_count));
+        map.insert("data_modes".into(), json!(["live", "snapshot"]));
+    }
+    result
 }
 
 #[cfg(test)]

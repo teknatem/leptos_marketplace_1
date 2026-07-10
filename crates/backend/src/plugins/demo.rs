@@ -249,6 +249,7 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
                         .to_string(),
                 ),
                 capabilities: vec!["data:read".to_string()],
+                built_for_migration: None,
             },
             params: vec![],
             data: DataBinding::default(),
@@ -277,6 +278,10 @@ pub async fn insert_test_data() -> anyhow::Result<()> {
         version: 1,
         created_at: now,
         updated_at: now,
+        rating: None,
+        snapshot: None,
+        s3_published_version: None,
+        s3_published_at: None,
     };
     repository::insert(db(), &def).await?;
     Ok(())

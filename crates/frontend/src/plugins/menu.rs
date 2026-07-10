@@ -101,22 +101,12 @@ pub fn PluginsMenuCategory() -> impl IntoView {
     }
 }
 
-/// Динамическая группа левого сайдбара «Плагины» (admin-only).
-///
-/// Сайдбар построен на статических `&'static str`-ключах; плагины динамические,
-/// поэтому это отдельный компонент, который сам тянет `GET /api/plugin` и рендерит
-/// сворачиваемую группу теми же CSS-классами, что и статические группы.
+/// Группа левого сайдбара «Плагины» (admin-only).
+/// В сайдбаре остаётся только ссылка на реестр; отдельные плагины открываются из реестра.
 #[component]
 pub fn PluginsSidebarGroup() -> impl IntoView {
     let ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
-    let (items, set_items) = signal(Vec::<PluginListItem>::new());
     let expanded = RwSignal::new(false);
-
-    spawn_local(async move {
-        if let Ok(list) = api::list_enabled().await {
-            set_items.set(list);
-        }
-    });
 
     view! {
         <div>
@@ -149,25 +139,6 @@ pub fn PluginsSidebarGroup() -> impl IntoView {
                             <span>"Реестр плагинов"</span>
                         </div>
                     </div>
-                    {move || {
-                        items.get().into_iter().map(|p| {
-                            let key = format!("plugin__{}", p.id);
-                            let title = p.title.clone();
-                            let title_label = p.title.clone();
-                            view! {
-                                <div
-                                    class="app-sidebar__item"
-                                    style:padding-left="10px"
-                                    on:click=move |_| ctx.open_tab(&key, &title)
-                                >
-                                    <div class="app-sidebar__item-content">
-                                        {icon("package")}
-                                        <span>{title_label}</span>
-                                    </div>
-                                </div>
-                            }
-                        }).collect_view()
-                    }}
                 </div>
             </Show>
         </div>

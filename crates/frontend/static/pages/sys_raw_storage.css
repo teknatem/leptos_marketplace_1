@@ -1,0 +1,172 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Стили страницы «Raw JSON» (sys_raw_storage).
+
+   Scoped под корневой id `#sys_raw_storage--system`, поэтому применяются
+   только на этой странице. Компоненты (.button, .badge, .alert, .stat-card,
+   .table__*, .form__*) берём из themes/core — здесь только специфичная для
+   этой страницы геометрия/раскладка.
+   ════════════════════════════════════════════════════════════════════════ */
+
+#sys_raw_storage--system .page__content {
+  padding: 16px 20px;
+  gap: 22px;
+  overflow: auto;
+}
+
+#sys_raw_storage--system .raw-storage__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#sys_raw_storage--system .raw-storage__section-title {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+#sys_raw_storage--system .raw-storage__section-hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* ── Захват payload ───────────────────────────────────────────────────── */
+
+#sys_raw_storage--system .raw-storage__capture-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* ── Плитки состояния ─────────────────────────────────────────────────── */
+
+#sys_raw_storage--system .raw-storage__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+/* Компактный вариант stat-card только на этой странице: меньше отступов
+   и меньше иконка, чтобы плитки не занимали лишнюю высоту. */
+#sys_raw_storage--system .raw-storage__metrics .stat-card {
+  margin-bottom: 0;
+  padding: 8px 12px;
+  gap: 10px;
+}
+
+#sys_raw_storage--system .raw-storage__metrics .stat-card__icon {
+  width: 28px;
+  height: 28px;
+}
+
+#sys_raw_storage--system .raw-storage__metrics .stat-card__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+#sys_raw_storage--system .raw-storage__metrics .stat-card__content {
+  gap: 0;
+}
+
+#sys_raw_storage--system .raw-storage__metrics .stat-card__value {
+  font-size: var(--font-size-md);
+}
+
+/* ── Список задач: единая вертикальная раскладка ──────────────────────────
+   Очистка и VACUUM используют один и тот же компонент строки — так все
+   строки получают одинаковую высоту и выравнивание «подпись слева / кнопка
+   справа» независимо от длины текста и ширины окна. Ширина списка
+   ограничена, чтобы блок не растягивался на весь экран. */
+
+#sys_raw_storage--system .raw-storage__list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 640px;
+  border: 1px solid var(--color-border, var(--color-border-primary));
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface-secondary, var(--color-bg-secondary));
+  overflow: hidden;
+}
+
+#sys_raw_storage--system .raw-storage__list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border, var(--color-border-primary));
+}
+
+#sys_raw_storage--system .raw-storage__list-row:last-child {
+  border-bottom: none;
+}
+
+#sys_raw_storage--system .raw-storage__list-row--danger {
+  background: color-mix(in srgb, var(--color-danger, red) 6%, transparent);
+}
+
+#sys_raw_storage--system .raw-storage__list-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+#sys_raw_storage--system .raw-storage__list-value {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+#sys_raw_storage--system .raw-storage__list-value--warn {
+  color: var(--color-warning-700, var(--color-warning));
+}
+
+#sys_raw_storage--system .raw-storage__list-action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+#sys_raw_storage--system .raw-storage__inline-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+#sys_raw_storage--system .raw-storage__days-input {
+  width: 64px;
+}
+
+/* ── Индикатор выполняемой операции ───────────────────────────────────── */
+/* Явный, легко заметный баннер — в отличие от одной только смены текста
+   на кнопке, которую легко пропустить. */
+
+#sys_raw_storage--system .raw-storage__busy-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-info-700, var(--color-primary));
+  background: color-mix(in srgb, var(--color-info, var(--color-primary)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-info, var(--color-primary)) 30%, transparent);
+}
+
+#sys_raw_storage--system .raw-storage__busy-banner .page-action-button__spinner {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* ── Таблица «По типам» ───────────────────────────────────────────────── */
+
+#sys_raw_storage--system .raw-storage__table-wrap {
+  max-height: 380px;
+}

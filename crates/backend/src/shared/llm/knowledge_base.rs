@@ -146,6 +146,11 @@ const EMBEDDED_LLM_DOCS: &[EmbeddedKnowledgeSource] = &[
         source_path: "crates/backend/src/shared/llm/docs/p909_p910_projections.md",
         raw: include_str!("docs/p909_p910_projections.md"),
     },
+    EmbeddedKnowledgeSource {
+        id: "app-raw-storage",
+        source_path: "crates/backend/src/shared/llm/docs/raw_storage.md",
+        raw: include_str!("docs/raw_storage.md"),
+    },
 ];
 
 // ─── Реализация ──────────────────────────────────────────────────────────────

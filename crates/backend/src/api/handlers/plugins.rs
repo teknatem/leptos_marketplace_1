@@ -10,11 +10,12 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::plugins::service;
+use crate::plugins::{publish, service};
 use contracts::plugins::{
-    PluginBundle, PluginDefinition, PluginError, PluginInvokeRequest, PluginListItem,
-    PluginRunBrief, PluginRunContext, PluginSmokeReport, PluginSmokeRequest, PluginStats,
-    PluginUpsert, PluginValidateReport,
+    PluginApplyUpdateRequest, PluginBundle, PluginCatalog, PluginDefinition, PluginError,
+    PluginInvokeRequest, PluginListItem, PluginPublishResult, PluginRunBrief, PluginRunContext,
+    PluginSmokeReport, PluginSmokeRequest, PluginStats, PluginUpdateStatus, PluginUpsert,
+    PluginValidateReport,
 };
 
 #[derive(Deserialize)]
@@ -69,6 +70,26 @@ pub async fn delete(Path(id): Path<String>) -> Result<(), axum::http::StatusCode
     match service::delete(&id).await {
         Ok(()) => Ok(()),
         Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SetRatingRequest {
+    /// 1..5, либо null чтобы снять оценку.
+    pub rating: Option<i32>,
+}
+
+/// POST /api/plugin/:id/rating
+pub async fn set_rating(
+    Path(id): Path<String>,
+    Json(payload): Json<SetRatingRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    match service::set_rating(&id, payload.rating).await {
+        Ok(()) => Ok(Json(json!({ "success": true }))),
+        Err(e) => {
+            tracing::warn!("set_rating failed for plugin {}: {}", id, e);
+            Err(axum::http::StatusCode::BAD_REQUEST)
+        }
     }
 }
 
@@ -187,6 +208,114 @@ pub async fn invoke(
                 Json(json!({ "error": e.to_string(), "error_detail": detail })),
             ))
         }
+    }
+}
+
+/// POST /api/plugin/:id/publish — опубликовать текущую сохранённую версию в S3.
+pub async fn publish_to_s3(
+    Path(id): Path<String>,
+) -> Result<Json<PluginPublishResult>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    match publish::publish(&id).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
+}
+
+/// GET /api/plugin/updates — сравнить локальные версии плагинов с каталогом в S3.
+pub async fn check_updates(
+) -> Result<Json<Vec<PluginUpdateStatus>>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    match publish::check_updates().await {
+        Ok(rows) => Ok(Json(rows)),
+        Err(e) => Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
+}
+
+/// GET /api/plugin/catalog — весь каталог S3 (code -> последняя опубликованная версия),
+/// включая коды, которых ещё нет локально (для вкладки «Доступные плагины»).
+pub async fn get_catalog(
+) -> Result<Json<PluginCatalog>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    match publish::get_catalog().await {
+        Ok(catalog) => Ok(Json(catalog)),
+        Err(e) => Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
+}
+
+/// POST /api/plugin/catalog/:code/install — скачать и установить локально плагин из каталога S3,
+/// которого ещё нет в локальной таблице `plugin`.
+///
+/// Бандл, валидный на инстансе-источнике публикации, может не пройти валидацию здесь
+/// (другая копия приложения — другая версия движка/рантайма). В этом случае
+/// `import_bundle_onto` не создаёт запись (`outcome.id` = `None`) — это должно дойти до
+/// клиента как ошибка (не 200 "успех"), иначе UI молча покажет «установлено», хотя
+/// локальной записи не появилось.
+pub async fn install_from_catalog(
+    Path(code): Path<String>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    match publish::install_from_catalog(&code).await {
+        Ok(outcome) if outcome.id.is_some() => Ok(Json(json!({
+            "ok": true,
+            "id": outcome.id,
+            "code": outcome.code,
+        }))),
+        Ok(outcome) => {
+            let message = outcome
+                .report
+                .errors
+                .first()
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "unknown plugin validation error".to_string());
+            Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Plugin {} failed validation on install: {message}", outcome.code),
+                    "validate": outcome.report,
+                })),
+            ))
+        }
+        Err(e) => Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
+}
+
+/// POST /api/plugin/:id/apply-update — скачать и применить опубликованную версию из S3.
+pub async fn apply_update(
+    Path(id): Path<String>,
+    Json(req): Json<PluginApplyUpdateRequest>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    match publish::apply_update(&id, req.expected_remote_version).await {
+        Ok(outcome) => Ok(Json(json!({
+            "ok": outcome.id.is_some(),
+            "id": outcome.id,
+            "code": outcome.code,
+        }))),
+        Err(e) => Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )),
+    }
+}
+
+/// GET /api/plugin/migration-version — текущий номер применённой миграции БД
+/// (для ручной сверки с `PluginManifest.built_for_migration` на странице plugin_dev).
+pub async fn migration_version(
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    match crate::shared::data::migration_runner::current_migration_version().await {
+        Ok(version) => Ok(Json(json!({ "version": version }))),
+        Err(e) => Err((
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e.to_string() })),
+        )),
     }
 }
 

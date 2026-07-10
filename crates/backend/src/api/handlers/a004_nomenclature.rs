@@ -222,3 +222,35 @@ pub async fn search_by_barcode(
         }
     }
 }
+
+#[derive(Deserialize)]
+pub struct NomenclatureOrdersQuery {
+    pub days: Option<u32>,
+}
+
+/// GET /api/nomenclature/:id/orders?days=180
+pub async fn get_orders(
+    Path(id): Path<String>,
+    Query(params): Query<NomenclatureOrdersQuery>,
+) -> Result<
+    Json<contracts::domain::a004_nomenclature::orders_dto::NomenclatureOrdersResponse>,
+    axum::http::StatusCode,
+> {
+    let days = params.days.unwrap_or(180).clamp(1, 3650);
+    match a004_nomenclature::service::list_related_orders(&id, days).await {
+        Ok(items) => Ok(Json(
+            contracts::domain::a004_nomenclature::orders_dto::NomenclatureOrdersResponse {
+                total_count: items.len(),
+                items,
+            },
+        )),
+        Err(e) => {
+            tracing::error!(
+                "Failed to load related orders for nomenclature {}: {}",
+                id,
+                e
+            );
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}

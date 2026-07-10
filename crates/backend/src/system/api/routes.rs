@@ -209,6 +209,35 @@ pub fn configure_system_routes() -> Router {
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
         // ========================================
+        // RAW JSON DEBUG STORAGE
+        // ========================================
+        .route(
+            "/api/sys/raw-storage/status",
+            get(handlers::raw_storage::get_status)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/raw-storage/settings",
+            post(handlers::raw_storage::set_settings)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/raw-storage/cleanup/preview",
+            post(handlers::raw_storage::cleanup_preview)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/raw-storage/cleanup",
+            post(handlers::raw_storage::cleanup)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/raw-storage/vacuum",
+            get(handlers::raw_storage::get_vacuum_status)
+                .post(handlers::raw_storage::run_vacuum)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        // ========================================
         // SYSTEM S3 FILE MANAGER
         // ========================================
         .route(

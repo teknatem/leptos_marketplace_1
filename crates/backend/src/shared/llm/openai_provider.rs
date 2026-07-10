@@ -286,8 +286,26 @@ impl LlmProvider for OpenAiProvider {
             .first()
             .ok_or_else(|| LlmError::ApiError("No response from API".to_string()))?;
 
-        let content = choice.message.content.clone().unwrap_or_default();
-        let tool_calls = self.extract_tool_calls(choice);
+        let mut content = choice.message.content.clone().unwrap_or_default();
+        let mut tool_calls = self.extract_tool_calls(choice);
+
+        // Совместимость: некоторые модели (DeepSeek-v4 через OpenRouter) возвращают вызовы
+        // инструментов ТЕКСТОМ в своём DSML-формате, а не в поле tool_calls. Если стандартных
+        // вызовов нет, но в тексте есть такая разметка — распарсим её, чтобы цикл выполнил
+        // инструменты, а не принял сырой markup за финальный ответ.
+        if tool_calls.is_empty() {
+            if let Some((parsed, cleaned)) =
+                super::deepseek_tools::parse_inline_tool_calls(&content)
+            {
+                tracing::warn!(
+                    "[provider] распознаны inline tool-calls в тексте ответа (DSML): {} шт.",
+                    parsed.len()
+                );
+                tool_calls = parsed;
+                content = cleaned;
+            }
+        }
+
         let tokens_used = response.usage.map(|u| u.total_tokens as i32);
         let finish_reason = choice.finish_reason.as_ref().map(|r| format!("{:?}", r));
 
@@ -421,6 +439,15 @@ fn classify_api_error(err_str: &str) -> LlmError {
         LlmError::AuthError(err_str.to_string())
     } else if err_str.contains("429") || lower.contains("rate limit") {
         LlmError::RateLimitExceeded
+    } else if lower.contains("decoding response body") || lower.contains("error decoding") {
+        // Тело ответа не распарсилось даже после повторов: провайдер вернул неполный/
+        // некорректный ответ (частый временный сбой шлюза OpenRouter или несовместимый
+        // формат ответа модели). Даём понятную подсказку вместо «error decoding response body».
+        LlmError::ApiError(format!(
+            "провайдер вернул неполный/некорректный ответ (после повторов). \
+             Обычно это временный сбой — повторите запрос; если повторяется на этой модели, \
+             смените модель/агента. Исходно: {err_str}"
+        ))
     } else {
         LlmError::ApiError(err_str.to_string())
     }
@@ -445,6 +472,13 @@ fn is_transient_error(err_str: &str) -> bool {
         || s.contains("bad gateway")
         || s.contains("service unavailable")
         || s.contains("gateway timeout")
+        // Неполный/непарсящийся ответ провайдера: оборванное тело, HTML-страница ошибки
+        // от шлюза (Cloudflare 5xx), усечённый поток. У OpenRouter это, как правило, временно.
+        || s.contains("error decoding response body")
+        || s.contains("decoding response body")
+        || s.contains("unexpected end of file")
+        || s.contains("unexpected eof")
+        || s.contains("incomplete")
 }
 
 fn normalize_api_error_message(err: &str) -> String {
@@ -483,4 +517,39 @@ fn extract_nested_error_message(raw: &str) -> Option<String> {
 
 fn is_reasoning_model_family(model_id: &str, family: &str) -> bool {
     model_id == family || model_id.starts_with(&format!("{family}-"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_body_error_is_transient_and_retried() {
+        // Сообщение reqwest для оборванного/непарсящегося тела (наблюдалось у OpenRouter).
+        assert!(is_transient_error(
+            "http error: error decoding response body"
+        ));
+        assert!(is_transient_error(
+            "error decoding response body: unexpected EOF"
+        ));
+        // Регрессия: обычные сетевые/шлюзовые ошибки тоже остаются временными.
+        assert!(is_transient_error("502 Bad Gateway"));
+        assert!(is_transient_error("connection reset by peer"));
+        // А вот доменные ошибки повторять не нужно.
+        assert!(!is_transient_error("400 invalid request: bad model"));
+    }
+
+    #[test]
+    fn decode_error_gets_friendly_message() {
+        let err = classify_api_error("http error: error decoding response body");
+        match err {
+            LlmError::ApiError(msg) => {
+                assert!(
+                    msg.contains("неполный"),
+                    "friendly hint expected, got: {msg}"
+                );
+            }
+            other => panic!("expected ApiError, got {other:?}"),
+        }
+    }
 }

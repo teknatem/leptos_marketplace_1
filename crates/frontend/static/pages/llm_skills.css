@@ -1,0 +1,84 @@
+/* Per-page styles for the LLM skills registry (llm_skills).
+   All selectors are scoped under the page root class `.llm-skills-list`
+   (PageFrame `class` prop). Read-only list of skill cards. */
+
+.llm-skills-list .page__content {
+  padding: 10px 14px 16px;
+}
+
+/* ── Core tools banner ─────────────────────────────────────────── */
+
+.llm-skills-list .llm-skills__core {
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: var(--colorNeutralBackground2);
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* ── Skill card ────────────────────────────────────────────────── */
+
+.llm-skills-list .llm-skills__card {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: var(--colorNeutralBackground1);
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: 8px;
+}
+
+.llm-skills-list .llm-skills__card:last-child {
+  margin-bottom: 0;
+}
+
+.llm-skills-list .llm-skills__card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.llm-skills-list .llm-skills__title {
+  font-size: 15px;
+}
+
+.llm-skills-list .llm-skills__id {
+  font-size: 12px;
+  color: var(--colorNeutralForeground3);
+}
+
+.llm-skills-list .llm-skills__desc {
+  margin-bottom: 10px;
+  color: var(--colorNeutralForeground2);
+  font-size: 13px;
+}
+
+/* Строка «подпись + бейджи/текст» — согласованные вертикальные отступы. */
+.llm-skills-list .llm-skills__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.llm-skills-list .llm-skills__meta:last-child {
+  margin-bottom: 0;
+}
+
+.llm-skills-list .llm-skills__label {
+  color: var(--colorNeutralForeground3);
+  flex: 0 0 auto;
+}
+
+.llm-skills-list .llm-skills__badges {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.llm-skills-list .llm-skills__tools {
+  color: var(--colorNeutralForeground2);
+}

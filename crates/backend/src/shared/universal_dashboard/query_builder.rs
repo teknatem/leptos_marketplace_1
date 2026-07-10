@@ -135,6 +135,12 @@ impl<'a> QueryBuilder<'a> {
         }
 
         for rule in &self.config.sort.rules {
+            // Метрику можно сортировать по её полю ("customer_in") ИЛИ по алиасу агрегата
+            // ("customer_in_sum"). Алиас агрегата — не поле схемы, но он валиден (метрика
+            // присутствует в выборке), поэтому разрешаем его явно.
+            if self.resolve_metric_sort(&rule.field_id).is_some() {
+                continue;
+            }
             self.find_field(&rule.field_id)?;
             let is_output = self.config.groupings.contains(&rule.field_id)
                 || self.config.display_fields.contains(&rule.field_id)
@@ -266,76 +272,101 @@ impl<'a> QueryBuilder<'a> {
         self.table_name.clone()
     }
 
-    /// Build JOIN clause for reference fields
-    fn build_join_clause(&self) -> Result<String, String> {
-        let mut joins = Vec::new();
+    /// Append the LEFT JOIN(s) a single field needs (its `source_table` and/or
+    /// `ref_table`), de-duplicating against joins already collected.
+    fn push_field_joins(&self, field: &FieldDefOwned, joins: &mut Vec<String>) {
         let main_table = self.table_name.as_str();
 
-        // Collect all fields that need JOINs (from groupings, only if enabled)
-        for grouping_field_id in &self.config.groupings {
-            if !self.is_field_enabled(grouping_field_id) {
-                continue;
-            }
-            let field = self.find_field(grouping_field_id)?;
-
-            // Handle source_table JOINs (for fields from other tables)
-            if let (Some(source_table), Some(join_on_column)) = (
-                field.source_table.as_deref(),
-                field.join_on_column.as_deref(),
-            ) {
-                let join = format!(
-                    "LEFT JOIN {} ON {}.{} = {}.id",
-                    source_table, main_table, join_on_column, source_table
-                );
-                if !joins.contains(&join) {
-                    joins.push(join);
-                }
-            }
-
-            // Handle ref_table JOINs (for reference fields)
-            if let Some(ref_table) = field.ref_table.as_deref() {
-                let source_table_name = field.source_table.as_deref().unwrap_or(main_table);
-                let join = format!(
-                    "LEFT JOIN {} ON {}.{} = {}.id",
-                    ref_table, source_table_name, field.db_column, ref_table
-                );
-                if !joins.contains(&join) {
-                    joins.push(join);
-                }
+        // source_table JOIN: field physically lives in another table reached via join_on_column.
+        if let (Some(source_table), Some(join_on_column)) = (
+            field.source_table.as_deref(),
+            field.join_on_column.as_deref(),
+        ) {
+            let join = format!(
+                "LEFT JOIN {} ON {}.{} = {}.id",
+                source_table, main_table, join_on_column, source_table
+            );
+            if !joins.contains(&join) {
+                joins.push(join);
             }
         }
 
-        // Collect all fields that need JOINs (from display_fields, only if enabled)
-        for display_field_id in &self.config.display_fields {
-            if !self.is_field_enabled(display_field_id) {
+        // ref_table JOIN: reference field that resolves to a display column.
+        if let Some(ref_table) = field.ref_table.as_deref() {
+            let source_table_name = field.source_table.as_deref().unwrap_or(main_table);
+            let join = format!(
+                "LEFT JOIN {} ON {}.{} = {}.id",
+                ref_table, source_table_name, field.db_column, ref_table
+            );
+            if !joins.contains(&join) {
+                joins.push(join);
+            }
+        }
+    }
+
+    /// Field ids referenced by the active filters (dimensions / field_filters / conditions).
+    fn filter_field_ids(&self) -> Vec<String> {
+        let mut ids = Vec::new();
+        for (field_id, values) in &self.config.filters.dimensions {
+            if !values.is_empty() {
+                ids.push(field_id.clone());
+            }
+        }
+        for filter in &self.config.filters.field_filters {
+            ids.push(filter.field_id.clone());
+        }
+        for condition in &self.config.filters.conditions {
+            if condition.active {
+                ids.push(condition.field_id.clone());
+            }
+        }
+        ids
+    }
+
+    /// Build JOIN clause for reference fields
+    fn build_join_clause(&self) -> Result<String, String> {
+        let mut joins = Vec::new();
+
+        // Groupings and display fields (only when enabled).
+        for field_id in self
+            .config
+            .groupings
+            .iter()
+            .chain(self.config.display_fields.iter())
+        {
+            if !self.is_field_enabled(field_id) {
                 continue;
             }
-            let field = self.find_field(display_field_id)?;
+            let field = self.find_field(field_id)?;
+            self.push_field_joins(field, &mut joins);
+        }
 
-            // Handle source_table JOINs (for fields from other tables)
-            if let (Some(source_table), Some(join_on_column)) = (
-                field.source_table.as_deref(),
-                field.join_on_column.as_deref(),
-            ) {
-                let join = format!(
-                    "LEFT JOIN {} ON {}.{} = {}.id",
-                    source_table, main_table, join_on_column, source_table
-                );
-                if !joins.contains(&join) {
-                    joins.push(join);
-                }
+        // Fields referenced only by a filter still need their JOIN, otherwise the WHERE
+        // clause references a table that was never added to FROM (e.g. a `marketplace`
+        // filter on ds03 produced "no such column: a006_connection_mp.marketplace").
+        // Unknown ids are surfaced later by build_where_clause; ignore them here.
+        for field_id in self.filter_field_ids() {
+            if let Ok(field) = self.find_field(&field_id) {
+                self.push_field_joins(field, &mut joins);
             }
+        }
 
-            // Handle ref_table JOINs (for reference fields)
-            if let Some(ref_table) = field.ref_table.as_deref() {
-                let source_table_name = field.source_table.as_deref().unwrap_or(main_table);
-                let join = format!(
-                    "LEFT JOIN {} ON {}.{} = {}.id",
-                    ref_table, source_table_name, field.db_column, ref_table
-                );
-                if !joins.contains(&join) {
-                    joins.push(join);
-                }
+        // Sort rules may also order by a joined column.
+        for rule in &self.config.sort.rules {
+            if let Ok(field) = self.find_field(&rule.field_id) {
+                self.push_field_joins(field, &mut joins);
+            }
+        }
+
+        // Date range filters resolve to the schema's date field, which may itself be joined.
+        if self.config.filters.date_from.is_some() || self.config.filters.date_to.is_some() {
+            if let Some(date_field) = self
+                .schema
+                .fields
+                .iter()
+                .find(|f| matches!(&f.value_type, ValueType::Date | ValueType::DateTime))
+            {
+                self.push_field_joins(date_field, &mut joins);
             }
         }
 
@@ -550,19 +581,25 @@ impl<'a> QueryBuilder<'a> {
 
         if !self.config.sort.rules.is_empty() {
             for rule in &self.config.sort.rules {
-                let field = self.find_field(&rule.field_id)?;
-                let expression = if self.config.selected_fields.iter().any(|selected| {
-                    selected.field_id == rule.field_id && selected.aggregate.is_some()
-                }) {
-                    field.id.clone()
-                } else if let (Some(ref_table), Some(display_column)) = (
-                    field.ref_table.as_deref(),
-                    field.ref_display_column.as_deref(),
-                ) {
-                    format!("{}.{}", ref_table, display_column)
-                } else {
-                    let source_table = field.source_table.as_deref().unwrap_or(main_table);
-                    format!("{}.{}", source_table, field.db_column)
+                let expression = match self.find_field(&rule.field_id) {
+                    Ok(field) => {
+                        if self.config.selected_fields.iter().any(|selected| {
+                            selected.field_id == rule.field_id && selected.aggregate.is_some()
+                        }) {
+                            // Сортировка по полю-метрике ("customer_in") — по алиасу агрегата.
+                            field.id.clone()
+                        } else if let (Some(ref_table), Some(display_column)) = (
+                            field.ref_table.as_deref(),
+                            field.ref_display_column.as_deref(),
+                        ) {
+                            format!("{}.{}", ref_table, display_column)
+                        } else {
+                            let source_table = field.source_table.as_deref().unwrap_or(main_table);
+                            format!("{}.{}", source_table, field.db_column)
+                        }
+                    }
+                    // Поля нет — это может быть алиас агрегата метрики ("customer_in_sum").
+                    Err(e) => self.resolve_metric_sort(&rule.field_id).ok_or(e)?,
                 };
                 let direction = match rule.direction {
                     SortDirection::Asc => "ASC",
@@ -609,6 +646,27 @@ impl<'a> QueryBuilder<'a> {
             .iter()
             .find(|f| f.id == field_id)
             .ok_or_else(|| format!("Field not found: {}", field_id))
+    }
+
+    /// Разрешить сортировку по АГРЕГАТУ метрики, заданному алиасом вида `<field>_<agg>`
+    /// (напр. `customer_in_sum`). Если в SELECT есть метрика `<field>` с агрегатом `<agg>`,
+    /// вернуть выражение ORDER BY = алиас агрегата в SELECT (= `field_id` метрики).
+    /// Так модель может писать естественное `sort: customer_in_sum`, не зная точного алиаса.
+    fn resolve_metric_sort(&self, sort_field_id: &str) -> Option<String> {
+        self.config.selected_fields.iter().find_map(|selected| {
+            let aggregate = selected.aggregate?;
+            let expected = format!(
+                "{}_{}",
+                selected.field_id,
+                aggregate.to_sql().to_lowercase()
+            );
+            if sort_field_id.eq_ignore_ascii_case(&expected) {
+                // Алиас агрегата в SELECT — это field.id метрики (см. build_select_clause).
+                Some(selected.field_id.clone())
+            } else {
+                None
+            }
+        })
     }
 
     /// Push a typed parameter based on field type
@@ -947,6 +1005,73 @@ mod tests {
         assert!(result.sql.contains("GROUP BY test_table.date"));
     }
 
+    /// Сортировка по агрегату метрики через алиас `<field>_<agg>` (напр. `amount_sum`):
+    /// ORDER BY должен ссылаться на алиас агрегата (`amount`), а не падать «Field not found».
+    #[test]
+    fn sorts_by_metric_aggregate_alias() {
+        let schema = DataSourceSchema {
+            id: "test_table",
+            name: "Test Table",
+            fields: &[
+                FieldDef {
+                    id: "date",
+                    name: "Date",
+                    field_type: FieldType::Date,
+                    can_group: true,
+                    can_aggregate: false,
+                    can_filter: true,
+                    db_column: "date",
+                    ref_table: None,
+                    ref_display_column: None,
+                    source_table: None,
+                    join_on_column: None,
+                },
+                FieldDef {
+                    id: "amount",
+                    name: "Amount",
+                    field_type: FieldType::Numeric,
+                    can_group: false,
+                    can_aggregate: true,
+                    can_filter: false,
+                    db_column: "amount",
+                    ref_table: None,
+                    ref_display_column: None,
+                    source_table: None,
+                    join_on_column: None,
+                },
+            ],
+            schema_filters: &[],
+        };
+
+        let config = DashboardConfig {
+            data_source: "test_table".to_string(),
+            selected_fields: vec![SelectedField {
+                field_id: "amount".to_string(),
+                aggregate: Some(AggregateFunction::Sum),
+            }],
+            groupings: vec!["date".to_string()],
+            display_fields: vec![],
+            enabled_fields: vec![],
+            sort: DashboardSort {
+                rules: vec![SortRule {
+                    field_id: "amount_sum".to_string(),
+                    direction: SortDirection::Desc,
+                }],
+            },
+            filters: DashboardFilters::default(),
+        };
+
+        let schema: DataSourceSchemaOwned = (&schema).into();
+        let builder = QueryBuilder::new(&schema, &config, "test_table".to_string());
+        let result = builder.build().expect("metric-alias sort should build");
+
+        assert!(
+            result.sql.contains("ORDER BY amount DESC"),
+            "sql = {}",
+            result.sql
+        );
+    }
+
     #[test]
     fn test_date_filters_use_date_part_for_inclusive_period_end() {
         let schema = DataSourceSchema {
@@ -988,6 +1113,113 @@ mod tests {
 
         assert!(result.sql.contains("substr(test_table.date, 1, 10) >= ?"));
         assert!(result.sql.contains("substr(test_table.date, 1, 10) <= ?"));
+    }
+
+    /// Regression: a field that lives in a joined `source_table` and is referenced
+    /// ONLY by a filter (not grouped/displayed) must still emit its LEFT JOIN.
+    /// Previously this produced SQL referencing a table absent from FROM, which
+    /// SQLite rejected with "no such column: a006_connection_mp.marketplace"
+    /// (see chat a018 2c9d07fa…).
+    #[test]
+    fn filter_only_joined_field_emits_join() {
+        let schema = DataSourceSchema {
+            id: "p904_sales_data",
+            name: "Sales",
+            fields: &[
+                // Category dimension lives in a004_nomenclature (grouped).
+                FieldDef {
+                    id: "dim1",
+                    name: "Category",
+                    field_type: FieldType::Text,
+                    can_group: true,
+                    can_aggregate: false,
+                    can_filter: false,
+                    db_column: "dim1_category",
+                    ref_table: None,
+                    ref_display_column: None,
+                    source_table: Some("a004_nomenclature"),
+                    join_on_column: Some("nomenclature_ref"),
+                },
+                // Marketplace lives in a006_connection_mp and is used ONLY as a filter.
+                FieldDef {
+                    id: "marketplace",
+                    name: "Marketplace",
+                    field_type: FieldType::Text,
+                    can_group: true,
+                    can_aggregate: false,
+                    can_filter: true,
+                    db_column: "marketplace",
+                    ref_table: None,
+                    ref_display_column: None,
+                    source_table: Some("a006_connection_mp"),
+                    join_on_column: Some("connection_mp_ref"),
+                },
+                FieldDef {
+                    id: "customer_in",
+                    name: "Revenue",
+                    field_type: FieldType::Numeric,
+                    can_group: false,
+                    can_aggregate: true,
+                    can_filter: false,
+                    db_column: "customer_in",
+                    ref_table: None,
+                    ref_display_column: None,
+                    source_table: None,
+                    join_on_column: None,
+                },
+            ],
+            schema_filters: &[],
+        };
+
+        let config = DashboardConfig {
+            data_source: "p904_sales_data".to_string(),
+            selected_fields: vec![SelectedField {
+                field_id: "customer_in".to_string(),
+                aggregate: Some(AggregateFunction::Sum),
+            }],
+            groupings: vec!["dim1".to_string()],
+            display_fields: vec![],
+            enabled_fields: vec![],
+            sort: DashboardSort::default(),
+            filters: DashboardFilters {
+                conditions: vec![FilterCondition::new(
+                    "marketplace".to_string(),
+                    ValueType::Text,
+                    ConditionDef::Comparison {
+                        operator: ComparisonOp::Eq,
+                        value: "Wildberries".to_string(),
+                    },
+                )],
+                ..DashboardFilters::default()
+            },
+        };
+
+        let schema: DataSourceSchemaOwned = (&schema).into();
+        let builder = QueryBuilder::new(&schema, &config, "p904_sales_data".to_string());
+        let result = builder.build().unwrap();
+
+        // JOIN for the grouped category (a004) — existing behaviour.
+        assert!(
+            result.sql.contains(
+                "LEFT JOIN a004_nomenclature ON p904_sales_data.nomenclature_ref = a004_nomenclature.id"
+            ),
+            "missing a004 join; sql = {}",
+            result.sql
+        );
+        // JOIN for the filter-only marketplace (a006) — the regression we fixed.
+        assert!(
+            result.sql.contains(
+                "LEFT JOIN a006_connection_mp ON p904_sales_data.connection_mp_ref = a006_connection_mp.id"
+            ),
+            "missing a006 join for filter-only field; sql = {}",
+            result.sql
+        );
+        // The WHERE references the joined column, which is now in scope.
+        assert!(
+            result.sql.contains("a006_connection_mp.marketplace"),
+            "sql = {}",
+            result.sql
+        );
     }
 
     #[test]

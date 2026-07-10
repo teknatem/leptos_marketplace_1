@@ -127,11 +127,129 @@ pub struct ParamSpec {
 // DataBinding — декларативная привязка к DataView
 // ============================================================================
 
-/// ⚠️ RESERVED / не основной путь. Декларативная привязка к DataView (drilldown
-/// через `/api/plugin/:id/data`). Канонический путь вывода плагина —
-/// `client_script` + `server_script` + `sql_resources` (см. [`PluginBundle`]).
-/// Поле сохраняется ради совместимости и редко используется; новый код опирайся
-/// на JS-путь.
+/// Режим получения данных декларативного плагина. Старые hybrid bundle без этих
+/// полей продолжают исполняться через `server_script`/`sql_resources`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginDataMode {
+    #[default]
+    Live,
+    Snapshot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginSchemaAggregate {
+    Sum,
+    Count,
+    Avg,
+    Min,
+    Max,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginSchemaMetric {
+    pub field_id: String,
+    pub aggregate: PluginSchemaAggregate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginSchemaFilterOperator {
+    Eq,
+    NotEq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    Between,
+    In,
+    NotIn,
+    Contains,
+    IsNull,
+    IsNotNull,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginSchemaFilter {
+    pub field_id: String,
+    pub operator: PluginSchemaFilterOperator,
+    #[serde(default)]
+    pub value: Option<serde_json::Value>,
+    #[serde(default)]
+    pub values: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub from: Option<serde_json::Value>,
+    #[serde(default)]
+    pub to: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginSchemaSortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginSchemaSortRule {
+    pub field_id: String,
+    pub direction: PluginSchemaSortDirection,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PluginDataViewContext {
+    pub date_from: String,
+    pub date_to: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period2_from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period2_to: Option<String>,
+    #[serde(default)]
+    pub connection_mp_refs: Vec<String>,
+    #[serde(default)]
+    pub params: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PluginDataSource {
+    Schema {
+        schema_id: String,
+        #[serde(default)]
+        fields: Vec<String>,
+        #[serde(default)]
+        group_by: Vec<String>,
+        #[serde(default)]
+        metrics: Vec<PluginSchemaMetric>,
+        #[serde(default)]
+        filters: Vec<PluginSchemaFilter>,
+        #[serde(default)]
+        sort: Vec<PluginSchemaSortRule>,
+    },
+    Dataview {
+        view_id: String,
+        #[serde(default)]
+        metric_ids: Vec<String>,
+        group_by: String,
+        context: PluginDataViewContext,
+    },
+    Sql {
+        sql: String,
+        #[serde(default)]
+        params: Vec<serde_json::Value>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginSnapshotMeta {
+    pub plugin_version: i32,
+    pub created_at: DateTime<Utc>,
+    pub row_count: usize,
+    pub size_bytes: usize,
+    pub source_hash: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DataBinding {
     /// ID DataView (напр. "dv001_revenue") для compute/drilldown.
@@ -143,6 +261,10 @@ pub struct DataBinding {
     /// Разрез по умолчанию для табличного вывода.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PluginDataSource>,
+    #[serde(default)]
+    pub default_mode: PluginDataMode,
 }
 
 // ============================================================================
@@ -201,6 +323,10 @@ pub struct PluginManifest {
     /// enforced'ится движком; носит справочный характер.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Номер миграции БД, на который рассчитан плагин (для ручной сверки
+    /// с текущей миграцией инстанса). Не валидируется и не блокирует запуск.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub built_for_migration: Option<i64>,
 }
 
 fn default_api_version() -> String {
@@ -520,6 +646,7 @@ mod tests {
                 api_version: "2".into(),
                 description: None,
                 capabilities: vec![],
+                built_for_migration: None,
             },
             params: vec![],
             data: DataBinding::default(),
@@ -548,6 +675,20 @@ mod tests {
             .validate()
             .unwrap_err();
         assert!(error.contains("danger"), "got: {error}");
+    }
+
+    #[test]
+    fn old_bundle_and_invoke_payloads_default_to_live() {
+        let binding: DataBinding = serde_json::from_str("{}").expect("legacy data binding");
+        assert!(binding.source.is_none());
+        assert_eq!(binding.default_mode, PluginDataMode::Live);
+
+        let request: PluginInvokeRequest = serde_json::from_value(serde_json::json!({
+            "method": "data",
+            "args": {}
+        }))
+        .expect("legacy invoke request");
+        assert_eq!(request.data_mode, PluginDataMode::Live);
     }
 
     #[test]
@@ -619,6 +760,16 @@ pub struct PluginDefinition {
     pub version: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Пользовательская оценка плагина (1..5; None — не оценён).
+    #[serde(default)]
+    pub rating: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<PluginSnapshotMeta>,
+    /// Версия, опубликованная в S3 (последняя успешная публикация этой записи).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub s3_published_version: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub s3_published_at: Option<DateTime<Utc>>,
 }
 
 // ============================================================================
@@ -634,6 +785,9 @@ pub struct PluginListItem {
     pub status: String,
     pub is_enabled: bool,
     pub updated_at: DateTime<Utc>,
+    /// Пользовательская оценка плагина (1..5; None — не оценён).
+    #[serde(default)]
+    pub rating: Option<i32>,
 }
 
 impl From<&PluginDefinition> for PluginListItem {
@@ -646,6 +800,7 @@ impl From<&PluginDefinition> for PluginListItem {
             status: def.status.as_str().to_string(),
             is_enabled: def.is_enabled,
             updated_at: def.updated_at,
+            rating: def.rating,
         }
     }
 }
@@ -682,6 +837,8 @@ pub struct PluginInvokeRequest {
     pub args: serde_json::Value,
     #[serde(default)]
     pub context: PluginRunContext,
+    #[serde(default)]
+    pub data_mode: PluginDataMode,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -748,4 +905,10 @@ pub struct PluginUpsert {
     /// Ожидаемая версия для оптимистичной блокировки (опц.).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<i32>,
+    /// Capture the resolved declarative `data` result together with this version.
+    #[serde(default)]
+    pub capture_snapshot: bool,
+    /// Permit publication when snapshot limits are exceeded or capture fails.
+    #[serde(default)]
+    pub allow_live_only: bool,
 }

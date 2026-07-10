@@ -1,9 +1,9 @@
 //! HTTP client for the plugin subsystem.
 
 use contracts::plugins::{
-    PluginBundle, PluginDefinition, PluginInvokeRequest, PluginListItem, PluginRunBrief,
-    PluginRunContext, PluginSmokeReport, PluginSmokeRequest, PluginStats, PluginUpsert,
-    PluginValidateReport,
+    PluginBundle, PluginCatalog, PluginDefinition, PluginInvokeRequest, PluginListItem,
+    PluginPublishResult, PluginRunBrief, PluginRunContext, PluginSmokeReport, PluginSmokeRequest,
+    PluginStats, PluginUpdateStatus, PluginUpsert, PluginValidateReport,
 };
 use contracts::shared::drilldown::DrilldownResponse;
 use gloo_net::http::{Request, RequestBuilder, Response};
@@ -110,6 +110,16 @@ pub async fn get_by_id(id: &str) -> Result<PluginDefinition, String> {
     get_json(&format!("{API_BASE}/{id}")).await
 }
 
+/// Установить/снять оценку плагина (1..5, либо None чтобы снять). POST /:id/rating.
+pub async fn set_rating(id: &str, rating: Option<i32>) -> Result<(), String> {
+    let _: serde_json::Value = post_json(
+        &format!("{API_BASE}/{id}/rating"),
+        &serde_json::json!({ "rating": rating }),
+    )
+    .await?;
+    Ok(())
+}
+
 pub async fn invoke(id: &str, request: &PluginInvokeRequest) -> Result<serde_json::Value, String> {
     post_json(&format!("{API_BASE}/{id}/invoke"), request).await
 }
@@ -158,4 +168,45 @@ pub async fn import_archive(bytes: Vec<u8>) -> Result<serde_json::Value, String>
 
 pub async fn run_data(id: &str, ctx: &PluginRunContext) -> Result<DrilldownResponse, String> {
     post_json(&format!("{API_BASE}/{id}/data"), ctx).await
+}
+
+/// Опубликовать текущую сохранённую версию плагина в S3. POST /:id/publish.
+pub async fn publish(id: &str) -> Result<PluginPublishResult, String> {
+    post_json(&format!("{API_BASE}/{id}/publish"), &serde_json::json!({})).await
+}
+
+/// Сравнить локальные версии плагинов с каталогом в S3. GET /updates.
+pub async fn check_updates() -> Result<Vec<PluginUpdateStatus>, String> {
+    get_json(&format!("{API_BASE}/updates")).await
+}
+
+/// Скачать и применить опубликованную версию плагина из S3. POST /:id/apply-update.
+pub async fn apply_update(id: &str, expected_remote_version: Option<i32>) -> Result<(), String> {
+    let _: serde_json::Value = post_json(
+        &format!("{API_BASE}/{id}/apply-update"),
+        &serde_json::json!({ "expected_remote_version": expected_remote_version }),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Весь каталог S3 (code -> последняя опубликованная версия). GET /catalog.
+pub async fn get_catalog() -> Result<PluginCatalog, String> {
+    get_json(&format!("{API_BASE}/catalog")).await
+}
+
+/// Скачать и установить локально плагин из каталога S3. POST /catalog/:code/install.
+pub async fn install_from_catalog(code: &str) -> Result<(), String> {
+    let _: serde_json::Value = post_json(
+        &format!("{API_BASE}/catalog/{code}/install"),
+        &serde_json::json!({}),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Текущий номер применённой миграции БД (для сверки с `built_for_migration`). GET /migration-version.
+pub async fn migration_version() -> Result<i64, String> {
+    let value: serde_json::Value = get_json(&format!("{API_BASE}/migration-version")).await?;
+    Ok(value.get("version").and_then(|v| v.as_i64()).unwrap_or(0))
 }

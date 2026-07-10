@@ -24,6 +24,7 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
     ("a015_wb_orders", "all"),
     ("a016_ym_returns", "all"),
     ("a017_llm_agent", "all"),
+    ("a038_llm_connection", "all"),
     ("a018_llm_chat", "all"),
     ("a019_llm_artifact", "all"),
     ("a020_wb_promotion", "all"),
@@ -34,6 +35,8 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
     ("a025_bi_dashboard", "all"),
     ("a026_wb_advert_daily", "all"),
     ("a034_ym_realization", "all"),
+    ("a036_wb_sales_funnel_daily", "all"),
+    ("a037_wb_product_snapshot", "all"),
     ("a027_wb_documents", "all"),
     ("a028_missing_cost_registry", "all"),
     ("a029_wb_supply", "all"),
@@ -70,7 +73,8 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
 
 /// Default scope grants for the `operator` role.
 /// Operators get read access to references, full access to marketplace operational data.
-/// No access to: production, AI/LLM, imports, system views.
+/// LLM chat is available; agent definitions are read-only because chat creation needs them.
+/// No access to: production, other AI/LLM administration, imports, system views.
 pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
     // Aggregates — references: read only
     ("a001_connection_1c", "read"),
@@ -90,11 +94,16 @@ pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
     ("a014_ozon_transactions", "all"),
     ("a015_wb_orders", "all"),
     ("a016_ym_returns", "all"),
+    ("a017_llm_agent", "read"),
+    ("a038_llm_connection", "read"),
+    ("a018_llm_chat", "all"),
     ("a020_wb_promotion", "all"),
     ("a024_bi_indicator", "read"),
     ("a025_bi_dashboard", "all"),
     ("a026_wb_advert_daily", "all"),
     ("a034_ym_realization", "all"),
+    ("a036_wb_sales_funnel_daily", "all"),
+    ("a037_wb_product_snapshot", "all"),
     ("a027_wb_documents", "all"),
     ("a029_wb_supply", "all"),
     ("a030_wb_advert_campaign", "all"),
@@ -130,6 +139,8 @@ pub const VIEWER_GRANTS: &[(&str, &str)] = &[
     ("a025_bi_dashboard", "read"),
     ("a026_wb_advert_daily", "read"),
     ("a034_ym_realization", "read"),
+    ("a036_wb_sales_funnel_daily", "read"),
+    ("a037_wb_product_snapshot", "read"),
     ("a027_wb_documents", "read"),
     ("a030_wb_advert_campaign", "read"),
     ("bi_timeline", "read"),
@@ -152,5 +163,17 @@ pub fn grants_for_role(role_code: &str) -> &'static [(&'static str, &'static str
         "operator" => OPERATOR_GRANTS,
         "viewer" => VIEWER_GRANTS,
         _ => &[],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OPERATOR_GRANTS;
+
+    #[test]
+    fn operator_can_use_llm_chat_without_administering_agents() {
+        assert!(OPERATOR_GRANTS.contains(&("a018_llm_chat", "all")));
+        assert!(OPERATOR_GRANTS.contains(&("a017_llm_agent", "read")));
+        assert!(!OPERATOR_GRANTS.contains(&("a017_llm_agent", "all")));
     }
 }

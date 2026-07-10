@@ -55,6 +55,17 @@ fn looks_like_index(seg: &str) -> bool {
         && seg[1..].chars().all(|c| c.is_ascii_digit())
 }
 
+/// Известные плагины, для которых уже заведён DataView с реальными данными —
+/// код плагина (`manifest.code`) → подсказка для LLM, каким инструментом их читать.
+const PLUGIN_DATAVIEW_HINTS: &[(&str, &str)] = &[(
+    "PLG-WB-SALES-FUNNEL",
+    "Это отчёт «Воронка продаж WB» (a036_wb_sales_funnel_daily). Данные доступны через \
+     run_data_view_drilldown(view_id=\"dv008_wb_sales_funnel\", group_by=\"nm_id\"|\"date\"|\"connection_mp_ref\", \
+     date_from, date_to, connection_mp_refs, metric_ids=[...]) или run_data_view_scalar для сводной цифры \
+     за период (params.metric = open_count|cart_count|order_count|order_sum|buyout_count|buyout_sum|\
+     cart_conv_pct|order_conv_pct|buyout_pct).",
+)];
+
 /// Разобрать ключ вкладки в ссылку на страницу. Зеркалит правила tabs/registry.rs.
 fn parse_page_key(key: &str) -> PageRef {
     // Дрилдаун-сессии
@@ -65,6 +76,17 @@ fn parse_page_key(key: &str) -> PageRef {
             kind: None,
             entity_index: None,
             entity_id: Some(session),
+        };
+    }
+
+    // Страница плагина: `plugin__<id>` — раньше падало в `"other"` без каких-либо
+    // данных, т.к. "plugin" не проходит `looks_like_index` (буквы после 'p', не цифры).
+    if let Some(id) = key.strip_prefix("plugin__") {
+        return PageRef {
+            page_type: "plugin",
+            kind: None,
+            entity_index: None,
+            entity_id: Some(id.to_string()),
         };
     }
 
@@ -259,6 +281,36 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
         }
     }
 
+    // Данные плагина: код/название + подсказка на связанный DataView (если есть).
+    let mut plugin_title: Option<String> = None;
+    let mut plugin_hint: Option<(String, String)> = None; // (code, hint)
+    if pr.page_type == "plugin" {
+        if let Some(id) = &pr.entity_id {
+            if let Ok(Some(plugin)) = crate::plugins::repository::find_by_id(
+                crate::shared::data::db::get_connection(),
+                id,
+            )
+            .await
+            {
+                let code = plugin.bundle.manifest.code.clone();
+                let title = plugin.bundle.manifest.title.clone();
+                plugin_title = Some(title.clone());
+                let hint = PLUGIN_DATAVIEW_HINTS
+                    .iter()
+                    .find(|(c, _)| *c == code)
+                    .map(|(_, h)| h.to_string());
+                ctx["plugin"] = json!({
+                    "code": code,
+                    "title": title,
+                    "data_view_hint": hint,
+                });
+                if let Some(hint) = hint {
+                    plugin_hint = Some((code, hint));
+                }
+            }
+        }
+    }
+
     // Смежные подписи по FK.
     let mut adjacent: Vec<Value> = Vec::new();
     if let Some(row) = &object_row {
@@ -294,6 +346,7 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
         .clone()
         .or_else(|| label_title.clone())
         .or_else(|| entity_name.clone())
+        .or_else(|| plugin_title.clone())
         .unwrap_or_else(|| page_key.to_string());
 
     // ── Компактный текст для инъекции в диалог ──────────────────────────────
@@ -313,6 +366,23 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
     }
     if let Some(lbl) = &identity_label {
         text.push_str(&format!("Объект: {}\n", lbl));
+    }
+    if pr.page_type == "plugin" {
+        if let Some(t) = &plugin_title {
+            text.push_str(&format!("Плагин: {}\n", t));
+        }
+        match &plugin_hint {
+            Some((code, hint)) => {
+                text.push_str(&format!("Код плагина: {}\n", code));
+                text.push_str(&format!("{}\n", hint));
+            }
+            None => {
+                text.push_str(
+                    "Для этого плагина пока нет связанного источника данных — уточни у \
+                     пользователя, какие цифры нужны, или предложи завести под него DataView/схему.\n",
+                );
+            }
+        }
     }
     if let Some(Value::Object(map)) = &object_row {
         let mut filtered = serde_json::Map::new();

@@ -711,6 +711,22 @@ pub fn ImportWidget() -> impl IntoView {
                             needs_period=true
                             selected_connection=selected_connection
                         />
+                        <ServiceRow
+                            row_id="a036"
+                            title="Воронка продаж WB"
+                            details_text="Загружает дневную воронку продаж Wildberries в разрезе номенклатуры (переходы, корзины, заказы, выкупы, конверсии) в документы a036. Данные доступны примерно за последнюю неделю; один документ на день и кабинет."
+                            aggregate="a036_wb_sales_funnel_daily"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
+                        <ServiceRow
+                            row_id="a037"
+                            title="Данные по товарам WB"
+                            details_text="Собирает текущие остатки (склады WB и продавца) и рейтинги товаров Wildberries в документ a037 за сегодняшнюю дату. Данные фиксируются только вперёд — для динамики по дням запускайте ежедневно (или включите задачу task020)."
+                            aggregate="a037_wb_product_snapshot"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
                     </TaskSection>
                 </div>
             </div>

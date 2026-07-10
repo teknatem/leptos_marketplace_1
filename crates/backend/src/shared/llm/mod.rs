@@ -1,6 +1,7 @@
 pub mod admin_tools;
 pub mod chart_tools;
 pub mod data_tools;
+pub mod deepseek_tools;
 pub mod kb_admin_tools;
 pub mod knowledge_base;
 pub mod metadata_registry;

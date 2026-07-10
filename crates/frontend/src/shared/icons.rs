@@ -185,7 +185,7 @@ pub fn icon(name: &str) -> AnyView {
                 <line x1="15" y1="13" x2="9" y2="17"/>
             </svg>
         }.into_any(),
-        "file-text" => view! {
+        "file-text" | "document" => view! {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14 2 14 8 20 8"/>
@@ -646,12 +646,160 @@ pub fn icon(name: &str) -> AnyView {
             </svg>
         }.into_any(),
 
-        "paperclip" => view! {
+        "paperclip" | "attach" => view! {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
             </svg>
         }.into_any(),
 
+        // Paper-plane «Send» (Lucide send).
+        "send" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 2 11 13"/>
+                <path d="M22 2 15 22 11 13 2 9 22 2z"/>
+            </svg>
+        }.into_any(),
+
+        // ── Chat avatars (self-contained: colored circle + white glyph) ──
+        // Пользователь.
+        "avatar-user" => view! {
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="14" cy="14" r="14" fill="#6b7280"/>
+                <g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 20.5v-1a3 3 0 0 0-3-3h-6a3 3 0 0 0-3 3v1"/>
+                    <circle cx="14" cy="10" r="3.2"/>
+                </g>
+            </svg>
+        }.into_any(),
+        // Ассистент (робот).
+        "avatar-assistant" => view! {
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="14" cy="14" r="14" fill="#3f6ad8"/>
+                <g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="7.5" y="10" width="13" height="9.5" rx="2.5"/>
+                    <path d="M14 7v3"/>
+                    <circle cx="14" cy="6.4" r="1.1" fill="#fff" stroke="none"/>
+                    <path d="M7.5 14.5h-1"/>
+                    <path d="M21.5 14.5h-1"/>
+                </g>
+                <circle cx="11.3" cy="14.6" r="1.2" fill="#fff"/>
+                <circle cx="16.7" cy="14.6" r="1.2" fill="#fff"/>
+            </svg>
+        }.into_any(),
+        // Прикреплённый контекст (документ).
+        "avatar-context" => view! {
+            <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="14" cy="14" r="14" fill="#9ca3af"/>
+                <g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 7.5h-4.5A1.5 1.5 0 0 0 10 9v10a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 18 19V9.5z"/>
+                    <path d="M15.8 7.5V10H18.3"/>
+                </g>
+            </svg>
+        }.into_any(),
+
+        // Гаечный ключ (Lucide wrench) — инструменты.
+        "wrench" | "tool" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+        }.into_any(),
+        "microphone" | "mic" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+            </svg>
+        }.into_any(),
+        "mic-off" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="2" y1="2" x2="22" y2="22"/>
+                <path d="M18.89 13.23A7 7 0 0 0 19 12v-2"/>
+                <path d="M5 10v2a7 7 0 0 0 12 5"/>
+                <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/>
+                <path d="M9 9v3a3 3 0 0 0 5.12 2.12"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+            </svg>
+        }.into_any(),
+
+        // ── База знаний ──────────────────────────────────────────────────
+        // Lucide book-open — раскрытая книга.
+        "book-open" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 7v14"/>
+                <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>
+            </svg>
+        }.into_any(),
+        // Lucide book-open-text — книга со строками текста.
+        "book-open-text" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 7v14"/>
+                <path d="M16 12h2"/>
+                <path d="M16 8h2"/>
+                <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>
+                <path d="M6 8h2"/>
+                <path d="M6 12h2"/>
+            </svg>
+        }.into_any(),
+
+        // ── LLM ──────────────────────────────────────────────────────────
+        // Lucide message-square — прямоугольный чат-пузырь.
+        "message-square" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+        }.into_any(),
+        // Lucide bot — робот/агент.
+        "robot" | "bot" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 8V4H8"/>
+                <rect width="16" height="12" x="4" y="8" rx="2"/>
+                <path d="M2 14h2"/>
+                <path d="M20 14h2"/>
+                <path d="M15 13v2"/>
+                <path d="M9 13v2"/>
+            </svg>
+        }.into_any(),
+
+        // ── Система ──────────────────────────────────────────────────────
+        // Lucide shield — щит.
+        "shield" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+            </svg>
+        }.into_any(),
+        // Lucide shield-check — щит с галочкой.
+        "shield-check" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+                <path d="m9 12 2 2 4-4"/>
+            </svg>
+        }.into_any(),
+        // Lucide circle-check — круг с галочкой (quality checks).
+        "check-circle" | "circle-check" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="m9 12 2 2 4-4"/>
+            </svg>
+        }.into_any(),
+        // Lucide calendar — календарь (задачи).
+        "calendar" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 2v4"/>
+                <path d="M16 2v4"/>
+                <rect width="18" height="18" x="3" y="4" rx="2"/>
+                <path d="M3 10h18"/>
+            </svg>
+        }.into_any(),
+        // Lucide calendar-check — календарь с галочкой (a033 закрытие дня).
+        "calendar-check" => view! {
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 2v4"/>
+                <path d="M16 2v4"/>
+                <rect width="18" height="18" x="3" y="4" rx="2"/>
+                <path d="M3 10h18"/>
+                <path d="m9 16 2 2 4-4"/>
+            </svg>
+        }.into_any(),
         _ => view! {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="10"/>

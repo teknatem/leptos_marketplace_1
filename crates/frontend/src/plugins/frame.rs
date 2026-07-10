@@ -8,7 +8,7 @@ use self::bridge::{event_source_matches_iframe, post_json, string_property, Mess
 use self::srcdoc::build_srcdoc;
 use self::theme::current_theme_name;
 use crate::plugins::api;
-use contracts::plugins::{PluginInvokeRequest, PluginRunContext};
+use contracts::plugins::{PluginDataMode, PluginInvokeRequest, PluginRunContext};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_json::json;
@@ -32,6 +32,7 @@ pub fn PluginFrame(
     client_src: RwSignal<String>,
     styles_src: RwSignal<String>,
     context: RwSignal<PluginRunContext>,
+    data_mode: RwSignal<PluginDataMode>,
     restart: RwSignal<u64>,
     console: RwSignal<Vec<String>>,
     events: RwSignal<Vec<String>>,
@@ -70,6 +71,20 @@ pub fn PluginFrame(
                 log.run("client_script is empty; nothing to mount".to_string());
                 return;
             }
+            let mut context_value =
+                serde_json::to_value(context.get_untracked()).unwrap_or_else(|_| json!({}));
+            if let Some(object) = context_value.as_object_mut() {
+                let params = object.entry("params").or_insert_with(|| json!({}));
+                if let Some(params) = params.as_object_mut() {
+                    params.insert(
+                        "_plugin_data_mode".to_string(),
+                        json!(match data_mode.get_untracked() {
+                            PluginDataMode::Live => "live",
+                            PluginDataMode::Snapshot => "snapshot",
+                        }),
+                    );
+                }
+            }
             post_json(
                 &iframe,
                 json!({
@@ -79,8 +94,7 @@ pub fn PluginFrame(
                     "clientScript": client_src.get_untracked(),
                     "styles": styles_src.get_untracked(),
                     "themeName": current_theme_name(),
-                    "context": serde_json::to_value(context.get_untracked())
-                        .unwrap_or_else(|_| json!({})),
+                    "context": context_value,
                 }),
             );
             log.run("init sent".to_string());
@@ -134,6 +148,7 @@ pub fn PluginFrame(
                         &secret,
                         iframe_element,
                         context,
+                        data_mode,
                         console,
                         log,
                         dev,
@@ -145,11 +160,19 @@ pub fn PluginFrame(
         }))
     };
 
+    let restart_instance = instance_id.clone();
+    let restart_secret = bridge_secret.clone();
     Effect::new(move |prev: Option<u64>| {
         let generation = restart.get();
         if prev.is_some_and(|previous| previous != generation) {
             log.run(format!("restart #{generation}"));
-            do_init.run(());
+            if let Some(iframe) = iframe_element.get_value() {
+                iframe.set_srcdoc(&build_srcdoc(
+                    &restart_instance,
+                    &restart_secret,
+                    &current_theme_name(),
+                ));
+            }
         }
         generation
     });
@@ -231,6 +254,7 @@ fn handle_plugin_invoke(
     secret: &str,
     iframe_element: StoredValue<Option<HtmlIFrameElement>, LocalStorage>,
     context: RwSignal<PluginRunContext>,
+    data_mode: RwSignal<PluginDataMode>,
     console: RwSignal<Vec<String>>,
     log: Callback<String>,
     dev: bool,
@@ -257,6 +281,7 @@ fn handle_plugin_invoke(
             method,
             args,
             context: context.get_untracked(),
+            data_mode: data_mode.get_untracked(),
         };
         let response = if dev {
             api::dev_invoke(&id, &request).await

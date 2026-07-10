@@ -184,6 +184,22 @@ pub async fn run_migrations() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Текущий номер (наибольшая успешно применённая версия) миграции БД этого инстанса —
+/// для ручной сверки с `PluginManifest.built_for_migration` на странице разработки плагина.
+pub async fn current_migration_version() -> anyhow::Result<i64> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = crate::shared::data::db::get_connection();
+    let stmt = Statement::from_string(
+        sea_orm::DatabaseBackend::Sqlite,
+        "SELECT MAX(version) as version FROM _sqlx_migrations WHERE success = 1".to_string(),
+    );
+    let row = db.query_one(stmt).await?;
+    Ok(row
+        .and_then(|row| row.try_get::<i64>("", "version").ok())
+        .unwrap_or(0))
+}
+
 async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> anyhow::Result<bool> {
     use sqlx::Row;
     // PRAGMA не принимает bind-параметры — имя таблицы подставляем напрямую (оно из кода, не из ввода).

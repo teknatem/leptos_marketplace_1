@@ -2,7 +2,8 @@ use crate::domain::a018_llm_chat::ui::pending_first_message_key;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
-use contracts::domain::a017_llm_agent::aggregate::{AgentType, LlmAgent};
+use crate::shared::speech::{DictationButton, DictationDiagnostics};
+use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
 use contracts::domain::a018_llm_chat::aggregate::LlmChatListItem;
 use leptos::prelude::*;
 use thaw::*;
@@ -38,7 +39,7 @@ pub fn LlmChatList() -> impl IntoView {
 
     // Состояние быстрого создания чата (один вопрос — остальное опционально).
     let question = RwSignal::new(String::new());
-    let (agents, set_agents) = signal::<Vec<LlmAgent>>(Vec::new());
+    let (agents, set_agents) = signal::<Vec<LlmConnection>>(Vec::new());
     let (selected_agent_id, set_selected_agent_id) = signal(String::new());
     let model = RwSignal::new(String::new());
     let advanced_open = RwSignal::new(false);
@@ -83,24 +84,6 @@ pub fn LlmChatList() -> impl IntoView {
         let identifier = pick_identifier(None, None, Some(&description), &id);
         let tab_label = detail_tab_label(A018.ui.element_name, identifier);
         tabs_store.open_tab(&tab_key, &tab_label);
-    };
-
-    let handle_delete = move |id: String| {
-        let confirmed = {
-            if let Some(win) = web_sys::window() {
-                win.confirm_with_message("Удалить чат?").unwrap_or(false)
-            } else {
-                false
-            }
-        };
-        if !confirmed {
-            return;
-        }
-
-        wasm_bindgen_futures::spawn_local(async move {
-            let _ = delete_chat(&id).await;
-        });
-        fetch();
     };
 
     // Быстрое создание: достаточно вопроса. Агент/модель — опционально (по умолчанию).
@@ -175,47 +158,93 @@ pub fn LlmChatList() -> impl IntoView {
 
             // ── Быстрое создание чата: достаточно вопроса ──────────────────────────
             <div style="margin-top: 16px; padding: 16px; background: var(--colorNeutralBackground2); border: 1px solid var(--colorNeutralStroke2); border-radius: 12px;">
-                <Textarea
-                    value=question
-                    placeholder="Спросите LLM — например: «Выручка WB за май» или «Собери плагин для отчёта по остаткам». Ctrl+Enter — создать чат."
-                    attr:style="width: 100%; min-height: 64px; max-height: 200px; resize: vertical;"
-                    disabled=is_creating
-                    on:keydown=move |ev: web_sys::KeyboardEvent| {
-                        if ev.key() == "Enter" && ev.ctrl_key() {
-                            ev.prevent_default();
-                            handle_create();
-                        }
-                    }
-                />
+                // Поле ввода + голосовой ввод справа от блока текста.
+                <div style="display: flex; gap: 8px; align-items: flex-start;">
+                    <div style="flex: 1;">
+                        <Textarea
+                            value=question
+                            placeholder="Спросите LLM — например: «Выручка WB за май» или «Собери плагин для отчёта по остаткам». Ctrl+Enter — создать чат."
+                            attr:style="width: 100%; min-height: 64px; max-height: 200px; resize: vertical;"
+                            disabled=is_creating
+                            on:keydown=move |ev: web_sys::KeyboardEvent| {
+                                if ev.key() == "Enter" && ev.ctrl_key() {
+                                    ev.prevent_default();
+                                    handle_create();
+                                }
+                            }
+                        />
+                    </div>
+                    // Микрофон + диагностика столбиком справа.
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <DictationButton
+                            target=question
+                            disabled=is_creating
+                            on_error=Callback::new(move |m: String| set_create_error.set(Some(m)))
+                        />
+                        // Диагностика микрофона + разблокировка на HTTP (chrome-флаг
+                        // unsafely-treat-insecure-origin-as-secure).
+                        <DictationDiagnostics />
+                    </div>
+                </div>
 
                 <Show when=move || advanced_open.get()>
                     <Flex attr:style="margin-top: 12px; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
                         <div style="display: flex; flex-direction: column; gap: 4px; width: 240px;">
-                            <label class="form__label" style="font-size: 12px; margin: 0;">"Агент"</label>
+                            <label class="form__label" style="font-size: 12px; margin: 0;">"Подключение"</label>
                             <select
                                 style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%;"
                                 prop:value=move || selected_agent_id.get()
                                 on:change=move |ev| {
                                     let selected_id = event_target_value(&ev);
                                     set_selected_agent_id.set(selected_id.clone());
-                                    if let Some(agent) = agents.get().iter().find(|a| a.to_string_id() == selected_id) {
-                                        model.set(agent.model_name.clone());
+                                    if let Some(conn) = agents.get().iter().find(|a| a.to_string_id() == selected_id) {
+                                        model.set(conn.model_name.clone());
                                     }
                                 }
                             >
-                                <For each=move || agents.get() key=|agent| agent.to_string_id() let:agent>
+                                <For each=move || agents.get() key=|conn| conn.to_string_id() let:conn>
                                     {{
-                                        let id = agent.to_string_id();
-                                        let type_label = agent_type_short_label(&agent.agent_type);
-                                        let desc = format!("{} · {}", agent.base.description.clone(), type_label);
+                                        let id = conn.to_string_id();
+                                        let type_label = agent_type_short_label(&conn.agent_type);
+                                        let desc = format!("{} · {}", conn.base.description.clone(), type_label);
                                         view! { <option value=id>{desc}</option> }
                                     }}
                                 </For>
                             </select>
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 4px; width: 200px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px; width: 240px;">
                             <label class="form__label" style="font-size: 12px; margin: 0;">"Модель"</label>
-                            <Input value=model placeholder="gpt-4o" attr:style="width: 100%;" />
+                            // Список моделей ограничен allowed_models выбранного подключения.
+                            <select
+                                style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%;"
+                                prop:value=move || model.get()
+                                on:change=move |ev| model.set(event_target_value(&ev))
+                            >
+                                {move || {
+                                    let sel = selected_agent_id.get();
+                                    let mut list = agents
+                                        .get()
+                                        .iter()
+                                        .find(|c| c.to_string_id() == sel)
+                                        .map(|c| c.allowed_models_list())
+                                        .unwrap_or_default();
+                                    let current = model.get();
+                                    if !current.is_empty() && !list.contains(&current) {
+                                        list.insert(0, current);
+                                    }
+                                    if list.is_empty() {
+                                        // Нет курированного списка — показать хотя бы текущую модель.
+                                        let m = model.get();
+                                        list = vec![if m.is_empty() { "gpt-4o".to_string() } else { m }];
+                                    }
+                                    list.into_iter()
+                                        .map(|m| {
+                                            let label = m.clone();
+                                            view! { <option value=m>{label}</option> }
+                                        })
+                                        .collect_view()
+                                }}
+                            </select>
                         </div>
                     </Flex>
                 </Show>
@@ -243,14 +272,13 @@ pub fn LlmChatList() -> impl IntoView {
                         <TableHeaderCell min_width=100.0>"Сообщений"</TableHeaderCell>
                         <TableHeaderCell resizable=true min_width=150.0>"Последнее сообщение"</TableHeaderCell>
                         <TableHeaderCell resizable=true min_width=150.0>"Создан"</TableHeaderCell>
-                        <TableHeaderCell min_width=80.0>"Действия"</TableHeaderCell>
+                        <TableHeaderCell min_width=100.0>"Оценка"</TableHeaderCell>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {move || items.get().into_iter().map(|item| {
                         let id = item.id.clone();
                         let id_for_link = id.clone();
-                        let id_for_delete = id.clone();
                         let description_for_link = item.description.clone();
 
                         let msg_count = item.message_count.unwrap_or(0);
@@ -301,15 +329,7 @@ pub fn LlmChatList() -> impl IntoView {
                                     <TableCellLayout>{created}</TableCellLayout>
                                 </TableCell>
                                 <TableCell>
-                                    <TableCellLayout>
-                                        <Button
-                                            size=ButtonSize::Small
-                                            appearance=ButtonAppearance::Subtle
-                                            on_click=move |_| handle_delete(id_for_delete.clone())
-                                        >
-                                            {icon("delete")}
-                                        </Button>
-                                    </TableCellLayout>
+                                    <TableCellLayout>{rating_stars_readonly(item.rating)}</TableCellLayout>
                                 </TableCell>
                             </TableRow>
                         }
@@ -340,6 +360,28 @@ fn agent_type_short_label(agent_type: &AgentType) -> &'static str {
         AgentType::General => "Общий",
         AgentType::KbAdmin => "База знаний",
         AgentType::PluginAdmin => "Плагины",
+    }
+}
+
+/// Оценка чата: 5 звёзд, только для просмотра (изменяется на странице деталей чата).
+fn rating_stars_readonly(rating: Option<i32>) -> impl IntoView {
+    let current = rating.unwrap_or(0);
+    view! {
+        <span style="display: inline-flex; gap: 1px; font-size: 14px; line-height: 1;" title="Оценка чата">
+            {(1..=5)
+                .map(|n| {
+                    let filled = n <= current;
+                    view! {
+                        <span style=move || format!(
+                            "color:{};",
+                            if filled { "#f5a623" } else { "var(--color-text-secondary, #9ca3af)" }
+                        )>
+                            {if filled { "★" } else { "☆" }}
+                        </span>
+                    }
+                })
+                .collect_view()}
+        </span>
     }
 }
 
@@ -395,7 +437,7 @@ async fn fetch_chats_with_stats() -> Result<Vec<LlmChatListItem>, String> {
     Ok(data)
 }
 
-async fn fetch_agents() -> Result<Vec<LlmAgent>, String> {
+async fn fetch_agents() -> Result<Vec<LlmConnection>, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
@@ -403,7 +445,7 @@ async fn fetch_agents() -> Result<Vec<LlmAgent>, String> {
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
 
-    let url = format!("{}/api/a017-llm-agent", api_base());
+    let url = format!("{}/api/a038-llm-connection", api_base());
     let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()
@@ -422,7 +464,7 @@ async fn fetch_agents() -> Result<Vec<LlmAgent>, String> {
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: Vec<LlmAgent> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    let data: Vec<LlmConnection> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
 }
 
@@ -485,30 +527,4 @@ async fn create_chat(
         .to_string();
 
     Ok(chat_id)
-}
-
-async fn delete_chat(id: &str) -> Result<(), String> {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Request, RequestInit, RequestMode, Response};
-
-    let opts = RequestInit::new();
-    opts.set_method("DELETE");
-    opts.set_mode(RequestMode::Cors);
-
-    let url = format!("{}/api/a018-llm-chat/{}", api_base(), id);
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
-    request
-        .headers()
-        .set("Accept", "application/json")
-        .map_err(|e| format!("{e:?}"))?;
-
-    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    Ok(())
 }

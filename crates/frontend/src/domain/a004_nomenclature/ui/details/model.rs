@@ -1,5 +1,8 @@
 use crate::shared::api_utils::api_base;
 use contracts::domain::a004_nomenclature::aggregate::{Nomenclature, NomenclatureDto};
+use contracts::domain::a004_nomenclature::orders_dto::{
+    NomenclatureOrderRowDto, NomenclatureOrdersResponse,
+};
 use contracts::projections::p912_nomenclature_costs::dto::{
     NomenclatureCostDto, NomenclatureCostListResponse,
 };
@@ -428,6 +431,33 @@ pub async fn fetch_production_costs(
     });
 
     Ok(items)
+}
+
+pub async fn fetch_nomenclature_orders(
+    nomenclature_ref: &str,
+    days: u32,
+) -> Result<Vec<NomenclatureOrderRowDto>, String> {
+    let url = format!(
+        "{}/api/nomenclature/{}/orders?days={}",
+        api_base(),
+        nomenclature_ref,
+        days
+    );
+
+    let response = gloo_net::http::Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch orders: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    Ok(response
+        .json::<NomenclatureOrdersResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse orders: {}", e))?
+        .items)
 }
 
 /// Загрузить только количество дилерских цен (без самих данных)

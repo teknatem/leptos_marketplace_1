@@ -1043,7 +1043,9 @@ pub async fn store_document_with_raw_shared_cache(
     )
     .await?;
 
-    document.source_meta.raw_payload_ref = raw_ref;
+    if let Some(raw_ref) = raw_ref {
+        document.source_meta.raw_payload_ref = raw_ref;
+    }
     prepare_document_for_posting_cached(document, cache).await?;
     let prod_cost_resolution = resolve_prod_cost_cached(document, cache).await?;
     apply_prod_cost_diagnostics(document, &prod_cost_resolution);

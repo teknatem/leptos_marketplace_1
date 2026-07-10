@@ -8,6 +8,7 @@ use super::{
     progress_tracker::ProgressTracker,
     wildberries_api_client::{
         WbAdvertFullStat, WbAdvertFullStatApp, WbAdvertFullStatDay, WbAdvertFullStatNm,
+        WbProductSnapshotRow, WbSalesFunnelHistoryDay, WbSalesFunnelHistoryItem,
         WildberriesApiClient,
     },
 };
@@ -19,6 +20,14 @@ use contracts::domain::a026_wb_advert_daily::aggregate::{
 };
 use contracts::domain::a030_wb_advert_campaign::aggregate::{
     WbAdvertCampaign, WbAdvertCampaignHeader, WbAdvertCampaignSourceMeta,
+};
+use contracts::domain::a036_wb_sales_funnel_daily::aggregate::{
+    WbSalesFunnelDaily, WbSalesFunnelDailyHeader, WbSalesFunnelDailyLine,
+    WbSalesFunnelDailyMetrics, WbSalesFunnelDailySourceMeta,
+};
+use contracts::domain::a037_wb_product_snapshot::aggregate::{
+    WbProductSnapshot, WbProductSnapshotHeader, WbProductSnapshotLine, WbProductSnapshotSourceMeta,
+    WbProductSnapshotState, WbProductSnapshotTotals,
 };
 use contracts::domain::common::AggregateId;
 use contracts::system::tasks::progress::TaskProgress;
@@ -56,6 +65,14 @@ const WB_ADVERT_MIN_REQUEST_INTERVAL_MS: u64 = 250;
 const WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS: u64 = 21;
 const WB_ADVERT_FULLSTATS_CHUNK_SIZE: usize = 50;
 const WB_ADVERT_RATE_LIMIT_MARKER: &str = "WB Advert API fullstats: 429";
+
+// Sales-funnel (Analytics API v3): лимит 3 запроса/мин на метод.
+const WB_SALES_FUNNEL_REQUEST_DELAY_SECS: u64 = 21;
+const WB_SALES_FUNNEL_CHUNK_SIZE: usize = 20;
+const WB_SALES_FUNNEL_PAGE_LIMIT: usize = 1000;
+/// Сколько раз повторить чанк при транзиентной ошибке (обрыв TLS-хэндшейка и т.п.)
+/// перед тем как считать его проваленным. Rate limit (429) не ретраится.
+const WB_SALES_FUNNEL_MAX_ATTEMPTS: usize = 3;
 
 fn is_wb_advert_fullstats_rate_limit(error: &str) -> bool {
     error.contains(WB_ADVERT_RATE_LIMIT_MARKER) || error.contains("429 Too Many Requests")
@@ -134,6 +151,63 @@ fn finalize_metrics(metrics: &mut WbAdvertDailyMetrics) {
     };
 }
 
+fn funnel_metrics_from_day(day: &WbSalesFunnelHistoryDay) -> WbSalesFunnelDailyMetrics {
+    WbSalesFunnelDailyMetrics {
+        open_count: day.open_count,
+        cart_count: day.cart_count,
+        order_count: day.order_count,
+        order_sum: day.order_sum,
+        buyout_count: day.buyout_count,
+        buyout_sum: day.buyout_sum,
+        buyout_percent: day.buyout_percent,
+        add_to_cart_conversion: day.add_to_cart_conversion,
+        cart_to_order_conversion: day.cart_to_order_conversion,
+        add_to_wishlist_count: day.add_to_wishlist_count,
+    }
+}
+
+fn funnel_metrics_is_empty(metrics: &WbSalesFunnelDailyMetrics) -> bool {
+    metrics.open_count == 0
+        && metrics.cart_count == 0
+        && metrics.order_count == 0
+        && metrics.order_sum == 0.0
+        && metrics.buyout_count == 0
+        && metrics.buyout_sum == 0.0
+        && metrics.add_to_wishlist_count == 0
+}
+
+fn append_funnel_totals(
+    target: &mut WbSalesFunnelDailyMetrics,
+    source: &WbSalesFunnelDailyMetrics,
+) {
+    target.open_count += source.open_count;
+    target.cart_count += source.cart_count;
+    target.order_count += source.order_count;
+    target.order_sum += source.order_sum;
+    target.buyout_count += source.buyout_count;
+    target.buyout_sum += source.buyout_sum;
+    target.add_to_wishlist_count += source.add_to_wishlist_count;
+}
+
+/// Производные проценты итогов пересчитываются от сумм (не усредняются по строкам).
+fn finalize_funnel_totals(totals: &mut WbSalesFunnelDailyMetrics) {
+    totals.add_to_cart_conversion = if totals.open_count > 0 {
+        (totals.cart_count as f64 / totals.open_count as f64) * 100.0
+    } else {
+        0.0
+    };
+    totals.cart_to_order_conversion = if totals.cart_count > 0 {
+        (totals.order_count as f64 / totals.cart_count as f64) * 100.0
+    } else {
+        0.0
+    };
+    totals.buyout_percent = if totals.order_count > 0 {
+        (totals.buyout_count as f64 / totals.order_count as f64) * 100.0
+    } else {
+        0.0
+    };
+}
+
 /// Executor для UseCase импорта из Wildberries
 pub struct ImportExecutor {
     api_client: Arc<WildberriesApiClient>,
@@ -186,6 +260,8 @@ impl ImportExecutor {
                 "a030_wb_advert_campaign" => "Рекламные кампании WB",
                 "wb_advert_stats" | "wb_advert_stats_csv" => "Статистика рекламных кампаний WB",
                 "a032_wb_returns_claims" => "Заявки на возврат WB",
+                "a036_wb_sales_funnel_daily" => "Воронка продаж WB",
+                "a037_wb_product_snapshot" => "Данные по товарам WB",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -251,6 +327,8 @@ impl ImportExecutor {
             "a015_wb_orders_new" => "Новые заказы WB (оперативно)",
             "a015_wb_orders_supply_link" => "Связь заказов с поставками",
             "a032_wb_returns_claims" => "Заявки на возврат WB",
+            "a036_wb_sales_funnel_daily" => "Воронка продаж WB",
+            "a037_wb_product_snapshot" => "Данные по товарам WB",
             _ => "Unknown",
         }
     }
@@ -293,10 +371,12 @@ impl ImportExecutor {
         let final_status = match &work_result {
             Err(e) => {
                 let error_message = e.to_string();
+                // {:#} печатает всю цепочку anyhow (контекст + первопричина),
+                // иначе текст reqwest-ошибки/ответа WB теряется под верхним контекстом.
                 self.progress_tracker.add_error(
                     session_id,
                     None,
-                    format!("Import failed: {}", error_message),
+                    format!("Import failed: {:#}", e),
                     None,
                 );
                 if error_message.starts_with("WB_RATE_LIMIT_DEFERRED:") {
@@ -442,6 +522,24 @@ impl ImportExecutor {
                 "a032_wb_returns_claims" => {
                     self.import_wb_returns_claims(session_id, connection)
                         .await?;
+                }
+                "a036_wb_sales_funnel_daily" => {
+                    self.import_wb_sales_funnel(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a037_wb_product_snapshot" => {
+                    self.import_wb_product_snapshot(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
                 }
                 _ => {
                     let msg = format!("Unknown aggregate: {}", aggregate_index);
@@ -2863,6 +2961,628 @@ impl ImportExecutor {
             .await?;
         cache.insert(nm_id, resolved.clone());
         Ok(resolved)
+    }
+
+    /// Загрузка воронки продаж WB (Analytics API v3, sales-funnel).
+    /// Один документ a036 = один кабинет + одна дата; строки — товары (nm_id).
+    /// Данные доступны примерно за последнюю неделю; лимит 3 запроса/мин.
+    async fn import_wb_sales_funnel(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        let aggregate_index = "a036_wb_sales_funnel_daily";
+        let begin_date = date_from.format("%Y-%m-%d").to_string();
+        let end_date = date_to.format("%Y-%m-%d").to_string();
+
+        tracing::info!(
+            "WB Sales funnel: session={}, period={} to {}",
+            session_id,
+            begin_date,
+            end_date
+        );
+
+        // Discovery: постранично собираем nmID товаров с активностью за период.
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Поиск товаров с активностью за период".to_string()),
+        );
+
+        let mut nm_ids: Vec<i64> = Vec::new();
+        let mut offset = 0usize;
+        loop {
+            // Ретраи транзиентных сбоев (обрыв TLS-хэндшейка): одна ошибка discovery
+            // иначе завалила бы весь импорт. Rate limit не ретраим.
+            let mut attempt = 0usize;
+            let (page_ids, is_next_page) = loop {
+                attempt += 1;
+                match self
+                    .api_client
+                    .fetch_sales_funnel_products(
+                        connection,
+                        &begin_date,
+                        &end_date,
+                        offset,
+                        WB_SALES_FUNNEL_PAGE_LIMIT,
+                    )
+                    .await
+                {
+                    Ok(page) => break page,
+                    Err(e) => {
+                        let error_text = e.to_string();
+                        if attempt >= WB_SALES_FUNNEL_MAX_ATTEMPTS
+                            || is_wb_advert_fullstats_rate_limit(&error_text)
+                        {
+                            return Err(e).with_context(|| {
+                                format!(
+                                    "Failed to discover sales-funnel products for connection={} period={}..{} offset={} after {} attempts",
+                                    connection.to_string_id(),
+                                    begin_date,
+                                    end_date,
+                                    offset,
+                                    attempt
+                                )
+                            });
+                        }
+                        tracing::warn!(
+                            "WB sales-funnel discovery offset={} attempt {}/{} failed ({}); retrying in {}s",
+                            offset,
+                            attempt,
+                            WB_SALES_FUNNEL_MAX_ATTEMPTS,
+                            error_text,
+                            WB_SALES_FUNNEL_REQUEST_DELAY_SECS
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_secs(
+                            WB_SALES_FUNNEL_REQUEST_DELAY_SECS,
+                        ))
+                        .await;
+                    }
+                }
+            };
+            nm_ids.extend(page_ids);
+            if !is_next_page {
+                break;
+            }
+            offset += WB_SALES_FUNNEL_PAGE_LIMIT;
+            tokio::time::sleep(tokio::time::Duration::from_secs(
+                WB_SALES_FUNNEL_REQUEST_DELAY_SECS,
+            ))
+            .await;
+        }
+        nm_ids.sort_unstable();
+        nm_ids.dedup();
+
+        if nm_ids.is_empty() {
+            tracing::info!(
+                "WB Sales funnel: no products with activity, clearing existing documents"
+            );
+            crate::domain::a036_wb_sales_funnel_daily::service::replace_for_period(
+                &connection.to_string_id(),
+                &begin_date,
+                &end_date,
+                &[],
+            )
+            .await?;
+            self.progress_tracker
+                .complete_aggregate(session_id, aggregate_index);
+            return Ok(());
+        }
+
+        let chunks: Vec<&[i64]> = nm_ids.chunks(WB_SALES_FUNNEL_CHUNK_SIZE).collect();
+        let total_chunks = chunks.len();
+        tracing::info!(
+            "WB Sales funnel: {} nm_ids → {} chunks of up to {} (delay {}s each)",
+            nm_ids.len(),
+            total_chunks,
+            WB_SALES_FUNNEL_CHUNK_SIZE,
+            WB_SALES_FUNNEL_REQUEST_DELAY_SECS,
+        );
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            0,
+            Some(nm_ids.len() as i32),
+            0,
+            0,
+        );
+
+        let mut processed_nm_ids = 0i32;
+        let mut had_fetch_errors = false;
+        let mut all_items: Vec<WbSalesFunnelHistoryItem> = Vec::new();
+
+        // Пауза перед первым history-запросом: discovery и history делят лимит метода 3/мин.
+        tokio::time::sleep(tokio::time::Duration::from_secs(
+            WB_SALES_FUNNEL_REQUEST_DELAY_SECS,
+        ))
+        .await;
+
+        for (chunk_idx, chunk) in chunks.iter().enumerate() {
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!(
+                    "Чанк {}/{} (nmIds: {}..)",
+                    chunk_idx + 1,
+                    total_chunks,
+                    chunk[0]
+                )),
+            );
+
+            // Ретраи транзиентных сбоев (обрыв TLS-хэндшейка и т.п.): следующий
+            // запрос обычно проходит. Rate limit (429) не ретраим — прерываем импорт.
+            let mut attempt = 0usize;
+            let fetch_result = loop {
+                attempt += 1;
+                match self
+                    .api_client
+                    .fetch_sales_funnel_history(connection, chunk, &begin_date, &end_date)
+                    .await
+                {
+                    Ok(items) => break Ok(items),
+                    Err(e) => {
+                        let error_text = e.to_string();
+                        if is_wb_advert_fullstats_rate_limit(&error_text) {
+                            break Err((error_text, true));
+                        }
+                        if attempt >= WB_SALES_FUNNEL_MAX_ATTEMPTS {
+                            break Err((error_text, false));
+                        }
+                        tracing::warn!(
+                            "WB sales-funnel history chunk {}/{} attempt {}/{} failed ({}); retrying in {}s",
+                            chunk_idx + 1,
+                            total_chunks,
+                            attempt,
+                            WB_SALES_FUNNEL_MAX_ATTEMPTS,
+                            error_text,
+                            WB_SALES_FUNNEL_REQUEST_DELAY_SECS
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_secs(
+                            WB_SALES_FUNNEL_REQUEST_DELAY_SECS,
+                        ))
+                        .await;
+                    }
+                }
+            };
+
+            match fetch_result {
+                Ok(items) => {
+                    processed_nm_ids += chunk.len() as i32;
+                    all_items.extend(items);
+                }
+                Err((error_text, is_rate_limit)) => {
+                    had_fetch_errors = true;
+                    tracing::warn!(
+                        "Failed to fetch sales-funnel history for connection={} period={}..{} chunk {}/{} after {} attempts error={}",
+                        connection.to_string_id(),
+                        begin_date,
+                        end_date,
+                        chunk_idx + 1,
+                        total_chunks,
+                        attempt,
+                        error_text
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!(
+                            "WB воронка продаж: чанк {}/{} не загружен для кабинета {}",
+                            chunk_idx + 1,
+                            total_chunks,
+                            connection.to_string_id()
+                        ),
+                        Some(error_text),
+                    );
+
+                    if is_rate_limit {
+                        break;
+                    }
+                }
+            }
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                processed_nm_ids,
+                Some(nm_ids.len() as i32),
+                all_items.len() as i32,
+                0,
+            );
+
+            if chunk_idx + 1 < total_chunks {
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    WB_SALES_FUNNEL_REQUEST_DELAY_SECS,
+                ))
+                .await;
+            }
+        }
+
+        // Полный провал (не получили ни одной строки) — не трогаем существующие
+        // данные и завершаемся ошибкой. Если же часть чанков загрузилась,
+        // сохраняем частичный результат: воронка пересобирается при каждом
+        // повторном импорте, поэтому недостающие товары дозагрузятся позже, а
+        // «всё или ничего» на флаки-сети практически всегда давало бы пустой импорт.
+        if all_items.is_empty() {
+            if had_fetch_errors {
+                anyhow::bail!(
+                    "WB sales-funnel history failed for all {} chunks; existing a036 data was left unchanged",
+                    total_chunks
+                );
+            }
+            tracing::info!(
+                "WB Sales funnel: no rows returned for period {}..{}, clearing existing documents",
+                begin_date,
+                end_date
+            );
+        } else if had_fetch_errors {
+            self.progress_tracker.add_error(
+                session_id,
+                Some(aggregate_index.to_string()),
+                "Часть чанков воронки продаж не загрузилась; сохранён частичный результат, повторите импорт для полноты"
+                    .to_string(),
+                None,
+            );
+        }
+
+        let documents = self
+            .build_wb_sales_funnel_documents(connection, &all_items, &begin_date, &end_date)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed during WB sales-funnel document build for connection={} period={}..{}",
+                    connection.to_string_id(),
+                    begin_date,
+                    end_date
+                )
+            })?;
+
+        let documents_count =
+            crate::domain::a036_wb_sales_funnel_daily::service::replace_for_period(
+                &connection.to_string_id(),
+                &begin_date,
+                &end_date,
+                &documents,
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed during WB sales-funnel replace_for_period for connection={} period={}..{} documents={}",
+                    connection.to_string_id(),
+                    begin_date,
+                    end_date,
+                    documents.len()
+                )
+            })?;
+
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            processed_nm_ids,
+            Some(nm_ids.len() as i32),
+            documents_count as i32,
+            0,
+        );
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB Sales funnel completed: connection={}, period={}..{}, nm_ids={}, documents={}",
+            connection.to_string_id(),
+            begin_date,
+            end_date,
+            nm_ids.len(),
+            documents_count
+        );
+
+        Ok(())
+    }
+
+    /// Ежедневный снимок остатков и рейтингов товаров WB (агрегат a037).
+    /// Один проход /products за скользящее окно активности (date_from..date_to)
+    /// собирает все товары; документ создаётся за СЕГОДНЯ (snapshot_date), т.к.
+    /// остатки/рейтинги — состояние «на сейчас», а не за исторический день.
+    async fn import_wb_product_snapshot(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        let aggregate_index = "a037_wb_product_snapshot";
+        let begin_date = date_from.format("%Y-%m-%d").to_string();
+        let end_date = date_to.format("%Y-%m-%d").to_string();
+        let snapshot_date = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        tracing::info!(
+            "WB Product snapshot: session={}, activity_window={}..{}, snapshot_date={}",
+            session_id,
+            begin_date,
+            end_date,
+            snapshot_date
+        );
+
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Сбор остатков и рейтингов товаров".to_string()),
+        );
+
+        // Постраничный проход /products (limit/offset) с ретраями транзиентных ошибок.
+        let mut rows: Vec<WbProductSnapshotRow> = Vec::new();
+        let mut offset = 0usize;
+        loop {
+            let mut attempt = 0usize;
+            let (page_rows, is_next_page) = loop {
+                attempt += 1;
+                match self
+                    .api_client
+                    .fetch_sales_funnel_products_full(
+                        connection,
+                        &begin_date,
+                        &end_date,
+                        offset,
+                        WB_SALES_FUNNEL_PAGE_LIMIT,
+                    )
+                    .await
+                {
+                    Ok(page) => break page,
+                    Err(e) => {
+                        let error_text = e.to_string();
+                        if attempt >= WB_SALES_FUNNEL_MAX_ATTEMPTS
+                            || is_wb_advert_fullstats_rate_limit(&error_text)
+                        {
+                            return Err(e).with_context(|| {
+                                format!(
+                                    "Failed to fetch WB product snapshot for connection={} offset={} after {} attempts",
+                                    connection.to_string_id(),
+                                    offset,
+                                    attempt
+                                )
+                            });
+                        }
+                        tracing::warn!(
+                            "WB product snapshot offset={} attempt {}/{} failed ({}); retrying in {}s",
+                            offset,
+                            attempt,
+                            WB_SALES_FUNNEL_MAX_ATTEMPTS,
+                            error_text,
+                            WB_SALES_FUNNEL_REQUEST_DELAY_SECS
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_secs(
+                            WB_SALES_FUNNEL_REQUEST_DELAY_SECS,
+                        ))
+                        .await;
+                    }
+                }
+            };
+            rows.extend(page_rows);
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                rows.len() as i32,
+                None,
+                rows.len() as i32,
+                0,
+            );
+            if !is_next_page {
+                break;
+            }
+            offset += WB_SALES_FUNNEL_PAGE_LIMIT;
+            tokio::time::sleep(tokio::time::Duration::from_secs(
+                WB_SALES_FUNNEL_REQUEST_DELAY_SECS,
+            ))
+            .await;
+        }
+
+        let document = self
+            .build_wb_product_snapshot_document(connection, &rows, &snapshot_date)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed during WB product snapshot build for connection={} date={}",
+                    connection.to_string_id(),
+                    snapshot_date
+                )
+            })?;
+
+        let documents_count = crate::domain::a037_wb_product_snapshot::service::replace_for_period(
+            &connection.to_string_id(),
+            &snapshot_date,
+            &snapshot_date,
+            &[document],
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Failed during WB product snapshot replace_for_period for connection={} date={}",
+                connection.to_string_id(),
+                snapshot_date
+            )
+        })?;
+
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            rows.len() as i32,
+            Some(rows.len() as i32),
+            documents_count as i32,
+            0,
+        );
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB Product snapshot completed: connection={}, snapshot_date={}, products={}",
+            connection.to_string_id(),
+            snapshot_date,
+            rows.len()
+        );
+
+        Ok(())
+    }
+
+    async fn build_wb_product_snapshot_document(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        rows: &[WbProductSnapshotRow],
+        snapshot_date: &str,
+    ) -> Result<WbProductSnapshot> {
+        let mut nomenclature_cache: HashMap<i64, Option<String>> = HashMap::new();
+        let mut seen: HashSet<i64> = HashSet::new();
+        let mut lines: Vec<WbProductSnapshotLine> = Vec::with_capacity(rows.len());
+        let mut totals = WbProductSnapshotTotals::default();
+
+        for row in rows {
+            // dedup по nm_id — последнее значение в проходе
+            if !seen.insert(row.nm_id) {
+                if let Some(existing) = lines.iter_mut().find(|l| l.nm_id == row.nm_id) {
+                    existing.state = WbProductSnapshotState {
+                        stock_wb: row.stock_wb,
+                        stock_mp: row.stock_mp,
+                        stock_balance_sum: row.stock_balance_sum,
+                        product_rating: row.product_rating,
+                        feedback_rating: row.feedback_rating,
+                    };
+                }
+                continue;
+            }
+            let nomenclature_ref = self
+                .resolve_wb_nomenclature_ref(connection, row.nm_id, &mut nomenclature_cache)
+                .await?;
+            lines.push(WbProductSnapshotLine {
+                nm_id: row.nm_id,
+                title: row.title.clone(),
+                vendor_code: row.vendor_code.clone(),
+                brand_name: row.brand_name.clone(),
+                subject_id: row.subject_id,
+                subject_name: row.subject_name.clone(),
+                nomenclature_ref,
+                state: WbProductSnapshotState {
+                    stock_wb: row.stock_wb,
+                    stock_mp: row.stock_mp,
+                    stock_balance_sum: row.stock_balance_sum,
+                    product_rating: row.product_rating,
+                    feedback_rating: row.feedback_rating,
+                },
+            });
+        }
+
+        lines.sort_by(|a, b| {
+            a.title
+                .to_lowercase()
+                .cmp(&b.title.to_lowercase())
+                .then_with(|| a.nm_id.cmp(&b.nm_id))
+        });
+
+        for line in &lines {
+            totals.total_stock_wb += line.state.stock_wb;
+            totals.total_stock_mp += line.state.stock_mp;
+            totals.total_balance_sum += line.state.stock_balance_sum;
+        }
+
+        let header = WbProductSnapshotHeader {
+            document_no: format!("WB-SNAP-{}", snapshot_date),
+            snapshot_date: snapshot_date.to_string(),
+            connection_id: connection.to_string_id(),
+            organization_id: connection.organization_ref.clone(),
+            marketplace_id: connection.marketplace_id.clone(),
+        };
+        let source_meta = WbProductSnapshotSourceMeta {
+            source: "wb_product_snapshot".to_string(),
+            fetched_at: chrono::Utc::now().to_rfc3339(),
+        };
+
+        let mut document = WbProductSnapshot::new_for_insert(header, totals, lines, source_meta);
+        document.before_write();
+        document.validate().map_err(|e| anyhow::anyhow!(e))?;
+        Ok(document)
+    }
+
+    async fn build_wb_sales_funnel_documents(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        items: &[WbSalesFunnelHistoryItem],
+        date_from: &str,
+        date_to: &str,
+    ) -> Result<Vec<WbSalesFunnelDaily>> {
+        let mut by_date: BTreeMap<String, Vec<WbSalesFunnelDailyLine>> = BTreeMap::new();
+        let mut currency = String::new();
+        let mut nomenclature_cache: HashMap<i64, Option<String>> = HashMap::new();
+
+        for item in items {
+            if currency.is_empty() && !item.currency.is_empty() {
+                currency = item.currency.clone();
+            }
+            let nomenclature_ref = self
+                .resolve_wb_nomenclature_ref(
+                    connection,
+                    item.product.nm_id,
+                    &mut nomenclature_cache,
+                )
+                .await?;
+
+            for day in &item.history {
+                let date_key = normalize_day_date(&day.date);
+                if date_key.as_str() < date_from || date_key.as_str() > date_to {
+                    continue;
+                }
+                let metrics = funnel_metrics_from_day(day);
+                if funnel_metrics_is_empty(&metrics) {
+                    continue;
+                }
+                by_date
+                    .entry(date_key)
+                    .or_default()
+                    .push(WbSalesFunnelDailyLine {
+                        nm_id: item.product.nm_id,
+                        title: item.product.title.clone(),
+                        vendor_code: item.product.vendor_code.clone(),
+                        brand_name: item.product.brand_name.clone(),
+                        subject_id: item.product.subject_id,
+                        subject_name: item.product.subject_name.clone(),
+                        nomenclature_ref: nomenclature_ref.clone(),
+                        metrics,
+                    });
+            }
+        }
+
+        let mut documents = Vec::with_capacity(by_date.len());
+        for (document_date, mut lines) in by_date {
+            lines.sort_by(|a, b| {
+                a.title
+                    .to_lowercase()
+                    .cmp(&b.title.to_lowercase())
+                    .then_with(|| a.nm_id.cmp(&b.nm_id))
+            });
+
+            let mut totals = WbSalesFunnelDailyMetrics::default();
+            for line in &lines {
+                append_funnel_totals(&mut totals, &line.metrics);
+            }
+            finalize_funnel_totals(&mut totals);
+
+            let header = WbSalesFunnelDailyHeader {
+                document_no: format!("WB-SF-{}", document_date),
+                document_date: document_date.clone(),
+                connection_id: connection.to_string_id(),
+                organization_id: connection.organization_ref.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+                currency: currency.clone(),
+            };
+
+            let source_meta = WbSalesFunnelDailySourceMeta {
+                source: "wb_sales_funnel".to_string(),
+                fetched_at: chrono::Utc::now().to_rfc3339(),
+            };
+
+            let mut document =
+                WbSalesFunnelDaily::new_for_insert(header, totals, lines, source_meta);
+            document.before_write();
+            document.validate().map_err(|e| anyhow::anyhow!(e))?;
+            documents.push(document);
+        }
+
+        Ok(documents)
     }
 
     /// Загрузка заявок покупателей на возврат WB.

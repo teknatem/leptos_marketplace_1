@@ -23,6 +23,8 @@ pub struct CapabilityField {
     pub id: String,
     pub name: String,
     pub value_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub db_column: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -75,6 +77,7 @@ pub fn list_sources(kind: Option<DataSourceKind>) -> Vec<DataSourceCatalogItem> 
                         id: field.id.clone(),
                         name: field.name.clone(),
                         value_type: field.value_type.canonical_name(),
+                        db_column: Some(field.db_column.clone()),
                     })
                     .collect::<Vec<_>>()
             };
@@ -108,6 +111,7 @@ pub fn list_sources(kind: Option<DataSourceKind>) -> Vec<DataSourceCatalogItem> 
                 id: filter.id,
                 name: filter.label,
                 value_type: filter_kind_name(&filter.kind).to_string(),
+                db_column: None,
             })
             .collect();
         let key = (DataSourceKind::Dataview, meta.id.clone());
@@ -126,6 +130,7 @@ pub fn list_sources(kind: Option<DataSourceKind>) -> Vec<DataSourceCatalogItem> 
                         id: dimension.id.clone(),
                         name: dimension.label.clone(),
                         value_type: "dimension".to_string(),
+                        db_column: None,
                     })
                     .collect(),
                 metrics: meta
@@ -135,6 +140,7 @@ pub fn list_sources(kind: Option<DataSourceKind>) -> Vec<DataSourceCatalogItem> 
                         id: resource.id.clone(),
                         name: resource.label.clone(),
                         value_type: resource.unit.clone(),
+                        db_column: None,
                     })
                     .collect(),
                 filters,

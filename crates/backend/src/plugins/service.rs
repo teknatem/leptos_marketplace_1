@@ -3,10 +3,11 @@
 use super::repository;
 use chrono::Utc;
 use contracts::plugins::{
-    PluginBundle, PluginDefinition, PluginError, PluginInvokeRequest, PluginSmokeFailure,
-    PluginSmokeMethod, PluginSmokeReport, PluginSmokeRequest, PluginStatus, PluginUpsert,
-    PluginValidateReport,
+    PluginBundle, PluginDataMode, PluginDefinition, PluginError, PluginInvokeRequest,
+    PluginSmokeFailure, PluginSmokeMethod, PluginSmokeReport, PluginSmokeRequest, PluginStatus,
+    PluginUpsert, PluginValidateReport, WidgetKind,
 };
+use sea_orm::TransactionTrait;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -49,8 +50,34 @@ pub async fn validate(bundle: &PluginBundle) -> PluginValidateReport {
     report
 }
 
+pub(crate) struct PluginArtifactOrigin<'a> {
+    pub chat_id: &'a str,
+    pub agent_id: &'a str,
+}
+
+pub(crate) struct PluginUpsertResult {
+    pub id: String,
+    pub version: i32,
+    pub artifact_id: Option<String>,
+}
+
 pub async fn upsert(dto: PluginUpsert) -> anyhow::Result<String> {
-    let report = validate(&dto.bundle).await;
+    Ok(upsert_prepared(dto, None, None, None).await?.id)
+}
+
+/// Transactional upsert with an optional result already resolved by a trusted
+/// builder. This prevents executing the same source twice and guarantees that
+/// the persisted snapshot is exactly the data that passed presentation checks.
+pub(crate) async fn upsert_prepared(
+    dto: PluginUpsert,
+    prepared_snapshot: Option<serde_json::Value>,
+    artifact_origin: Option<PluginArtifactOrigin<'_>>,
+    prepared_validation: Option<PluginValidateReport>,
+) -> anyhow::Result<PluginUpsertResult> {
+    let report = match prepared_validation {
+        Some(report) => report,
+        None => validate(&dto.bundle).await,
+    };
     if !report.ok {
         return Err(anyhow::anyhow!(
             "Validation failed: {}",
@@ -63,41 +90,142 @@ pub async fn upsert(dto: PluginUpsert) -> anyhow::Result<String> {
     }
     let revision_bundle = dto.bundle.clone();
     let revision_agent_id = dto.created_by_agent_id.clone();
-
     let status = dto
         .status
         .as_deref()
         .map(PluginStatus::from_str)
         .unwrap_or(PluginStatus::Draft);
-
-    let id = match dto.id.as_deref() {
-        Some(id) => update_existing(id.to_string(), dto, status).await,
-        None => insert_new(dto, status).await,
-    }?;
-    if let Ok(Some(saved)) = get_by_id(&id).await {
-        if let Err(error) = repository::insert_revision(
-            db(),
-            &id,
-            saved.version,
-            &revision_bundle,
-            &report,
-            None,
-            revision_agent_id.as_deref(),
-        )
-        .await
-        {
-            tracing::warn!("Failed to record plugin revision for {id}: {error}");
+    let capture_snapshot = dto.capture_snapshot
+        || (revision_bundle.data.source.is_some()
+            && status == PluginStatus::Active
+            && !dto.allow_live_only);
+    let snapshot_payload = if capture_snapshot {
+        match if let Some(payload) = prepared_snapshot {
+            Ok(payload)
+        } else {
+            resolve_declarative_data(&dto.bundle, None).await
+        } {
+            Ok(payload) => Some(payload),
+            Err(error) if dto.allow_live_only => {
+                tracing::warn!("Declarative snapshot skipped: {error}");
+                None
+            }
+            Err(error) => return Err(anyhow::anyhow!(error)),
         }
+    } else {
+        None
+    };
+
+    let txn = db().begin().await?;
+    let id = match dto.id.as_deref() {
+        Some(id) => update_existing(&txn, id.to_string(), dto, status).await,
+        None => insert_new(&txn, dto, status).await,
+    }?;
+    let saved = repository::find_by_id(&txn, &id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("plugin disappeared during transactional upsert"))?;
+
+    let source_json = saved
+        .bundle
+        .data
+        .source
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+    let source_hash = saved
+        .bundle
+        .data
+        .source
+        .as_ref()
+        .map(super::data::source_hash);
+    let mut snapshot_meta = None;
+    if let Some(payload) = snapshot_payload.as_ref() {
+        let row_limit = snapshot_row_limit(&saved.bundle);
+        let (row_count, size_bytes) = super::data::validate_snapshot_payload(payload, row_limit)
+            .map_err(anyhow::Error::msg)?;
+        let hash = source_hash
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("declarative snapshot requires data.source"))?;
+        snapshot_meta = Some(
+            repository::upsert_snapshot(
+                &txn,
+                &id,
+                saved.version,
+                "data",
+                payload,
+                row_count,
+                size_bytes,
+                hash,
+            )
+            .await?,
+        );
     }
-    Ok(id)
+    let snapshot_meta_json = snapshot_meta
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+    let smoke_report = serde_json::json!({
+        "ok": true,
+        "validation": "passed",
+        "source_resolved": saved.bundle.data.source.is_some(),
+        "snapshot_created": snapshot_meta.is_some(),
+    })
+    .to_string();
+    let (artifact_id, origin_json) = if let Some(origin) = artifact_origin {
+        let (artifact_id, source_message_id) =
+            crate::domain::a019_llm_artifact::repository::upsert_plugin_artifact(
+                &txn,
+                &id,
+                &saved.bundle.manifest.code,
+                &saved.bundle.manifest.title,
+                origin.chat_id,
+                origin.agent_id,
+            )
+            .await?;
+        (
+            Some(artifact_id.clone()),
+            Some(
+                serde_json::json!({
+                    "chat_id": origin.chat_id,
+                    "source_message_id": source_message_id,
+                    "artifact_id": artifact_id,
+                })
+                .to_string(),
+            ),
+        )
+    } else {
+        (None, None)
+    };
+    repository::insert_revision(
+        &txn,
+        &id,
+        saved.version,
+        &revision_bundle,
+        &report,
+        Some(&smoke_report),
+        revision_agent_id.as_deref(),
+        source_json.as_deref(),
+        source_hash.as_deref(),
+        snapshot_meta_json.as_deref(),
+        origin_json.as_deref(),
+    )
+    .await?;
+    txn.commit().await?;
+    super::change_token::TOKEN.bump();
+    Ok(PluginUpsertResult {
+        id,
+        version: saved.version,
+        artifact_id,
+    })
 }
 
-async fn update_existing(
+async fn update_existing<C: sea_orm::ConnectionTrait>(
+    conn: &C,
     id: String,
     dto: PluginUpsert,
     status: PluginStatus,
 ) -> anyhow::Result<String> {
-    let mut existing = repository::find_by_id(db(), &id)
+    let mut existing = repository::find_by_id(conn, &id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Plugin not found: {id}"))?;
 
@@ -124,11 +252,15 @@ async fn update_existing(
     existing.version += 1;
     existing.updated_at = Utc::now();
 
-    repository::update(db(), &existing).await?;
+    repository::update(conn, &existing).await?;
     Ok(id)
 }
 
-async fn insert_new(dto: PluginUpsert, status: PluginStatus) -> anyhow::Result<String> {
+async fn insert_new<C: sea_orm::ConnectionTrait>(
+    conn: &C,
+    dto: PluginUpsert,
+    status: PluginStatus,
+) -> anyhow::Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let def = PluginDefinition {
@@ -141,13 +273,23 @@ async fn insert_new(dto: PluginUpsert, status: PluginStatus) -> anyhow::Result<S
         version: 1,
         created_at: now,
         updated_at: now,
+        rating: None,
+        snapshot: None,
+        s3_published_version: None,
+        s3_published_at: None,
     };
-    repository::insert(db(), &def).await?;
+    repository::insert(conn, &def).await?;
     Ok(id)
 }
 
 pub async fn get_by_id(id: &str) -> anyhow::Result<Option<PluginDefinition>> {
-    Ok(repository::find_by_id(db(), id).await?)
+    let Some(mut definition) = repository::find_by_id(db(), id).await? else {
+        return Ok(None);
+    };
+    definition.snapshot = repository::find_snapshot(db(), id, definition.version, "data")
+        .await?
+        .map(|(meta, _)| meta);
+    Ok(Some(definition))
 }
 
 pub async fn get_by_code(code: &str) -> anyhow::Result<Option<PluginDefinition>> {
@@ -164,6 +306,24 @@ pub async fn list_enabled() -> anyhow::Result<Vec<PluginDefinition>> {
 
 pub async fn delete(id: &str) -> anyhow::Result<()> {
     repository::soft_delete(db(), id).await?;
+    super::change_token::TOKEN.bump();
+    Ok(())
+}
+
+/// Установить пользовательскую оценку плагина (1..5; None — снять оценку).
+pub async fn set_rating(id: &str, rating: Option<i32>) -> anyhow::Result<()> {
+    if let Some(r) = rating {
+        if !(1..=5).contains(&r) {
+            return Err(anyhow::anyhow!("Rating must be between 1 and 5"));
+        }
+    }
+
+    let mut def = repository::find_by_id(db(), id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Plugin not found: {id}"))?;
+    def.rating = rating;
+    repository::update(db(), &def).await?;
+    super::change_token::TOKEN.bump();
     Ok(())
 }
 
@@ -182,6 +342,9 @@ pub async fn invoke(
         .await?
         .ok_or_else(|| anyhow::anyhow!("Plugin not found: {id}"))?;
     ensure_public_runnable(&def)?;
+    if request.method == "data" && def.bundle.data.source.is_some() {
+        return invoke_declarative_data(id, def, request, Some("public")).await;
+    }
     invoke_definition(id, def, request, Some("public")).await
 }
 
@@ -192,7 +355,113 @@ pub async fn dev_invoke(
     let def = repository::find_by_id(db(), id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Plugin not found: {id}"))?;
+    if request.method == "data" && def.bundle.data.source.is_some() {
+        return invoke_declarative_data(id, def, request, Some("dev")).await;
+    }
     invoke_definition(id, def, request, Some("dev")).await
+}
+
+fn snapshot_row_limit(bundle: &PluginBundle) -> usize {
+    if bundle
+        .view_spec
+        .widgets
+        .iter()
+        .any(|widget| widget.kind == WidgetKind::Table)
+    {
+        super::data::TABLE_ROW_LIMIT
+    } else {
+        super::data::CHART_ROW_LIMIT
+    }
+}
+
+async fn resolve_declarative_data(
+    bundle: &PluginBundle,
+    context: Option<&contracts::plugins::PluginRunContext>,
+) -> Result<serde_json::Value, String> {
+    let source = bundle
+        .data
+        .source
+        .as_ref()
+        .ok_or_else(|| "plugin has no declarative data.source".to_string())?;
+    let result =
+        super::data::execute_source_with_context(source, snapshot_row_limit(bundle) + 1, context)
+            .await?;
+    if result.truncated || result.rows.len() > snapshot_row_limit(bundle) {
+        return Err(format!(
+            "snapshot_limit_exceeded: source returned more than {} rows",
+            snapshot_row_limit(bundle)
+        ));
+    }
+    Ok(serde_json::Value::Array(result.rows))
+}
+
+async fn invoke_declarative_data(
+    id: &str,
+    def: PluginDefinition,
+    request: PluginInvokeRequest,
+    triggered_by: Option<&str>,
+) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
+    let started = std::time::Instant::now();
+    let mode = request.data_mode;
+    let mut source_context = request.context.clone();
+    if let Some(args) = request.args.as_object() {
+        if let Some(value) = args.get("date_from").and_then(serde_json::Value::as_str) {
+            source_context.date_from = Some(value.to_string());
+        }
+        if let Some(value) = args.get("date_to").and_then(serde_json::Value::as_str) {
+            source_context.date_to = Some(value.to_string());
+        }
+        if let Some(params) = args.get("params").and_then(serde_json::Value::as_object) {
+            source_context
+                .params
+                .extend(params.iter().filter_map(|(key, value)| {
+                    value.as_str().map(|value| (key.clone(), value.to_string()))
+                }));
+        }
+    }
+    let result = match mode {
+        PluginDataMode::Live => match resolve_declarative_data(&def.bundle, Some(&source_context))
+            .await
+        {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                let snapshot_available = repository::find_snapshot(db(), id, def.version, "data")
+                    .await?
+                    .is_some();
+                Err(anyhow::anyhow!(
+                    "live_data_failed: {error}; snapshot_available={snapshot_available}. \
+                     Переключитесь на «Сохраненные данные», если нужен последний опубликованный снимок."
+                ))
+            }
+        },
+        PluginDataMode::Snapshot => repository::find_snapshot(db(), id, def.version, "data")
+            .await?
+            .map(|(_, payload)| payload)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Snapshot is not available for plugin version {}",
+                    def.version
+                )
+            }),
+    };
+    let duration_ms = started.elapsed().as_millis() as i64;
+    let (status, error_stage, row_count) = match &result {
+        Ok(value) => ("ok", None, value.as_array().map(|rows| rows.len() as i64)),
+        Err(_) => ("error", Some("data_source"), None),
+    };
+    super::runs::record(
+        id,
+        &def.bundle.manifest.code,
+        "data",
+        duration_ms,
+        status,
+        error_stage,
+        row_count,
+        triggered_by,
+        mode,
+    )
+    .await;
+    result.map(|value| (value, Vec::new()))
 }
 
 async fn invoke_definition(
@@ -203,6 +472,7 @@ async fn invoke_definition(
 ) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
     let code = def.bundle.manifest.code.clone();
     let method = request.method.clone();
+    let data_mode = request.data_mode;
     let started = std::time::Instant::now();
     let result = super::engine::invoke_server_method(def, request).await;
     let duration_ms = started.elapsed().as_millis() as i64;
@@ -228,6 +498,7 @@ async fn invoke_definition(
         error_stage.as_deref(),
         row_count,
         triggered_by,
+        data_mode,
     )
     .await;
 
@@ -300,6 +571,10 @@ fn temp_definition(bundle: PluginBundle) -> PluginDefinition {
         version: 0,
         created_at: now,
         updated_at: now,
+        rating: None,
+        snapshot: None,
+        s3_published_version: None,
+        s3_published_at: None,
     }
 }
 
@@ -628,6 +903,7 @@ pub async fn smoke_test(request: PluginSmokeRequest) -> anyhow::Result<PluginSmo
                 method: method.method.clone(),
                 args: method.args,
                 context: request.context.clone(),
+                data_mode: PluginDataMode::Live,
             };
             match super::engine::invoke_server_method(def.clone(), invoke).await {
                 Ok((value, _logs)) => {
@@ -717,7 +993,10 @@ pub async fn export(id: &str) -> anyhow::Result<(String, Vec<u8>)> {
     let def = repository::find_by_id(db(), id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Plugin not found: {id}"))?;
-    let bytes = super::package::export_bundle(&def.bundle)?;
+    let snapshot = repository::find_snapshot(db(), id, def.version, "data")
+        .await?
+        .map(|(_, payload)| payload);
+    let bytes = super::package::export_bundle_with_snapshot(&def.bundle, snapshot.as_ref())?;
     let filename = super::package::archive_filename(&def.bundle.manifest.code);
     Ok((filename, bytes))
 }
@@ -729,8 +1008,21 @@ pub struct ImportOutcome {
 }
 
 pub async fn import(bytes: &[u8]) -> anyhow::Result<ImportOutcome> {
-    let bundle = super::package::import_archive(bytes)?;
+    let (bundle, imported_snapshot) = super::package::import_archive_with_snapshot(bytes)?;
+    import_bundle_onto(None, bundle, imported_snapshot).await
+}
+
+/// Общая часть импорта: валидирует бандл и апсертит его либо на конкретный
+/// `id_hint` (используется публикацией/обновлением из S3 — плагин уже известен),
+/// либо ищет существующий плагин по `bundle.manifest.code` и создаёт новый,
+/// если такого кода ещё нет (используется загрузкой .zip через `import`).
+pub(crate) async fn import_bundle_onto(
+    id_hint: Option<&str>,
+    bundle: PluginBundle,
+    imported_snapshot: Option<serde_json::Value>,
+) -> anyhow::Result<ImportOutcome> {
     let code = bundle.manifest.code.clone();
+    let capture_snapshot = bundle.data.source.is_some();
 
     let report = validate(&bundle).await;
     if !report.ok {
@@ -741,7 +1033,10 @@ pub async fn import(bytes: &[u8]) -> anyhow::Result<ImportOutcome> {
         });
     }
 
-    let existing = get_by_code(&code).await?;
+    let existing = match id_hint {
+        Some(id) => repository::find_by_id(db(), id).await?,
+        None => get_by_code(&code).await?,
+    };
     let dto = match &existing {
         Some(current) => PluginUpsert {
             id: Some(current.id.clone()),
@@ -751,6 +1046,8 @@ pub async fn import(bytes: &[u8]) -> anyhow::Result<ImportOutcome> {
             owner_user_id: None,
             created_by_agent_id: None,
             version: Some(current.version),
+            capture_snapshot,
+            allow_live_only: false,
         },
         None => PluginUpsert {
             id: None,
@@ -760,10 +1057,14 @@ pub async fn import(bytes: &[u8]) -> anyhow::Result<ImportOutcome> {
             owner_user_id: None,
             created_by_agent_id: None,
             version: None,
+            capture_snapshot,
+            allow_live_only: false,
         },
     };
 
-    let id = upsert(dto).await?;
+    let id = upsert_prepared(dto, imported_snapshot, None, Some(report.clone()))
+        .await?
+        .id;
     Ok(ImportOutcome {
         id: Some(id),
         code,
@@ -816,7 +1117,8 @@ pub async fn run_data(
 }
 
 pub async fn insert_test_data() -> anyhow::Result<()> {
-    super::demo::insert_test_data().await
+    super::demo::insert_test_data().await?;
+    super::funnel::insert_funnel_plugin().await
 }
 
 #[cfg(test)]

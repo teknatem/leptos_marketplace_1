@@ -3,6 +3,7 @@ pub mod audit;
 pub mod auth;
 pub mod favorites;
 pub mod history;
+pub mod raw_storage;
 pub mod roles;
 pub mod s3;
 pub mod tasks;

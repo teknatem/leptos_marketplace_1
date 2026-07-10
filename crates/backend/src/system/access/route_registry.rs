@@ -471,6 +471,18 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/a038-llm-connection",
+        scope_id: Some("a038_llm_connection"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a038-llm-connection/:id",
+        scope_id: Some("a038_llm_connection"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/llm-chat",
         scope_id: Some("a018_llm_chat"),
         mode: PolicyMode::Auto,
@@ -719,6 +731,36 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         method: "*",
         path: "/api/a026/wb-advert-daily/:id",
         scope_id: Some("a026_wb_advert_daily"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a036/wb-sales-funnel",
+        scope_id: Some("a036_wb_sales_funnel_daily"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a036/wb-sales-funnel/:id",
+        scope_id: Some("a036_wb_sales_funnel_daily"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a037/wb-product-snapshot",
+        scope_id: Some("a037_wb_product_snapshot"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a037/wb-product-snapshot/series",
+        scope_id: Some("a037_wb_product_snapshot"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a037/wb-product-snapshot/:id",
+        scope_id: Some("a037_wb_product_snapshot"),
         mode: PolicyMode::Auto,
     },
     RoutePolicy {

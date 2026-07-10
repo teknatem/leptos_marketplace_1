@@ -12,10 +12,10 @@ use rquickjs::{
     promise::MaybePromise,
     AsyncContext, AsyncRuntime, CatchResultExt, CaughtError, Function, Module, Object, Value,
 };
-use sea_orm::{DatabaseBackend, FromQueryResult, Statement, Value as DbValue};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::shared::data_access::row_json::{fetch_json_rows, JsonBind};
 use crate::shared::data_access::sql_guard::{inspect_read_query, wrap_limited_sql};
 
 const READ_ROW_LIMIT: usize = 5_000;
@@ -67,26 +67,20 @@ async fn limited_runtime() -> anyhow::Result<(AsyncRuntime, Instant)> {
     Ok((runtime, deadline))
 }
 
-fn db() -> &'static sea_orm::DatabaseConnection {
-    crate::shared::data::db::get_connection()
-}
-
-fn json_param_to_db(value: serde_json::Value) -> Result<DbValue, String> {
+fn json_param_to_bind(value: serde_json::Value) -> Result<JsonBind, String> {
     match value {
-        serde_json::Value::Null => Ok(DbValue::String(None)),
-        serde_json::Value::Bool(value) => Ok(DbValue::Bool(Some(value))),
+        serde_json::Value::Null => Ok(JsonBind::Null),
+        serde_json::Value::Bool(value) => Ok(JsonBind::Bool(value)),
         serde_json::Value::Number(value) => {
             if let Some(value) = value.as_i64() {
-                Ok(DbValue::BigInt(Some(value)))
-            } else if let Some(value) = value.as_u64() {
-                Ok(DbValue::BigUnsigned(Some(value)))
+                Ok(JsonBind::Int(value))
             } else if let Some(value) = value.as_f64() {
-                Ok(DbValue::Double(Some(value)))
+                Ok(JsonBind::Float(value))
             } else {
                 Err("Unsupported numeric SQL parameter".to_string())
             }
         }
-        serde_json::Value::String(value) => Ok(DbValue::String(Some(Box::new(value)))),
+        serde_json::Value::String(value) => Ok(JsonBind::Text(value)),
         serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
             Err("SQL parameters must be scalar JSON values".to_string())
         }
@@ -165,16 +159,14 @@ async fn read_sql(
     let trimmed = sql.trim();
     enforce_sql_capabilities(trimmed, capabilities)?;
 
-    let values = params
+    let binds = params
         .into_iter()
-        .map(json_param_to_db)
+        .map(json_param_to_bind)
         .collect::<Result<Vec<_>, _>>()?;
     let limited = limit_read_sql(trimmed);
-    let stmt = Statement::from_sql_and_values(DatabaseBackend::Sqlite, limited, values);
-    let rows = serde_json::Value::find_by_statement(stmt)
-        .all(db())
-        .await
-        .map_err(|error| format!("SQL error: {error}"))?;
+    // Materialize via the sqlx runtime-type decoder (not SeaORM `find_by_statement`,
+    // which silently drops untyped computed columns — SUM/COUNT/CAST — on SQLite).
+    let (rows, _columns) = fetch_json_rows(&limited, binds).await?;
 
     Ok(rows)
 }
@@ -481,6 +473,7 @@ mod tests {
                     api_version: "2".to_string(),
                     description: None,
                     capabilities: vec!["db:read:*".into()],
+                    built_for_migration: None,
                 },
                 params: vec![],
                 data: DataBinding::default(),
@@ -498,6 +491,10 @@ mod tests {
             version: 1,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            rating: None,
+            snapshot: None,
+            s3_published_version: None,
+            s3_published_at: None,
         }
     }
 
@@ -520,6 +517,7 @@ export async function echo(args, host) {
                     .collect(),
                 ..Default::default()
             },
+            data_mode: contracts::plugins::PluginDataMode::Live,
         };
 
         let (result, logs) = invoke_server_method(def, request).await.unwrap();
@@ -543,6 +541,7 @@ export async function run(_args, host) {
             method: "run".to_string(),
             args: serde_json::Value::Null,
             context: PluginRunContext::default(),
+            data_mode: contracts::plugins::PluginDataMode::Live,
         };
 
         let error = invoke_server_method(def, request).await.unwrap_err();
@@ -556,6 +555,7 @@ export async function run(_args, host) {
             method: "spin".to_string(),
             args: serde_json::Value::Null,
             context: PluginRunContext::default(),
+            data_mode: contracts::plugins::PluginDataMode::Live,
         };
 
         let error = invoke_server_method(def, request).await.unwrap_err();
@@ -578,6 +578,7 @@ export function boom() {
             method: "boom".to_string(),
             args: serde_json::Value::Null,
             context: PluginRunContext::default(),
+            data_mode: contracts::plugins::PluginDataMode::Live,
         };
 
         let error = invoke_server_method(def, request).await.unwrap_err();

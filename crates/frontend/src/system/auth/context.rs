@@ -59,6 +59,51 @@ pub fn AuthProvider(children: ChildrenFn) -> impl IntoView {
         });
     });
 
+    // Proactive background refresh.
+    //
+    // The access token lives 24h (backend jwt.rs), but this SPA can stay open for
+    // days. Without this, once the access token expires every request to a
+    // protected route starts returning 401 until the page is reloaded. Here we
+    // refresh the access token periodically — well inside its 24h lifetime — so
+    // authenticated requests never hit an expired token mid-session. The refresh
+    // token lives 90 days and is not rotated on refresh, so it can be reused.
+    //
+    // Reads no reactive signals, so this Effect runs exactly once on mount.
+    Effect::new(move |_| {
+        spawn_local(async move {
+            // 30 minutes — large safety margin under the 24h access-token lifetime.
+            const REFRESH_INTERVAL_MS: u32 = 30 * 60 * 1000;
+            loop {
+                gloo_timers::future::TimeoutFuture::new(REFRESH_INTERVAL_MS).await;
+
+                // Only refresh while we consider ourselves logged in.
+                let (Some(refresh), Some(_)) =
+                    (storage::get_refresh_token(), storage::get_access_token())
+                else {
+                    continue;
+                };
+
+                match api::refresh_token(refresh).await {
+                    Ok(response) => {
+                        storage::save_access_token(&response.access_token);
+                        // Keep the in-memory signal in sync for any consumer that
+                        // reads the token from AuthState instead of localStorage.
+                        set_auth_state.update(|s| {
+                            if s.access_token.is_some() {
+                                s.access_token = Some(response.access_token.clone());
+                            }
+                        });
+                    }
+                    Err(_) => {
+                        // Refresh token expired or revoked — force re-login.
+                        storage::clear_tokens();
+                        set_auth_state.set(AuthState::default());
+                    }
+                }
+            }
+        });
+    });
+
     provide_context(auth_state);
     provide_context(set_auth_state);
 
