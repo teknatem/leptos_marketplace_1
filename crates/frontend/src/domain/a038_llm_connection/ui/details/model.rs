@@ -56,8 +56,12 @@ pub async fn fetch_connection(id: &str) -> Result<LlmConnection, String> {
     Ok(connection)
 }
 
-/// Save (create or update) LLM connection via API
-pub async fn save_connection(dto: serde_json::Value) -> Result<(), String> {
+/// Save (create or update) LLM connection via API.
+///
+/// Возвращает id элемента. При создании (`dto.id == null`) бэк отдаёт свежий id в теле
+/// `{"success": true, "id": "..."}` — он нужен для автосохранения черновика перед
+/// загрузкой моделей. При обновлении тело id не содержит → `None`.
+pub async fn save_connection(dto: serde_json::Value) -> Result<Option<String>, String> {
     let opts = RequestInit::new();
     opts.set_method("POST");
     opts.set_mode(RequestMode::Cors);
@@ -86,7 +90,19 @@ pub async fn save_connection(dto: serde_json::Value) -> Result<(), String> {
         return Err(format!("HTTP {}", resp.status()));
     }
 
-    Ok(())
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let text: String = text.as_string().unwrap_or_default();
+    let id = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| {
+            v.get("id")
+                .and_then(|id| id.as_str())
+                .map(|s| s.to_string())
+        });
+
+    Ok(id)
 }
 
 /// Test LLM connection via API

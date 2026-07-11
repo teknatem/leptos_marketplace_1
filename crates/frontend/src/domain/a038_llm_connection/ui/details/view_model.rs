@@ -4,6 +4,19 @@
 
 use leptos::prelude::*;
 
+/// Колонки таблицы моделей, по которым допустима сортировка.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ModelSortCol {
+    Id,
+    Provider,
+    Name,
+    Context,
+    /// Стоимость входящих (prompt) токенов.
+    PriceIn,
+    /// Стоимость исходящих (completion) токенов.
+    PriceOut,
+}
+
 /// ViewModel for LLM Connection Details form
 #[derive(Clone, Copy)]
 pub struct LlmConnectionDetailsVm {
@@ -30,6 +43,15 @@ pub struct LlmConnectionDetailsVm {
     /// можно выбирать модель в чате. Подмножество available_models.
     pub allowed_models: RwSignal<Vec<String>>,
 
+    /// Мини-фильтр таблицы моделей (подстрока по id/name).
+    pub model_filter: RwSignal<String>,
+
+    /// Фильтр по провайдеру (пусто = все провайдеры).
+    pub provider_filter: RwSignal<String>,
+
+    /// Сортировка таблицы моделей: (колонка, по возрастанию).
+    pub model_sort: RwSignal<(ModelSortCol, bool)>,
+
     // Flags
     pub is_primary: RwSignal<bool>,
 
@@ -50,7 +72,6 @@ pub struct LlmConnectionDetailsVm {
     pub set_is_fetching_models: WriteSignal<bool>,
     pub fetch_models_result: Signal<Option<(bool, String)>>,
     pub set_fetch_models_result: WriteSignal<Option<(bool, String)>>,
-    pub is_models_dropdown_open: RwSignal<bool>,
 }
 
 impl LlmConnectionDetailsVm {
@@ -76,8 +97,10 @@ impl LlmConnectionDetailsVm {
             system_prompt: RwSignal::new(String::new()),
             agent_type: RwSignal::new("business_analyst".to_string()),
             allowed_models: RwSignal::new(Vec::new()),
+            model_filter: RwSignal::new(String::new()),
+            provider_filter: RwSignal::new(String::new()),
+            model_sort: RwSignal::new((ModelSortCol::Id, true)),
             is_primary: RwSignal::new(false),
-            is_models_dropdown_open: RwSignal::new(false),
             error: error.into(),
             set_error,
             test_result: test_result.into(),
@@ -93,6 +116,98 @@ impl LlmConnectionDetailsVm {
         }
     }
 
+    /// Отсортированный и отфильтрованный список id моделей для рендера таблицы.
+    /// Каталог (`available_models`) объединяется с уже отмеченными моделями, которых
+    /// в каталоге нет (чтобы не потерять их), затем фильтруется и сортируется.
+    pub fn visible_model_rows(&self) -> Vec<serde_json::Value> {
+        use std::collections::HashSet;
+
+        let mut rows: Vec<serde_json::Value> = self.available_models.get();
+        let present: HashSet<String> = rows
+            .iter()
+            .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect();
+        // Добавить отмеченные модели, отсутствующие в каталоге, как минимальные строки.
+        for a in self.allowed_models.get() {
+            if !present.contains(&a) {
+                rows.push(serde_json::json!({ "id": a }));
+            }
+        }
+
+        let filter = self.model_filter.get().to_lowercase();
+        let filter = filter.trim();
+        if !filter.is_empty() {
+            rows.retain(|m| {
+                let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let name = m.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                id.to_lowercase().contains(filter) || name.to_lowercase().contains(filter)
+            });
+        }
+
+        let provider = self.provider_filter.get();
+        if !provider.is_empty() {
+            rows.retain(|m| model_provider(m) == provider);
+        }
+
+        let (col, asc) = self.model_sort.get();
+        rows.sort_by(|a, b| {
+            let ord = match col {
+                ModelSortCol::Id => str_field(a, "id").cmp(&str_field(b, "id")),
+                ModelSortCol::Provider => model_provider(a)
+                    .to_lowercase()
+                    .cmp(&model_provider(b).to_lowercase()),
+                ModelSortCol::Name => str_field(a, "name").cmp(&str_field(b, "name")),
+                ModelSortCol::Context => num_field(a, "context_length")
+                    .partial_cmp(&num_field(b, "context_length"))
+                    .unwrap_or(std::cmp::Ordering::Equal),
+                ModelSortCol::PriceIn => price_field(a, "prompt")
+                    .partial_cmp(&price_field(b, "prompt"))
+                    .unwrap_or(std::cmp::Ordering::Equal),
+                ModelSortCol::PriceOut => price_field(a, "completion")
+                    .partial_cmp(&price_field(b, "completion"))
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            };
+            if asc {
+                ord
+            } else {
+                ord.reverse()
+            }
+        });
+        rows
+    }
+
+    /// Отсортированный список уникальных провайдеров из каталога (+ отмеченных моделей).
+    pub fn available_providers(&self) -> Vec<String> {
+        use std::collections::BTreeSet;
+        let mut set: BTreeSet<String> = BTreeSet::new();
+        for m in self.available_models.get() {
+            let p = model_provider(&m);
+            if !p.is_empty() {
+                set.insert(p);
+            }
+        }
+        for a in self.allowed_models.get() {
+            let p = model_provider(&serde_json::json!({ "id": a }));
+            if !p.is_empty() {
+                set.insert(p);
+            }
+        }
+        set.into_iter().collect()
+    }
+
+    /// Переключить сортировку по колонке: тот же столбец — инвертирует порядок,
+    /// иначе — выбирает столбец по возрастанию.
+    pub fn toggle_sort(&self, col: ModelSortCol) {
+        self.model_sort.update(|(c, asc)| {
+            if *c == col {
+                *asc = !*asc;
+            } else {
+                *c = col;
+                *asc = true;
+            }
+        });
+    }
+
     /// Get temperature as f64
     pub fn get_temperature(&self) -> f64 {
         self.temperature.get().parse().unwrap_or(0.7)
@@ -104,14 +219,48 @@ impl LlmConnectionDetailsVm {
     }
 
     /// Переключить принадлежность модели к allowed_models.
+    /// Если снимаем галочку с модели, которая сейчас основная — сбрасываем основную
+    /// (пустой model_name), чтобы `validate_models` поймал это перед записью.
     pub fn toggle_allowed(&self, model_id: &str) {
+        let mut removed = false;
         self.allowed_models.update(|list| {
             if let Some(pos) = list.iter().position(|m| m == model_id) {
                 list.remove(pos);
+                removed = true;
             } else {
                 list.push(model_id.to_string());
             }
         });
+        if removed && self.model_name.get_untracked() == model_id {
+            self.model_name.set(String::new());
+        }
+    }
+
+    /// Отметить модель основной (по умолчанию). Гарантирует, что она входит в
+    /// allowed_models (авто-добавление). Основная всегда ровно одна.
+    pub fn set_primary(&self, model_id: &str) {
+        self.model_name.set(model_id.to_string());
+        self.allowed_models.update(|list| {
+            if !list.iter().any(|m| m == model_id) {
+                list.push(model_id.to_string());
+            }
+        });
+    }
+
+    /// Проверка выбора моделей перед записью. Возвращает текст ошибки при нарушении.
+    pub fn validate_models(&self) -> Result<(), String> {
+        let allowed = self.allowed_models.get_untracked();
+        if allowed.is_empty() {
+            return Err("Отметьте хотя бы одну разрешённую модель в таблице.".into());
+        }
+        let primary = self.model_name.get_untracked();
+        if primary.trim().is_empty() {
+            return Err("Отметьте основную модель звёздочкой в таблице.".into());
+        }
+        if !allowed.iter().any(|m| m == &primary) {
+            return Err("Основная модель должна входить в список разрешённых.".into());
+        }
+        Ok(())
     }
 
     /// Build save DTO from current values
@@ -145,4 +294,45 @@ impl Default for LlmConnectionDetailsVm {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Провайдер модели: `owned_by` (OpenAI) либо префикс id до «/» (OpenRouter,
+/// напр. `openai/gpt-4o` → `openai`). Пусто, если определить нельзя.
+pub fn model_provider(m: &serde_json::Value) -> String {
+    if let Some(owner) = m.get("owned_by").and_then(|v| v.as_str()) {
+        if !owner.trim().is_empty() {
+            return owner.to_string();
+        }
+    }
+    m.get("id")
+        .and_then(|v| v.as_str())
+        .and_then(|id| id.split_once('/'))
+        .map(|(prefix, _)| prefix.to_string())
+        .unwrap_or_default()
+}
+
+fn str_field(m: &serde_json::Value, key: &str) -> String {
+    m.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_lowercase()
+}
+
+fn num_field(m: &serde_json::Value, key: &str) -> f64 {
+    m.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0)
+}
+
+/// Цена токенов (для сортировки) из `pricing.<key>` (`prompt`/`completion`).
+/// Строкой или числом; некорректные/отсутствующие данные считаются 0.0, чтобы
+/// сохранить полный порядок при сортировке.
+fn price_field(m: &serde_json::Value, key: &str) -> f64 {
+    m.get("pricing")
+        .and_then(|p| p.get(key))
+        .map(|v| match v {
+            serde_json::Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
+            serde_json::Value::Number(n) => n.as_f64().unwrap_or(0.0),
+            _ => 0.0,
+        })
+        .filter(|v| v.is_finite())
+        .unwrap_or(0.0)
 }

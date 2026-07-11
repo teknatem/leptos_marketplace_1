@@ -1,7 +1,7 @@
 use crate::shared::config;
 use sha2::{Digest, Sha384};
 use sqlx::sqlite::SqlitePool;
-use sqlx::Row;
+use sqlx::{Executor, Row};
 use std::path::{Path, PathBuf};
 
 fn build_sqlite_url(path: &Path) -> String {
@@ -179,6 +179,7 @@ pub async fn run_migrations() -> anyhow::Result<()> {
     migrator.run(&pool).await?;
 
     ensure_a015_dealer_price_ut_column(&pool).await?;
+    ensure_llm_chat_agent_fk_to_a038(&pool).await?;
 
     tracing::info!("Database migrations applied successfully");
     Ok(())
@@ -251,4 +252,122 @@ async fn ensure_a015_dealer_price_ut_column(pool: &SqlitePool) -> anyhow::Result
     .await?;
 
     Ok(())
+}
+
+/// Проверяет, ссылается ли FK `<table>.agent_id` на указанную родительскую таблицу.
+async fn agent_fk_references(
+    pool: &SqlitePool,
+    table: &str,
+    parent: &str,
+) -> anyhow::Result<bool> {
+    // PRAGMA не принимает bind-параметры — имя таблицы из кода, не из ввода.
+    let rows = sqlx::query(&format!("PRAGMA foreign_key_list({table})"))
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().any(|row| {
+        let from: String = row.try_get("from").unwrap_or_default();
+        let ref_table: String = row.try_get("table").unwrap_or_default();
+        from == "agent_id" && ref_table == parent
+    }))
+}
+
+/// Идемпотентно перенаправляет внешние ключи `a018_llm_chat.agent_id` и
+/// `a019_llm_artifact.agent_id` с ретайр-таблицы `a017_llm_agent` на `a038_llm_connection`.
+///
+/// Миграция 0165 засеяла a038 из a017 с теми же id, но НЕ перенастроила FK у чата/артефакта.
+/// Из-за этого чат против НОВОГО подключения a038 (id отсутствует в a017) падал с
+/// `FOREIGN KEY constraint failed`. SQLite не умеет менять FK на месте, а простой DROP
+/// родителя с включёнными FK каскадно удалил бы сообщения чата, поэтому пересобираем таблицы
+/// при выключенных FK (вне транзакции — внутри неё `PRAGMA foreign_keys` игнорируется).
+async fn ensure_llm_chat_agent_fk_to_a038(pool: &SqlitePool) -> anyhow::Result<()> {
+    if !has_table(pool, "a038_llm_connection").await? || !has_table(pool, "a018_llm_chat").await? {
+        return Ok(());
+    }
+
+    let chat_needs_fix = agent_fk_references(pool, "a018_llm_chat", "a017_llm_agent").await?;
+    let artifact_needs_fix = has_table(pool, "a019_llm_artifact").await?
+        && agent_fk_references(pool, "a019_llm_artifact", "a017_llm_agent").await?;
+
+    if !chat_needs_fix && !artifact_needs_fix {
+        return Ok(());
+    }
+
+    // Собираем один пакетный скрипт: FK off → транзакция → пересборка → commit → FK on.
+    // `PRAGMA foreign_keys=OFF` действует, так как выполняется до BEGIN на этом соединении.
+    let mut script = String::from("PRAGMA foreign_keys=OFF;\nBEGIN;\n");
+
+    if chat_needs_fix {
+        script.push_str(
+            "CREATE TABLE a018_llm_chat_new (\
+                id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, description TEXT NOT NULL, \
+                comment TEXT, agent_id TEXT NOT NULL, is_deleted INTEGER NOT NULL DEFAULT 0, \
+                is_posted INTEGER NOT NULL DEFAULT 0, created_at TEXT, updated_at TEXT, \
+                version INTEGER NOT NULL DEFAULT 1, model_name TEXT NOT NULL DEFAULT 'gpt-4o', \
+                rating INTEGER, \
+                FOREIGN KEY (agent_id) REFERENCES a038_llm_connection(id));\n\
+             INSERT INTO a018_llm_chat_new (id, code, description, comment, agent_id, is_deleted, \
+                is_posted, created_at, updated_at, version, model_name, rating) \
+                SELECT id, code, description, comment, agent_id, is_deleted, is_posted, \
+                created_at, updated_at, version, model_name, rating FROM a018_llm_chat;\n\
+             DROP TABLE a018_llm_chat;\n\
+             ALTER TABLE a018_llm_chat_new RENAME TO a018_llm_chat;\n\
+             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_code ON a018_llm_chat(code);\n\
+             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_agent_id ON a018_llm_chat(agent_id);\n\
+             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_is_deleted ON a018_llm_chat(is_deleted);\n\
+             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_created_at ON a018_llm_chat(created_at);\n\
+             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_model_name ON a018_llm_chat(model_name);\n",
+        );
+    }
+
+    if artifact_needs_fix {
+        script.push_str(
+            "CREATE TABLE a019_llm_artifact_new (\
+                id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, description TEXT NOT NULL, \
+                comment TEXT, chat_id TEXT NOT NULL, agent_id TEXT NOT NULL, \
+                artifact_type TEXT NOT NULL DEFAULT 'sql_query', status TEXT NOT NULL DEFAULT 'active', \
+                sql_query TEXT NOT NULL, query_params TEXT, visualization_config TEXT, \
+                last_executed_at TEXT, execution_count INTEGER NOT NULL DEFAULT 0, \
+                is_deleted INTEGER NOT NULL DEFAULT 0, is_posted INTEGER NOT NULL DEFAULT 0, \
+                created_at TEXT, updated_at TEXT, version INTEGER NOT NULL DEFAULT 1, \
+                FOREIGN KEY (chat_id) REFERENCES a018_llm_chat(id), \
+                FOREIGN KEY (agent_id) REFERENCES a038_llm_connection(id));\n\
+             INSERT INTO a019_llm_artifact_new (id, code, description, comment, chat_id, agent_id, \
+                artifact_type, status, sql_query, query_params, visualization_config, \
+                last_executed_at, execution_count, is_deleted, is_posted, created_at, updated_at, version) \
+                SELECT id, code, description, comment, chat_id, agent_id, artifact_type, status, \
+                sql_query, query_params, visualization_config, last_executed_at, execution_count, \
+                is_deleted, is_posted, created_at, updated_at, version FROM a019_llm_artifact;\n\
+             DROP TABLE a019_llm_artifact;\n\
+             ALTER TABLE a019_llm_artifact_new RENAME TO a019_llm_artifact;\n\
+             CREATE INDEX IF NOT EXISTS idx_a019_artifact_code ON a019_llm_artifact(code);\n\
+             CREATE INDEX IF NOT EXISTS idx_a019_artifact_chat_id ON a019_llm_artifact(chat_id);\n\
+             CREATE INDEX IF NOT EXISTS idx_a019_artifact_agent_id ON a019_llm_artifact(agent_id);\n\
+             CREATE INDEX IF NOT EXISTS idx_a019_artifact_type ON a019_llm_artifact(artifact_type);\n\
+             CREATE INDEX IF NOT EXISTS idx_a019_artifact_status ON a019_llm_artifact(status);\n\
+             CREATE INDEX IF NOT EXISTS idx_a019_artifact_is_deleted ON a019_llm_artifact(is_deleted);\n\
+             CREATE INDEX IF NOT EXISTS idx_a019_artifact_created_at ON a019_llm_artifact(created_at);\n",
+        );
+    }
+
+    script.push_str("COMMIT;\nPRAGMA foreign_keys=ON;\n");
+
+    let mut conn = pool.acquire().await?;
+    match (&mut *conn).execute(script.as_str()).await {
+        Ok(_) => {
+            tracing::info!(
+                "Repointed LLM agent_id FK(s) to a038_llm_connection (chat: {}, artifact: {})",
+                chat_needs_fix,
+                artifact_needs_fix
+            );
+            Ok(())
+        }
+        Err(e) => {
+            // Откатываем возможную открытую транзакцию и восстанавливаем enforcement FK.
+            let _ = (&mut *conn).execute("ROLLBACK;").await;
+            let _ = (&mut *conn).execute("PRAGMA foreign_keys=ON;").await;
+            Err(anyhow::anyhow!(
+                "Failed to repoint LLM agent_id FK to a038_llm_connection: {e}"
+            ))
+        }
+    }
 }

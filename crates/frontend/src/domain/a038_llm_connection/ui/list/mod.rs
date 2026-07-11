@@ -1,7 +1,6 @@
-use crate::domain::a038_llm_connection::ui::details::LlmConnectionDetails;
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
-use crate::shared::modal_stack::ModalStackService;
 use crate::shared::page_frame::PageFrame;
 use contracts::domain::a038_llm_connection::aggregate::LlmConnection;
 use leptos::prelude::*;
@@ -10,12 +9,10 @@ use thaw::*;
 #[component]
 #[allow(non_snake_case)]
 pub fn LlmConnectionList() -> impl IntoView {
-    let modal_stack =
-        use_context::<ModalStackService>().expect("ModalStackService not found in context");
+    let tabs_store =
+        use_context::<AppGlobalContext>().expect("AppGlobalContext not found in context");
     let (items, set_items) = signal::<Vec<LlmConnection>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
-    let show_modal = RwSignal::new(false);
-    let (editing_id, set_editing_id) = signal::<Option<String>>(None);
 
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
@@ -30,13 +27,16 @@ pub fn LlmConnectionList() -> impl IntoView {
     };
 
     let handle_create_new = move || {
-        set_editing_id.set(None);
-        show_modal.set(true);
+        tabs_store.open_tab("a038_llm_connection_details_new", "Новое подключение LLM");
     };
 
-    let handle_edit = move |id: String| {
-        set_editing_id.set(Some(id));
-        show_modal.set(true);
+    let handle_edit = move |id: String, title: String| {
+        let title = if title.trim().is_empty() {
+            "Подключение LLM".to_string()
+        } else {
+            title
+        };
+        tabs_store.open_tab(&format!("a038_llm_connection_details_{id}"), &title);
     };
 
     let handle_delete = move |id: String| {
@@ -105,6 +105,7 @@ pub fn LlmConnectionList() -> impl IntoView {
                         let id = connection.to_string_id();
                         let id_for_link = id.clone();
                         let id_for_delete = id.clone();
+                        let title = connection.base.description.clone();
                         view! {
                             <TableRow>
                                 <TableCell>
@@ -114,7 +115,7 @@ pub fn LlmConnectionList() -> impl IntoView {
                                             style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                             on:click=move |e| {
                                                 e.prevent_default();
-                                                handle_edit(id_for_link.clone());
+                                                handle_edit(id_for_link.clone(), title.clone());
                                             }
                                         >
                                             {connection.base.description}
@@ -152,43 +153,6 @@ pub fn LlmConnectionList() -> impl IntoView {
                     }).collect_view()}
                 </TableBody>
             </Table>
-
-            <Show when=move || show_modal.get()>
-                {move || {
-                    let id_val = editing_id.get();
-                    modal_stack.push_with_frame(
-                        Some("max-width: min(1050px, 95vw); width: min(1050px, 95vw);".to_string()),
-                        Some("llm-connection-modal".to_string()),
-                        move |handle| {
-                            let id_signal = Signal::derive({
-                                let id_val = id_val.clone();
-                                move || id_val.clone()
-                            });
-
-                            view! {
-                                <LlmConnectionDetails
-                                    id=id_signal
-                                    on_saved=Callback::new({
-                                        let handle = handle.clone();
-                                        move |_| {
-                                            handle.close();
-                                            fetch();
-                                        }
-                                    })
-                                    on_cancel=Callback::new({
-                                        let handle = handle.clone();
-                                        move |_| handle.close()
-                                    })
-                                />
-                            }.into_any()
-                        },
-                    );
-
-                    show_modal.set(false);
-                    set_editing_id.set(None);
-                    view! { <></> }
-                }}
-            </Show>
         </PageFrame>
     }
 }
