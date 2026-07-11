@@ -1,64 +1,76 @@
 //! LLM Connection Details - View Component
 //!
-//! Main form component for creating/editing LLM connections
+//! Full-page form (открывается вкладкой) для создания/редактирования подключения LLM.
+//! Вся работа с моделями собрана в один блок «Модели»: явная кнопка загрузки каталога,
+//! таблица с мини-фильтром и сортировкой, выбор разрешённых моделей (чекбокс) и основной
+//! модели (звёздочка) прямо в строках.
 
 use super::model::{fetch_connection, fetch_models_from_api, save_connection, test_connection};
-use super::view_model::LlmConnectionDetailsVm;
+use super::view_model::{model_provider, LlmConnectionDetailsVm, ModelSortCol};
 use crate::shared::icons::icon;
+use crate::shared::page_frame::PageFrame;
+use crate::shared::page_standard::PAGE_CAT_DETAIL;
 use leptos::prelude::*;
 use thaw::*;
 
 #[component]
 #[allow(non_snake_case)]
 pub fn LlmConnectionDetails(
-    id: Signal<Option<String>>,
+    id: Option<String>,
     on_saved: Callback<()>,
     on_cancel: Callback<()>,
 ) -> impl IntoView {
     let vm = LlmConnectionDetailsVm::new();
 
-    // Load connection data when editing
-    Effect::new(move |_| {
-        if let Some(conn_id) = id.get() {
-            wasm_bindgen_futures::spawn_local(async move {
-                match fetch_connection(&conn_id).await {
-                    Ok(connection) => {
-                        // Считываем allowed_models ДО перемещения полей (метод берёт &self).
-                        vm.allowed_models.set(connection.allowed_models_list());
-                        vm.code.set(connection.base.code);
-                        vm.description.set(connection.base.description);
-                        vm.comment.set(connection.base.comment.unwrap_or_default());
-                        vm.provider_type
-                            .set(connection.provider_type.as_str().to_string());
-                        vm.api_endpoint.set(connection.api_endpoint);
-                        vm.api_key.set(connection.api_key);
-                        vm.model_name.set(connection.model_name);
-                        vm.temperature.set(connection.temperature.to_string());
-                        vm.max_tokens.set(connection.max_tokens.to_string());
-                        vm.system_prompt
-                            .set(connection.system_prompt.unwrap_or_default());
-                        vm.agent_type.set(connection.agent_type.as_str().to_string());
-                        vm.is_primary.set(connection.is_primary);
+    // Текущий id элемента. Инициализируется из props; после автосохранения черновика
+    // (создание нового) сюда записывается свежий id, чтобы fetch/test/save работали.
+    let current_id = RwSignal::new(id.clone());
 
-                        // Load available models if present
-                        if let Some(models_json) = connection.available_models {
-                            if let Ok(models) =
-                                serde_json::from_str::<Vec<serde_json::Value>>(&models_json)
-                            {
-                                vm.set_available_models.set(models);
-                            }
+    // Активная закладка: "settings" | "models".
+    let (active_tab, set_active_tab) = signal("settings".to_string());
+
+    // Однократная загрузка существующего подключения.
+    if let Some(conn_id) = id.clone() {
+        wasm_bindgen_futures::spawn_local(async move {
+            match fetch_connection(&conn_id).await {
+                Ok(connection) => {
+                    // Считываем allowed_models ДО перемещения полей (метод берёт &self).
+                    vm.allowed_models.set(connection.allowed_models_list());
+                    vm.code.set(connection.base.code);
+                    vm.description.set(connection.base.description);
+                    vm.comment.set(connection.base.comment.unwrap_or_default());
+                    vm.provider_type
+                        .set(connection.provider_type.as_str().to_string());
+                    vm.api_endpoint.set(connection.api_endpoint);
+                    vm.api_key.set(connection.api_key);
+                    vm.model_name.set(connection.model_name);
+                    vm.temperature.set(connection.temperature.to_string());
+                    vm.max_tokens.set(connection.max_tokens.to_string());
+                    vm.system_prompt
+                        .set(connection.system_prompt.unwrap_or_default());
+                    vm.agent_type.set(connection.agent_type.as_str().to_string());
+                    vm.is_primary.set(connection.is_primary);
+
+                    if let Some(models_json) = connection.available_models {
+                        if let Ok(models) =
+                            serde_json::from_str::<Vec<serde_json::Value>>(&models_json)
+                        {
+                            vm.set_available_models.set(models);
                         }
                     }
-                    Err(e) => vm.set_error.set(Some(e)),
                 }
-            });
-        }
-    });
+                Err(e) => vm.set_error.set(Some(e)),
+            }
+        });
+    }
 
-    // Save handler
+    // Save handler — сначала проверяем выбор моделей, потом пишем.
     let handle_save = move |_| {
-        let id_value = id.get();
-        let dto = vm.build_save_dto(id_value);
+        if let Err(msg) = vm.validate_models() {
+            vm.set_error.set(Some(msg));
+            return;
+        }
+        let dto = vm.build_save_dto(current_id.get());
 
         wasm_bindgen_futures::spawn_local(async move {
             match save_connection(dto).await {
@@ -68,9 +80,9 @@ pub fn LlmConnectionDetails(
         });
     };
 
-    // Test connection handler
+    // Test connection handler.
     let handle_test = move |_| {
-        let id_value = match id.get() {
+        let id_value = match current_id.get() {
             Some(v) => v,
             None => {
                 vm.set_test_result.set(Some((
@@ -100,23 +112,44 @@ pub fn LlmConnectionDetails(
         });
     };
 
-    // Fetch models handler
+    // Fetch models handler — для нового подключения сначала автосохраняем черновик.
     let handle_fetch_models = move |_| {
-        let id_value = match id.get() {
-            Some(v) => v,
-            None => {
-                vm.set_fetch_models_result.set(Some((
-                    false,
-                    "Сохраните подключение перед загрузкой моделей".to_string(),
-                )));
-                return;
-            }
-        };
-
         vm.set_is_fetching_models.set(true);
         vm.set_fetch_models_result.set(None);
 
         wasm_bindgen_futures::spawn_local(async move {
+            // 1. Гарантируем наличие id: сохраняем черновик, если элемент ещё не создан.
+            let id_value = match current_id.get() {
+                Some(v) => v,
+                None => {
+                    let dto = vm.build_save_dto(None);
+                    match save_connection(dto).await {
+                        Ok(Some(new_id)) => {
+                            current_id.set(Some(new_id.clone()));
+                            new_id
+                        }
+                        Ok(None) => {
+                            vm.set_fetch_models_result.set(Some((
+                                false,
+                                "Не удалось сохранить черновик подключения.".to_string(),
+                            )));
+                            vm.set_is_fetching_models.set(false);
+                            return;
+                        }
+                        Err(_) => {
+                            vm.set_fetch_models_result.set(Some((
+                                false,
+                                "Заполните код, наименование и API-ключ перед загрузкой моделей."
+                                    .to_string(),
+                            )));
+                            vm.set_is_fetching_models.set(false);
+                            return;
+                        }
+                    }
+                }
+            };
+
+            // 2. Загружаем каталог моделей.
             match fetch_models_from_api(&id_value).await {
                 Ok(response) => {
                     if response.success {
@@ -125,7 +158,6 @@ pub fn LlmConnectionDetails(
                             true,
                             format!("Загружено {} моделей", response.count),
                         )));
-                        vm.is_models_dropdown_open.set(true);
                     } else {
                         vm.set_fetch_models_result
                             .set(Some((false, response.message)));
@@ -141,15 +173,19 @@ pub fn LlmConnectionDetails(
         });
     };
 
-    let is_edit_mode = Signal::derive(move || id.get().is_some());
+    let is_edit_mode = Signal::derive(move || current_id.get().is_some());
 
     view! {
-        <div class="details-form" style="padding: 20px;">
-            <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center style="margin-bottom: 20px;">
-                <h2 style="font-size: 20px; font-weight: bold;">
-                    {move || if is_edit_mode.get() { "Редактирование подключения LLM" } else { "Новое подключение LLM" }}
-                </h2>
-                <Space>
+        <PageFrame page_id="a038_llm_connection--details" category=PAGE_CAT_DETAIL>
+
+            // ---- Header ----
+            <div class="page__header">
+                <div class="page__header-left">
+                    <h1 class="page__title">
+                        {move || if is_edit_mode.get() { "Редактирование подключения LLM" } else { "Новое подключение LLM" }}
+                    </h1>
+                </div>
+                <div class="page__header-right">
                     <Button appearance=ButtonAppearance::Primary on_click=handle_save>
                         {icon("save")}
                         " Сохранить"
@@ -168,8 +204,8 @@ pub fn LlmConnectionDetails(
                         {icon("close")}
                         " Отмена"
                     </Button>
-                </Space>
-            </Flex>
+                </div>
+            </div>
 
             {move || {
                 vm.error
@@ -201,24 +237,32 @@ pub fn LlmConnectionDetails(
                     })
             }}
 
-            {move || {
-                vm.fetch_models_result
-                    .get()
-                    .map(|(success, message)| {
-                        let bg = if success { "var(--color-success-50)" } else { "var(--color-error-50)" };
-                        let border = if success { "var(--color-success-100)" } else { "var(--color-error-100)" };
-                        let color = if success { "var(--color-success)" } else { "var(--color-error)" };
-                        view! {
-                            <div style=format!(
-                                "padding: 12px; margin-bottom: 16px; background: {}; border: 1px solid {}; border-radius: 8px;",
-                                bg, border,
-                            )>
-                                <span style=format!("color: {};", color)>{message}</span>
-                            </div>
-                        }
-                    })
-            }}
+            // ---- Tab bar ----
+            <div class="page__tabs">
+                {["settings", "models"].into_iter().map(|tab| {
+                    let tab_s = tab.to_string();
+                    let label = match tab {
+                        "settings" => "Настройки",
+                        "models"   => "Модели",
+                        _          => tab,
+                    };
+                    view! {
+                        <button
+                            class="page__tab"
+                            class:page__tab--active=move || active_tab.get() == tab_s
+                            on:click={
+                                let tab_s2 = tab.to_string();
+                                move |_| set_active_tab.set(tab_s2.clone())
+                            }
+                        >
+                            {label}
+                        </button>
+                    }
+                }).collect_view()}
+            </div>
 
+            // ---- Settings tab ----
+            <div class="page__content" style=move || if active_tab.get() != "settings" { "display:none;" } else { "" }>
             <div style="display: grid; grid-template-columns: 500px 500px; gap: var(--spacing-md); max-width: 1050px; align-items: start; align-content: start;">
                 <Card>
                     <div class="form__group">
@@ -314,110 +358,6 @@ pub fn LlmConnectionDetails(
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">"Модель по умолчанию"</label>
-                        <div style="position: relative;">
-                            <Input
-                                value=vm.model_name
-                                placeholder="openai/gpt-4o"
-                                attr:style="width: 100%; padding-right: 0px;"
-                            >
-                                <InputSuffix slot>
-                                    <div style="display: flex; gap: 0px;">
-                                        <Show when=move || is_edit_mode.get()>
-                                            <Button
-                                                appearance=ButtonAppearance::Subtle
-                                                shape=ButtonShape::Square
-                                                size=ButtonSize::Small
-                                                on_click=handle_fetch_models
-                                                disabled=vm.is_fetching_models
-                                                attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
-                                                attr:title="Загрузить модели из API"
-                                            >
-                                                {move || if vm.is_fetching_models.get() { "⏳" } else { "⬇" }}
-                                            </Button>
-                                            <Show when=move || !vm.available_models.get().is_empty()>
-                                                <Button
-                                                    appearance=ButtonAppearance::Subtle
-                                                    shape=ButtonShape::Square
-                                                    size=ButtonSize::Small
-                                                    on_click=move |_| {
-                                                        let is_open_val = vm.is_models_dropdown_open.get();
-                                                        vm.is_models_dropdown_open.set(!is_open_val);
-                                                    }
-                                                    attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
-                                                    attr:title="Выбрать из списка"
-                                                >
-                                                    "▼"
-                                                </Button>
-                                            </Show>
-                                        </Show>
-                                    </div>
-                                </InputSuffix>
-                            </Input>
-
-                            {move || {
-                                if !vm.is_models_dropdown_open.get()
-                                    || vm.available_models.get().is_empty()
-                                {
-                                    return view! { <></> }.into_any();
-                                }
-                                let current = vm.model_name.get().to_lowercase();
-                                let opts = vm
-                                    .available_models
-                                    .get()
-                                    .into_iter()
-                                    .filter_map(|m| {
-                                        m.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
-                                    })
-                                    .filter(|model_id| {
-                                        if current.trim().is_empty() {
-                                            true
-                                        } else {
-                                            model_id.to_lowercase().contains(&current)
-                                        }
-                                    })
-                                    .take(50)
-                                    .collect::<Vec<_>>();
-                                view! {
-                                    <div style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); z-index: 1000;">
-                                        {if opts.is_empty() {
-                                            view! {
-                                                <div style="padding: 8px 12px; color: var(--color-text-tertiary);">
-                                                    "Нет совпадений"
-                                                </div>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            opts.into_iter()
-                                                .map(|opt| {
-                                                    let opt2 = opt.clone();
-                                                    view! {
-                                                        <div
-                                                            style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--color-border-light);"
-                                                            on:mousedown=move |_| {
-                                                                vm.model_name.set(opt2.clone());
-                                                                vm.is_models_dropdown_open.set(false);
-                                                            }
-                                                        >
-                                                            {opt}
-                                                        </div>
-                                                    }
-                                                })
-                                                .collect_view()
-                                                .into_any()
-                                        }}
-                                    </div>
-                                }
-                                    .into_any()
-                            }}
-
-                        </div>
-                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                            "Должна входить в список разрешённых моделей ниже."
-                        </div>
-                    </div>
-
-                    <div class="form__group">
                         <label class="form__label">"Temperature (0.0-2.0)"</label>
                         <Input value=vm.temperature placeholder="0.7" />
                     </div>
@@ -452,58 +392,261 @@ pub fn LlmConnectionDetails(
 
             </div>
 
-            // ── Разрешённые модели (курируемый короткий список) ───────────────────
-            <Card>
-                <div class="form__group">
-                    <label class="form__label">"Разрешённые модели"</label>
-                    <div style="font-size: 12px; color: var(--colorNeutralForeground3); margin-bottom: 8px;">
-                        "Отметьте 3-8 технически совместимых и целесообразных моделей. Только они будут доступны для выбора в чате. Сначала загрузите каталог кнопкой ⬇ у поля модели."
-                    </div>
+            // ── Выбранные модели (только чтение; выбор — на закладке «Модели») ──────
+            <div style="max-width: 1050px; margin-top: var(--spacing-md);">
+                <Card>
                     {move || {
-                        let available: Vec<String> = vm
-                            .available_models
-                            .get()
-                            .into_iter()
-                            .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
-                            .collect();
-                        // Показать также уже отмеченные модели, которых нет в каталоге (не потерять их).
-                        let mut ids = available.clone();
-                        for a in vm.allowed_models.get() {
-                            if !ids.contains(&a) {
-                                ids.push(a);
-                            }
+                        let allowed = vm.allowed_models.get();
+                        let primary = vm.model_name.get();
+                        view! {
+                            <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px;">
+                                <label class="form__label" style="font-size: 16px; font-weight: 600;">"Выбранные модели"</label>
+                                <span style="color: var(--colorNeutralForeground3);">{format!("({})", allowed.len())}</span>
+                            </div>
+                            {if allowed.is_empty() {
+                                view! {
+                                    <div style="color: var(--color-text-tertiary); font-size: 13px;">
+                                        "Модели не выбраны — перейдите на закладку «Модели»."
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                        {allowed.into_iter().map(|mid| {
+                                            let is_primary = mid == primary;
+                                            let (bg, border) = if is_primary {
+                                                ("var(--colorBrandBackground2)", "var(--colorBrandStroke1)")
+                                            } else {
+                                                ("var(--colorNeutralBackground3)", "var(--colorNeutralStroke2)")
+                                            };
+                                            view! {
+                                                <span style=format!("display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 13px; background: {}; border: 1px solid {};", bg, border)>
+                                                    {if is_primary { view! { <span style="color: var(--colorBrandForeground1);">"★"</span> }.into_any() } else { view! { <></> }.into_any() }}
+                                                    {mid}
+                                                </span>
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any()
+                            }}
                         }
-                        if ids.is_empty() {
-                            return view! {
-                                <div style="color: var(--color-text-tertiary); padding: 8px 0;">
-                                    "Каталог моделей пуст — загрузите его (⬇), затем отметьте разрешённые."
+                    }}
+                </Card>
+            </div>
+            </div>
+
+            // ---- Models tab ----
+            <div class="page__content" style=move || if active_tab.get() != "models" { "display:none;" } else { "" }>
+            <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; max-width: 1400px; padding: var(--spacing-md);">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
+                    <label class="form__label" style="font-size: 16px; font-weight: 600;">"Модели"</label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input
+                            type="text"
+                            placeholder="Фильтр моделей..."
+                            style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 220px; background: var(--color-surface); color: var(--color-text);"
+                            prop:value=move || vm.model_filter.get()
+                            on:input=move |ev| vm.model_filter.set(event_target_value(&ev))
+                        />
+                        <select
+                            style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; background: var(--color-surface); color: var(--color-text); max-width: 200px;"
+                            prop:value=move || vm.provider_filter.get()
+                            on:change=move |ev| vm.provider_filter.set(event_target_value(&ev))
+                        >
+                            <option value="">"Все провайдеры"</option>
+                            {move || vm.available_providers().into_iter().map(|p| {
+                                let label = p.clone();
+                                view! { <option value=p>{label}</option> }
+                            }).collect_view()}
+                        </select>
+                        <Button
+                            appearance=ButtonAppearance::Primary
+                            on_click=handle_fetch_models
+                            disabled=vm.is_fetching_models
+                        >
+                            {icon("refresh")}
+                            {move || if vm.is_fetching_models.get() { " Загрузка..." } else { " Получить список моделей" }}
+                        </Button>
+                    </div>
+                </div>
+
+                <div style="font-size: 12px; color: var(--colorNeutralForeground3); margin-bottom: 8px;">
+                    "Отметьте чекбоксом 3-8 технически совместимых моделей — только они будут доступны в чате. Звёздочкой ★ выберите основную модель по умолчанию (она автоматически становится разрешённой)."
+                </div>
+
+                {move || {
+                    vm.fetch_models_result
+                        .get()
+                        .map(|(success, message)| {
+                            let color = if success { "var(--color-success)" } else { "var(--color-error)" };
+                            view! {
+                                <div style=format!("font-size: 13px; margin-bottom: 8px; color: {};", color)>
+                                    {message}
                                 </div>
                             }
-                            .into_any();
-                        }
-                        ids.sort();
-                        view! {
-                            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; max-height: 260px; overflow-y: auto; padding: 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px;">
-                                {ids.into_iter().map(|model_id| {
-                                    let mid_for_check = model_id.clone();
-                                    let mid_for_toggle = model_id.clone();
-                                    view! {
-                                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px;">
-                                            <input
-                                                type="checkbox"
-                                                prop:checked=move || vm.allowed_models.get().contains(&mid_for_check)
-                                                on:change=move |_| vm.toggle_allowed(&mid_for_toggle)
-                                            />
-                                            <span>{model_id}</span>
-                                        </label>
-                                    }
-                                }).collect_view()}
+                        })
+                }}
+
+                {move || {
+                    let rows = vm.visible_model_rows();
+                    if rows.is_empty() {
+                        return view! {
+                            <div style="color: var(--color-text-tertiary); padding: 12px 0;">
+                                "Каталог моделей пуст — нажмите «Получить список моделей»."
                             </div>
                         }
-                        .into_any()
-                    }}
-                </div>
-            </Card>
-        </div>
+                        .into_any();
+                    }
+                    view! {
+                        <div style="flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <thead style="position: sticky; top: 0; background: var(--color-surface); z-index: 1;">
+                                    <tr style="border-bottom: 1px solid var(--colorNeutralStroke2);">
+                                        <th style="padding: 6px 8px; text-align: center; width: 70px;">"Разреш."</th>
+                                        <th style="padding: 6px 8px; text-align: center; width: 60px;">"Осн."</th>
+                                        <th
+                                            style="padding: 6px 8px; text-align: left; cursor: pointer;"
+                                            on:click=move |_| vm.toggle_sort(ModelSortCol::Id)
+                                        >{move || sort_label(vm, ModelSortCol::Id, "Модель (id)")}</th>
+                                        <th
+                                            style="padding: 6px 8px; text-align: left; cursor: pointer; width: 130px;"
+                                            on:click=move |_| vm.toggle_sort(ModelSortCol::Provider)
+                                        >{move || sort_label(vm, ModelSortCol::Provider, "Провайдер")}</th>
+                                        <th
+                                            style="padding: 6px 8px; text-align: left; cursor: pointer;"
+                                            on:click=move |_| vm.toggle_sort(ModelSortCol::Name)
+                                        >{move || sort_label(vm, ModelSortCol::Name, "Название")}</th>
+                                        <th
+                                            style="padding: 6px 8px; text-align: right; cursor: pointer; width: 110px;"
+                                            on:click=move |_| vm.toggle_sort(ModelSortCol::Context)
+                                        >{move || sort_label(vm, ModelSortCol::Context, "Контекст")}</th>
+                                        <th
+                                            style="padding: 6px 8px; text-align: right; cursor: pointer; width: 120px;"
+                                            title="Стоимость входящих токенов за 1 млн"
+                                            on:click=move |_| vm.toggle_sort(ModelSortCol::PriceIn)
+                                        >{move || sort_label(vm, ModelSortCol::PriceIn, "Вход $/1M")}</th>
+                                        <th
+                                            style="padding: 6px 8px; text-align: right; cursor: pointer; width: 120px;"
+                                            title="Стоимость исходящих токенов за 1 млн"
+                                            on:click=move |_| vm.toggle_sort(ModelSortCol::PriceOut)
+                                        >{move || sort_label(vm, ModelSortCol::PriceOut, "Выход $/1M")}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rows.into_iter().map(|m| {
+                                        let model_id = m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                        let name = m.get("name").and_then(|v| v.as_str()).unwrap_or("—").to_string();
+                                        let provider = {
+                                            let p = model_provider(&m);
+                                            if p.is_empty() { "—".to_string() } else { p }
+                                        };
+                                        let context = m.get("context_length")
+                                            .and_then(|v| v.as_i64())
+                                            .map(|n| n.to_string())
+                                            .unwrap_or_else(|| "—".to_string());
+                                        let price_in = price_per_million(&m, "prompt");
+                                        let price_out = price_per_million(&m, "completion");
+                                        // OpenRouter-style id (author/slug) → страница модели.
+                                        let model_link = if model_id.contains('/') {
+                                            Some(format!("https://openrouter.ai/{}", model_id))
+                                        } else {
+                                            None
+                                        };
+                                        let mid_check = model_id.clone();
+                                        let mid_toggle = model_id.clone();
+                                        let mid_star = model_id.clone();
+                                        let mid_star2 = model_id.clone();
+                                        let mid_primary = model_id.clone();
+                                        view! {
+                                            <tr style="border-bottom: 1px solid var(--color-border-light);">
+                                                <td style="padding: 6px 8px; text-align: center;">
+                                                    <input
+                                                        type="checkbox"
+                                                        prop:checked=move || vm.allowed_models.get().contains(&mid_check)
+                                                        on:change=move |_| vm.toggle_allowed(&mid_toggle)
+                                                    />
+                                                </td>
+                                                <td style="padding: 6px 8px; text-align: center;">
+                                                    <span
+                                                        style=move || {
+                                                            let selected = vm.model_name.get() == mid_star2;
+                                                            format!(
+                                                                "cursor: pointer; font-size: 22px; line-height: 1; color: {};",
+                                                                if selected { "#f5b301" } else { "var(--colorNeutralForeground3)" },
+                                                            )
+                                                        }
+                                                        title="Сделать основной моделью"
+                                                        on:click=move |_| vm.set_primary(&mid_primary)
+                                                    >
+                                                        {move || if vm.model_name.get() == mid_star { "★" } else { "☆" }}
+                                                    </span>
+                                                </td>
+                                                <td style="padding: 6px 8px; font-family: var(--font-mono, monospace);">
+                                                    {match model_link {
+                                                        Some(url) => view! {
+                                                            <a
+                                                                href=url
+                                                                target="_blank"
+                                                                rel="noopener"
+                                                                style="color: var(--colorBrandForeground1); text-decoration: none;"
+                                                                title="Открыть описание и особенности модели на OpenRouter"
+                                                            >
+                                                                {model_id}
+                                                            </a>
+                                                        }.into_any(),
+                                                        None => view! { {model_id} }.into_any(),
+                                                    }}
+                                                </td>
+                                                <td style="padding: 6px 8px;">{provider}</td>
+                                                <td style="padding: 6px 8px;">{name}</td>
+                                                <td style="padding: 6px 8px; text-align: right;">{context}</td>
+                                                <td style="padding: 6px 8px; text-align: right; font-variant-numeric: tabular-nums;">{price_in}</td>
+                                                <td style="padding: 6px 8px; text-align: right; font-variant-numeric: tabular-nums;">{price_out}</td>
+                                            </tr>
+                                        }
+                                    }).collect_view()}
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    .into_any()
+                }}
+            </div>
+            </div>
+
+        </PageFrame>
+    }
+}
+
+/// Заголовок сортируемой колонки со стрелкой направления.
+fn sort_label(vm: LlmConnectionDetailsVm, col: ModelSortCol, text: &str) -> String {
+    let (active, asc) = vm.model_sort.get();
+    if active == col {
+        format!("{text} {}", if asc { "▲" } else { "▼" })
+    } else {
+        text.to_string()
+    }
+}
+
+/// Стоимость токенов за 1 млн из `pricing.<key>` (провайдер отдаёт цену за 1 токен).
+/// Для некорректных/отсутствующих данных возвращает пустую строку (ничего не показываем).
+fn price_per_million(m: &serde_json::Value, key: &str) -> String {
+    let raw = m.get("pricing").and_then(|p| p.get(key));
+    let per_token = match raw {
+        Some(serde_json::Value::String(s)) => s.trim().parse::<f64>().ok(),
+        Some(serde_json::Value::Number(n)) => n.as_f64(),
+        _ => None,
+    };
+    match per_token {
+        Some(v) if v.is_finite() && v >= 0.0 => {
+            let per_m = v * 1_000_000.0;
+            if per_m >= 1.0 {
+                format!("${:.2}", per_m)
+            } else {
+                // Дешёвые модели: больше знаков, чтобы не схлопнуть в $0.00.
+                format!("${:.3}", per_m)
+            }
+        }
+        _ => String::new(),
     }
 }

@@ -34,6 +34,7 @@ use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
 use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::domain::a017_llm_agent::ui::list::LlmAgentList;
+use crate::domain::a038_llm_connection::ui::details::LlmConnectionDetails;
 use crate::domain::a038_llm_connection::ui::list::LlmConnectionList;
 use crate::domain::a018_llm_chat::ui::context_details::LlmContextDetails;
 use crate::domain::a018_llm_chat::ui::details::LlmChatDetails;
@@ -709,6 +710,31 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // a038: LLM Connections (подключения)
         "a038_llm_connection" => view! { <LlmConnectionList /> }.into_any(),
+        k if k.starts_with("a038_llm_connection_details_") => {
+            let raw = k
+                .strip_prefix("a038_llm_connection_details_")
+                .unwrap()
+                .to_string();
+            let id = if raw == "new" { None } else { Some(raw) };
+            view! {
+                <LlmConnectionDetails
+                    id=id
+                    on_saved=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                    on_cancel=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
 
         // Каталог LLM-навыков (skills)
         "llm_skills" => view! { <crate::domain::a018_llm_chat::ui::LlmSkillList /> }.into_any(),
