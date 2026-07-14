@@ -46,6 +46,7 @@
 | `a036` | Воронка продаж WB | `a036_wb_sales_funnel_daily` | Ежедневная воронка продаж Wildberries в разрезе номенклатуры. Одна запись — один кабинет WB и одна дата; JSON детализация по товарам (nm_id)… | a006_connection_mp, a002_organization, a007_marketplace_product, a026_wb_advert_daily |
 | `a037` | Данные по товарам WB | `a037_wb_product_snapshot` | Ежедневные снимки состояния товаров Wildberries в разрезе номенклатуры: остатки на складах WB и продавца, сумма остатков, рейтинг карточки и… | a006_connection_mp, a002_organization, a007_marketplace_product, a036_wb_sales_funnel_daily |
 | `a038` | Подключение LLM | `a038_llm_connection` | Подключение к провайдеру LLM (OpenAI, OpenRouter). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tokens), системный промпт… | a018_llm_chat, a019_llm_artifact |
+| `a039` | Письмо | `a039_mail_message` | Журнал входящих и исходящих писем почтового конвейера. Одна запись = одно письмо (кратко): направление, отправитель/получатель, тема, статус… | a018_llm_chat, a038_llm_connection, a019_llm_artifact |
 
 ## Projections (p9XX)
 
@@ -119,6 +120,8 @@
 | `task018` | ym returns |
 | `task019` | ym payment report |
 | `task020` | wb product snapshot |
+| `task021` | mail intake |
+| `task022` | mail reply |
 
 ## Chart of accounts (account_registry)
 
@@ -193,7 +196,7 @@
 | `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
 | `commission_percent` | Процент комиссии |  |  |  |
 
-## API routes (379)
+## API routes (383)
 
 ### `/a004`
 - `GET` /api/a004/nomenclature
@@ -287,6 +290,7 @@
 - `GET POST` /api/a018-llm-chat/:id/context
 - `GET POST` /api/a018-llm-chat/:id/messages
 - `POST` /api/a018-llm-chat/:id/rating
+- `POST` /api/a018-llm-chat/:id/shared
 - `POST` /api/a018-llm-chat/:id/upload
 - `GET` /api/a018-llm-chat/jobs/:job_id
 - `POST` /api/a018-llm-chat/jobs/:job_id/cancel
@@ -448,6 +452,11 @@
 - `POST` /api/a038-llm-connection/:id/test
 - `GET` /api/a038-llm-connection/list
 - `GET` /api/a038-llm-connection/primary
+
+### `/a039-mail-message`
+- `GET` /api/a039-mail-message
+- `GET DELETE` /api/a039-mail-message/:id
+- `GET` /api/a039-mail-message/list
 
 ### `/bi-timeline`
 - `GET` /api/bi-timeline/indicators

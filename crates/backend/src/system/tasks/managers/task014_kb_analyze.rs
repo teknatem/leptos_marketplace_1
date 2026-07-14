@@ -91,7 +91,7 @@ impl TaskManager for Task014KbAnalyzeManager {
             comment: Some("Служебный чат task014_kb_analyze".to_string()),
             agent_id: agent.base.id.as_string(),
             model_name: Some(agent.model_name.clone()),
-        })
+        }, None)
         .await?;
 
         let trigger = format!(

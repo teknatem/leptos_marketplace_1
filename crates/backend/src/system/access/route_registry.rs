@@ -483,6 +483,18 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/a039-mail-message",
+        scope_id: Some("a039_mail_message"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a039-mail-message/:id",
+        scope_id: Some("a039_mail_message"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/llm-chat",
         scope_id: Some("a018_llm_chat"),
         mode: PolicyMode::Auto,

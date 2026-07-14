@@ -362,6 +362,16 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         all_label: "Управление артефактами",
     },
     ScopeDescriptor {
+        scope_id: "a039_mail_message",
+        scope_type: ScopeType::Aggregate,
+        label: "Письма (журнал)",
+        description: "Журнал входящих и исходящих писем почтового конвейера LLM-агентов",
+        icon: "mail",
+        category: "ai",
+        read_label: "Просмотр журнала писем",
+        all_label: "Управление журналом писем",
+    },
+    ScopeDescriptor {
         scope_id: "a031_kb_edit",
         scope_type: ScopeType::Aggregate,
         label: "Редактирование базы знаний",

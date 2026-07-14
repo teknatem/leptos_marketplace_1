@@ -3,10 +3,16 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::icons::icon;
 use crate::shared::speech::{DictationButton, DictationDiagnostics};
+use crate::shared::table_utils::init_column_resize;
+use crate::system::auth::context::use_auth;
 use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
 use contracts::domain::a018_llm_chat::aggregate::LlmChatListItem;
 use leptos::prelude::*;
 use thaw::*;
+
+/// DOM-id таблицы и ключ localStorage для сохранения ширины колонок (ресайз мышью).
+const TABLE_ID: &str = "a018-llm-chat-table";
+const COLUMN_WIDTHS_KEY: &str = "a018_llm_chat_column_widths";
 
 /// Сформировать заголовок чата из первого вопроса пользователя.
 /// Берёт первую непустую строку и обрезает до разумной длины.
@@ -46,6 +52,9 @@ pub fn LlmChatList() -> impl IntoView {
     let (is_creating, set_is_creating) = signal(false);
     let (create_error, set_create_error) = signal::<Option<String>>(None);
 
+    // Текущий пользователь — для выбора иконки типа чата и прав на переключение общего доступа.
+    let (auth, _) = use_auth();
+
     let fetch = move || {
         wasm_bindgen_futures::spawn_local(async move {
             match fetch_chats_with_stats().await {
@@ -54,6 +63,17 @@ pub fn LlmChatList() -> impl IntoView {
                     set_error.set(None);
                 }
                 Err(e) => set_error.set(Some(e)),
+            }
+        });
+    };
+
+    // Переключить признак «Общий доступ» у чата и перечитать список.
+    let toggle_shared = move |id: String, new_val: bool| {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Err(e) = set_chat_shared(&id, new_val).await {
+                set_error.set(Some(e));
+            } else {
+                fetch();
             }
         });
     };
@@ -126,6 +146,19 @@ pub fn LlmChatList() -> impl IntoView {
             }
         });
     };
+
+    // Ресайз колонок мышью (как в a015): вешаем хендлы на th.resizable после отрисовки,
+    // ширины сохраняются в localStorage. Инициализируем один раз.
+    let resize_initialized = StoredValue::new(false);
+    Effect::new(move |_| {
+        if !resize_initialized.get_value() {
+            resize_initialized.set_value(true);
+            wasm_bindgen_futures::spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(100).await;
+                init_column_resize(TABLE_ID, COLUMN_WIDTHS_KEY);
+            });
+        }
+    });
 
     fetch();
 
@@ -262,24 +295,34 @@ pub fn LlmChatList() -> impl IntoView {
                 })}
             </div>
 
-            <Table>
+            <div class="table-wrapper">
+            <Table attr:id=TABLE_ID attr:style="width: 100%; min-width: 1240px;">
                 <TableHeader>
                     <TableRow>
-                        <TableHeaderCell resizable=true min_width=250.0>"Название"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=200.0>"Агент"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=140.0>"Тип агента"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=150.0>"Модель"</TableHeaderCell>
-                        <TableHeaderCell min_width=100.0>"Сообщений"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=150.0>"Последнее сообщение"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=150.0>"Создан"</TableHeaderCell>
-                        <TableHeaderCell min_width=100.0>"Оценка"</TableHeaderCell>
+                        <TableHeaderCell resizable=false attr:style="width: 36px; min-width: 36px; max-width: 36px; padding-left: 8px; padding-right: 4px;">""</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=250.0 class="resizable">"Название"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=180.0 class="resizable">"Агент"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=130.0 class="resizable">"Тип агента"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">"Модель"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">"Сообщений"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">"Последнее сообщение"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">"Создан"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">"Оценка"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=110.0 class="resizable">"Общий доступ"</TableHeaderCell>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {move || items.get().into_iter().map(|item| {
+                    {move || {
+                        // Текущий пользователь (для иконки типа и прав на переключение).
+                        let auth_state = auth.get();
+                        let current_user_id = auth_state.user_info.as_ref().map(|u| u.id.clone());
+                        let is_admin = auth_state.user_info.as_ref().map(|u| u.is_admin).unwrap_or(false);
+                        items.get().into_iter().map(move |item| {
                         let id = item.id.clone();
                         let id_for_link = id.clone();
+                        let id_for_toggle = id.clone();
                         let description_for_link = item.description.clone();
+                        let title_full = item.description.clone();
 
                         let msg_count = item.message_count.unwrap_or(0);
                         let last_msg = item.last_message_at.map(|dt| {
@@ -290,13 +333,39 @@ pub fn LlmChatList() -> impl IntoView {
                             item.agent_type.as_deref().unwrap_or("business_analyst")
                         );
 
+                        // Тип чата: общий (приоритет) → свой личный → чужой личный.
+                        let is_owner = item.owner_user_id.is_some()
+                            && item.owner_user_id == current_user_id;
+                        let (chat_icon, chat_icon_title, chat_icon_color): (&str, &str, &str) =
+                            if item.is_shared {
+                                ("chat-shared", "Общий доступ", "#059669")
+                            } else if is_owner {
+                                ("chat-personal", "Ваш чат", "var(--colorBrandForeground1)")
+                            } else {
+                                ("chat-foreign", "Чужой чат", "var(--color-text-secondary, #9ca3af)")
+                            };
+                        // Переключать общий доступ может владелец чата или superadmin.
+                        let can_toggle = is_admin || is_owner;
+                        let is_shared_now = item.is_shared;
+
                         view! {
                             <TableRow>
-                                <TableCell>
+                                <TableCell attr:style="width: 36px; max-width: 36px; padding-left: 8px; padding-right: 4px;">
                                     <TableCellLayout>
+                                        <span
+                                            title=chat_icon_title
+                                            style=format!("display:inline-flex; align-items:center; color:{};", chat_icon_color)
+                                        >
+                                            {icon(chat_icon)}
+                                        </span>
+                                    </TableCellLayout>
+                                </TableCell>
+                                <TableCell>
+                                    <TableCellLayout truncate=true>
                                         <a
                                             href="#"
-                                            style="color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
+                                            title=title_full
+                                            style="display:block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: var(--colorBrandForeground1); text-decoration: none; cursor: pointer;"
                                             on:click=move |e| {
                                                 e.prevent_default();
                                                 handle_open_chat(id_for_link.clone(), description_for_link.clone());
@@ -307,35 +376,54 @@ pub fn LlmChatList() -> impl IntoView {
                                     </TableCellLayout>
                                 </TableCell>
                                 <TableCell>
-                                    <TableCellLayout>
+                                    <TableCellLayout truncate=true>
                                         {item.agent_name.clone().unwrap_or_else(|| "Неизвестный агент".to_string())}
                                     </TableCellLayout>
                                 </TableCell>
                                 <TableCell>
-                                    <TableCellLayout>
+                                    <TableCellLayout truncate=true>
                                         {agent_type_badge(&item_agent_type)}
                                     </TableCellLayout>
                                 </TableCell>
                                 <TableCell>
-                                    <TableCellLayout>{item.model_name.clone()}</TableCellLayout>
+                                    <TableCellLayout truncate=true>{item.model_name.clone()}</TableCellLayout>
                                 </TableCell>
                                 <TableCell>
-                                    <TableCellLayout>{msg_count}</TableCellLayout>
+                                    <TableCellLayout truncate=true>{msg_count}</TableCellLayout>
                                 </TableCell>
                                 <TableCell>
-                                    <TableCellLayout>{last_msg}</TableCellLayout>
+                                    <TableCellLayout truncate=true>{last_msg}</TableCellLayout>
                                 </TableCell>
                                 <TableCell>
-                                    <TableCellLayout>{created}</TableCellLayout>
+                                    <TableCellLayout truncate=true>{created}</TableCellLayout>
                                 </TableCell>
                                 <TableCell>
                                     <TableCellLayout>{rating_stars_readonly(item.rating)}</TableCellLayout>
                                 </TableCell>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        <input
+                                            type="checkbox"
+                                            prop:checked=is_shared_now
+                                            disabled=!can_toggle
+                                            title=move || if can_toggle { "Переключить общий доступ" } else { "Менять доступ может только владелец или superadmin" }
+                                            style=if can_toggle { "cursor: pointer;" } else { "cursor: not-allowed;" }
+                                            on:change=move |e| {
+                                                if can_toggle {
+                                                    let checked = event_target_checked(&e);
+                                                    toggle_shared(id_for_toggle.clone(), checked);
+                                                }
+                                            }
+                                        />
+                                    </TableCellLayout>
+                                </TableCell>
                             </TableRow>
                         }
-                    }).collect_view()}
+                    }).collect_view()
+                    }}
                 </TableBody>
             </Table>
+            </div>
         </div>
     }
 }
@@ -527,4 +615,39 @@ async fn create_chat(
         .to_string();
 
     Ok(chat_id)
+}
+
+/// Переключить признак «Общий доступ» у чата.
+/// Токен подставляется глобальным перехватчиком fetch (см. index.html).
+async fn set_chat_shared(id: &str, is_shared: bool) -> Result<(), String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/a018-llm-chat/{}/shared", api_base(), id);
+    let dto = serde_json::json!({ "is_shared": is_shared });
+    let body = wasm_bindgen::JsValue::from_str(&dto.to_string());
+    opts.set_body(&body);
+
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        if resp.status() == 403 {
+            return Err("Нет прав на изменение общего доступа этого чата".to_string());
+        }
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
 }

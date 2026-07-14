@@ -80,7 +80,7 @@ impl TaskManager for Task015KbPostManager {
                 comment: Some(format!("Служебный чат task015_kb_post для {}", edit_id)),
                 agent_id: agent.base.id.as_string(),
                 model_name: Some(agent.model_name.clone()),
-            })
+            }, None)
             .await?;
 
             let trigger = format!(

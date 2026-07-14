@@ -303,14 +303,23 @@ pub fn LlmConnectionDetails(
                                     if previous_model.trim().is_empty() || previous_model == "openai/gpt-4o" {
                                         vm.model_name.set("gpt-4o".to_string());
                                     }
+                                } else if provider == "DeepSeek" {
+                                    vm.api_endpoint.set("https://api.deepseek.com".to_string());
+                                    if previous_model.trim().is_empty()
+                                        || previous_model == "gpt-4o"
+                                        || previous_model == "openai/gpt-4o"
+                                    {
+                                        vm.model_name.set("deepseek-chat".to_string());
+                                    }
                                 }
                             }
                         >
                             <option value="OpenAI">"OpenAI"</option>
                             <option value="OpenRouter">"OpenRouter"</option>
+                            <option value="DeepSeek">"DeepSeek"</option>
                         </select>
                         <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                            "Реально поддерживаются OpenAI и OpenRouter (OpenAI-совместимый роутинг)."
+                            "Реально поддерживаются OpenAI, OpenRouter (OpenAI-совместимый роутинг) и DeepSeek."
                         </div>
                     </div>
 

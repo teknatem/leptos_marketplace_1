@@ -71,6 +71,12 @@ pub struct LlmChat {
     /// Пользовательская оценка чата (1..5; None — не оценён).
     #[serde(default)]
     pub rating: Option<i32>,
+    /// Владелец чата (user id). None — легаси-чаты, созданные до разграничения доступа.
+    #[serde(default)]
+    pub owner_user_id: Option<String>,
+    /// Общий доступ: если true, чат виден всем пользователям (а не только владельцу).
+    #[serde(default)]
+    pub is_shared: bool,
 }
 
 impl LlmChat {
@@ -80,6 +86,7 @@ impl LlmChat {
         description: String,
         agent_id: LlmAgentId,
         model_name: String,
+        owner_user_id: Option<String>,
     ) -> Self {
         let base = BaseAggregate::new(LlmChatId::new_v4(), code, description);
         Self {
@@ -87,6 +94,8 @@ impl LlmChat {
             agent_id,
             model_name,
             rating: None,
+            owner_user_id,
+            is_shared: false,
         }
     }
 
@@ -104,6 +113,8 @@ impl LlmChat {
             agent_id,
             model_name,
             rating: None,
+            owner_user_id: None,
+            is_shared: false,
         }
     }
 
@@ -411,6 +422,12 @@ pub struct LlmChatListItem {
     /// Пользовательская оценка чата (1..5; None — не оценён).
     #[serde(default)]
     pub rating: Option<i32>,
+    /// Владелец чата (user id). None — легаси-чаты без владельца.
+    #[serde(default)]
+    pub owner_user_id: Option<String>,
+    /// Общий доступ: чат виден всем пользователям.
+    #[serde(default)]
+    pub is_shared: bool,
 }
 
 impl From<LlmChat> for LlmChatListItem {
@@ -427,6 +444,8 @@ impl From<LlmChat> for LlmChatListItem {
             message_count: None,
             last_message_at: None,
             rating: chat.rating,
+            owner_user_id: chat.owner_user_id,
+            is_shared: chat.is_shared,
         }
     }
 }

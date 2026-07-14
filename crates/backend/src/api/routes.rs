@@ -45,6 +45,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a036_routes())
         .merge(a037_routes())
         .merge(a038_routes())
+        .merge(a039_routes())
         .merge(a034_routes())
         .merge(a035_routes())
         .merge(a027_routes())
@@ -783,6 +784,28 @@ fn a038_routes() -> Router {
         ))
 }
 
+fn a039_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a039-mail-message",
+            get(handlers::a039_mail_message::list_all),
+        )
+        .route(
+            "/api/a039-mail-message/list",
+            get(handlers::a039_mail_message::list_paginated),
+        )
+        .route(
+            "/api/a039-mail-message/:id",
+            get(handlers::a039_mail_message::get_by_id)
+                .delete(handlers::a039_mail_message::delete),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a039_mail_message", req, next).await
+            },
+        ))
+}
+
 /// Каталог LLM-навыков (read-only обзор реестра для UI).
 fn llm_skills_routes() -> Router {
     Router::new().route("/api/llm-skills", get(handlers::llm_skills::list))
@@ -830,6 +853,10 @@ fn a018_routes() -> Router {
         .route(
             "/api/a018-llm-chat/:id/rating",
             post(handlers::a018_llm_chat::set_rating),
+        )
+        .route(
+            "/api/a018-llm-chat/:id/shared",
+            post(handlers::a018_llm_chat::set_shared),
         )
         .route(
             "/api/a018-llm-chat/:id/upload",

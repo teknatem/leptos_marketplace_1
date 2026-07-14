@@ -32,7 +32,7 @@ impl AggregateId for LlmAgentId {
 }
 
 /// Тип/роль агента LLM — определяет набор доступных инструментов и специализацию
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentType {
     /// Бизнес-аналитик: работа с данными маркетплейсов, SQL, BI-отчёты
@@ -85,6 +85,7 @@ impl AgentType {
 pub enum LlmProviderType {
     OpenAI,
     OpenRouter,
+    DeepSeek,
     Anthropic,
     Ollama,
 }
@@ -94,6 +95,7 @@ impl LlmProviderType {
         match s {
             "OpenAI" => Ok(LlmProviderType::OpenAI),
             "OpenRouter" => Ok(LlmProviderType::OpenRouter),
+            "DeepSeek" => Ok(LlmProviderType::DeepSeek),
             "Anthropic" => Ok(LlmProviderType::Anthropic),
             "Ollama" => Ok(LlmProviderType::Ollama),
             _ => Err(format!("Unknown provider type: {}", s)),
@@ -104,6 +106,7 @@ impl LlmProviderType {
         match self {
             LlmProviderType::OpenAI => "OpenAI",
             LlmProviderType::OpenRouter => "OpenRouter",
+            LlmProviderType::DeepSeek => "DeepSeek",
             LlmProviderType::Anthropic => "Anthropic",
             LlmProviderType::Ollama => "Ollama",
         }

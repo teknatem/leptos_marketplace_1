@@ -12,6 +12,7 @@ use contracts::domain::a012_wb_sales::ENTITY_METADATA as A012;
 use contracts::domain::a013_ym_order::ENTITY_METADATA as A013;
 use contracts::domain::a017_llm_agent::ENTITY_METADATA as A017;
 use contracts::domain::a038_llm_connection::ENTITY_METADATA as A038;
+use contracts::domain::a039_mail_message::ENTITY_METADATA as A039;
 use contracts::domain::a018_llm_chat::ENTITY_METADATA as A018;
 use contracts::domain::a019_llm_artifact::ENTITY_METADATA as A019;
 use contracts::domain::a020_wb_promotion::ENTITY_METADATA as A020;
@@ -36,6 +37,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "a013_ym_order" => A013.ui.list_name,
         "a017_llm_agent" => A017.ui.list_name,
         "a038_llm_connection" => A038.ui.list_name,
+        "a039_mail_message" => A039.ui.list_name,
         "a018_llm_chat" => A018.ui.list_name,
         "llm_skills" => "Навыки LLM",
         "llm_tools" => "Инструменты LLM",

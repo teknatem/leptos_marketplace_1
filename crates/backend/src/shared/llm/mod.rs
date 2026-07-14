@@ -4,6 +4,7 @@ pub mod data_tools;
 pub mod deepseek_tools;
 pub mod kb_admin_tools;
 pub mod knowledge_base;
+pub mod mail_tools;
 pub mod metadata_registry;
 pub mod openai_provider;
 pub mod openrouter_provider;

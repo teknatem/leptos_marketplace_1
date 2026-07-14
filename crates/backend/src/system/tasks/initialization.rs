@@ -16,7 +16,8 @@ use super::{
         Task012WbAdvertCampaignsManager, Task013YmOrdersPollingManager, Task014KbAnalyzeManager,
         Task015KbPostManager, Task016KbIntakeManager, Task017WbReturnsClaimsManager,
         Task018YmReturnsManager, Task019YmPaymentReportManager, Task020WbProductSnapshotManager,
-        U501ImportUtManager, U502ImportOzonManager, U503ImportYandexManager,
+        Task021MailIntakeManager, Task022MailReplyManager, U501ImportUtManager,
+        U502ImportOzonManager, U503ImportYandexManager,
     },
     registry::{set_global_registry, TaskManagerRegistry},
     worker::ScheduledTaskWorker,
@@ -92,6 +93,10 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
 
     // ---- WB Returns Claims task manager ----
     registry.register(Task017WbReturnsClaimsManager::new(wb_executor!()));
+
+    // ---- Mail intake / reply task managers ----
+    registry.register(Task021MailIntakeManager::new());
+    registry.register(Task022MailReplyManager::new());
 
     let registry = Arc::new(registry);
     set_global_registry(Arc::clone(&registry));

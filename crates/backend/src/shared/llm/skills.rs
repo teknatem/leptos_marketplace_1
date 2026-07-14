@@ -29,6 +29,8 @@ const PROMPT_TABLE: &str =
 const PROMPT_SYS_ADMIN: &str =
     include_str!("../../domain/a018_llm_chat/prompts/system_admin_agent.md");
 const PROMPT_KB: &str = include_str!("../../domain/a018_llm_chat/prompts/kb_admin_analyze.md");
+const PROMPT_MAILBOX: &str =
+    include_str!("../../domain/a018_llm_chat/prompts/skill_mailbox.md");
 
 // ─── Core: всегда активные инструменты ───────────────────────────────────────
 
@@ -173,6 +175,15 @@ pub static SKILLS: &[Skill] = &[
         ],
     },
     Skill {
+        id: "mailbox",
+        title: "Почта",
+        description: "Чтение входящих и отправка писем от лица почтового ящика системы \
+                      (IMAP/SMTP): найти письмо, прочитать, ответить или написать новое.",
+        intents: &["mailbox"],
+        prompt: PROMPT_MAILBOX,
+        tool_names: &["list_emails", "read_email", "send_email"],
+    },
+    Skill {
         id: "kb-curation",
         title: "База знаний",
         description:
@@ -286,6 +297,7 @@ pub fn allowed_skills_for(agent_type: &AgentType) -> Vec<&'static str> {
                 "bi-authoring",
                 "chart-builder",
                 "table-builder",
+                "mailbox",
             ]
         }
         AgentType::SystemAdmin => vec!["system-admin"],
@@ -317,6 +329,7 @@ fn tool_universe() -> Vec<ToolDefinition> {
     v.extend(super::plugin_tools::plugin_tool_definitions());
     v.extend(super::chart_tools::chart_tool_definitions());
     v.extend(super::table_tools::table_tool_definitions());
+    v.extend(super::mail_tools::mail_tool_definitions());
     v.extend(meta_tool_definitions());
     v
 }
@@ -427,6 +440,7 @@ pub fn tools_catalog() -> Value {
         ("plugin", super::plugin_tools::plugin_tool_definitions()),
         ("chart", super::chart_tools::chart_tool_definitions()),
         ("table", super::table_tools::table_tool_definitions()),
+        ("mail", super::mail_tools::mail_tool_definitions()),
         ("meta", meta_tool_definitions()),
     ];
 

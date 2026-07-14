@@ -117,7 +117,7 @@
       "validation": {
         "required": true
       },
-      "ai_hint": "Реально поддерживаемые провайдеры: OpenAI (GPT), OpenRouter (кросс-вендорный OpenAI-совместимый роутинг)"
+      "ai_hint": "Реально поддерживаемые провайдеры: OpenAI (GPT), OpenRouter (кросс-вендорный OpenAI-совместимый роутинг), DeepSeek (нативный OpenAI-совместимый API)"
     },
     {
       "name": "api_endpoint",
@@ -139,7 +139,7 @@
         "pattern": "^https?://.+",
         "custom_error": "URL должен начинаться с http:// или https://"
       },
-      "ai_hint": "OpenAI: https://api.openai.com/v1, OpenRouter: https://openrouter.ai/api/v1"
+      "ai_hint": "OpenAI: https://api.openai.com/v1, OpenRouter: https://openrouter.ai/api/v1, DeepSeek: https://api.deepseek.com"
     },
     {
       "name": "api_key",
@@ -179,7 +179,7 @@
         "required": true,
         "max_length": 100
       },
-      "ai_hint": "Должна входить в allowed_models. OpenAI: gpt-4o. OpenRouter: openai/gpt-4o, anthropic/claude-sonnet-5, deepseek/deepseek-chat"
+      "ai_hint": "Должна входить в allowed_models. OpenAI: gpt-4o. OpenRouter: openai/gpt-4o, anthropic/claude-sonnet-5, deepseek/deepseek-chat. DeepSeek (нативно): deepseek-chat, deepseek-reasoner"
     },
     {
       "name": "available_models",

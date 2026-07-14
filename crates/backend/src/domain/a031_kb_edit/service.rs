@@ -87,7 +87,7 @@ pub async fn create_with_chat(
         comment: Some("Диалог по редактированию базы знаний".to_string()),
         agent_id: agent_id.as_string(),
         model_name: Some(agent.model_name.clone()),
-    })
+    }, None)
     .await?;
     let chat_id = LlmChatId::new(chat_uuid);
 

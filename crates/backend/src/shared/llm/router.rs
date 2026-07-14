@@ -21,6 +21,7 @@ pub const KNOWN_INTENTS: &[&str] = &[
     "plugin_dev",     // создание/доработка плагина
     "sys_admin",      // системная диагностика
     "kb_curation",    // работа с базой знаний
+    "mailbox",        // чтение/отправка почты
     "meta_smalltalk", // приветствие/уточнение/«что ты умеешь»
 ];
 
@@ -59,6 +60,7 @@ fn classifier_system_prompt() -> String {
          - plugin_dev: создать/доработать/протестировать плагин (JS).\n\
          - sys_admin: состояние системы, производительность, фоновые задачи, целостность данных.\n\
          - kb_curation: работа с базой знаний — прочитать/исправить статью, тикет правки.\n\
+         - mailbox: почта — прочитать входящие письма, найти письмо, ответить или отправить письмо.\n\
          - meta_smalltalk: приветствие, благодарность, «что ты умеешь», уточнение без конкретной задачи.\n\n\
          Ответь СТРОГО валидным JSON без пояснений и без markdown:\n\
          {{\"intent\": \"<один из: {}>\", \"confidence\": <число 0.0..1.0>}}",
@@ -120,6 +122,23 @@ pub async fn classify_intent(
 
 fn preview(s: &str) -> String {
     s.chars().take(120).collect()
+}
+
+/// Маппинг интента (см. `KNOWN_INTENTS`) в тип агента-исполнителя.
+/// Обратное к seed-таблице `AgentType → intent`. Используется почтовым конвейером
+/// для выбора специалиста по содержимому письма.
+pub fn intent_to_agent_type(intent: &str) -> AgentType {
+    match intent {
+        "kb_curation" => AgentType::KbAdmin,
+        "plugin_dev" => AgentType::PluginAdmin,
+        "sys_admin" => AgentType::SystemAdmin,
+        // data_query | chart_build | table_build | bi_authoring | func_help — аналитик.
+        "data_query" | "chart_build" | "table_build" | "bi_authoring" | "func_help" => {
+            AgentType::BusinessAnalyst
+        }
+        // meta_smalltalk и всё прочее — общий агент.
+        _ => AgentType::General,
+    }
 }
 
 /// Быстрая (rule-based, без LLM) классификация интента для синхронной предактивации
@@ -192,6 +211,11 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
     }
     if any(&["база знаний", "статья", "статью", "knowledge", "kb"]) {
         return IntentResult::new("kb_curation", 0.4, "rules");
+    }
+    if any(&[
+        "письм", "почт", "email", "e-mail", "mail", "входящ", "отправь письмо", "напиши письмо",
+    ]) {
+        return IntentResult::new("mailbox", 0.45, "rules");
     }
     if any(&[
         "выручк",

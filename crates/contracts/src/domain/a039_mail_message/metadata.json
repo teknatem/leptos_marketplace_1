@@ -1,0 +1,222 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "MailMessage",
+  "entity_index": "a039",
+  "collection_name": "mail_message",
+  "table_name": "a039_mail_message",
+  "ui": {
+    "element_name": "Письмо",
+    "element_name_en": "Mail Message",
+    "list_name": "Письма (журнал)",
+    "list_name_en": "Mail Log",
+    "icon": "mail"
+  },
+  "ai": {
+    "description": "Журнал входящих и исходящих писем почтового конвейера. Одна запись = одно письмо (кратко): направление, отправитель/получатель, тема, статус обработки, классифицированный интент, тип агента и ссылки на чат/сообщение/артефакт прогона. Полное тело живёт в связанном чате a018.",
+    "questions": [
+      "Какие письма пришли от пользователей?",
+      "Сколько писем обработано и отвечено?",
+      "Какие письма отклонены и почему?",
+      "Есть ли зависшие или просроченные письма?"
+    ],
+    "related": [
+      "a018_llm_chat",
+      "a038_llm_connection",
+      "a019_llm_artifact"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "MailMessageId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "label_en": "Code",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true,
+        "max_length": 80
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Тема",
+        "label_en": "Subject",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 260
+      },
+      "validation": {
+        "required": true,
+        "max_length": 255
+      }
+    },
+    {
+      "name": "comment",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Комментарий",
+        "label_en": "Comment",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": false,
+        "max_length": 1000
+      }
+    },
+    {
+      "name": "direction",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Направление",
+        "label_en": "Direction",
+        "hint": "inbound | outbound",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 110
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "inbound — входящее от пользователя; outbound — ответ системы."
+    },
+    {
+      "name": "status",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Статус",
+        "label_en": "Status",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "received | prepared | replied | rejected_unknown_sender | rejected_forbidden | failed | overdue"
+    },
+    {
+      "name": "from_addr",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "От",
+        "label_en": "From",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 200
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "to_addr",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Кому",
+        "label_en": "To",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 200
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "intent",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Интент",
+        "label_en": "Intent",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 130
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "agent_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Агент",
+        "label_en": "Agent",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 140
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "chat_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Чат",
+        "label_en": "Chat",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    }
+  ],
+
+  "access": {
+    "scope_id": "a039_mail_message",
+    "operations": [
+      { "id": "list",   "required_mode": "read" },
+      { "id": "get",    "required_mode": "read" },
+      { "id": "upsert", "required_mode": "all" },
+      { "id": "delete", "required_mode": "all" }
+    ]
+  }
+}

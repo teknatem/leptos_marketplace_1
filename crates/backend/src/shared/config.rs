@@ -4,6 +4,21 @@ use std::sync::OnceLock;
 
 static EXT_API_KEY: OnceLock<String> = OnceLock::new();
 static SCHEDULER_CONFIG_ENABLED: OnceLock<bool> = OnceLock::new();
+static MAIL_CONFIG: OnceLock<MailConfig> = OnceLock::new();
+
+/// Store the mail configuration once at application startup, so LLM mail tools
+/// (which run without access to the loaded `Config`) can read it.
+pub fn set_mail_config(cfg: MailConfig) {
+    let _ = MAIL_CONFIG.set(cfg);
+}
+
+/// Returns the configured mail settings, or a disabled default if never set.
+pub fn get_mail_config() -> &'static MailConfig {
+    static DISABLED: OnceLock<MailConfig> = OnceLock::new();
+    MAIL_CONFIG
+        .get()
+        .unwrap_or_else(|| DISABLED.get_or_init(MailConfig::default))
+}
 
 /// Set the external API key once at application startup.
 pub fn set_ext_api_key(key: String) {
@@ -58,6 +73,105 @@ pub struct Config {
     pub external_api: ExternalApiConfig,
     #[serde(default)]
     pub s3: S3Config,
+    #[serde(default)]
+    pub mail: MailConfig,
+}
+
+/// Настройки почтового ящика для LLM (приём по IMAP, отправка по SMTP).
+/// Секреты хранятся только в config.toml (в .gitignore), не в примере.
+#[derive(Debug, Deserialize, Clone)]
+pub struct MailConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_mail_imap_host")]
+    pub imap_host: String,
+    #[serde(default = "default_mail_imap_port")]
+    pub imap_port: u16,
+    #[serde(default = "default_mail_smtp_host")]
+    pub smtp_host: String,
+    #[serde(default = "default_mail_smtp_port")]
+    pub smtp_port: u16,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub from_address: String,
+    #[serde(default)]
+    pub from_name: String,
+    /// Лимит отправки: сколько писем можно отправить за окно `send_rate_window_secs`.
+    #[serde(default = "default_mail_send_rate_limit")]
+    pub send_rate_limit: usize,
+    /// Ширина окна rate-limit в секундах (по умолчанию 1 час).
+    #[serde(default = "default_mail_send_rate_window_secs")]
+    pub send_rate_window_secs: u64,
+    /// Базовый URL приложения для deep-link на чат/артефакт в ответных письмах.
+    /// Пусто — ссылка не добавляется.
+    #[serde(default)]
+    pub base_url: String,
+}
+
+impl Default for MailConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            imap_host: default_mail_imap_host(),
+            imap_port: default_mail_imap_port(),
+            smtp_host: default_mail_smtp_host(),
+            smtp_port: default_mail_smtp_port(),
+            username: String::new(),
+            password: String::new(),
+            from_address: String::new(),
+            from_name: String::new(),
+            send_rate_limit: default_mail_send_rate_limit(),
+            send_rate_window_secs: default_mail_send_rate_window_secs(),
+            base_url: String::new(),
+        }
+    }
+}
+
+impl MailConfig {
+    /// Проверяет, что почта включена и минимально сконфигурирована.
+    pub fn validate_ready(&self) -> anyhow::Result<()> {
+        if !self.enabled {
+            return Err(anyhow::anyhow!("Mail is disabled in config.toml ([mail].enabled = false)"));
+        }
+        if self.username.trim().is_empty() {
+            return Err(anyhow::anyhow!("[mail].username must be set"));
+        }
+        if self.password.trim().is_empty() {
+            return Err(anyhow::anyhow!("[mail].password must be set"));
+        }
+        Ok(())
+    }
+
+    /// Адрес отправителя: берётся from_address, иначе username.
+    pub fn sender_address(&self) -> &str {
+        if self.from_address.trim().is_empty() {
+            self.username.trim()
+        } else {
+            self.from_address.trim()
+        }
+    }
+}
+
+fn default_mail_imap_host() -> String {
+    "mail.hosting.reg.ru".to_string()
+}
+fn default_mail_imap_port() -> u16 {
+    993
+}
+fn default_mail_smtp_host() -> String {
+    "mail.hosting.reg.ru".to_string()
+}
+fn default_mail_smtp_port() -> u16 {
+    465
+}
+fn default_mail_send_rate_limit() -> usize {
+    20
+}
+fn default_mail_send_rate_window_secs() -> u64 {
+    3600
 }
 
 #[derive(Debug, Deserialize, Clone)]

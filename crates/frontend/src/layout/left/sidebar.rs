@@ -410,6 +410,12 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "plug-connected",
                 )
                 .admin_only(),
+                SidebarItem::with_scope(
+                    "a039_mail_message",
+                    tab_label_for_key("a039_mail_message"),
+                    "mail",
+                )
+                .admin_only(),
                 SidebarItem::new("llm_skills", tab_label_for_key("llm_skills"), "list")
                     .admin_only(),
                 SidebarItem::new("llm_tools", tab_label_for_key("llm_tools"), "wrench")

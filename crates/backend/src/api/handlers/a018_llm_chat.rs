@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::domain::a018_llm_chat;
 use crate::domain::a018_llm_chat::job_store::{self, LlmJobStatus};
+use crate::system::auth::extractor::CurrentUser;
 use contracts::domain::a018_llm_chat::aggregate::{
     LlmChat, LlmChatDetail, LlmChatListItem, LlmChatMessage, ToolTraceEntry,
 };
@@ -38,8 +39,10 @@ pub async fn list_all() -> Result<Json<Vec<LlmChat>>, axum::http::StatusCode> {
 }
 
 /// GET /api/a018-llm-chat/with-stats
-pub async fn list_with_stats() -> Result<Json<Vec<LlmChatListItem>>, axum::http::StatusCode> {
-    match a018_llm_chat::service::list_with_stats().await {
+pub async fn list_with_stats(
+    CurrentUser(claims): CurrentUser,
+) -> Result<Json<Vec<LlmChatListItem>>, axum::http::StatusCode> {
+    match a018_llm_chat::service::list_with_stats(&claims.sub, claims.is_admin).await {
         Ok(v) => Ok(Json(v)),
         Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -92,6 +95,7 @@ pub async fn delete(Path(id): Path<String>) -> Result<(), axum::http::StatusCode
 
 /// POST /api/a018-llm-chat
 pub async fn upsert(
+    CurrentUser(claims): CurrentUser,
     Json(dto): Json<a018_llm_chat::service::LlmChatDto>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
     if dto.id.is_some() {
@@ -104,8 +108,8 @@ pub async fn upsert(
             }
         }
     } else {
-        // Create
-        match a018_llm_chat::service::create(dto).await {
+        // Create — владелец = текущий пользователь.
+        match a018_llm_chat::service::create(dto, Some(claims.sub)).await {
             Ok(id) => Ok(Json(json!({"success": true, "id": id.to_string()}))),
             Err(e) => {
                 tracing::error!("Failed to create LLM chat: {}", e);
@@ -152,6 +156,29 @@ pub async fn set_rating(
         Err(e) => {
             tracing::warn!("set_rating failed for chat {}: {}", id, e);
             Err(axum::http::StatusCode::BAD_REQUEST)
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SetSharedRequest {
+    pub is_shared: bool,
+}
+
+/// POST /api/a018-llm-chat/:id/shared
+/// Переключить признак «Общий доступ». Разрешено владельцу чата или superadmin.
+pub async fn set_shared(
+    CurrentUser(claims): CurrentUser,
+    Path(id): Path<String>,
+    Json(payload): Json<SetSharedRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    match a018_llm_chat::service::set_shared(&id, payload.is_shared, &claims.sub, claims.is_admin)
+        .await
+    {
+        Ok(()) => Ok(Json(json!({ "success": true }))),
+        Err(e) => {
+            tracing::warn!("set_shared failed for chat {}: {}", id, e);
+            Err(axum::http::StatusCode::FORBIDDEN)
         }
     }
 }

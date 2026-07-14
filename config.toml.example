@@ -64,3 +64,28 @@ bucket = ""
 access_key_id = ""
 secret_access_key = ""
 max_upload_mb = 512
+
+[mail]
+# Почтовый ящик для LLM: приём (IMAP) и отправка (SMTP). Домен xmx.ru на reg.ru.
+# Секреты (password) держи только в config.toml — он в .gitignore.
+enabled = false
+# Приём (IMAP over SSL, порт 993). Для reg.ru shared-хостинга это mail.hosting.reg.ru
+# (у mail.<домен> TLS-сертификат не совпадает по имени — не используй его как хост).
+imap_host = "mail.hosting.reg.ru"
+imap_port = 993
+# Отправка (SMTP over implicit SSL, порт 465; для STARTTLS используй 587).
+smtp_host = "mail.hosting.reg.ru"
+smtp_port = 465
+# Учётные данные ящика (полный адрес как логин).
+username = "bot@xmx.ru"
+password = ""
+# Адрес и имя в поле From (если пусто — берётся username).
+from_address = "bot@xmx.ru"
+from_name = "XMX Bot"
+# Rate-limit отправки: не более send_rate_limit писем за send_rate_window_secs секунд.
+# 0 отключает ограничение. Приём/отправка в любом случае разрешены только на
+# email-адреса зарегистрированных активных пользователей (таблица sys_users).
+send_rate_limit = 20
+send_rate_window_secs = 3600
+# Базовый URL приложения для ссылки на чат/артефакт в ответных письмах (пусто — без ссылки).
+base_url = ""

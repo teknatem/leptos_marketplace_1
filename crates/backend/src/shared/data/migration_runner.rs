@@ -303,12 +303,12 @@ async fn ensure_llm_chat_agent_fk_to_a038(pool: &SqlitePool) -> anyhow::Result<(
                 comment TEXT, agent_id TEXT NOT NULL, is_deleted INTEGER NOT NULL DEFAULT 0, \
                 is_posted INTEGER NOT NULL DEFAULT 0, created_at TEXT, updated_at TEXT, \
                 version INTEGER NOT NULL DEFAULT 1, model_name TEXT NOT NULL DEFAULT 'gpt-4o', \
-                rating INTEGER, \
+                rating INTEGER, owner_user_id TEXT, is_shared INTEGER NOT NULL DEFAULT 0, \
                 FOREIGN KEY (agent_id) REFERENCES a038_llm_connection(id));\n\
              INSERT INTO a018_llm_chat_new (id, code, description, comment, agent_id, is_deleted, \
-                is_posted, created_at, updated_at, version, model_name, rating) \
+                is_posted, created_at, updated_at, version, model_name, rating, owner_user_id, is_shared) \
                 SELECT id, code, description, comment, agent_id, is_deleted, is_posted, \
-                created_at, updated_at, version, model_name, rating FROM a018_llm_chat;\n\
+                created_at, updated_at, version, model_name, rating, owner_user_id, is_shared FROM a018_llm_chat;\n\
              DROP TABLE a018_llm_chat;\n\
              ALTER TABLE a018_llm_chat_new RENAME TO a018_llm_chat;\n\
              CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_code ON a018_llm_chat(code);\n\
