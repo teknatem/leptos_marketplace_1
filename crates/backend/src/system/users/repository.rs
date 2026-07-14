@@ -138,6 +138,62 @@ pub async fn list_all() -> Result<Vec<User>> {
     Ok(users)
 }
 
+/// Email'ы активных пользователей (нормализованные: trim + lowercase, без пустых).
+/// Используется почтовой подсистемой: приём/отправка разрешены только на эти адреса.
+pub async fn list_active_emails() -> Result<Vec<String>> {
+    use crate::shared::data::db::get_connection;
+
+    let conn = get_connection();
+
+    let rows = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT email FROM sys_users \
+             WHERE is_active = 1 AND email IS NOT NULL AND TRIM(email) <> ''"
+                .to_string(),
+        ))
+        .await?;
+
+    let mut emails = Vec::with_capacity(rows.len());
+    for row in rows {
+        if let Ok(Some(email)) = row.try_get::<Option<String>>("", "email") {
+            let norm = email.trim().to_lowercase();
+            if !norm.is_empty() {
+                emails.push(norm);
+            }
+        }
+    }
+
+    Ok(emails)
+}
+
+/// Найти активного пользователя по email (регистронезависимо, trim).
+/// Используется почтовым конвейером для привязки письма к пользователю.
+pub async fn find_active_by_email(email: &str) -> Result<Option<User>> {
+    use crate::shared::data::db::get_connection;
+
+    let norm = email.trim().to_lowercase();
+    if norm.is_empty() {
+        return Ok(None);
+    }
+
+    let conn = get_connection();
+    let result = conn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT id, username, email, full_name, is_active, is_admin, primary_role_code, created_at, updated_at, last_login_at, created_by \
+             FROM sys_users \
+             WHERE is_active = 1 AND LOWER(TRIM(email)) = ? LIMIT 1",
+            [norm.into()],
+        ))
+        .await?;
+
+    match result {
+        Some(row) => Ok(Some(row_to_user(&row)?)),
+        None => Ok(None),
+    }
+}
+
 /// Update user
 pub async fn update(user: &User) -> Result<()> {
     use crate::shared::data::db::get_connection;

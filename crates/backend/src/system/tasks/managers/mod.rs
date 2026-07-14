@@ -24,6 +24,8 @@ pub mod task017_wb_returns_claims;
 pub mod task018_ym_returns;
 pub mod task019_ym_payment_report;
 pub mod task020_wb_product_snapshot;
+pub mod task021_mail_intake;
+pub mod task022_mail_reply;
 
 pub use u501_import_ut::U501ImportUtManager;
 pub use u502_import_ozon::U502ImportOzonManager;
@@ -49,3 +51,5 @@ pub use task017_wb_returns_claims::Task017WbReturnsClaimsManager;
 pub use task018_ym_returns::Task018YmReturnsManager;
 pub use task019_ym_payment_report::Task019YmPaymentReportManager;
 pub use task020_wb_product_snapshot::Task020WbProductSnapshotManager;
+pub use task021_mail_intake::Task021MailIntakeManager;
+pub use task022_mail_reply::Task022MailReplyManager;

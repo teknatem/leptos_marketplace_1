@@ -9,6 +9,7 @@ use super::chart_tools::{execute_chart_tool, CHART_TOOL_NAMES};
 use super::data_tools::{execute_data_tool, DATA_TOOL_NAMES};
 use super::kb_admin_tools::execute_kb_admin_tool;
 use super::knowledge_base::KNOWLEDGE_BASE;
+use super::mail_tools::{execute_mail_tool, MAIL_TOOL_NAMES};
 use super::metadata_registry::METADATA_REGISTRY;
 use super::plugin_tools::{execute_plugin_tool, PLUGIN_TOOL_NAMES};
 use super::table_tools::{execute_build_table, execute_table_tool, TABLE_TOOL_NAMES};
@@ -409,6 +410,22 @@ pub async fn execute_tool_call(
     // Table builder tools — dispatch to table_tools module (заготовки, без БД)
     if TABLE_TOOL_NAMES.contains(&call.name.as_str()) {
         let result = execute_table_tool(&call.name, &call.arguments);
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    // Mail tools (IMAP/SMTP) — dispatch to mail_tools module
+    if MAIL_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result = execute_mail_tool(&call.name, &call.arguments).await;
         let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {

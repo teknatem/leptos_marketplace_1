@@ -37,6 +37,7 @@ pub mod a035_ym_settlement_recon;
 pub mod a036_wb_sales_funnel_daily;
 pub mod a037_wb_product_snapshot;
 pub mod a038_llm_connection;
+pub mod a039_mail_message;
 
 // Projection handlers (p900-p908)
 pub mod p900_mp_sales_register;

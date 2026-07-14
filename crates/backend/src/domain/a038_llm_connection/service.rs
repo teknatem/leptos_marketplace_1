@@ -148,3 +148,57 @@ pub async fn list_paginated(
 pub async fn get_primary() -> anyhow::Result<Option<LlmConnection>> {
     repository::find_primary().await
 }
+
+/// Первое подключение указанного типа агента.
+pub async fn find_by_agent_type(
+    agent_type: &AgentType,
+) -> anyhow::Result<Option<LlmConnection>> {
+    repository::find_by_agent_type(agent_type.as_str()).await
+}
+
+/// Вернуть подключение нужного типа агента; если его нет — клонировать основное
+/// (или первое доступное) в новое подключение с этим типом. Используется почтовым
+/// конвейером для маршрутизации письма к нужному специалисту. Обобщает
+/// `a031_kb_edit::service::ensure_kb_admin_agent`, но работает над a038 —
+/// именно против него чат a018 резолвит `agent_id`.
+pub async fn ensure_connection_for(agent_type: AgentType) -> anyhow::Result<LlmConnection> {
+    if let Some(c) = repository::find_by_agent_type(agent_type.as_str()).await? {
+        return Ok(c);
+    }
+
+    let source = match repository::find_primary().await? {
+        Some(c) => c,
+        None => repository::list_all()
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                anyhow::anyhow!("Нет ни одного LLM-подключения (a038). Настройте подключение.")
+            })?,
+    };
+
+    let mut c = LlmConnection::new_for_insert(
+        format!("conn-{}", agent_type.as_str()),
+        format!("{} (авто)", agent_type.display_name()),
+        source.provider_type.clone(),
+        source.api_endpoint.clone(),
+        source.api_key.clone(),
+        source.model_name.clone(),
+        source.temperature,
+        source.max_tokens,
+        None,
+        false,
+        source.available_models.clone(),
+        source.allowed_models.clone(),
+    );
+    c.agent_type = agent_type;
+    c.base.comment = Some(format!(
+        "Создано автоматически для почтового конвейера на основе '{}'.",
+        source.base.description
+    ));
+    c.validate()
+        .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
+    c.before_write();
+    repository::insert(&c).await?;
+    Ok(c)
+}

@@ -36,6 +36,7 @@ use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::domain::a017_llm_agent::ui::list::LlmAgentList;
 use crate::domain::a038_llm_connection::ui::details::LlmConnectionDetails;
 use crate::domain::a038_llm_connection::ui::list::LlmConnectionList;
+use crate::domain::a039_mail_message::ui::list::MailMessageList;
 use crate::domain::a018_llm_chat::ui::context_details::LlmContextDetails;
 use crate::domain::a018_llm_chat::ui::details::LlmChatDetails;
 use crate::domain::a018_llm_chat::ui::list::LlmChatList;
@@ -707,6 +708,9 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
 
         // a017: LLM Agents
         "a017_llm_agent" => view! { <LlmAgentList /> }.into_any(),
+
+        // a039: Mail message log (журнал писем, read-only)
+        "a039_mail_message" => view! { <MailMessageList /> }.into_any(),
 
         // a038: LLM Connections (подключения)
         "a038_llm_connection" => view! { <LlmConnectionList /> }.into_any(),

@@ -33,6 +33,8 @@ mod chat {
         pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
         pub version: i32,
         pub rating: Option<i32>,
+        pub owner_user_id: Option<String>,
+        pub is_shared: bool,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -187,6 +189,8 @@ impl From<chat::Model> for LlmChat {
             agent_id: LlmAgentId::new(agent_uuid),
             model_name: m.model_name,
             rating: m.rating,
+            owner_user_id: m.owner_user_id,
+            is_shared: m.is_shared,
         }
     }
 }
@@ -292,12 +296,32 @@ struct ChatWithStats {
     message_count: Option<i64>,
     last_message_at: Option<String>,
     rating: Option<i32>,
+    owner_user_id: Option<String>,
+    is_shared: bool,
 }
 
-/// Получить список чатов с подсчетом сообщений и временем последнего сообщения
-pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListItem>, DbErr> {
-    let sql = r#"
-        SELECT 
+/// Получить список чатов с подсчетом сообщений и временем последнего сообщения.
+///
+/// Разграничение доступа: `is_admin` (superadmin) видит все чаты; обычный пользователь —
+/// только свои (`owner_user_id = viewer_id`) и помеченные общим доступом (`is_shared = 1`).
+pub async fn list_with_stats(
+    db: &DatabaseConnection,
+    viewer_id: &str,
+    is_admin: bool,
+) -> Result<Vec<LlmChatListItem>, DbErr> {
+    // Для админа — без фильтра по владельцу; для остального — свои + общие.
+    let (access_filter, values) = if is_admin {
+        (String::new(), vec![])
+    } else {
+        (
+            " AND (c.owner_user_id = ? OR c.is_shared = 1)".to_string(),
+            vec![sea_orm::Value::from(viewer_id.to_string())],
+        )
+    };
+
+    let sql = format!(
+        r#"
+        SELECT
             c.id,
             c.code,
             c.description,
@@ -307,20 +331,23 @@ pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListI
             c.model_name,
             c.created_at,
             c.rating,
+            c.owner_user_id,
+            c.is_shared,
             COUNT(m.id) as message_count,
             MAX(m.created_at) as last_message_at
         FROM a018_llm_chat c
         LEFT JOIN a038_llm_connection a ON c.agent_id = a.id
         LEFT JOIN a018_llm_chat_message m ON c.id = m.chat_id
-        WHERE c.is_deleted = 0
-        GROUP BY c.id, c.code, c.description, c.agent_id, a.description, a.agent_type, c.model_name, c.created_at, c.rating
+        WHERE c.is_deleted = 0{access_filter}
+        GROUP BY c.id, c.code, c.description, c.agent_id, a.description, a.agent_type, c.model_name, c.created_at, c.rating, c.owner_user_id, c.is_shared
         ORDER BY c.created_at DESC
-    "#;
+    "#
+    );
 
     let results = ChatWithStats::find_by_statement(sea_orm::Statement::from_sql_and_values(
         db.get_database_backend(),
-        sql,
-        vec![],
+        &sql,
+        values,
     ))
     .all(db)
     .await?;
@@ -346,6 +373,8 @@ pub async fn list_with_stats(db: &DatabaseConnection) -> Result<Vec<LlmChatListI
                 message_count: r.message_count,
                 last_message_at,
                 rating: r.rating,
+                owner_user_id: r.owner_user_id,
+                is_shared: r.is_shared,
             }
         })
         .collect())
@@ -373,6 +402,8 @@ pub async fn insert(db: &DatabaseConnection, chat: &LlmChat) -> Result<(), DbErr
         updated_at: Set(Some(now)),
         version: Set(1),
         rating: Set(chat.rating),
+        owner_user_id: Set(chat.owner_user_id.clone()),
+        is_shared: Set(chat.is_shared),
     };
 
     active_model.insert(db).await?;
@@ -395,6 +426,8 @@ pub async fn update(db: &DatabaseConnection, chat: &LlmChat) -> Result<(), DbErr
         updated_at: Set(Some(now)),
         version: Set(chat.base.metadata.version + 1),
         rating: Set(chat.rating),
+        owner_user_id: Set(chat.owner_user_id.clone()),
+        is_shared: Set(chat.is_shared),
     };
 
     chat::Entity::update(active_model).exec(db).await?;

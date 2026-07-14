@@ -173,6 +173,16 @@ pub async fn find_by_id(id: &str) -> anyhow::Result<Option<LlmConnection>> {
     Ok(model.map(Into::into))
 }
 
+/// Первое подключение с указанным типом агента (для маршрутизации почтового конвейера).
+pub async fn find_by_agent_type(agent_type: &str) -> anyhow::Result<Option<LlmConnection>> {
+    let model = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::AgentType.eq(agent_type))
+        .one(conn())
+        .await?;
+    Ok(model.map(Into::into))
+}
+
 pub async fn find_primary() -> anyhow::Result<Option<LlmConnection>> {
     let model = Entity::find()
         .filter(Column::IsDeleted.eq(false))

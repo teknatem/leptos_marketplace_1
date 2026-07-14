@@ -380,7 +380,8 @@ impl OpenAiProvider {
             || model_id.starts_with("gpt-3.5")
             || model_id.starts_with("o1-")
             || model_id.starts_with("o3-")
-            || model_id.starts_with("chatgpt-");
+            || model_id.starts_with("chatgpt-")
+            || model_id.starts_with("deepseek"); // deepseek-chat / deepseek-reasoner
 
         // Исключаем специализированные модели
         let is_excluded = model_id.starts_with("text-embedding-")

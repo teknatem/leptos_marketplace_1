@@ -106,6 +106,19 @@ async fn main() -> anyhow::Result<()> {
                 println!("✓ External API: enabled (X-Api-Key configured)\n");
             }
             shared::config::set_scheduler_config_enabled(cfg.scheduled_tasks.enabled);
+            shared::config::set_mail_config(cfg.mail.clone());
+            if cfg.mail.enabled {
+                println!(
+                    "✓ Mail: enabled (IMAP {}:{}, SMTP {}:{}, user {})\n",
+                    cfg.mail.imap_host,
+                    cfg.mail.imap_port,
+                    cfg.mail.smtp_host,
+                    cfg.mail.smtp_port,
+                    cfg.mail.username
+                );
+            } else {
+                println!("⚠  Mail: disabled ([mail].enabled not set in config.toml)\n");
+            }
             cfg.scheduled_tasks.enabled
         }
         Err(e) => {

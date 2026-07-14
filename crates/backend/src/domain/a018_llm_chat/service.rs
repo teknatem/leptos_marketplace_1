@@ -64,8 +64,9 @@ pub struct SendMessageRequest {
     pub request_id: Option<String>,
 }
 
-/// Создание нового чата
-pub async fn create(dto: LlmChatDto) -> anyhow::Result<Uuid> {
+/// Создание нового чата. `owner_user_id` — текущий пользователь (владелец чата);
+/// `None` для системных чатов (планировщик/автоматика), которые не привязаны к пользователю.
+pub async fn create(dto: LlmChatDto, owner_user_id: Option<String>) -> anyhow::Result<Uuid> {
     let code = dto
         .code
         .clone()
@@ -85,7 +86,8 @@ pub async fn create(dto: LlmChatDto) -> anyhow::Result<Uuid> {
     // Используем модель из DTO или дефолтную из агента
     let model_name = dto.model_name.unwrap_or_else(|| agent.model_name.clone());
 
-    let mut aggregate = LlmChat::new_for_insert(code, dto.description, agent_id, model_name);
+    let mut aggregate =
+        LlmChat::new_for_insert(code, dto.description, agent_id, model_name, owner_user_id);
 
     // Валидация
     aggregate
@@ -218,11 +220,43 @@ pub async fn list_paginated(page: u64, page_size: u64) -> anyhow::Result<(Vec<Ll
     Ok((chats, total))
 }
 
-/// Получить список чатов с подсчетом сообщений и временем последнего сообщения
-pub async fn list_with_stats() -> anyhow::Result<Vec<LlmChatListItem>> {
+/// Получить список чатов с подсчетом сообщений и временем последнего сообщения.
+/// Фильтрация по доступу: `is_admin` видит все, обычный пользователь — свои + общие.
+pub async fn list_with_stats(
+    viewer_id: &str,
+    is_admin: bool,
+) -> anyhow::Result<Vec<LlmChatListItem>> {
     let db = crate::shared::data::db::get_connection();
-    let chats = repository::list_with_stats(&db).await?;
+    let chats = repository::list_with_stats(&db, viewer_id, is_admin).await?;
     Ok(chats)
+}
+
+/// Установить признак «Общий доступ» у чата.
+/// Менять статус может только владелец чата или superadmin (`is_admin`).
+pub async fn set_shared(
+    id: &str,
+    is_shared: bool,
+    requester_id: &str,
+    is_admin: bool,
+) -> anyhow::Result<()> {
+    let chat_uuid = Uuid::parse_str(id).map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
+    let chat_id = LlmChatId::new(chat_uuid);
+
+    let db = crate::shared::data::db::get_connection();
+    let mut aggregate = repository::find_by_id(&db, &chat_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Chat not found"))?;
+
+    // Ownership-guard: только владелец или админ.
+    if !is_admin && aggregate.owner_user_id.as_deref() != Some(requester_id) {
+        return Err(anyhow::anyhow!("Forbidden: not the owner of this chat"));
+    }
+
+    aggregate.is_shared = is_shared;
+    aggregate.before_write();
+    repository::update(&db, &aggregate).await?;
+
+    Ok(())
 }
 
 /// Получить все сообщения чата

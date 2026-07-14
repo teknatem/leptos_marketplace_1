@@ -25,6 +25,7 @@ pub const MANAGER_GRANTS: &[(&str, &str)] = &[
     ("a016_ym_returns", "all"),
     ("a017_llm_agent", "all"),
     ("a038_llm_connection", "all"),
+    ("a039_mail_message", "all"),
     ("a018_llm_chat", "all"),
     ("a019_llm_artifact", "all"),
     ("a020_wb_promotion", "all"),
@@ -96,7 +97,11 @@ pub const OPERATOR_GRANTS: &[(&str, &str)] = &[
     ("a016_ym_returns", "all"),
     ("a017_llm_agent", "read"),
     ("a038_llm_connection", "read"),
+    ("a039_mail_message", "read"),
     ("a018_llm_chat", "all"),
+    // Артефакты — прямой результат чата (SQL/отчёты, встроенные в сообщения); нужен
+    // для загрузки карточек артефактов и работы со страницей артефакта.
+    ("a019_llm_artifact", "all"),
     ("a020_wb_promotion", "all"),
     ("a024_bi_indicator", "read"),
     ("a025_bi_dashboard", "all"),
@@ -175,5 +180,7 @@ mod tests {
         assert!(OPERATOR_GRANTS.contains(&("a018_llm_chat", "all")));
         assert!(OPERATOR_GRANTS.contains(&("a017_llm_agent", "read")));
         assert!(!OPERATOR_GRANTS.contains(&("a017_llm_agent", "all")));
+        // Артефакты чата должны быть доступны, иначе карточки артефактов отдают 403.
+        assert!(OPERATOR_GRANTS.contains(&("a019_llm_artifact", "all")));
     }
 }

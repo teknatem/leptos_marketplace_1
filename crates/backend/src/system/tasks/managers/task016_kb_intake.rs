@@ -113,7 +113,7 @@ impl TaskManager for Task016KbIntakeManager {
             comment: Some("Служебный чат task016_kb_intake".to_string()),
             agent_id: agent.base.id.as_string(),
             model_name: Some(agent.model_name.clone()),
-        })
+        }, None)
         .await?;
 
         let trigger = format!(

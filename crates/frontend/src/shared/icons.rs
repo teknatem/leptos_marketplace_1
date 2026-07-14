@@ -76,6 +76,30 @@ pub fn icon(name: &str) -> AnyView {
                 <circle cx="12" cy="7" r="4"/>
             </svg>
         }.into_any(),
+        // Свой личный чат — один человек.
+        "chat-personal" => view! {
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+            </svg>
+        }.into_any(),
+        // Общий доступ — глобус (виден всем).
+        "chat-shared" => view! {
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M2 12h20"/>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+        }.into_any(),
+        // Чужой личный чат — человек с замком (недоступен для правки другими).
+        "chat-foreign" => view! {
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/>
+                <circle cx="8" cy="7" r="4"/>
+                <rect x="15" y="13" width="7" height="6" rx="1"/>
+                <path d="M16.5 13v-1.5a1.5 1.5 0 0 1 3 0V13"/>
+            </svg>
+        }.into_any(),
         "folder-open" => view! {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
                 <path d="M19.9 9.1c-.1-.1-.2-.1-.4-.1H4.5c-.2 0-.3 0-.4.1-.1.1-.1.2-.1.4v9c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-9c0-.2 0-.3-.1-.4z" opacity="0.9"/>
@@ -649,6 +673,14 @@ pub fn icon(name: &str) -> AnyView {
         "paperclip" | "attach" => view! {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+        }.into_any(),
+
+        // Lucide mail — конверт.
+        "mail" => view! {
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
             </svg>
         }.into_any(),
 
