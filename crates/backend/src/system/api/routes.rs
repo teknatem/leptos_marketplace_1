@@ -122,6 +122,25 @@ pub fn configure_system_routes() -> Router {
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
         )
         // ========================================
+        // EXTERNAL API TRAFFIC STATS (вкладка «Внешний API» на sys_tasks)
+        // admin-only: строки содержат IP и query-строки потребителей
+        // ========================================
+        .route(
+            "/api/sys/ext-api/history",
+            get(handlers::ext_api_log::ext_api_history)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/ext-api/summary",
+            get(handlers::ext_api_log::ext_api_summary)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        .route(
+            "/api/sys/ext-api/recent",
+            get(handlers::ext_api_log::ext_api_recent)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
+        // ========================================
         // SYSTEM TASKS (sys_tasks) ROUTES
         // ========================================
         .route(

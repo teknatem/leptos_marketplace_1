@@ -5,7 +5,7 @@ use uuid::Uuid;
 use super::repository;
 pub use repository::{
     FunnelProductMetrics, WbSalesFunnelDailyListQuery, WbSalesFunnelDailyListResult,
-    WbSalesFunnelDailyListRow,
+    WbSalesFunnelDailyListRow, WbSalesFunnelExportRow,
 };
 
 pub async fn replace_for_period(
@@ -25,6 +25,12 @@ pub async fn list_paginated(
     query: WbSalesFunnelDailyListQuery,
 ) -> Result<WbSalesFunnelDailyListResult> {
     repository::list_sql(query).await
+}
+
+pub async fn export_rows(
+    query: WbSalesFunnelDailyListQuery,
+) -> Result<Vec<WbSalesFunnelExportRow>> {
+    repository::export_rows(query).await
 }
 
 pub async fn product_metrics_sum(

@@ -1,5 +1,8 @@
 use crate::shared::api_utils::api_base;
 use crate::system::auth::storage;
+use contracts::system::ext_api_log::{
+    ExtApiHistoryResponse, ExtApiLogListResponse, ExtApiMetric, ExtApiScale, ExtApiSummaryResponse,
+};
 use contracts::system::tasks::history::{TaskHistoryMetric, TaskHistoryResponse, TaskHistoryScale};
 use contracts::system::tasks::metadata::TaskMetadataDto;
 use contracts::system::tasks::progress::TaskProgressResponse;
@@ -32,6 +35,87 @@ fn history_metric_param(metric: TaskHistoryMetric) -> &'static str {
         TaskHistoryMetric::RequestCount => "request_count",
         TaskHistoryMetric::TrafficBytes => "traffic_bytes",
     }
+}
+
+fn ext_api_scale_param(scale: ExtApiScale) -> &'static str {
+    match scale {
+        ExtApiScale::Day => "day",
+        ExtApiScale::Week => "week",
+        ExtApiScale::Month => "month",
+    }
+}
+
+fn ext_api_metric_param(metric: ExtApiMetric) -> &'static str {
+    match metric {
+        ExtApiMetric::RequestCount => "request_count",
+        ExtApiMetric::TrafficBytes => "traffic_bytes",
+        ExtApiMetric::AvgDurationMs => "avg_duration_ms",
+        ExtApiMetric::ErrorCount => "error_count",
+    }
+}
+
+/// GET-запрос с авторизацией и разбором JSON — общая обвязка для вкладки «Внешний API».
+async fn get_json<T: serde::de::DeserializeOwned>(url: String, what: &str) -> Result<T, String> {
+    let auth_header = get_auth_header().ok_or("Not authenticated")?;
+    let response = Request::get(&url)
+        .header("Authorization", &auth_header)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send request: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!("Failed to fetch {}: {}", what, response.status()));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))
+}
+
+/// Временной ряд по входящим вызовам внешнего API.
+pub async fn fetch_ext_api_history(
+    scale: ExtApiScale,
+    metric: ExtApiMetric,
+    date_from: &str,
+) -> Result<ExtApiHistoryResponse, String> {
+    get_json(
+        format!(
+            "{}/api/sys/ext-api/history?scale={}&metric={}&date_from={}",
+            api_base(),
+            ext_api_scale_param(scale),
+            ext_api_metric_param(metric),
+            date_from
+        ),
+        "ext api history",
+    )
+    .await
+}
+
+/// Сводка внешнего API за период: по эндпоинтам и по потребителям.
+pub async fn fetch_ext_api_summary(
+    scale: ExtApiScale,
+    date_from: &str,
+) -> Result<ExtApiSummaryResponse, String> {
+    get_json(
+        format!(
+            "{}/api/sys/ext-api/summary?scale={}&date_from={}",
+            api_base(),
+            ext_api_scale_param(scale),
+            date_from
+        ),
+        "ext api summary",
+    )
+    .await
+}
+
+/// Последние вызовы внешнего API.
+pub async fn fetch_ext_api_recent(limit: u32) -> Result<ExtApiLogListResponse, String> {
+    get_json(
+        format!("{}/api/sys/ext-api/recent?limit={}", api_base(), limit),
+        "ext api recent calls",
+    )
+    .await
 }
 
 /// Fetch all scheduled tasks

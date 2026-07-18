@@ -9,6 +9,7 @@ use crate::shared::date_utils::{
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator, sort_list, Sortable};
 use crate::system::tasks::api::{self, RunTaskNowOutcome};
+use crate::system::tasks::ui::ext_api::ExtApiView;
 use crate::system::tasks::ui::history::TaskHistoryView;
 use chrono::Utc;
 use contracts::system::tasks::progress::{task_progress_detail_caption_ru, TaskProgressResponse};
@@ -115,6 +116,12 @@ fn live_progress_caption(p: &TaskProgressResponse) -> String {
 }
 
 /// Converts a 5-, 6- (sec + standard), or 7-field cron to a short Russian description.
+/// Разбирает поле часа как список ("3" | "3,15"). None — если это диапазон/шаг
+/// или что-то непарсящееся, тогда вызывающий показывает cron как есть.
+fn parse_hour_list(hour: &str) -> Option<Vec<u8>> {
+    hour.split(',').map(|h| h.trim().parse::<u8>().ok()).collect()
+}
+
 fn describe_cron(cron: &str) -> String {
     let cron = cron.trim();
     if cron.is_empty() {
@@ -162,17 +169,23 @@ fn describe_cron(cron: &str) -> String {
         return "Каждый час".to_string();
     }
 
-    // Daily at HH:MM
+    // Daily at HH:MM — hour may be a list ("3,15" → «Ежедневно 03:00, 15:00»)
     if day == "*" && weekday == "*" && !minute.contains('*') && !hour.contains('*') {
-        let h: u8 = hour.parse().unwrap_or(0);
-        let m: u8 = minute.parse().unwrap_or(0);
-        return format!("Ежедневно {:02}:{:02}", h, m);
+        if let (Ok(m), Some(hours)) = (minute.parse::<u8>(), parse_hour_list(hour)) {
+            let times: Vec<String> = hours
+                .iter()
+                .map(|h| format!("{:02}:{:02}", h, m))
+                .collect();
+            return format!("Ежедневно {}", times.join(", "));
+        }
+        return cron.to_string();
     }
 
     // Weekly on weekday
     if day == "*" && !weekday.contains('*') && !minute.contains('*') && !hour.contains('*') {
-        let h: u8 = hour.parse().unwrap_or(0);
-        let m: u8 = minute.parse().unwrap_or(0);
+        let (Ok(h), Ok(m)) = (hour.parse::<u8>(), minute.parse::<u8>()) else {
+            return cron.to_string();
+        };
         let day_name = match weekday {
             "0" | "7" => "вс",
             "1" => "пн",
@@ -720,9 +733,19 @@ pub fn ScheduledTaskList() -> impl IntoView {
 
     // Фоновый поллинг живой памяти — всегда, независимо от активной вкладки.
     // Нужен чтобы счётчик в ярлыке «Активные задачи (N)» обновлялся на любой вкладке.
+    //
+    // Цикл обязан умирать вместе с компонентом: без этого каждое открытие вкладки
+    // «Регламентные задания» плодило бы новый вечный цикл, и они копились бы,
+    // продолжая долбить API до перезагрузки страницы.
+    let poll_alive = StoredValue::new(true);
+    on_cleanup(move || poll_alive.set_value(false));
     spawn_local(async move {
         loop {
             TimeoutFuture::new(LIVE_MEMORY_POLL_MS).await;
+            // None — владелец уже уничтожен вместе со StoredValue.
+            if poll_alive.try_get_value() != Some(true) {
+                break;
+            }
             match api::get_active_runs_with_progress().await {
                 Ok(resp) => set_live_memory_items.set(resp.items),
                 Err(e) => log!("Live memory background poll failed: {}", e),
@@ -907,6 +930,7 @@ pub fn ScheduledTaskList() -> impl IntoView {
                     </Tab>
                     <Tab value="monitoring".to_string()>"Мониторинг"</Tab>
                     <Tab value="history".to_string()>"История"</Tab>
+                    <Tab value="ext_api".to_string()>"Внешний API"</Tab>
                 </TabList>
             </div>
 
@@ -1282,10 +1306,10 @@ pub fn ScheduledTaskList() -> impl IntoView {
                                                         <TableHeaderCell attr:style="width:70px;">"Длит."</TableHeaderCell>
                                                         <TableHeaderCell min_width=240.0>"Прогресс"</TableHeaderCell>
                                                         <TableHeaderCell attr:style="width:72px;">
-                                                            <span title="Число отправленных HTTP-запросов внешнего API">"HTTP"</span>
+                                                            <span title="Число HTTP-запросов, отправленных заданием к API маркетплейсов">"HTTP"</span>
                                                         </TableHeaderCell>
                                                         <TableHeaderCell min_width=140.0>
-                                                            <span title="Суммарный размер запросов и ответов, без сетевых заголовков">"Трафик"</span>
+                                                            <span title="Суммарный размер запросов и ответов в обмене с маркетплейсом, без сетевых заголовков">"Трафик"</span>
                                                         </TableHeaderCell>
                                                         <TableHeaderCell attr:style="width:100px;"></TableHeaderCell>
                                                     </TableRow>
@@ -1316,6 +1340,17 @@ pub fn ScheduledTaskList() -> impl IntoView {
             {move || if active_tab.get() == "history" {
                 view! {
                     <TaskHistoryView />
+                }.into_any()
+            } else {
+                view! { <></> }.into_any()
+            }}
+
+            // Вкладка «Внешний API» — статистика по входящим вызовам /api/ext/v1/*.
+            // Самодостаточна: своё состояние, свои запросы, ничего общего с сигналами
+            // остальных вкладок.
+            {move || if active_tab.get() == "ext_api" {
+                view! {
+                    <ExtApiView />
                 }.into_any()
             } else {
                 view! { <></> }.into_any()

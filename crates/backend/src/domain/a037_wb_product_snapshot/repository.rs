@@ -7,9 +7,11 @@ use contracts::domain::a037_wb_product_snapshot::aggregate::{
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
+    ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
@@ -183,6 +185,148 @@ pub async fn previous_before(
         .one(db)
         .await?;
     Ok(model.map(Into::into))
+}
+
+/// Последний снимок кабинета на дату `date` включительно (max `document_date <= date`).
+/// Если `date == None` — просто самый свежий снимок. Возвращает None, если снимков нет.
+/// «≤», а не точное совпадение: WB не отдаёт историю задним числом, дни могут пропадать.
+pub async fn latest_on_or_before(
+    connection_id: &str,
+    date: Option<&str>,
+) -> Result<Option<WbProductSnapshot>> {
+    let db = get_connection();
+    let mut q = Entity::find()
+        .filter(Column::ConnectionId.eq(connection_id))
+        .filter(Column::IsDeleted.eq(false));
+    if let Some(d) = date.filter(|s| !s.is_empty()) {
+        q = q.filter(Column::DocumentDate.lte(d));
+    }
+    let model = q.order_by_desc(Column::DocumentDate).one(db).await?;
+    Ok(model.map(Into::into))
+}
+
+/// Различные `connection_id`, для которых есть хотя бы один снимок (не удалённый).
+pub async fn distinct_connection_ids() -> Result<Vec<String>> {
+    let db = get_connection();
+    let ids = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .select_only()
+        .column(Column::ConnectionId)
+        .distinct()
+        .into_tuple::<String>()
+        .all(db)
+        .await?;
+    Ok(ids)
+}
+
+/// Загружает карту id → description для справочной таблицы (a006/a002).
+async fn load_name_map<C: ConnectionTrait>(db: &C, table: &str) -> HashMap<String, String> {
+    let sql = format!("SELECT id, description FROM {table}");
+    let rows = match db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("load_name_map({table}) failed: {e}");
+            return HashMap::new();
+        }
+    };
+    rows.into_iter()
+        .filter_map(|row| {
+            let id: String = row.try_get("", "id").ok()?;
+            let desc: String = row.try_get("", "description").unwrap_or_default();
+            Some((id, desc))
+        })
+        .collect()
+}
+
+/// Плоская строка остатков на уровне товара (`nm_id`) для внешней выгрузки (Power BI).
+#[derive(Debug, Clone)]
+pub struct StockRow {
+    /// Фактическая дата снимка, из которого взят остаток (`<=` запрошенной date).
+    pub snapshot_date: String,
+    pub connection_id: String,
+    pub connection_name: Option<String>,
+    pub organization_name: Option<String>,
+    pub nm_id: i64,
+    pub vendor_code: String,
+    pub brand_name: String,
+    pub subject_id: i64,
+    pub subject_name: String,
+    pub title: String,
+    /// Остаток на складах WB, шт.
+    pub stock_wb: i64,
+    /// Остаток на складах продавца, шт.
+    pub stock_mp: i64,
+    /// Сумма остатков.
+    pub stock_balance_sum: f64,
+}
+
+pub struct StockRowsResult {
+    pub rows: Vec<StockRow>,
+    pub total: usize,
+}
+
+/// Остатки на уровне товара: для каждого кабинета берётся снимок с `latest_on_or_before`,
+/// его строки разворачиваются в `StockRow`. При `connection_id == None` — все кабинеты,
+/// у которых есть снимки. Пагинация применяется к развёрнутым строкам.
+pub async fn stock_rows(
+    connection_id: Option<&str>,
+    date: Option<&str>,
+    limit: usize,
+    offset: usize,
+) -> Result<StockRowsResult> {
+    let db = get_connection();
+
+    let connections: Vec<String> = match connection_id.filter(|c| !c.is_empty()) {
+        Some(c) => vec![c.to_string()],
+        None => distinct_connection_ids().await?,
+    };
+
+    let conn_names = load_name_map(db, "a006_connection_mp").await;
+    let org_names = load_name_map(db, "a002_organization").await;
+
+    let mut rows: Vec<StockRow> = Vec::new();
+    for cid in &connections {
+        let Some(snap) = latest_on_or_before(cid, date).await? else {
+            continue;
+        };
+        let snapshot_date = snap.header.snapshot_date.clone();
+        let connection_name = conn_names.get(cid).cloned();
+        let organization_name = org_names.get(&snap.header.organization_id).cloned();
+        for line in &snap.lines {
+            rows.push(StockRow {
+                snapshot_date: snapshot_date.clone(),
+                connection_id: cid.clone(),
+                connection_name: connection_name.clone(),
+                organization_name: organization_name.clone(),
+                nm_id: line.nm_id,
+                vendor_code: line.vendor_code.clone(),
+                brand_name: line.brand_name.clone(),
+                subject_id: line.subject_id,
+                subject_name: line.subject_name.clone(),
+                title: line.title.clone(),
+                stock_wb: line.state.stock_wb,
+                stock_mp: line.state.stock_mp,
+                stock_balance_sum: line.state.stock_balance_sum,
+            });
+        }
+    }
+
+    rows.sort_by(|a, b| {
+        a.connection_id
+            .cmp(&b.connection_id)
+            .then_with(|| a.nm_id.cmp(&b.nm_id))
+    });
+
+    let total = rows.len();
+    let page = rows.into_iter().skip(offset).take(limit).collect();
+
+    Ok(StockRowsResult { rows: page, total })
 }
 
 #[derive(Debug, Clone)]

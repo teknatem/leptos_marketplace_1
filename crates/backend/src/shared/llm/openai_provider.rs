@@ -210,6 +210,62 @@ impl OpenAiProvider {
         }
     }
 
+    /// Собрать CreateChatCompletionRequest для обычного или стримингового вызова.
+    fn build_request(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[ToolDefinition],
+        stream: bool,
+    ) -> Result<CreateChatCompletionRequest, LlmError> {
+        let openai_messages = self.convert_messages(messages)?;
+        let has_tools = !tools.is_empty();
+
+        let mut request_builder = CreateChatCompletionRequestArgs::default();
+        request_builder.model(&self.model).messages(openai_messages);
+
+        // Добавляем инструменты если есть
+        if has_tools {
+            use async_openai::types::chat::{ChatCompletionToolChoiceOption, ToolChoiceOptions};
+            request_builder.tools(self.convert_tools(tools));
+            // Явно указываем "auto" чтобы модель сама решала вызывать ли инструмент.
+            // Без этого некоторые endpoint'ы могут игнорировать инструменты.
+            request_builder.tool_choice(ChatCompletionToolChoiceOption::Mode(
+                ToolChoiceOptions::Auto,
+            ));
+        }
+
+        // Добавляем расширенные параметры только для поддерживающих моделей
+        if Self::supports_advanced_params(&self.model) {
+            request_builder.temperature(self.temperature);
+            if self.use_legacy_max_tokens {
+                #[allow(deprecated)]
+                {
+                    request_builder.max_tokens(self.max_tokens);
+                }
+            } else {
+                request_builder.max_completion_tokens(self.max_tokens);
+            }
+            // logprobs несовместимы с tool calling и не нужны при стриминге
+            if self.request_logprobs && !has_tools && !stream {
+                request_builder.logprobs(true).top_logprobs(1);
+            }
+        }
+
+        if stream {
+            use async_openai::types::chat::ChatCompletionStreamOptions;
+            request_builder.stream(true);
+            // include_usage: последний чанк несёт usage всего запроса
+            request_builder.stream_options(ChatCompletionStreamOptions {
+                include_usage: Some(true),
+                include_obfuscation: None,
+            });
+        }
+
+        request_builder
+            .build()
+            .map_err(|e| LlmError::InvalidRequest(e.to_string()))
+    }
+
     /// Извлечь tool calls из ответа OpenAI
     fn extract_tool_calls(&self, choice: &ChatChoice) -> Vec<ToolCall> {
         let Some(tool_calls) = &choice.message.tool_calls else {
@@ -240,45 +296,7 @@ impl LlmProvider for OpenAiProvider {
         messages: &[ChatMessage],
         tools: &[ToolDefinition],
     ) -> Result<LlmResponse, LlmError> {
-        let openai_messages = self.convert_messages(messages)?;
-        let has_tools = !tools.is_empty();
-
-        // Создаём базовый запрос
-        let mut request_builder = CreateChatCompletionRequestArgs::default();
-        request_builder.model(&self.model).messages(openai_messages);
-
-        // Добавляем инструменты если есть
-        if has_tools {
-            use async_openai::types::chat::{ChatCompletionToolChoiceOption, ToolChoiceOptions};
-            request_builder.tools(self.convert_tools(tools));
-            // Явно указываем "auto" чтобы модель сама решала вызывать ли инструмент.
-            // Без этого некоторые endpoint'ы могут игнорировать инструменты.
-            request_builder.tool_choice(ChatCompletionToolChoiceOption::Mode(
-                ToolChoiceOptions::Auto,
-            ));
-        }
-
-        // Добавляем расширенные параметры только для поддерживающих моделей
-        if Self::supports_advanced_params(&self.model) {
-            request_builder.temperature(self.temperature);
-            if self.use_legacy_max_tokens {
-                #[allow(deprecated)]
-                {
-                    request_builder.max_tokens(self.max_tokens);
-                }
-            } else {
-                request_builder.max_completion_tokens(self.max_tokens);
-            }
-            // logprobs несовместимы с tool calling
-            if self.request_logprobs && !has_tools {
-                request_builder.logprobs(true).top_logprobs(1);
-            }
-        }
-
-        let request = request_builder
-            .build()
-            .map_err(|e| LlmError::InvalidRequest(e.to_string()))?;
-
+        let request = self.build_request(messages, tools, false)?;
         let response = self.create_with_retries(request).await?;
 
         let choice = response
@@ -342,6 +360,140 @@ impl LlmProvider for OpenAiProvider {
             finish_reason,
             confidence,
         })
+    }
+
+    async fn chat_completion_with_tools_streaming(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[ToolDefinition],
+        on_delta: super::types::DeltaCallback<'_>,
+    ) -> Result<LlmResponse, LlmError> {
+        use futures_util::StreamExt;
+
+        let request = self.build_request(messages, tools, true)?;
+
+        const MAX_ATTEMPTS: u32 = 3;
+        let mut attempt = 0u32;
+        'retry: loop {
+            attempt += 1;
+
+            let mut stream = match self.client.chat().create_stream(request.clone()).await {
+                Ok(stream) => stream,
+                Err(e) => {
+                    let err_str = normalize_api_error_message(&e.to_string());
+                    if is_transient_error(&err_str) && attempt < MAX_ATTEMPTS {
+                        let backoff_ms = 400u64 * 2u64.pow(attempt - 1);
+                        tracing::warn!(
+                            "[llm-stream] временная ошибка ({}) попытка {}/{}, повтор через {}ms: {}",
+                            self.provider_name, attempt, MAX_ATTEMPTS, backoff_ms, err_str
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                        continue 'retry;
+                    }
+                    return Err(classify_api_error(&err_str));
+                }
+            };
+
+            let mut content = String::new();
+            let mut model = self.model.clone();
+            let mut finish_reason: Option<String> = None;
+            let mut tokens_used: Option<i32> = None;
+            // Аккумулятор чанков tool-call'ов: index → (id, name, arguments)
+            let mut tool_acc: std::collections::BTreeMap<u32, (String, String, String)> =
+                std::collections::BTreeMap::new();
+            // Ошибка середины потока: ретраим только если пользователю ещё ничего не показано
+            let mut midstream_error: Option<String> = None;
+
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(chunk) => {
+                        if let Some(usage) = &chunk.usage {
+                            tokens_used = Some(usage.total_tokens as i32);
+                        }
+                        if !chunk.model.is_empty() {
+                            model = chunk.model.clone();
+                        }
+                        if let Some(choice) = chunk.choices.first() {
+                            if let Some(delta) = &choice.delta.content {
+                                if !delta.is_empty() {
+                                    content.push_str(delta);
+                                    on_delta(delta);
+                                }
+                            }
+                            if let Some(tc_chunks) = &choice.delta.tool_calls {
+                                for tc in tc_chunks {
+                                    let entry = tool_acc.entry(tc.index).or_default();
+                                    if let Some(id) = &tc.id {
+                                        entry.0.push_str(id);
+                                    }
+                                    if let Some(func) = &tc.function {
+                                        if let Some(name) = &func.name {
+                                            entry.1.push_str(name);
+                                        }
+                                        if let Some(args) = &func.arguments {
+                                            entry.2.push_str(args);
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(reason) = &choice.finish_reason {
+                                finish_reason = Some(format!("{:?}", reason));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        midstream_error = Some(normalize_api_error_message(&e.to_string()));
+                        break;
+                    }
+                }
+            }
+
+            if let Some(err_str) = midstream_error {
+                let nothing_emitted = content.is_empty() && tool_acc.is_empty();
+                if nothing_emitted && is_transient_error(&err_str) && attempt < MAX_ATTEMPTS {
+                    let backoff_ms = 400u64 * 2u64.pow(attempt - 1);
+                    tracing::warn!(
+                        "[llm-stream] обрыв потока ({}) попытка {}/{}, повтор через {}ms: {}",
+                        self.provider_name, attempt, MAX_ATTEMPTS, backoff_ms, err_str
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    continue 'retry;
+                }
+                return Err(classify_api_error(&err_str));
+            }
+
+            let mut tool_calls: Vec<ToolCall> = tool_acc
+                .into_values()
+                .map(|(id, name, arguments)| ToolCall {
+                    id,
+                    name,
+                    arguments,
+                })
+                .collect();
+
+            // Совместимость: inline DSML tool-calls в тексте (см. нестриминговый путь).
+            if tool_calls.is_empty() {
+                if let Some((parsed, cleaned)) =
+                    super::deepseek_tools::parse_inline_tool_calls(&content)
+                {
+                    tracing::warn!(
+                        "[provider] распознаны inline tool-calls в стрим-ответе (DSML): {} шт.",
+                        parsed.len()
+                    );
+                    tool_calls = parsed;
+                    content = cleaned;
+                }
+            }
+
+            return Ok(LlmResponse {
+                content,
+                tool_calls,
+                tokens_used,
+                model,
+                finish_reason,
+                confidence: None,
+            });
+        }
     }
 
     async fn test_connection(&self) -> Result<(), LlmError> {

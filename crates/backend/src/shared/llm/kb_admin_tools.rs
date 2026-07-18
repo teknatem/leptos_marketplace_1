@@ -1,6 +1,4 @@
-use super::knowledge_base::{
-    knowledge_base_dir, reload_knowledge_base, write_kb_document, KNOWLEDGE_BASE,
-};
+use super::knowledge_base::{knowledge_base_dir, reload_knowledge_base, write_kb_document};
 use super::types::ToolDefinition;
 use contracts::domain::a031_kb_edit::aggregate::{KbEditStatus, KbEditType};
 use contracts::domain::common::AggregateId;
@@ -113,7 +111,7 @@ pub async fn execute_kb_admin_tool(
 }
 
 fn list_kb_documents() -> serde_json::Value {
-    let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+    let kb = super::knowledge_base::kb_read();
     let kb_dir = knowledge_base_dir();
     let mut docs = kb
         .all_docs()
@@ -153,7 +151,7 @@ fn get_kb_document(arguments: &str) -> serde_json::Value {
     let args = serde_json::from_str::<serde_json::Value>(arguments).unwrap_or_default();
     let id = args.get("id").and_then(|v| v.as_str()).unwrap_or_default();
     if !id.is_empty() {
-        let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+        let kb = super::knowledge_base::kb_read();
         return match kb.get(id) {
             Some(doc) => json!({
                 "id": doc.id,

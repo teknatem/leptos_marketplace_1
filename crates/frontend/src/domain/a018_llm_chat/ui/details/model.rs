@@ -13,6 +13,9 @@ pub struct JobProgress {
     pub step: u32,
     /// Человекочитаемая подпись этапа.
     pub stage: String,
+    /// Частичный текст ответа модели (стриминг) — рендерится ещё до завершения job'а.
+    #[serde(default)]
+    pub partial_text: Option<String>,
 }
 
 /// Response from GET /api/a018-llm-chat/jobs/:job_id
@@ -114,6 +117,29 @@ async fn poll_job(job_id: &str) -> Result<JobStatusResponse, String> {
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
     let data: JobStatusResponse = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
     Ok(data)
+}
+
+/// Остановить фоновую LLM-задачу. POST /jobs/:job_id/cancel.
+pub async fn cancel_job(job_id: &str) -> Result<(), String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+
+    let url = format!("{}/api/a018-llm-chat/jobs/{}/cancel", api_base(), job_id);
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
 }
 
 /// Получить чат по ID (с именем агента)

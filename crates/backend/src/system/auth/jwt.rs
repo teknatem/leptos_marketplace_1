@@ -74,8 +74,8 @@ pub async fn get_jwt_secret() -> Result<String> {
 /// Generate a cryptographically secure JWT secret (256 bits)
 fn generate_jwt_secret() -> String {
     use base64::{engine::general_purpose, Engine as _};
-    let mut rng = rand::thread_rng();
-    let random_bytes: Vec<u8> = (0..32).map(|_| rng.gen::<u8>()).collect();
+    let mut rng = rand::rng();
+    let random_bytes: Vec<u8> = (0..32).map(|_| rng.random::<u8>()).collect();
     general_purpose::STANDARD.encode(&random_bytes)
 }
 

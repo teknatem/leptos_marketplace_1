@@ -5,8 +5,8 @@
 
 use super::artifact_card::ArtifactCard;
 use super::model::{
-    delete_chat, fetch_chat, fetch_chat_context, fetch_connection_allowed_models, fetch_messages,
-    poll_until_done, send_message, set_rating, JobProgress, PollOutcome,
+    cancel_job, delete_chat, fetch_chat, fetch_chat_context, fetch_connection_allowed_models,
+    fetch_messages, poll_until_done, send_message, set_rating, JobProgress, PollOutcome,
 };
 
 /// Предопределённое сообщение для кнопки «Диагностика»: модель разбирает текущий диалог
@@ -212,6 +212,8 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     // Текущий этап выполнения LLM-задачи (с бэкенда через polling). None — пока
     // не известен; тогда показываем дефолтную подпись.
     let progress = RwSignal::new(None::<JobProgress>);
+    // job_id текущей фоновой задачи — для кнопки «Стоп» (cancel).
+    let current_job_id = RwSignal::new(None::<String>);
     // Панель «Диагностика»: открыта ли и текст опционального комментария пользователя.
     let diag_open = RwSignal::new(false);
     let diag_comment = RwSignal::new(String::new());
@@ -295,10 +297,13 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         return;
                     }
                 };
+                current_job_id.set(Some(job_id.clone()));
 
-                // 2. Опрос статуса каждые 2с. Бюджет — 6 минут: агентные навыки
-                //    (графики/плагины) делают много шагов tool-calling и идут дольше.
-                let poll_result = poll_until_done(&job_id, 180, 2000, progress).await;
+                // 2. Опрос статуса каждые 500мс: progress.partial_text несёт частичный
+                //    текст ответа (стриминг), поэтому частый опрос = живой вывод.
+                //    Бюджет — 6 минут: агентные навыки делают много шагов tool-calling.
+                let poll_result = poll_until_done(&job_id, 720, 500, progress).await;
+                current_job_id.set(None);
 
                 // 3. Always reload messages from DB after completion
                 match fetch_messages(&chat_id).await {
@@ -333,6 +338,10 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                              обновите страницу через минуту, если не появился.",
                             waited_secs.max(60) / 60
                         )));
+                    }
+                    Ok(PollOutcome::Error(msg)) if msg == "cancelled" => {
+                        // Пользователь нажал «Стоп» — это не ошибка.
+                        vm.error.set(Some("Генерация остановлена.".to_string()));
                     }
                     Ok(PollOutcome::Error(msg)) => {
                         vm.error.set(Some(format!("Ошибка LLM: {}", msg)));
@@ -640,27 +649,62 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     }}
                 </For>
 
-                // Loading indicator — показывается пока LLM обрабатывает запрос
+                // Loading indicator — показывается пока LLM обрабатывает запрос.
+                // Если стриминг уже принёс частичный текст ответа — рендерим его
+                // (живой вывод, как в Claude/ChatGPT), под ним — этап и кнопка «Стоп».
                 {move || {
                     if vm.is_sending.get() {
                         Some(view! {
-                            <div class="chat-typing" style="align-self: flex-start; max-width: 70%;">
-                                <div class="chat-typing__bubble">
-                                    <span class="chat-typing__dot"></span>
-                                    <span class="chat-typing__dot"></span>
-                                    <span class="chat-typing__dot"></span>
-                                    <span class="chat-typing__label">
-                                        {move || {
-                                            let secs = elapsed_secs.get();
-                                            match progress.get() {
-                                                Some(p) if p.step > 0 => {
-                                                    format!(" Шаг {} · {} · {} с", p.step, p.stage, secs)
+                            <div style="display: flex; flex-direction: column; gap: 6px; align-self: stretch;">
+                                {move || {
+                                    progress.get()
+                                        .and_then(|p| p.partial_text)
+                                        .filter(|t| !t.trim().is_empty())
+                                        .map(|partial| view! {
+                                            <div style="display: flex; gap: 12px; padding: 10px 14px; border-radius: 8px; background: var(--colorNeutralBackground1); opacity: 0.9;">
+                                                <div style="flex: 0 0 104px; font-size: 11px; font-weight: 600; opacity: 0.6;">
+                                                    "АССИСТЕНТ"
+                                                </div>
+                                                <div style="flex: 1; min-width: 0;">
+                                                    <Markdown text=partial />
+                                                </div>
+                                            </div>
+                                        })
+                                }}
+                                <div class="chat-typing" style="align-self: flex-start; max-width: 70%; display: flex; align-items: center; gap: 10px;">
+                                    <div class="chat-typing__bubble">
+                                        <span class="chat-typing__dot"></span>
+                                        <span class="chat-typing__dot"></span>
+                                        <span class="chat-typing__dot"></span>
+                                        <span class="chat-typing__label">
+                                            {move || {
+                                                let secs = elapsed_secs.get();
+                                                match progress.get() {
+                                                    Some(p) if p.step > 0 => {
+                                                        format!(" Шаг {} · {} · {} с", p.step, p.stage, secs)
+                                                    }
+                                                    Some(p) => format!(" {} · {} с", p.stage, secs),
+                                                    None => format!(" LLM обрабатывает запрос… {} с", secs),
                                                 }
-                                                Some(p) => format!(" {} · {} с", p.stage, secs),
-                                                None => format!(" LLM обрабатывает запрос… {} с", secs),
-                                            }
-                                        }}
-                                    </span>
+                                            }}
+                                        </span>
+                                    </div>
+                                    {move || {
+                                        current_job_id.get().map(|job_id| view! {
+                                            <button
+                                                title="Остановить генерацию"
+                                                style="border: 1px solid var(--colorNeutralStroke2); background: var(--colorNeutralBackground2); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;"
+                                                on:click=move |_| {
+                                                    let job_id = job_id.clone();
+                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                        let _ = cancel_job(&job_id).await;
+                                                    });
+                                                }
+                                            >
+                                                "■ Стоп"
+                                            </button>
+                                        })
+                                    }}
                                 </div>
                             </div>
                         })

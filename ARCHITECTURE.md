@@ -122,6 +122,7 @@
 | `task020` | wb product snapshot |
 | `task021` | mail intake |
 | `task022` | mail reply |
+| `task023` | wb sales funnel daily |
 
 ## Chart of accounts (account_registry)
 
@@ -196,7 +197,7 @@
 | `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
 | `commission_percent` | Процент комиссии |  |  |  |
 
-## API routes (383)
+## API routes (388)
 
 ### `/a004`
 - `GET` /api/a004/nomenclature
@@ -294,6 +295,7 @@
 - `POST` /api/a018-llm-chat/:id/upload
 - `GET` /api/a018-llm-chat/jobs/:job_id
 - `POST` /api/a018-llm-chat/jobs/:job_id/cancel
+- `GET` /api/a018-llm-chat/jobs/:job_id/stream
 - `GET` /api/a018-llm-chat/list
 - `GET` /api/a018-llm-chat/message/:message_id/tool-trace
 - `GET` /api/a018-llm-chat/with-stats
@@ -436,6 +438,7 @@
 
 ### `/a036`
 - `GET` /api/a036/wb-sales-funnel/:id
+- `GET` /api/a036/wb-sales-funnel/export-lines
 - `GET` /api/a036/wb-sales-funnel/list
 - `GET` /api/a036/wb-sales-funnel/product-metrics
 
@@ -536,6 +539,9 @@
 - `GET` /api/ds02/schemas/:schema_id/fields/:field_id/values
 
 ### `/ext`
+- `GET` /api/ext/v1/wb-finance-report
+- `GET` /api/ext/v1/wb-sales-funnel
+- `GET` /api/ext/v1/wb-stocks
 - `GET` /api/ext/v1/wb-supplies
 - `GET` /api/ext/v1/wb-supplies/:id
 

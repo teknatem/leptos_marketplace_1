@@ -143,6 +143,9 @@ impl LlmResponse {
     }
 }
 
+/// Callback для дельт текстового контента при стриминге.
+pub type DeltaCallback<'a> = &'a (dyn Fn(&str) + Send + Sync);
+
 /// Трейт для LLM провайдеров
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
@@ -158,6 +161,20 @@ pub trait LlmProvider: Send + Sync {
         messages: &[ChatMessage],
         tools: &[ToolDefinition],
     ) -> Result<LlmResponse, LlmError>;
+
+    /// Стриминговый вариант `chat_completion_with_tools`: дельты текстового контента
+    /// передаются в `on_delta` по мере генерации (для живого отображения в UI).
+    /// Реализация по умолчанию — обычный нестриминговый вызов (on_delta не зовётся),
+    /// чтобы провайдеры без поддержки стрима продолжали работать.
+    async fn chat_completion_with_tools_streaming(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[ToolDefinition],
+        on_delta: DeltaCallback<'_>,
+    ) -> Result<LlmResponse, LlmError> {
+        let _ = on_delta;
+        self.chat_completion_with_tools(messages, tools).await
+    }
 
     /// Тест подключения к провайдеру
     async fn test_connection(&self) -> Result<(), LlmError>;

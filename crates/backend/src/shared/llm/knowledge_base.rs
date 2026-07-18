@@ -44,6 +44,16 @@ pub struct KnowledgeBase {
 pub static KNOWLEDGE_BASE: Lazy<Arc<RwLock<KnowledgeBase>>> =
     Lazy::new(|| Arc::new(RwLock::new(KnowledgeBase::load(&knowledge_base_dir()))));
 
+/// Чтение KB, устойчивое к poisoned-локу: KnowledgeBase — read-mostly данные,
+/// частичное состояние после паники писателя безопасно читать; паниковать
+/// (и валить весь tokio-таск чата) из-за этого не нужно.
+pub fn kb_read() -> std::sync::RwLockReadGuard<'static, KnowledgeBase> {
+    KNOWLEDGE_BASE.read().unwrap_or_else(|poisoned| {
+        tracing::error!("KnowledgeBase lock poisoned; continuing with last state");
+        poisoned.into_inner()
+    })
+}
+
 pub fn knowledge_base_dir() -> PathBuf {
     let path = match crate::shared::config::load_config() {
         Ok(cfg) => crate::shared::config::get_knowledge_base_path(&cfg),

@@ -13,6 +13,16 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+/// Парсинг id из БД. Битый id — это повреждение данных: логируем громко и
+/// возвращаем детерминированный nil-UUID (виден в UI как 0000…), а не случайный
+/// правдоподобный id, который маскирует проблему.
+fn parse_db_uuid(raw: &str, field: &str) -> Uuid {
+    Uuid::parse_str(raw).unwrap_or_else(|e| {
+        tracing::error!("a018: malformed UUID in DB field {field}: '{raw}': {e}");
+        Uuid::nil()
+    })
+}
+
 mod chat {
     use sea_orm::entity::prelude::*;
     use serde::{Deserialize, Serialize};
@@ -174,8 +184,8 @@ impl From<chat::Model> for LlmChat {
             is_posted: m.is_posted,
             version: m.version,
         };
-        let uuid = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
-        let agent_uuid = Uuid::parse_str(&m.agent_id).unwrap_or_else(|_| Uuid::new_v4());
+        let uuid = parse_db_uuid(&m.id, "chat.id");
+        let agent_uuid = parse_db_uuid(&m.agent_id, "chat.agent_id");
 
         LlmChat {
             base: BaseAggregate {
@@ -197,8 +207,8 @@ impl From<chat::Model> for LlmChat {
 
 impl From<message::Model> for LlmChatMessage {
     fn from(m: message::Model) -> Self {
-        let id = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
-        let chat_id = Uuid::parse_str(&m.chat_id).unwrap_or_else(|_| Uuid::new_v4());
+        let id = parse_db_uuid(&m.id, "message.id");
+        let chat_id = parse_db_uuid(&m.chat_id, "message.chat_id");
         let role = ChatRole::from_str(&m.role).unwrap_or(ChatRole::User);
         let created_at = chrono::DateTime::parse_from_rfc3339(&m.created_at)
             .map(|dt| dt.with_timezone(&Utc))
@@ -233,8 +243,8 @@ impl From<message::Model> for LlmChatMessage {
 
 impl From<attachment::Model> for LlmChatAttachment {
     fn from(m: attachment::Model) -> Self {
-        let id = Uuid::parse_str(&m.id).unwrap_or_else(|_| Uuid::new_v4());
-        let message_id = Uuid::parse_str(&m.message_id).unwrap_or_else(|_| Uuid::new_v4());
+        let id = parse_db_uuid(&m.id, "attachment.id");
+        let message_id = parse_db_uuid(&m.message_id, "attachment.message_id");
         let created_at = chrono::DateTime::parse_from_rfc3339(&m.created_at)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
@@ -254,6 +264,50 @@ impl From<attachment::Model> for LlmChatAttachment {
 // ============================================================================
 // Chat Repository Functions
 // ============================================================================
+
+/// Сводка ранней части диалога (компакция истории): (summary_text, summary_upto).
+/// Колонки живут только в БД (0171) и не входят в contract-агрегат.
+pub async fn get_chat_summary(
+    db: &DatabaseConnection,
+    chat_id: &LlmChatId,
+) -> Result<Option<(String, String)>, DbErr> {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT summary_text, summary_upto FROM a018_llm_chat WHERE id = ? LIMIT 1",
+            [chat_id.as_string().into()],
+        ))
+        .await?;
+    let Some(row) = row else { return Ok(None) };
+    let text: Option<String> = row.try_get("", "summary_text").unwrap_or(None);
+    let upto: Option<String> = row.try_get("", "summary_upto").unwrap_or(None);
+    Ok(match (text, upto) {
+        (Some(t), Some(u)) if !t.is_empty() => Some((t, u)),
+        _ => None,
+    })
+}
+
+/// Сохранить сводку компакции истории чата.
+pub async fn set_chat_summary(
+    db: &DatabaseConnection,
+    chat_id: &LlmChatId,
+    summary_text: &str,
+    summary_upto: &str,
+) -> Result<(), DbErr> {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "UPDATE a018_llm_chat SET summary_text = ?, summary_upto = ? WHERE id = ?",
+        [
+            summary_text.into(),
+            summary_upto.into(),
+            chat_id.as_string().into(),
+        ],
+    ))
+    .await?;
+    Ok(())
+}
 
 /// Получить все чаты (не удаленные)
 pub async fn list_all(db: &DatabaseConnection) -> Result<Vec<LlmChat>, DbErr> {

@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::shared::llm::knowledge_base::{KnowledgeDoc, KNOWLEDGE_BASE};
+use crate::shared::llm::knowledge_base::KnowledgeDoc;
 
 #[derive(Debug, Deserialize)]
 pub struct LlmKnowledgeListParams {
@@ -33,7 +33,7 @@ pub struct LlmKnowledgeDetailResponse {
 }
 
 pub async fn list(Query(params): Query<LlmKnowledgeListParams>) -> Json<Vec<LlmKnowledgeListItem>> {
-    let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+    let kb = crate::shared::llm::knowledge_base::kb_read();
     let docs: Vec<&KnowledgeDoc> = if params.tag.is_empty() {
         kb.all_docs()
     } else {
@@ -59,7 +59,7 @@ pub async fn list(Query(params): Query<LlmKnowledgeListParams>) -> Json<Vec<LlmK
 pub async fn get_by_id(
     Path(id): Path<String>,
 ) -> Result<Json<LlmKnowledgeDetailResponse>, StatusCode> {
-    let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+    let kb = crate::shared::llm::knowledge_base::kb_read();
     let Some(doc) = kb.get(&id) else {
         return Err(StatusCode::NOT_FOUND);
     };

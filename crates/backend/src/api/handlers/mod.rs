@@ -80,6 +80,12 @@ pub mod usecases;
 
 // External integration API (1C, etc.)
 pub mod ext_1c_wb_supply;
+// External BI API (Power BI) — WB sales funnel a036
+pub mod ext_bi_wb_funnel;
+// External BI API (Power BI) — WB stock balances a037
+pub mod ext_bi_wb_stocks;
+// External BI API (Power BI) — WB finance report p903 (raw native rows)
+pub mod ext_bi_wb_finance;
 
 // Data quality checks
 pub mod quality;

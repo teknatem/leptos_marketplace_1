@@ -8,10 +8,10 @@ use super::admin_tools::execute_admin_tool;
 use super::chart_tools::{execute_chart_tool, CHART_TOOL_NAMES};
 use super::data_tools::{execute_data_tool, DATA_TOOL_NAMES};
 use super::kb_admin_tools::execute_kb_admin_tool;
-use super::knowledge_base::KNOWLEDGE_BASE;
 use super::mail_tools::{execute_mail_tool, MAIL_TOOL_NAMES};
 use super::metadata_registry::METADATA_REGISTRY;
 use super::plugin_tools::{execute_plugin_tool, PLUGIN_TOOL_NAMES};
+use super::schedule_tools::{execute_schedule_tool, SCHEDULE_TOOL_NAMES};
 use super::table_tools::{execute_build_table, execute_table_tool, TABLE_TOOL_NAMES};
 use super::types::{ToolCall, ToolDefinition};
 use contracts::domain::a017_llm_agent::aggregate::AgentType;
@@ -439,6 +439,22 @@ pub async fn execute_tool_call(
             .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
     }
 
+    // Scheduler tools (регламентные задания) — dispatch to schedule_tools module
+    if SCHEDULE_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result = execute_schedule_tool(&call.name, &call.arguments).await;
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
     // Plugin developer tools — dispatch to plugin_tools module
     if PLUGIN_TOOL_NAMES.contains(&call.name.as_str()) {
         let result = execute_plugin_tool(&call.name, &call.arguments, chat_id, agent_id).await;
@@ -546,7 +562,7 @@ pub async fn execute_tool_call(
                 })
             } else {
                 let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
-                let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+                let kb = super::knowledge_base::kb_read();
                 let results = kb.search_by_tags(&tag_refs);
                 let items: Vec<serde_json::Value> = results
                     .iter()
@@ -570,7 +586,7 @@ pub async fn execute_tool_call(
 
         "get_knowledge" => {
             let id = parse_string_arg(&call.arguments, "id").unwrap_or_default();
-            let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+            let kb = super::knowledge_base::kb_read();
             match kb.get(&id) {
                 Some(doc) => serde_json::json!({
                     "id":      doc.id,
@@ -764,21 +780,17 @@ async fn create_drilldown_report_tool(
         "params": extra_params
     });
 
-    let params_json_str = params_json.to_string().replace('\'', "''");
-
-    let insert_session_sql = format!(
-        "INSERT INTO sys_drilldown (id, view_id, indicator_id, indicator_name, params_json) \
-         VALUES ('{}', '{}', '', '{}', '{}')",
-        session_id,
-        view_id.replace('\'', "''"),
-        description.replace('\'', "''"),
-        params_json_str,
-    );
-
     if let Err(e) = db
-        .execute(Statement::from_string(
+        .execute(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            insert_session_sql,
+            "INSERT INTO sys_drilldown (id, view_id, indicator_id, indicator_name, params_json) \
+             VALUES (?, ?, '', ?, ?)",
+            [
+                session_id.clone().into(),
+                view_id.clone().into(),
+                description.clone().into(),
+                params_json.to_string().into(),
+            ],
         ))
         .await
     {
