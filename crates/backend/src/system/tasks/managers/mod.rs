@@ -26,6 +26,7 @@ pub mod task019_ym_payment_report;
 pub mod task020_wb_product_snapshot;
 pub mod task021_mail_intake;
 pub mod task022_mail_reply;
+pub mod task023_wb_sales_funnel_daily;
 
 pub use u501_import_ut::U501ImportUtManager;
 pub use u502_import_ozon::U502ImportOzonManager;
@@ -53,3 +54,4 @@ pub use task019_ym_payment_report::Task019YmPaymentReportManager;
 pub use task020_wb_product_snapshot::Task020WbProductSnapshotManager;
 pub use task021_mail_intake::Task021MailIntakeManager;
 pub use task022_mail_reply::Task022MailReplyManager;
+pub use task023_wb_sales_funnel_daily::Task023WbSalesFunnelDailyManager;

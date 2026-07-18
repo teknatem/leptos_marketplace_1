@@ -135,6 +135,24 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         mode: PolicyMode::AuthOnly,
     },
     RoutePolicy {
+        method: "GET",
+        path: "/api/sys/ext-api/history",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/sys/ext-api/summary",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/sys/ext-api/recent",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
         method: "*",
         path: "/api/sys/s3/files",
         scope_id: None,

@@ -6,7 +6,7 @@
 //! - page.rs: Main component with Header, TabBar, TabContent
 //! - tabs/: Tab components (general, lines)
 
-mod model;
+pub mod model;
 mod page;
 mod tabs;
 mod view_model;

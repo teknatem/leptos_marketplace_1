@@ -1,0 +1,198 @@
+# Внешний BI-API Wildberries для Power BI
+
+Внешние эндпоинты для BI-потребителей (Power BI и пр.). Все — под одной простой
+авторизацией по заголовку `X-Api-Key` (см. раздел «Авторизация»). Доступные выгрузки:
+
+| Эндпоинт | Данные |
+|---|---|
+| `GET /api/ext/v1/wb-sales-funnel` | Воронка продаж WB (a036), строка на `nm_id × дата` |
+| `GET /api/ext/v1/wb-stocks` | Остатки WB (a037) на уровне товара, последние или на дату |
+| `GET /api/ext/v1/wb-finance-report` | Финансовый отчёт WB (p903) за период, native-строки WB |
+
+---
+
+## Воронка продаж: `GET /api/ext/v1/wb-sales-funnel`
+
+Плоские строки воронки продаж Wildberries (`a036_wb_sales_funnel_daily`), одна строка на `nm_id × дата`.
+
+## Эндпоинт
+
+```
+GET http://<SERVER>:3000/api/ext/v1/wb-sales-funnel
+```
+
+| Параметр        | Обяз. | Описание                                       |
+|-----------------|-------|------------------------------------------------|
+| `date_from`     | да    | Начало периода, `YYYY-MM-DD`                    |
+| `date_to`       | да    | Конец периода, `YYYY-MM-DD` (включительно)      |
+| `connection_id` | нет   | Фильтр по кабинету WB (UUID)                    |
+| `limit`         | нет   | Макс. строк в ответе (по умолчанию 5000, потолок 50000) |
+| `offset`        | нет   | Смещение для постраничной выгрузки              |
+
+Без `date_from`/`date_to` → `400`. WB отдаёт данные воронки примерно за последнюю неделю.
+
+### Кабинеты WB (`connection_id`)
+
+| Кабинет        | `connection_id`                        |
+|----------------|----------------------------------------|
+| WB - SANSTAR   | `1386a311-1e26-4676-b696-8d577a119eec` |
+| WB2 - CTC      | `42e29532-72b1-4f38-be6e-38c331c61fe6` |
+
+Без параметра `connection_id` в ответ попадают все кабинеты; каждая строка уже содержит
+`connection_id` и `connection_name`, так что фильтровать можно и на стороне Power BI.
+
+## Авторизация
+
+Статический ключ в заголовке `X-Api-Key`. Значение — `[external_api].api_key` из `config.toml`
+на сервере (тот же ключ, что у 1С-интеграции). Без ключа или с неверным → `401`;
+если ключ на сервере не задан → `503`.
+
+## Формат ответа
+
+```json
+{
+  "items": [
+    {
+      "date": "2026-07-14",
+      "connection_id": "1386a311-…",
+      "connection_name": "WB - SANSTAR",
+      "organization_name": "ООО …",
+      "currency": "RUB",
+      "nm_id": 316700126,
+      "vendor_code": "…",
+      "brand_name": "NESSTOR",
+      "subject_id": 7717,
+      "subject_name": "…",
+      "title": "…",
+      "open_count": 7,
+      "add_to_wishlist_count": 0,
+      "cart_count": 3,
+      "order_count": 0,
+      "order_sum": 0.0,
+      "buyout_count": 0,
+      "buyout_sum": 0.0,
+      "buyout_percent": 0.0,
+      "add_to_cart_conversion": 43.0,
+      "cart_to_order_conversion": 0.0
+    }
+  ],
+  "total": 8408
+}
+```
+
+Поля метрик идут в порядке стадий воронки: переходы → отложенные → корзина → заказ → выкуп + конверсии.
+`total` — общее число строк за период (до пагинации).
+
+## Быстрая проверка (curl)
+
+```powershell
+curl.exe -H "X-Api-Key: <КЛЮЧ>" `
+  "http://localhost:3000/api/ext/v1/wb-sales-funnel?date_from=2026-07-08&date_to=2026-07-14"
+```
+
+## Подключение в Power BI Desktop
+
+1. **Получить данные** → **Из Интернета** → режим **Расширенный**.
+2. **URL по частям** — адрес эндпоинта с параметрами периода, например:
+   `http://<SERVER>:3000/api/ext/v1/wb-sales-funnel?date_from=2026-07-08&date_to=2026-07-14`
+3. **Заголовки HTTP-запроса** → добавить `X-Api-Key` со значением ключа.
+4. **ОК** → Power BI распознаёт JSON. Развернуть список `items` в таблицу
+   (**Преобразовать в таблицу** → развернуть столбцы записей).
+5. При необходимости задать типы столбцов (даты, числа) и нажать **Закрыть и применить**.
+
+Пример запроса на языке M (вкладка **Расширенный редактор**):
+
+```m
+let
+    Source = Json.Document(
+        Web.Contents(
+            "http://<SERVER>:3000/api/ext/v1/wb-sales-funnel?date_from=2026-07-08&date_to=2026-07-14",
+            [ Headers = [ #"X-Api-Key" = "<КЛЮЧ>" ] ]
+        )
+    ),
+    Items = Source[items],
+    Table = Table.FromRecords(Items)
+in
+    Table
+```
+
+> Для запланированного обновления в Power BI Service ключ удобно вынести в
+> **Параметр** (Manage Parameters), а не хранить в тексте запроса.
+
+---
+
+## Остатки: `GET /api/ext/v1/wb-stocks`
+
+Остатки WB на уровне товара (`nm_id`): на складах WB и на складах продавца.
+Источник — ежедневные снимки `a037_wb_product_snapshot`. Разбивки по складам/штрихкодам
+и «в пути» нет (эти данные не хранятся).
+
+| Параметр        | Обяз. | Описание                                                        |
+|-----------------|-------|-----------------------------------------------------------------|
+| `date`          | нет   | Остаток на дату `YYYY-MM-DD`. Пусто → последний снимок           |
+| `connection_id` | нет   | Фильтр по кабинету WB (UUID). Пусто → все кабинеты               |
+| `limit`         | нет   | Макс. строк (по умолчанию/потолок 50000)                        |
+| `offset`        | нет   | Смещение для постраничной выгрузки                              |
+
+Снимки есть не за каждый день (WB не отдаёт историю задним числом), поэтому при заданной
+`date` берётся снимок с ближайшей датой **≤ `date`**. Фактическая дата — в поле `snapshot_date`
+каждой строки.
+
+Пример ответа:
+
+```json
+{
+  "items": [
+    {
+      "snapshot_date": "2026-07-15",
+      "connection_id": "1386a311-…",
+      "connection_name": "WB - SANSTAR",
+      "organization_name": "ООО …",
+      "nm_id": 316700126,
+      "vendor_code": "…",
+      "brand_name": "NESSTOR",
+      "subject_id": 7717,
+      "subject_name": "…",
+      "title": "…",
+      "stock_wb": 42,
+      "stock_mp": 0,
+      "stock_balance_sum": 12990.0
+    }
+  ],
+  "total": 3134
+}
+```
+
+```powershell
+curl.exe -H "X-Api-Key: <КЛЮЧ>" "http://localhost:3000/api/ext/v1/wb-stocks"                 # последние
+curl.exe -H "X-Api-Key: <КЛЮЧ>" "http://localhost:3000/api/ext/v1/wb-stocks?date=2026-07-10" # на дату
+```
+
+---
+
+## Финансовый отчёт: `GET /api/ext/v1/wb-finance-report`
+
+Строки финансового отчёта WB (`p903_wb_finance_report`) за период — в «сыром» native-виде WB
+(тот же набор полей, что отдаёт `reportDetailByPeriod`: `rrd_id`, `rr_dt`, `realizationreport_id`,
+`doc_type_name`, `supplier_oper_name`, `ppvz_for_pay`, `retail_amount`, `delivery_rub`, `penalty`,
+`sale_dt`, `srid`, … — всё как у WB). Дополнительно в каждую строку добавлены `connection_mp_ref`
+и `organization_ref` для различения кабинетов.
+
+| Параметр        | Обяз. | Описание                                             |
+|-----------------|-------|------------------------------------------------------|
+| `date_from`     | да    | Начало периода по `rr_dt`, `YYYY-MM-DD`              |
+| `date_to`       | да    | Конец периода по `rr_dt`, `YYYY-MM-DD` (включительно)|
+| `connection_id` | нет   | Фильтр по кабинету WB (= `connection_mp_ref`)        |
+| `limit`         | нет   | Макс. строк (по умолчанию 5000, потолок 20000)       |
+| `offset`        | нет   | Смещение для постраничной выгрузки                   |
+
+Без `date_from`/`date_to` → `400`. Отчёт объёмный (~3 КБ на строку) — выгружайте постранично
+через `limit`/`offset`; порядок стабилен (`rr_dt`, затем `rrd_id`), поле `total` — общее число строк.
+
+```powershell
+curl.exe -H "X-Api-Key: <КЛЮЧ>" `
+  "http://localhost:3000/api/ext/v1/wb-finance-report?date_from=2026-06-01&date_to=2026-06-30&limit=5000&offset=0"
+```
+
+Ответ: `{ "items": [ <native-строки WB> ], "total": …, "limit": …, "offset": … }`.
+

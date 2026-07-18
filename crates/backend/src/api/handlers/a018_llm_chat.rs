@@ -34,7 +34,10 @@ pub struct LlmChatPaginatedResponse {
 pub async fn list_all() -> Result<Json<Vec<LlmChat>>, axum::http::StatusCode> {
     match a018_llm_chat::service::list_all().await {
         Ok(v) => Ok(Json(v)),
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 list_all failed: {e}");
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
@@ -44,7 +47,10 @@ pub async fn list_with_stats(
 ) -> Result<Json<Vec<LlmChatListItem>>, axum::http::StatusCode> {
     match a018_llm_chat::service::list_with_stats(&claims.sub, claims.is_admin).await {
         Ok(v) => Ok(Json(v)),
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 list_with_stats failed: {e}");
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
@@ -70,7 +76,10 @@ pub async fn list_paginated(
                 total_pages,
             }))
         }
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 list_paginated failed: {e}");
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
@@ -81,7 +90,10 @@ pub async fn get_by_id(
     match a018_llm_chat::service::get_by_id(&id).await {
         Ok(Some(v)) => Ok(Json(v)),
         Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 get_by_id({id}) failed: {e}");
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
@@ -89,7 +101,10 @@ pub async fn get_by_id(
 pub async fn delete(Path(id): Path<String>) -> Result<(), axum::http::StatusCode> {
     match a018_llm_chat::service::delete(&id).await {
         Ok(()) => Ok(()),
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 delete({id}) failed: {e}");
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
@@ -125,7 +140,10 @@ pub async fn get_messages(
 ) -> Result<Json<Vec<LlmChatMessage>>, axum::http::StatusCode> {
     match a018_llm_chat::service::get_messages(&id).await {
         Ok(v) => Ok(Json(v)),
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 get_messages({id}) failed: {e}");
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
@@ -136,7 +154,10 @@ pub async fn get_tool_trace(
 ) -> Result<Json<Vec<ToolTraceEntry>>, axum::http::StatusCode> {
     match a018_llm_chat::service::get_tool_trace(&message_id).await {
         Ok(v) => Ok(Json(v)),
-        Err(_) => Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 get_tool_trace({message_id}) failed: {e}");
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
@@ -243,9 +264,10 @@ pub async fn send_message(
 
 /// POST /api/a018-llm-chat/jobs/:job_id/cancel
 pub async fn cancel_job(Path(job_id): Path<String>) -> Result<Json<serde_json::Value>, StatusCode> {
-    let cancelled = job_store::cancel(&job_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let cancelled = job_store::cancel(&job_id).await.map_err(|e| {
+        tracing::error!("a018 cancel_job({job_id}) failed: {e}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     if cancelled {
         Ok(Json(json!({ "ok": true })))
     } else {
@@ -279,6 +301,81 @@ pub async fn poll_job(Path(job_id): Path<String>) -> Result<Json<JobStatusRespon
     }
 }
 
+/// GET /api/a018-llm-chat/jobs/:job_id/stream
+/// SSE-стрим статуса job'а: события `progress` (смена этапа), `delta` (новый кусок
+/// текста ответа), `done` (финальное сообщение) и `error`. Источник истины тот же,
+/// что у poll_job (job_store); соединение закрывается после терминального события.
+pub async fn stream_job(
+    Path(job_id): Path<String>,
+) -> axum::response::sse::Sse<
+    impl futures_util::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>,
+> {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+
+    struct StreamState {
+        job_id: String,
+        sent_bytes: usize,
+        last_stage: String,
+        finished: bool,
+    }
+
+    let state = StreamState {
+        job_id,
+        sent_bytes: 0,
+        last_stage: String::new(),
+        finished: false,
+    };
+
+    let stream = futures_util::stream::unfold(state, |mut st| async move {
+        if st.finished {
+            return None;
+        }
+        loop {
+            match job_store::take(&st.job_id).await {
+                None => {
+                    st.finished = true;
+                    return Some((
+                        Ok(Event::default().event("error").data("job not found")),
+                        st,
+                    ));
+                }
+                Some(LlmJobStatus::Pending(progress)) => {
+                    // Сначала дельты текста, затем смена этапа
+                    if let Some(partial) = &progress.partial_text {
+                        if partial.len() > st.sent_bytes {
+                            let delta = partial[st.sent_bytes..].to_string();
+                            st.sent_bytes = partial.len();
+                            let payload =
+                                serde_json::to_string(&json!({ "text": delta })).unwrap_or_default();
+                            return Some((Ok(Event::default().event("delta").data(payload)), st));
+                        }
+                    }
+                    if progress.stage != st.last_stage {
+                        st.last_stage = progress.stage.clone();
+                        let payload = serde_json::to_string(
+                            &json!({ "step": progress.step, "stage": progress.stage }),
+                        )
+                        .unwrap_or_default();
+                        return Some((Ok(Event::default().event("progress").data(payload)), st));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                }
+                Some(LlmJobStatus::Done(msg)) => {
+                    st.finished = true;
+                    let payload = serde_json::to_string(&msg).unwrap_or_default();
+                    return Some((Ok(Event::default().event("done").data(payload)), st));
+                }
+                Some(LlmJobStatus::Error(e)) => {
+                    st.finished = true;
+                    return Some((Ok(Event::default().event("error").data(e)), st));
+                }
+            }
+        }
+    });
+
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
 /// GET /api/a018-llm-chat/:id/context
 /// Список пакетов контекста, привязанных к чату.
 pub async fn get_chat_context(
@@ -286,7 +383,10 @@ pub async fn get_chat_context(
 ) -> Result<Json<Vec<ContextPackageSummary>>, StatusCode> {
     match a018_llm_chat::service::list_chat_context(&id).await {
         Ok(v) => Ok(Json(v)),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 get_chat_context({id}) failed: {e}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
@@ -298,7 +398,10 @@ pub async fn get_context_package(
     match a018_llm_chat::service::get_context_by_id(&id).await {
         Ok(Some(s)) => Ok(Json(s)),
         Ok(None) => Err(StatusCode::NOT_FOUND),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            tracing::error!("a018 get_context_package({id}) failed: {e}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 

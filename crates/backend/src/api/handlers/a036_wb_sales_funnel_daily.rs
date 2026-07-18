@@ -152,6 +152,56 @@ pub async fn list_paginated(
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct WbSalesFunnelExportRowDto {
+    pub document_date: String,
+    pub nm_id: i64,
+    pub title: String,
+    pub vendor_code: String,
+    pub brand_name: String,
+    pub subject_name: String,
+    pub nomenclature_article: Option<String>,
+    pub metrics: WbSalesFunnelDailyMetrics,
+}
+
+/// Позиции всех документов под текущими фильтрами списка (без пагинации) —
+/// источник CSV-выгрузки за период.
+pub async fn export_lines(
+    Query(query): Query<ListQuery>,
+) -> Result<Json<Vec<WbSalesFunnelExportRowDto>>, axum::http::StatusCode> {
+    let list_query = WbSalesFunnelDailyListQuery {
+        date_from: query.date_from,
+        date_to: query.date_to,
+        connection_id: query.connection_id,
+        search_query: query.search_query,
+        sort_by: "document_date".to_string(),
+        sort_desc: false,
+        limit: 0,
+        offset: 0,
+    };
+
+    match a036_wb_sales_funnel_daily::service::export_rows(list_query).await {
+        Ok(rows) => Ok(Json(
+            rows.into_iter()
+                .map(|row| WbSalesFunnelExportRowDto {
+                    document_date: row.document_date,
+                    nm_id: row.nm_id,
+                    title: row.title,
+                    vendor_code: row.vendor_code,
+                    brand_name: row.brand_name,
+                    subject_name: row.subject_name,
+                    nomenclature_article: row.nomenclature_article,
+                    metrics: row.metrics,
+                })
+                .collect(),
+        )),
+        Err(e) => {
+            tracing::error!("Failed to export WB sales funnel lines: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ProductMetricsQuery {
     pub connection_id: String,

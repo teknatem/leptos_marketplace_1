@@ -45,3 +45,211 @@
   font-size: 13px;
   cursor: pointer;
 }
+
+/* ── Вкладка «Внешний API» ───────────────────────────────────────────────── */
+.scheduled-task-list .ext-api {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.scheduled-task-list .ext-api__note {
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+  background: var(--colorNeutralBackground2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.scheduled-task-list .ext-api__note code {
+  font-family: monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--colorNeutralBackground3, rgba(127, 127, 127, 0.14));
+}
+
+.scheduled-task-list .ext-api__controls {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.scheduled-task-list .ext-api__control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scheduled-task-list .ext-api__control-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.scheduled-task-list .ext-api__select {
+  min-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--colorNeutralBackground1);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Карточки-итоги */
+.scheduled-task-list .ext-api__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.scheduled-task-list .ext-api__stat {
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--colorNeutralBackground1);
+}
+
+.scheduled-task-list .ext-api__stat--accent {
+  border-color: var(--color-error-100);
+  background: var(--color-error-50);
+}
+
+.scheduled-task-list .ext-api__stat-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.scheduled-task-list .ext-api__stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--color-text-primary);
+}
+
+.scheduled-task-list .ext-api__stat--accent .ext-api__stat-value {
+  color: var(--color-error);
+}
+
+/* Панели с таблицами */
+.scheduled-task-list .ext-api__panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 12px;
+}
+
+.scheduled-task-list .ext-api__panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--colorNeutralBackground1);
+  overflow: hidden;
+}
+
+.scheduled-task-list .ext-api__panel-title {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--colorNeutralBackground2);
+}
+
+.scheduled-task-list .ext-api__empty {
+  padding: 20px 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.scheduled-task-list .ext-api__empty--chart {
+  padding: 24px;
+}
+
+/* Широкие таблицы скроллятся внутри себя, страница не едет по горизонтали */
+.scheduled-task-list .ext-api__table-wrap {
+  overflow-x: auto;
+}
+
+.scheduled-task-list .ext-api__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.scheduled-task-list .ext-api__table th,
+.scheduled-task-list .ext-api__table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.scheduled-task-list .ext-api__table th {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.scheduled-task-list .ext-api__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.scheduled-task-list .ext-api__table tbody tr:hover {
+  background: var(--colorNeutralBackground2);
+}
+
+.scheduled-task-list .ext-api__num {
+  text-align: right;
+  font-family: monospace;
+}
+
+.scheduled-task-list .ext-api__num--error {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.scheduled-task-list .ext-api__mono {
+  font-family: monospace;
+}
+
+.scheduled-task-list .ext-api__key,
+.scheduled-task-list .ext-api__query {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scheduled-task-list .ext-api__query {
+  font-family: monospace;
+  color: var(--color-text-secondary);
+}
+
+/* Бейдж статуса ответа */
+.scheduled-task-list .ext-api__status {
+  display: inline-block;
+  min-width: 34px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.scheduled-task-list .ext-api__status--ok {
+  background: var(--color-success-50, rgba(16, 128, 67, 0.12));
+  color: var(--color-success, #108043);
+}
+
+.scheduled-task-list .ext-api__status--client-error {
+  background: var(--color-warning-50, rgba(191, 122, 0, 0.12));
+  color: var(--color-warning, #bf7a00);
+}
+
+.scheduled-task-list .ext-api__status--server-error {
+  background: var(--color-error-50);
+  color: var(--color-error);
+}

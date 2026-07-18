@@ -1,5 +1,6 @@
 pub mod config_editor;
 pub mod details;
+pub mod ext_api;
 pub mod history;
 pub mod list;
 pub mod run_task_button;

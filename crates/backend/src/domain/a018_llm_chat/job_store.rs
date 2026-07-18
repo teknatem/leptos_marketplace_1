@@ -8,10 +8,42 @@ use tokio::sync::RwLock;
 const JOB_TTL_HOURS: i64 = 24;
 static ACTIVE_JOBS: Lazy<RwLock<HashSet<String>>> = Lazy::new(|| RwLock::new(HashSet::new()));
 
+/// Частичный текст ответа (стриминг), накапливается в памяти процесса.
+/// В БД не пишем: дельты приходят десятки раз в секунду, а результат всё равно
+/// заменяется финальным сообщением. При рестарте процесса job и так помечается
+/// worker_interrupted (см. ACTIVE_JOBS).
+static PARTIAL_TEXT: Lazy<std::sync::Mutex<std::collections::HashMap<String, String>>> =
+    Lazy::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Дописать дельту стриминга к частичному тексту job'а (sync — зовётся из callback провайдера).
+pub fn append_partial(job_id: &str, delta: &str) {
+    if let Ok(mut map) = PARTIAL_TEXT.lock() {
+        map.entry(job_id.to_string()).or_default().push_str(delta);
+    }
+}
+
+/// Текущий частичный текст job'а (для poll/SSE).
+pub fn get_partial(job_id: &str) -> Option<String> {
+    PARTIAL_TEXT
+        .lock()
+        .ok()
+        .and_then(|map| map.get(job_id).cloned())
+        .filter(|s| !s.is_empty())
+}
+
+fn clear_partial(job_id: &str) {
+    if let Ok(mut map) = PARTIAL_TEXT.lock() {
+        map.remove(job_id);
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct JobProgress {
     pub step: u32,
     pub stage: String,
+    /// Частичный текст ответа модели (стриминг), если уже что-то сгенерировано.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partial_text: Option<String>,
 }
 
 impl JobProgress {
@@ -19,6 +51,7 @@ impl JobProgress {
         Self {
             step,
             stage: stage.into(),
+            partial_text: None,
         }
     }
 }
@@ -157,6 +190,7 @@ pub async fn complete(job_id: &str, msg: LlmChatMessage) {
         ))
         .await;
     ACTIVE_JOBS.write().await.remove(job_id);
+    clear_partial(job_id);
 }
 
 pub async fn fail(job_id: &str, error: String) {
@@ -169,6 +203,7 @@ pub async fn fail(job_id: &str, error: String) {
         ))
         .await;
     ACTIVE_JOBS.write().await.remove(job_id);
+    clear_partial(job_id);
 }
 
 pub async fn cancel(job_id: &str) -> anyhow::Result<bool> {
@@ -181,6 +216,7 @@ pub async fn cancel(job_id: &str) -> anyhow::Result<bool> {
         ))
         .await?;
     ACTIVE_JOBS.write().await.remove(job_id);
+    clear_partial(job_id);
     Ok(result.rows_affected() > 0)
 }
 
@@ -229,14 +265,18 @@ pub async fn take(job_id: &str) -> Option<LlmJobStatus> {
                 "worker_interrupted: повторите запрос с тем же request_id".to_string(),
             ))
         }
-        "pending" => Some(LlmJobStatus::Pending(JobProgress::new(
-            row.get("progress_step")
-                .and_then(serde_json::Value::as_i64)
-                .unwrap_or(0) as u32,
-            row.get("progress_stage")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
-        ))),
+        "pending" => {
+            let mut progress = JobProgress::new(
+                row.get("progress_step")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0) as u32,
+                row.get("progress_stage")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            );
+            progress.partial_text = get_partial(job_id);
+            Some(LlmJobStatus::Pending(progress))
+        }
         "done" => row
             .get("result_json")
             .and_then(serde_json::Value::as_str)

@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use contracts::domain::a036_wb_sales_funnel_daily::aggregate::{
     WbSalesFunnelDaily, WbSalesFunnelDailyHeader, WbSalesFunnelDailyId, WbSalesFunnelDailyLine,
-    WbSalesFunnelDailySourceMeta,
+    WbSalesFunnelDailyMetrics, WbSalesFunnelDailySourceMeta,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
@@ -228,6 +228,235 @@ pub async fn product_metrics_sum(
         .collect())
 }
 
+/// Плоская строка воронки на уровне `nm_id × дата` — для внешней выгрузки
+/// (Power BI и прочие BI-потребители). Разворачивает `lines_json` документов,
+/// добавляя дату и имена кабинета/организации.
+#[derive(Debug, Clone)]
+pub struct FunnelProductRow {
+    pub date: String,
+    pub connection_id: String,
+    pub connection_name: Option<String>,
+    pub organization_name: Option<String>,
+    pub currency: String,
+    pub nm_id: i64,
+    pub vendor_code: String,
+    pub brand_name: String,
+    pub subject_id: i64,
+    pub subject_name: String,
+    pub title: String,
+    pub open_count: i64,
+    pub add_to_wishlist_count: i64,
+    pub cart_count: i64,
+    pub order_count: i64,
+    pub order_sum: f64,
+    pub buyout_count: i64,
+    pub buyout_sum: f64,
+    pub buyout_percent: f64,
+    pub add_to_cart_conversion: f64,
+    pub cart_to_order_conversion: f64,
+}
+
+pub struct FunnelProductRowsResult {
+    pub rows: Vec<FunnelProductRow>,
+    pub total: usize,
+}
+
+/// Загружает карту id → description для справочной таблицы (a006/a002).
+async fn load_name_map<C: ConnectionTrait>(db: &C, table: &str) -> HashMap<String, String> {
+    let sql = format!("SELECT id, description FROM {table}");
+    let rows = match db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("load_name_map({table}) failed: {e}");
+            return HashMap::new();
+        }
+    };
+    rows.into_iter()
+        .filter_map(|row| {
+            let id: String = row.try_get("", "id").ok()?;
+            let desc: String = row.try_get("", "description").unwrap_or_default();
+            Some((id, desc))
+        })
+        .collect()
+}
+
+/// Плоские строки воронки (одна на `nm_id × дата`) за период `[date_from, date_to]`,
+/// опционально по одному кабинету. Пагинация применяется к развёрнутым строкам:
+/// `total` — их общее число, возвращается срез `[offset .. offset+limit]`.
+pub async fn product_rows_for_period(
+    date_from: &str,
+    date_to: &str,
+    connection_id: Option<&str>,
+    limit: usize,
+    offset: usize,
+) -> Result<FunnelProductRowsResult> {
+    let db = get_connection();
+
+    let mut find = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::DocumentDate.gte(date_from))
+        .filter(Column::DocumentDate.lte(date_to));
+    if let Some(cid) = connection_id {
+        if !cid.is_empty() {
+            find = find.filter(Column::ConnectionId.eq(cid));
+        }
+    }
+    let models = find.all(db).await?;
+
+    let conn_names = load_name_map(db, "a006_connection_mp").await;
+    let org_names = load_name_map(db, "a002_organization").await;
+
+    let mut rows: Vec<FunnelProductRow> = Vec::new();
+    for m in models {
+        let lines: Vec<WbSalesFunnelDailyLine> =
+            serde_json::from_str(&m.lines_json).unwrap_or_default();
+        let connection_name = conn_names.get(&m.connection_id).cloned();
+        let organization_name = org_names.get(&m.organization_id).cloned();
+        for line in lines {
+            let mt = &line.metrics;
+            rows.push(FunnelProductRow {
+                date: m.document_date.clone(),
+                connection_id: m.connection_id.clone(),
+                connection_name: connection_name.clone(),
+                organization_name: organization_name.clone(),
+                currency: m.currency.clone(),
+                nm_id: line.nm_id,
+                vendor_code: line.vendor_code.clone(),
+                brand_name: line.brand_name.clone(),
+                subject_id: line.subject_id,
+                subject_name: line.subject_name.clone(),
+                title: line.title.clone(),
+                open_count: mt.open_count,
+                add_to_wishlist_count: mt.add_to_wishlist_count,
+                cart_count: mt.cart_count,
+                order_count: mt.order_count,
+                order_sum: mt.order_sum,
+                buyout_count: mt.buyout_count,
+                buyout_sum: mt.buyout_sum,
+                buyout_percent: mt.buyout_percent,
+                add_to_cart_conversion: mt.add_to_cart_conversion,
+                cart_to_order_conversion: mt.cart_to_order_conversion,
+            });
+        }
+    }
+
+    // Детерминированный порядок, чтобы offset/limit давали стабильные страницы.
+    rows.sort_by(|a, b| {
+        a.date
+            .cmp(&b.date)
+            .then_with(|| a.connection_id.cmp(&b.connection_id))
+            .then_with(|| a.nm_id.cmp(&b.nm_id))
+    });
+
+    let total = rows.len();
+    let page = rows.into_iter().skip(offset).take(limit).collect();
+
+    Ok(FunnelProductRowsResult { rows: page, total })
+}
+
+/// Строка выгрузки позиций (`nm_id × дата`) в формате вкладки «Позиции» карточки
+/// документа плюс дата — для CSV-экспорта со страницы списка.
+#[derive(Debug, Clone)]
+pub struct WbSalesFunnelExportRow {
+    pub document_date: String,
+    pub nm_id: i64,
+    pub title: String,
+    pub vendor_code: String,
+    pub brand_name: String,
+    pub subject_name: String,
+    pub nomenclature_article: Option<String>,
+    pub metrics: WbSalesFunnelDailyMetrics,
+}
+
+/// Позиции всех документов, попадающих под фильтры списка (период/кабинет/поиск),
+/// без пагинации. Артикул 1С резолвится одним запросом в a004.
+pub async fn export_rows(query: WbSalesFunnelDailyListQuery) -> Result<Vec<WbSalesFunnelExportRow>> {
+    let db = get_connection();
+    let where_clause = build_list_where(&query);
+
+    let sql = format!(
+        "SELECT d.document_date, d.lines_json
+         FROM a036_wb_sales_funnel_daily d
+         LEFT JOIN a006_connection_mp c ON c.id = d.connection_id
+         LEFT JOIN a002_organization o ON o.id = d.organization_id
+         WHERE {}
+         ORDER BY d.document_date ASC",
+        where_clause
+    );
+
+    let models = db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await?;
+
+    let articles = load_name_map_col(db, "a004_nomenclature", "article").await;
+
+    let mut rows: Vec<WbSalesFunnelExportRow> = Vec::new();
+    for model in models {
+        let document_date: String = model.try_get("", "document_date").unwrap_or_default();
+        let lines_json: String = model.try_get("", "lines_json").unwrap_or_default();
+        let lines: Vec<WbSalesFunnelDailyLine> =
+            serde_json::from_str(&lines_json).unwrap_or_default();
+
+        for line in lines {
+            let nomenclature_article = line
+                .nomenclature_ref
+                .as_ref()
+                .and_then(|nom_ref| articles.get(nom_ref).cloned());
+
+            rows.push(WbSalesFunnelExportRow {
+                document_date: document_date.clone(),
+                nm_id: line.nm_id,
+                title: line.title,
+                vendor_code: line.vendor_code,
+                brand_name: line.brand_name,
+                subject_name: line.subject_name,
+                nomenclature_article,
+                metrics: line.metrics,
+            });
+        }
+    }
+
+    Ok(rows)
+}
+
+/// Карта id → произвольная текстовая колонка справочника.
+async fn load_name_map_col<C: ConnectionTrait>(
+    db: &C,
+    table: &str,
+    column: &str,
+) -> HashMap<String, String> {
+    let sql = format!("SELECT id, {column} AS value FROM {table}");
+    let rows = match db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("load_name_map_col({table}.{column}) failed: {e}");
+            return HashMap::new();
+        }
+    };
+    rows.into_iter()
+        .filter_map(|row| {
+            let id: String = row.try_get("", "id").ok()?;
+            let value: String = row.try_get("", "value").unwrap_or_default();
+            Some((id, value))
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct WbSalesFunnelDailyListQuery {
     pub date_from: Option<String>,
@@ -265,9 +494,8 @@ pub struct WbSalesFunnelDailyListResult {
     pub total: usize,
 }
 
-pub async fn list_sql(query: WbSalesFunnelDailyListQuery) -> Result<WbSalesFunnelDailyListResult> {
-    let db = get_connection();
-
+/// WHERE для списка документов (алиасы `d`/`c`/`o`), общий для списка и выгрузки.
+fn build_list_where(query: &WbSalesFunnelDailyListQuery) -> String {
     let mut conditions = vec!["d.is_deleted = 0".to_string()];
 
     if let Some(ref date_from) = query.date_from {
@@ -295,7 +523,13 @@ pub async fn list_sql(query: WbSalesFunnelDailyListQuery) -> Result<WbSalesFunne
         }
     }
 
-    let where_clause = conditions.join(" AND ");
+    conditions.join(" AND ")
+}
+
+pub async fn list_sql(query: WbSalesFunnelDailyListQuery) -> Result<WbSalesFunnelDailyListResult> {
+    let db = get_connection();
+
+    let where_clause = build_list_where(&query);
     let sort_column = match query.sort_by.as_str() {
         "document_no" => "d.document_no",
         "document_date" => "d.document_date",

@@ -16,8 +16,8 @@ use super::{
         Task012WbAdvertCampaignsManager, Task013YmOrdersPollingManager, Task014KbAnalyzeManager,
         Task015KbPostManager, Task016KbIntakeManager, Task017WbReturnsClaimsManager,
         Task018YmReturnsManager, Task019YmPaymentReportManager, Task020WbProductSnapshotManager,
-        Task021MailIntakeManager, Task022MailReplyManager, U501ImportUtManager,
-        U502ImportOzonManager, U503ImportYandexManager,
+        Task021MailIntakeManager, Task022MailReplyManager, Task023WbSalesFunnelDailyManager,
+        U501ImportUtManager, U502ImportOzonManager, U503ImportYandexManager,
     },
     registry::{set_global_registry, TaskManagerRegistry},
     worker::ScheduledTaskWorker,
@@ -78,6 +78,7 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
     registry.register(Task011WbAdvertManager::new(wb_executor!()));
     registry.register(Task012WbAdvertCampaignsManager::new(wb_executor!()));
     registry.register(Task020WbProductSnapshotManager::new(wb_executor!()));
+    registry.register(Task023WbSalesFunnelDailyManager::new(wb_executor!()));
 
     // ---- Yandex atomic task managers ----
 
@@ -103,4 +104,31 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
 
     let worker = ScheduledTaskWorker::new(registry, logger, 60);
     Ok(worker)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Забыть `registry.register(...)` для нового менеджера — ошибка, которую компилятор
+    /// не ловит: задание молча не запускается, а seed-строка в sys_tasks остаётся без
+    /// исполнителя. Проверяем, что типы, на которые ссылаются seed-миграции, в реестре есть.
+    #[tokio::test]
+    async fn seeded_task_types_are_registered() {
+        initialize_scheduled_tasks()
+            .await
+            .expect("registry init failed");
+        let registry = super::super::registry::get_global_registry().expect("no global registry");
+
+        for task_type in [
+            "task020_wb_product_snapshot",
+            "task023_wb_sales_funnel_daily",
+        ] {
+            let manager = registry
+                .get(task_type)
+                .unwrap_or_else(|| panic!("менеджер не зарегистрирован: {task_type}"));
+            // Ключ реестра берётся из task_type(); metadata должна описывать тот же тип.
+            assert_eq!(manager.metadata().task_type, task_type);
+        }
+    }
 }

@@ -30,18 +30,57 @@ fn utf8_truncate(s: &str, max_bytes: usize) -> &str {
 }
 
 /// Максимальное число итераций tool calling в одном запросе.
-/// Агентные навыки (plugin-authoring / chart-builder) многошаговые: активация навыка
-/// (progressive disclosure) + интроспекция схемы + execute_query + шаблон + smoke-тест +
-/// upsert, плюс возможный цикл починки — это легко 12–14 шагов. 16 даёт запас; при
-/// исчерпании лимит обрабатывается мягко (финальный ответ без инструментов, см. ниже).
+/// При исчерпании лимит обрабатывается мягко: делается финальный запрос без
+/// инструментов, чтобы модель подытожила проделанную работу (см. ниже).
 const MAX_TOOL_ITERATIONS: usize = 10;
 const MAX_TOOL_FAILURES: usize = 6;
 
 /// Системные промпты вынесены в реестр навыков (см. shared/llm/skills.rs):
 /// базовый core-промпт + промпт-фрагменты активных навыков.
 
-/// Максимальное число не-системных сообщений в контексте (sliding window)
-const MAX_HISTORY_MESSAGES: usize = 20;
+/// Токен-бюджет истории диалога (грубая оценка ~3 символа на токен для RU/EN-микса).
+/// При превышении старая часть истории СУММИРУЕТСЯ (компакция) и заменяется сводкой,
+/// которая сохраняется в чате (a018_llm_chat.summary_text/summary_upto).
+const HISTORY_TOKEN_BUDGET: usize = 24_000;
+/// Сколько «живой» (несжатой) истории оставляем после компакции.
+const KEEP_RECENT_TOKENS: usize = 12_000;
+
+/// Грубая оценка числа токенов в строке (~3 символа/токен).
+fn estimate_tokens(s: &str) -> usize {
+    s.chars().count() / 3 + 1
+}
+
+/// Оценка «веса» сообщения в контексте: контент + tool trace (он дописывается
+/// к assistant-сообщениям при сборке контекста, cap 12KB — см. MAX_HISTORY_TRACE_BYTES).
+fn message_tokens(m: &LlmChatMessage) -> usize {
+    estimate_tokens(&m.content)
+        + m.tool_trace
+            .as_deref()
+            .map(|t| estimate_tokens(t).min(4_000))
+            .unwrap_or(0)
+}
+
+/// Индекс разреза для компакции: history[..idx] уходит в сводку, history[idx..]
+/// остаётся живым хвостом (≈ KEEP_RECENT_TOKENS по оценке; system-сообщения не
+/// считаются — они сохраняются отдельно). Последнее сообщение (текущий вопрос
+/// пользователя) не компактится никогда. 0 — резать нечего.
+fn compaction_cut_index(history: &[LlmChatMessage], total_tokens: usize) -> usize {
+    if history.len() < 2 {
+        return 0;
+    }
+    let mut running = 0usize;
+    for (i, m) in history.iter().enumerate().take(history.len() - 1) {
+        if m.role == ChatRole::System {
+            continue;
+        }
+        running += message_tokens(m);
+        if total_tokens - running <= KEEP_RECENT_TOKENS {
+            return i + 1;
+        }
+    }
+    // Даже один последний хвост больше KEEP — компактим всё, кроме текущего сообщения.
+    history.len() - 1
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmChatDto {
@@ -309,6 +348,8 @@ fn human_tool_label(name: &str) -> String {
         "get_performance_stats" => "Метрики производительности",
         "list_background_jobs" => "Фоновые задачи",
         "get_data_integrity_report" => "Проверка целостности данных",
+        "list_scheduled_tasks" => "Просмотр регламентных заданий",
+        "describe_task_types" => "Справка по типам заданий",
         other => return format!("Инструмент: {other}"),
     };
     label.to_string()
@@ -438,6 +479,10 @@ pub async fn send_message(
         .map(|s| s.clone())
         .unwrap_or_else(|| chat.model_name.clone());
 
+    // Провайдер создаётся сразу: нужен и для компакции истории (ниже), и для цикла.
+    let provider = create_provider(&agent, Some(&model_to_use))
+        .map_err(|e| anyhow::anyhow!("LLM provider error: {}", e))?;
+
     // 3. Обработать вложения если есть
     let mut content_with_attachments = request.content.clone();
 
@@ -488,30 +533,121 @@ pub async fn send_message(
     // 6. Получить историю сообщений для контекста
     let mut history = repository::find_messages_by_chat_id(&db, &chat_id_obj).await?;
 
-    // Заменить последнее сообщение (user_msg) контентом с вложениями
-    if let Some(last_msg) = history.last_mut() {
-        if last_msg.id == user_msg.id {
-            last_msg.content = content_with_attachments.clone();
+    // === Управление контекстом: персистентная сводка + токен-бюджет ===
+    // 6.1 Ранее скомпактированная часть уже заменена сводкой — исключаем её из истории.
+    let mut chat_summary: Option<String> = None;
+    match repository::get_chat_summary(&db, &chat_id_obj).await {
+        Ok(Some((text, upto))) => {
+            if let Ok(upto_ts) = chrono::DateTime::parse_from_rfc3339(&upto) {
+                let upto_utc = upto_ts.with_timezone(&chrono::Utc);
+                history.retain(|m| m.role == ChatRole::System || m.created_at > upto_utc);
+            }
+            chat_summary = Some(text);
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!("get_chat_summary failed for chat {}: {}", chat_id, e),
+    }
+
+    // 6.2 Токен-бюджет: при превышении старая часть суммируется LLM-вызовом,
+    // сводка сохраняется в чате, в контексте остаётся сводка + свежий хвост.
+    let total_tokens: usize = history
+        .iter()
+        .filter(|m| m.role != ChatRole::System)
+        .map(message_tokens)
+        .sum();
+    if total_tokens > HISTORY_TOKEN_BUDGET {
+        report_progress(job_id, 0, "Сжимаю контекст диалога…").await;
+
+        // Точка разреза: свежий хвост ≤ KEEP_RECENT_TOKENS остаётся живым.
+        let cut = compaction_cut_index(&history, total_tokens);
+
+        if cut > 0 {
+            let recent = history.split_off(cut);
+            let old_part = history;
+            let old_system: Vec<_> = old_part
+                .iter()
+                .filter(|m| m.role == ChatRole::System)
+                .cloned()
+                .collect();
+            let to_compact: Vec<_> = old_part
+                .into_iter()
+                .filter(|m| m.role != ChatRole::System)
+                .collect();
+
+            if let Some(last_old) = to_compact.last() {
+                let upto_rfc = last_old.created_at.to_rfc3339();
+                let mut payload = String::new();
+                if let Some(prev) = &chat_summary {
+                    payload.push_str("Предыдущая сводка (объедини её с новой информацией):\n");
+                    payload.push_str(prev);
+                    payload.push_str("\n\n");
+                }
+                payload.push_str("Сообщения для сжатия:\n");
+                for m in &to_compact {
+                    let role = match m.role {
+                        ChatRole::User => "Пользователь",
+                        ChatRole::Assistant => "Ассистент",
+                        ChatRole::System => "Система",
+                    };
+                    payload.push_str(&format!(
+                        "[{}] {}\n\n",
+                        role,
+                        utf8_truncate(&m.content, 4_000)
+                    ));
+                }
+                let payload = utf8_truncate(&payload, 120_000).to_string();
+                let sum_messages = vec![
+                    ChatMessage::system(
+                        "Ты сжимаешь историю диалога, чтобы ассистент продолжил работу с меньшим \
+                         контекстом. Составь компактную сводку (до 400 слов): цель пользователя; \
+                         ключевые факты, данные и принятые решения; созданные/изменённые объекты и \
+                         артефакты с их id; незакрытые задачи и договорённости. Пиши фактами, без \
+                         воды. Ответ — только текст сводки.",
+                    ),
+                    ChatMessage::user(payload),
+                ];
+                match provider.chat_completion(&sum_messages).await {
+                    Ok(resp) if !resp.content.trim().is_empty() => {
+                        let new_summary = resp.content.trim().to_string();
+                        if let Err(e) = repository::set_chat_summary(
+                            &db,
+                            &chat_id_obj,
+                            &new_summary,
+                            &upto_rfc,
+                        )
+                        .await
+                        {
+                            tracing::warn!("set_chat_summary failed for chat {}: {}", chat_id, e);
+                        }
+                        tracing::info!(
+                            "[compaction] chat='{}' compacted {} msgs (~{} tok) -> summary {} chars",
+                            chat_id,
+                            to_compact.len(),
+                            total_tokens,
+                            new_summary.len()
+                        );
+                        chat_summary = Some(new_summary);
+                    }
+                    Ok(_) => tracing::warn!(
+                        "[compaction] пустая сводка — жёсткая обрезка без сводки на этот ход"
+                    ),
+                    Err(e) => tracing::warn!(
+                        "[compaction] суммаризация не удалась ({:?}) — жёсткая обрезка на этот ход",
+                        e
+                    ),
+                }
+            }
+            history = old_system.into_iter().chain(recent).collect();
         }
     }
 
-    // Sliding window: system-сообщения сохраняются полностью,
-    // не-системные обрезаются до MAX_HISTORY_MESSAGES (последние N)
-    if history.len() > MAX_HISTORY_MESSAGES {
-        let system_msgs: Vec<_> = history
-            .iter()
-            .filter(|m| m.role == ChatRole::System)
-            .cloned()
-            .collect();
-        let mut non_system: Vec<_> = history
-            .iter()
-            .filter(|m| m.role != ChatRole::System)
-            .cloned()
-            .collect();
-        if non_system.len() > MAX_HISTORY_MESSAGES {
-            non_system.drain(0..non_system.len() - MAX_HISTORY_MESSAGES);
+    // Дописать содержимое вложений к user-сообщениям истории. В БД content хранит
+    // только оригинальный ввод пользователя, поэтому текст файлов дочитывается с диска
+    // при каждой сборке контекста — иначе модель теряла файлы на follow-up ходах.
+    for msg in history.iter_mut() {
+        if msg.role == ChatRole::User {
+            append_attachments_text(&db, msg).await;
         }
-        history = system_msgs.into_iter().chain(non_system).collect();
     }
 
     // 7. Преобразовать историю в формат для LLM
@@ -542,18 +678,13 @@ pub async fn send_message(
         .unwrap_or_default();
 
     // Базовый промпт: кастомный из агента, иначе role-agnostic core.
-    let base_prompt = agent
+    // ВАЖНО для кэша префикса у провайдеров (OpenAI/DeepSeek кэшируют префикс
+    // автоматически): системный промпт держим байт-стабильным — без даты и прочих
+    // меняющихся значений. Дата добавляется ОТДЕЛЬНЫМ system-сообщением после истории.
+    let mut system_text = agent
         .system_prompt
         .clone()
         .unwrap_or_else(|| skills::core_prompt().to_string());
-    let now = chrono::Local::now();
-    let mut system_text = format!(
-        "{}\n\n---\nСегодня: {}. Текущий месяц: {}. Текущий год: {}.",
-        base_prompt,
-        now.format("%Y-%m-%d"),
-        now.format("%m.%Y"),
-        now.format("%Y")
-    );
     // Краткий каталог доступных навыков (id + описание) — чтобы модель выбрала и активировала
     // нужный через use_skill БЕЗ отдельного round-trip на list_skills. Полные инструменты и
     // инструкции навыка подгружаются только после активации.
@@ -580,6 +711,14 @@ pub async fn send_message(
         fallback_skill.map(|s| s.id)
     );
     llm_messages.push(ChatMessage::system(system_text));
+
+    // Сводка ранней части диалога (компакция): заменяет сообщения старше summary_upto.
+    if let Some(summary) = &chat_summary {
+        llm_messages.push(ChatMessage::system(format!(
+            "Сводка ранней части этого диалога (более старые сообщения заменены ею):\n\n{}",
+            summary
+        )));
+    }
 
     // Контекст прикреплённых страниц (если есть) — отдельным system-сообщением.
     // Привязка хранится в БД (context_package.chat_id), поэтому доступна каждый вызов.
@@ -653,9 +792,15 @@ pub async fn send_message(
         llm_messages.push(chat_msg);
     }
 
-    // 8. Создать LLM провайдера с выбранной моделью
-    let provider = create_provider(&agent, Some(&model_to_use))
-        .map_err(|e| anyhow::anyhow!("LLM provider error: {}", e))?;
+    // Текущая дата — в конце (после истории), чтобы смена дня не инвалидировала
+    // кэш префикса (system prompt + история) у провайдера.
+    let now = chrono::Local::now();
+    llm_messages.push(ChatMessage::system(format!(
+        "Сегодня: {}. Текущий месяц: {}. Текущий год: {}.",
+        now.format("%Y-%m-%d"),
+        now.format("%m.%Y"),
+        now.format("%Y")
+    )));
 
     // 8.5 Роутер интентов (Фаза 0): классифицируем запрос пользователя для
     // метаданных/аналитики. Поведение пайплайна (tools/промпт) пока НЕ меняем.
@@ -711,10 +856,27 @@ pub async fn send_message(
             let step = (iteration + 1) as u32;
             report_progress(job_id, step, "Модель думает…").await;
 
-            let response = provider
-                .chat_completion_with_tools(&llm_messages, &tool_defs)
-                .await
-                .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
+            // Стриминг: дельты текста складываются в job_store (in-memory),
+            // фронт показывает их через poll/SSE ещё до завершения ответа.
+            let response = match job_id {
+                Some(id) => {
+                    // Разделитель между текстом разных итераций (narration → финальный ответ)
+                    if iteration > 0 && job_store::get_partial(id).is_some() {
+                        job_store::append_partial(id, "\n\n");
+                    }
+                    let id_owned = id.to_string();
+                    let sink = move |delta: &str| job_store::append_partial(&id_owned, delta);
+                    provider
+                        .chat_completion_with_tools_streaming(&llm_messages, &tool_defs, &sink)
+                        .await
+                }
+                None => {
+                    provider
+                        .chat_completion_with_tools(&llm_messages, &tool_defs)
+                        .await
+                }
+            }
+            .map_err(|e| anyhow::anyhow!("LLM error: {:?}", e))?;
             total_tokens_used += response.tokens_used.unwrap_or(0) as i64;
 
             tracing::info!(
@@ -784,15 +946,8 @@ pub async fn send_message(
                 .await;
                 let call_ms = call_start.elapsed().as_millis() as u64;
 
-                tracing::info!(
-                    "[tool_result] tool='{}' ms={} ok={} preview={}",
-                    tool_call.name,
-                    call_ms,
-                    !result.contains("\"error\""),
-                    utf8_truncate(&result, 300)
-                );
-
-                // Разобрать результат для трассировки
+                // Разобрать результат: единственный источник истины об успехе — поле `_ok`
+                // (его проставляет tool_executor каждому результату).
                 let parsed = serde_json::from_str::<serde_json::Value>(&result).ok();
                 let is_ok = parsed
                     .as_ref()
@@ -801,6 +956,14 @@ pub async fn send_message(
                 if !is_ok {
                     tool_failures += 1;
                 }
+
+                tracing::info!(
+                    "[tool_result] tool='{}' ms={} ok={} preview={}",
+                    tool_call.name,
+                    call_ms,
+                    is_ok,
+                    utf8_truncate(&result, 300)
+                );
 
                 // Детерминированная передача управления для builder-workflow. Модель выбирает
                 // конкретный source/spec, но не может бесконечно возвращаться к discovery после
@@ -995,7 +1158,20 @@ pub async fn send_message(
                  следующий шаг."
                     .to_string(),
             ));
-            match provider.chat_completion(&llm_messages).await {
+            let summary_result = match job_id {
+                Some(id) => {
+                    if job_store::get_partial(id).is_some() {
+                        job_store::append_partial(id, "\n\n");
+                    }
+                    let id_owned = id.to_string();
+                    let sink = move |delta: &str| job_store::append_partial(&id_owned, delta);
+                    provider
+                        .chat_completion_with_tools_streaming(&llm_messages, &[], &sink)
+                        .await
+                }
+                None => provider.chat_completion(&llm_messages).await,
+            };
+            match summary_result {
                 Ok(resp) => {
                     total_tokens_used += resp.tokens_used.unwrap_or(0) as i64;
                     final_response = Some(resp);
@@ -1312,4 +1488,89 @@ async fn read_text_file(filepath: &str) -> anyhow::Result<String> {
     tokio::fs::read_to_string(filepath)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))
+}
+
+/// Потолок на текст одного вложения в контексте LLM — чтобы один большой файл
+/// не вытеснил остальную историю.
+const MAX_ATTACHMENT_FILE_BYTES: usize = 64_000;
+
+/// Дописать к тексту сообщения содержимое его вложений (для контекста LLM).
+async fn append_attachments_text(
+    db: &sea_orm::DatabaseConnection,
+    msg: &mut LlmChatMessage,
+) {
+    let atts = match repository::find_attachments_by_message_id(db, &msg.id).await {
+        Ok(atts) => atts,
+        Err(e) => {
+            tracing::warn!("Failed to load attachments for message {}: {}", msg.id, e);
+            return;
+        }
+    };
+    if atts.is_empty() {
+        return;
+    }
+    let mut parts = Vec::new();
+    for att in &atts {
+        match read_text_file(&att.filepath).await {
+            Ok(content) => {
+                let truncated = utf8_truncate(&content, MAX_ATTACHMENT_FILE_BYTES);
+                let suffix = if truncated.len() < content.len() {
+                    "\n…[файл обрезан]"
+                } else {
+                    ""
+                };
+                parts.push(format!("--- {} ---\n{}{}", att.filename, truncated, suffix));
+            }
+            Err(e) => {
+                tracing::warn!("Failed to read attachment {}: {}", att.filename, e);
+            }
+        }
+    }
+    if !parts.is_empty() {
+        msg.content.push_str("\n\nПрикрепленные файлы:\n");
+        msg.content.push_str(&parts.join("\n\n"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn msg(chars: usize) -> LlmChatMessage {
+        LlmChatMessage::user(LlmChatId::new(Uuid::nil()), "я".repeat(chars))
+    }
+
+    #[test]
+    fn estimate_tokens_rough_thirds() {
+        assert_eq!(estimate_tokens(""), 1);
+        assert_eq!(estimate_tokens(&"a".repeat(300)), 101);
+        // Кириллица считается по символам, не по байтам (UTF-8: 2 байта/символ).
+        assert_eq!(estimate_tokens(&"я".repeat(300)), 101);
+    }
+
+    #[test]
+    fn compaction_keeps_recent_tail() {
+        // 4 сообщения по ~9000 токенов: total ~36k > бюджета 24k.
+        // Живым остаётся хвост ≤ 12k — последнее сообщение, cut = 3.
+        let history: Vec<_> = (0..4).map(|_| msg(27_000)).collect();
+        let total: usize = history.iter().map(message_tokens).sum();
+        assert!(total > HISTORY_TOKEN_BUDGET);
+        assert_eq!(compaction_cut_index(&history, total), 3);
+    }
+
+    #[test]
+    fn compaction_never_cuts_last_message() {
+        // Единственное гигантское сообщение (текущий вопрос) не компактится.
+        let history = vec![msg(120_000)];
+        let total: usize = history.iter().map(message_tokens).sum();
+        assert_eq!(compaction_cut_index(&history, total), 0);
+    }
+
+    #[test]
+    fn compaction_cuts_all_but_last_when_tail_is_huge() {
+        // Оба сообщения больше KEEP: компактим всё, кроме текущего вопроса.
+        let history = vec![msg(60_000), msg(60_000)];
+        let total: usize = history.iter().map(message_tokens).sum();
+        assert_eq!(compaction_cut_index(&history, total), 1);
+    }
 }

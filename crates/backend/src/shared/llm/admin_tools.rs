@@ -167,7 +167,7 @@ async fn check_system_health(hours: u64) -> serde_json::Value {
 
     // Recent failures
     let failures_sql = format!(
-        "SELECT r.id, r.task_id, t.code as task_code, t.name as task_name, \
+        "SELECT r.id, r.task_id, t.code as task_code, t.description as task_description, \
                 r.started_at, r.finished_at, r.duration_ms, r.status, \
                 r.total_errors, r.error_message \
          FROM sys_task_runs r \
@@ -286,7 +286,7 @@ async fn list_background_jobs(status_filter: Option<String>, limit: u64) -> serd
     };
 
     let sql = format!(
-        "SELECT r.id, r.task_id, t.code as task_code, t.name as task_name, \
+        "SELECT r.id, r.task_id, t.code as task_code, t.description as task_description, \
                 r.triggered_by, r.started_at, r.finished_at, r.duration_ms, \
                 r.status, r.total_processed, r.total_inserted, r.total_updated, \
                 r.total_errors, r.error_message \
@@ -305,7 +305,7 @@ async fn list_background_jobs(status_filter: Option<String>, limit: u64) -> serd
             .unwrap_or_default();
 
     // Summary per task
-    let summary_sql = "SELECT t.code, t.name, \
+    let summary_sql = "SELECT t.code, t.description, t.task_type, \
            COUNT(r.id) as total_runs, \
            SUM(CASE WHEN r.status = 'Completed' THEN 1 ELSE 0 END) as completed, \
            SUM(CASE WHEN r.status = 'Failed' THEN 1 ELSE 0 END) as failed, \
@@ -314,7 +314,7 @@ async fn list_background_jobs(status_filter: Option<String>, limit: u64) -> serd
          FROM sys_tasks t \
          LEFT JOIN sys_task_runs r ON r.task_id = t.id \
          WHERE t.is_deleted = 0 \
-         GROUP BY t.id, t.code, t.name \
+         GROUP BY t.id, t.code, t.description, t.task_type \
          ORDER BY last_run_at DESC NULLS LAST";
 
     let task_summary = serde_json::Value::find_by_statement(Statement::from_string(

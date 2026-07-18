@@ -29,6 +29,7 @@ pub mod speech;
 pub mod state;
 pub mod table_utils;
 pub mod theme;
+pub mod time_bar_chart;
 pub mod universal_dashboard;
 
 // Unified init function: no-op on client WASM

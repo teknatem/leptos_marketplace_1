@@ -11,6 +11,7 @@ pub mod openrouter_provider;
 pub mod plugin_tools;
 pub mod provider_factory;
 pub mod router;
+pub mod schedule_tools;
 pub mod skills;
 pub mod table_tools;
 pub mod tool_executor;

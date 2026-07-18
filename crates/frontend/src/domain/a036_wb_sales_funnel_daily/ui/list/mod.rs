@@ -1,12 +1,14 @@
 pub mod state;
 
 use self::state::create_state;
+use super::details::model::fmt_csv_decimal;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::close_page_button::ClosePageButton;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::pagination_controls::PaginationControls;
 use crate::shared::components::table::TableCrosshairHighlight;
+use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::icons::icon;
 use crate::shared::list_utils::{get_sort_class, get_sort_indicator};
 use crate::shared::page_frame::PageFrame;
@@ -14,6 +16,7 @@ use crate::shared::table_utils::init_column_resize;
 use crate::usecases::u504_import_from_wildberries::api as u504_api;
 use chrono::NaiveDate;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::domain::a036_wb_sales_funnel_daily::aggregate::WbSalesFunnelDailyMetrics;
 use contracts::domain::common::AggregateId;
 use contracts::usecases::u504_import_from_wildberries::progress::ImportStatus;
 use contracts::usecases::u504_import_from_wildberries::request::ImportMode;
@@ -91,6 +94,67 @@ pub struct WbSalesFunnelDailyListDto {
     pub fetched_at: String,
 }
 
+/// Строка CSV-выгрузки: формат вкладки «Позиции» карточки документа плюс дата.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExportRowDto {
+    pub document_date: String,
+    pub nm_id: i64,
+    pub title: String,
+    pub vendor_code: String,
+    pub brand_name: String,
+    pub subject_name: String,
+    pub nomenclature_article: Option<String>,
+    pub metrics: WbSalesFunnelDailyMetrics,
+}
+
+impl ExcelExportable for ExportRowDto {
+    fn headers() -> Vec<&'static str> {
+        vec![
+            "Дата",
+            "nmID",
+            "Наименование",
+            "Артикул продавца",
+            "Бренд",
+            "Предмет",
+            "Артикул 1С",
+            "Переходы",
+            "В корзину",
+            "Конв. в корзину, %",
+            "Заказы",
+            "Конв. в заказ, %",
+            "Сумма заказов",
+            "Выкупы",
+            "Сумма выкупов",
+            "Процент выкупа, %",
+            "Отложенные",
+        ]
+    }
+
+    fn to_csv_row(&self) -> Vec<String> {
+        vec![
+            format_date(&self.document_date),
+            self.nm_id.to_string(),
+            self.title.clone(),
+            self.vendor_code.clone(),
+            self.brand_name.clone(),
+            self.subject_name.clone(),
+            self.nomenclature_article
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+            self.metrics.open_count.to_string(),
+            self.metrics.cart_count.to_string(),
+            fmt_csv_decimal(self.metrics.add_to_cart_conversion),
+            self.metrics.order_count.to_string(),
+            fmt_csv_decimal(self.metrics.cart_to_order_conversion),
+            fmt_csv_decimal(self.metrics.order_sum),
+            self.metrics.buyout_count.to_string(),
+            fmt_csv_decimal(self.metrics.buyout_sum),
+            fmt_csv_decimal(self.metrics.buyout_percent),
+            self.metrics.add_to_wishlist_count.to_string(),
+        ]
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse {
     pub items: Vec<serde_json::Value>,
@@ -114,6 +178,7 @@ pub fn WbSalesFunnelDailyList() -> impl IntoView {
     let (connections, set_connections) = signal::<Vec<ConnectionMP>>(Vec::new());
     let (import_session_id, set_import_session_id) = signal::<Option<String>>(None);
     let (import_status, set_import_status) = signal::<Option<String>>(None);
+    let (exporting, set_exporting) = signal(false);
 
     let open_detail = move |id: String, document_date: String| {
         let title = format!("Воронка WB {}", document_date);
@@ -365,6 +430,57 @@ pub fn WbSalesFunnelDailyList() -> impl IntoView {
         load_items();
     };
 
+    // Выгрузка позиций всех документов под текущими фильтрами (не только текущей страницы).
+    let export_csv = move || {
+        spawn_local(async move {
+            set_exporting.set(true);
+            set_error.set(None);
+
+            let date_from = state.with_untracked(|s| s.date_from.clone());
+            let date_to = state.with_untracked(|s| s.date_to.clone());
+            let connection_id = state.with_untracked(|s| s.selected_connection_id.clone());
+            let search_query = state.with_untracked(|s| s.search_query.clone());
+
+            let mut url = format!(
+                "{}/api/a036/wb-sales-funnel/export-lines?date_from={}&date_to={}",
+                api_base(),
+                date_from,
+                date_to
+            );
+            if !search_query.is_empty() {
+                url.push_str(&format!(
+                    "&search_query={}",
+                    urlencoding::encode(&search_query)
+                ));
+            }
+            if let Some(connection_id) = connection_id.filter(|value| !value.is_empty()) {
+                url.push_str(&format!(
+                    "&connection_id={}",
+                    urlencoding::encode(&connection_id)
+                ));
+            }
+
+            match Request::get(&url).send().await {
+                Ok(response) if response.ok() => match response.json::<Vec<ExportRowDto>>().await {
+                    Ok(rows) => {
+                        let filename =
+                            format!("wb_sales_funnel_positions_{}_{}.csv", date_from, date_to);
+                        if let Err(err) = export_to_excel(&rows, &filename) {
+                            set_error.set(Some(format!("CSV: {}", err)));
+                        }
+                    }
+                    Err(e) => set_error.set(Some(format!("Ошибка парсинга выгрузки: {}", e))),
+                },
+                Ok(response) => {
+                    set_error.set(Some(format!("Ошибка сервера: {}", response.status())));
+                }
+                Err(e) => set_error.set(Some(format!("Ошибка сети: {}", e))),
+            }
+
+            set_exporting.set(false);
+        });
+    };
+
     // Импорт через общий механизм u504: старт сессии + поллинг прогресса.
     let start_import = move || {
         let connection_id = state
@@ -524,6 +640,14 @@ pub fn WbSalesFunnelDailyList() -> impl IntoView {
                             {move || import_status.get().map(|status| view! {
                                 <span class="text-muted" style="white-space: nowrap;">{status}</span>
                             })}
+                            <Button
+                                appearance=ButtonAppearance::Secondary
+                                on_click=move |_| export_csv()
+                                disabled=Signal::derive(move || exporting.get())
+                            >
+                                {icon("download")}
+                                {move || if exporting.get() { "Выгрузка…" } else { "Excel (csv)" }}
+                            </Button>
                             <Button
                                 appearance=ButtonAppearance::Secondary
                                 on_click=move |_| start_import()

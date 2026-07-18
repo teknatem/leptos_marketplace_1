@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path as FsPath, PathBuf};
 
-use crate::shared::llm::knowledge_base::{knowledge_base_dir, KnowledgeDoc, KNOWLEDGE_BASE};
+use crate::shared::llm::knowledge_base::{knowledge_base_dir, KnowledgeDoc};
 
 // Compile-time metadata for known DataView modules — used to enrich tree segment names.
 static DV_LABELS: Lazy<HashMap<String, String>> = Lazy::new(|| {
@@ -87,7 +87,7 @@ struct MutableTreeNode {
 
 pub async fn stats() -> Json<KbStatsResponse> {
     let kb_dir = knowledge_base_dir();
-    let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+    let kb = crate::shared::llm::knowledge_base::kb_read();
     let docs = kb.all_docs();
     let mut tags = BTreeMap::<String, usize>::new();
     let mut related = BTreeSet::<String>::new();
@@ -136,7 +136,7 @@ pub async fn stats() -> Json<KbStatsResponse> {
 
 pub async fn tree() -> Json<KbTreeResponse> {
     let kb_dir = knowledge_base_dir();
-    let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+    let kb = crate::shared::llm::knowledge_base::kb_read();
     let mut root = MutableTreeNode::default();
 
     let mut docs = kb.all_docs();
@@ -156,7 +156,7 @@ pub async fn tree() -> Json<KbTreeResponse> {
 
 pub async fn get_article(Path(id): Path<String>) -> Result<Json<KbArticleDetail>, StatusCode> {
     let kb_dir = knowledge_base_dir();
-    let kb = KNOWLEDGE_BASE.read().expect("KnowledgeBase lock poisoned");
+    let kb = crate::shared::llm::knowledge_base::kb_read();
     let Some(doc) = kb.get(&id) else {
         return Err(StatusCode::NOT_FOUND);
     };

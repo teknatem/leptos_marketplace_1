@@ -56,7 +56,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a032_routes())
         .merge(a033_routes())
         // External integrations (API-key auth, no JWT required)
-        .merge(ext_1c_routes())
+        .merge(ext_routes())
         // Usecases — each with their own scope
         .merge(u501_routes())
         .merge(u502_routes())
@@ -839,6 +839,10 @@ fn a018_routes() -> Router {
             post(handlers::a018_llm_chat::cancel_job),
         )
         .route(
+            "/api/a018-llm-chat/jobs/:job_id/stream",
+            get(handlers::a018_llm_chat::stream_job),
+        )
+        .route(
             "/api/a018-llm-chat/:id",
             get(handlers::a018_llm_chat::get_by_id).delete(handlers::a018_llm_chat::delete),
         )
@@ -1016,6 +1020,10 @@ fn a036_routes() -> Router {
         .route(
             "/api/a036/wb-sales-funnel/list",
             get(handlers::a036_wb_sales_funnel_daily::list_paginated),
+        )
+        .route(
+            "/api/a036/wb-sales-funnel/export-lines",
+            get(handlers::a036_wb_sales_funnel_daily::export_lines),
         )
         .route(
             "/api/a036/wb-sales-funnel/product-metrics",
@@ -2302,7 +2310,7 @@ fn general_ledger_routes() -> Router {
 // External integration API — authenticated via X-Api-Key header (no JWT)
 // ============================================================================
 
-fn ext_1c_routes() -> Router {
+fn ext_routes() -> Router {
     Router::new()
         .route(
             "/api/ext/v1/wb-supplies",
@@ -2312,8 +2320,26 @@ fn ext_1c_routes() -> Router {
             "/api/ext/v1/wb-supplies/:id",
             get(handlers::ext_1c_wb_supply::get_supply_detail),
         )
+        .route(
+            "/api/ext/v1/wb-sales-funnel",
+            get(handlers::ext_bi_wb_funnel::list_funnel),
+        )
+        .route(
+            "/api/ext/v1/wb-stocks",
+            get(handlers::ext_bi_wb_stocks::list_stocks),
+        )
+        .route(
+            "/api/ext/v1/wb-finance-report",
+            get(handlers::ext_bi_wb_finance::list_finance_report),
+        )
         .layer(middleware::from_fn(
             crate::system::auth::middleware::check_api_key,
+        ))
+        // Слои применяются снизу вверх, поэтому рекордер оборачивает check_api_key
+        // снаружи — и в лог попадают 401 (неверный ключ) и 503 (ключ не настроен).
+        // Именно эти случаи и есть «контроль корректности» интеграции.
+        .layer(middleware::from_fn(
+            crate::system::ext_api_log::middleware::record_ext_api_call,
         ))
 }
 
@@ -2395,4 +2421,18 @@ fn kb_read_routes() -> Router {
                 check_scope_read("knowledge_base", req, next).await
             },
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    /// Конфликт перекрывающихся путей axum паникует при СБОРКЕ Router'а, а не на
+    /// cargo check. Тест собирает полный роутер приложения (system + business —
+    /// ровно как main.rs), поэтому ловит конфликт за секунды, без запуска сервера:
+    /// `cargo test -p backend router_builds`.
+    #[test]
+    fn router_builds_without_conflicts() {
+        let _app: axum::Router = axum::Router::new()
+            .merge(crate::system::api::configure_system_routes())
+            .merge(super::configure_business_routes());
+    }
 }

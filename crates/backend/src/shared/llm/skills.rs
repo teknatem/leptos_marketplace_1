@@ -164,7 +164,8 @@ pub static SKILLS: &[Skill] = &[
     Skill {
         id: "system-admin",
         title: "Системная диагностика",
-        description: "Состояние системы, производительность, фоновые задачи, целостность данных.",
+        description: "Состояние системы, производительность, регламентные задания \
+                      (расписание и свежесть данных), целостность данных.",
         intents: &["sys_admin"],
         prompt: PROMPT_SYS_ADMIN,
         tool_names: &[
@@ -172,6 +173,8 @@ pub static SKILLS: &[Skill] = &[
             "get_performance_stats",
             "list_background_jobs",
             "get_data_integrity_report",
+            "list_scheduled_tasks",
+            "describe_task_types",
         ],
     },
     Skill {
@@ -330,6 +333,7 @@ fn tool_universe() -> Vec<ToolDefinition> {
     v.extend(super::chart_tools::chart_tool_definitions());
     v.extend(super::table_tools::table_tool_definitions());
     v.extend(super::mail_tools::mail_tool_definitions());
+    v.extend(super::schedule_tools::schedule_tool_definitions());
     v.extend(meta_tool_definitions());
     v
 }
@@ -441,6 +445,7 @@ pub fn tools_catalog() -> Value {
         ("chart", super::chart_tools::chart_tool_definitions()),
         ("table", super::table_tools::table_tool_definitions()),
         ("mail", super::mail_tools::mail_tool_definitions()),
+        ("schedule", super::schedule_tools::schedule_tool_definitions()),
         ("meta", meta_tool_definitions()),
     ];
 

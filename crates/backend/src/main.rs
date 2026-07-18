@@ -169,6 +169,12 @@ async fn main() -> anyhow::Result<()> {
         drop(worker);
     }
 
+    // Прунинг лога внешнего API. Намеренно не регламентное задание: планировщик
+    // может быть выключен в config.toml, и тогда задание просто не выполнилось бы.
+    tokio::spawn(async {
+        system::ext_api_log::service::run_prune_loop().await;
+    });
+
     // 5. Configure CORS
     println!("Step 8: Configuring CORS...");
     let cors = CorsLayer::new()
@@ -284,7 +290,13 @@ async fn main() -> anyhow::Result<()> {
     println!("╚══════════════════════════════════════════════════════════╝");
     println!("\n");
 
-    axum::serve(listener, app).await?;
+    // ConnectInfo нужен, чтобы ext_api_log писал IP вызывающего;
+    // без него client_ip был бы всегда NULL.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }
