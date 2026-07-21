@@ -12,7 +12,6 @@ use crate::shared::list_utils::{get_sort_class, get_sort_indicator};
 use crate::shared::page_frame::PageFrame;
 use crate::shared::table_utils::init_column_resize;
 use crate::usecases::u504_import_from_wildberries::api as u504_api;
-use chrono::NaiveDate;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::common::AggregateId;
 use contracts::usecases::u504_import_from_wildberries::progress::ImportStatus;

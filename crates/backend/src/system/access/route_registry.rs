@@ -795,6 +795,18 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/a040/wb-search-analytics/list",
+        scope_id: Some("a040_wb_search_analytics_daily"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a040/wb-search-analytics/:id",
+        scope_id: Some("a040_wb_search_analytics_daily"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/a027/wb-documents/list",
         scope_id: Some("a027_wb_documents"),
         mode: PolicyMode::Auto,

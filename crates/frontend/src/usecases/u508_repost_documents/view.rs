@@ -2,6 +2,9 @@ use super::api;
 use crate::shared::filters::ConnectionMpMultiSelect;
 use crate::shared::page_frame::PageFrame;
 use chrono::{Duration, Utc};
+use contracts::projections::p916_mp_sales_funnel_turnovers::dto::{
+    FunnelPeriodSummary, FunnelRebuildRequest,
+};
 use contracts::usecases::u508_repost_documents::{
     aggregate::AggregateOption,
     aggregate_request::AggregateRepostRequest,
@@ -69,6 +72,8 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
         .format("%Y-%m-%d")
         .to_string();
     let default_date_to = Utc::now().format("%Y-%m-%d").to_string();
+    let default_date_from_funnel = default_date_from.clone();
+    let default_date_to_funnel = default_date_to.clone();
 
     let (projections, set_projections) = signal(Vec::<ProjectionOption>::new());
     let (selected_projection, set_selected_projection) = signal(String::new());
@@ -81,6 +86,14 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
     let (aggregate_date_to, set_aggregate_date_to) = signal(default_date_to);
     let aggregate_only_posted = RwSignal::new(false);
     let aggregate_connection_mp_refs = RwSignal::new(Vec::<String>::new());
+
+    let funnel_date_from = RwSignal::new(default_date_from_funnel);
+    let funnel_date_to = RwSignal::new(default_date_to_funnel);
+    let funnel_connection_mp_refs = RwSignal::new(Vec::<String>::new());
+    let (is_starting_funnel, set_is_starting_funnel) = signal(false);
+    // Помечает, что текущая сессия — пересбор воронки: по завершении тянем диагностику.
+    let funnel_run_active = RwSignal::new(false);
+    let (funnel_diagnostics, set_funnel_diagnostics) = signal(None::<FunnelPeriodSummary>);
 
     let (session_id, set_session_id) = signal(None::<String>);
     let (progress, set_progress) = signal(None::<RepostProgress>);
@@ -144,6 +157,18 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
                             if finished {
                                 clear_storage();
                                 set_session_id.set(None);
+                                // Пересбор воронки завершён — тянем диагностику за тот же период.
+                                if funnel_run_active.get_untracked() {
+                                    funnel_run_active.set(false);
+                                    let from = funnel_date_from.get_untracked();
+                                    let to = funnel_date_to.get_untracked();
+                                    let conns = funnel_connection_mp_refs.get_untracked();
+                                    match api::get_funnel_diagnostics(&from, &to, &conns).await {
+                                        Ok(summary) => set_funnel_diagnostics.set(Some(summary)),
+                                        Err(error) => set_error_msg
+                                            .set(format!("Ошибка загрузки диагностики: {}", error)),
+                                    }
+                                }
                                 break;
                             }
                         }
@@ -228,6 +253,35 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
                 }
             }
             set_is_starting_aggregate.set(false);
+        });
+    };
+
+    let on_start_funnel = move |_| {
+        let request = FunnelRebuildRequest {
+            date_from: funnel_date_from.get(),
+            date_to: funnel_date_to.get(),
+            connection_mp_refs: funnel_connection_mp_refs.get(),
+        };
+
+        clear_storage();
+        set_is_starting_funnel.set(true);
+        set_error_msg.set(String::new());
+        set_progress.set(None);
+        set_funnel_diagnostics.set(None);
+        funnel_run_active.set(true);
+
+        spawn_local(async move {
+            match api::start_funnel_rebuild(request).await {
+                Ok(response) => {
+                    save_session_id(&response.session_id);
+                    set_session_id.set(Some(response.session_id));
+                }
+                Err(error) => {
+                    funnel_run_active.set(false);
+                    set_error_msg.set(format!("Ошибка запуска: {}", error));
+                }
+            }
+            set_is_starting_funnel.set(false);
         });
     };
 
@@ -463,6 +517,65 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
                 <div style="margin-left:16px;margin-right:16px;">
                     <Card>
                         <Flex vertical=true gap=FlexGap::Small>
+                            <div style="font-weight:600;">"Пересбор воронки за период"</div>
+                            <div style="font-size:var(--font-size-sm);color:var(--color-text-secondary);">
+                                "Перепроводит a015 (заказы/отмены) и a012 (выкупы/возвраты) за период и пересобирает верх воронки из сохранённых a036 → корректная воронка p916. По завершении — диагностика."
+                            </div>
+
+                            <div class="doc-filters__row">
+                                <Button
+                                    appearance=ButtonAppearance::Primary
+                                    on_click=on_start_funnel
+                                    disabled=move || {
+                                        is_starting_funnel.get() || session_id.get().is_some()
+                                    }
+                                >
+                                    {move || {
+                                        if is_starting_funnel.get() {
+                                            "Запуск..."
+                                        } else if session_id.get().is_some() {
+                                            "В работе"
+                                        } else {
+                                            "Пересобрать воронку"
+                                        }
+                                    }}
+                                </Button>
+
+                                <Flex vertical=true gap=FlexGap::Small style="flex:1;min-width:0;">
+                                    <div class="doc-filter">
+                                        <label class="doc-filter__label">"Период:"</label>
+                                        <input
+                                            type="date"
+                                            class="doc-filter__input"
+                                            prop:value=move || funnel_date_from.get()
+                                            on:change=move |ev| funnel_date_from.set(event_target_value(&ev))
+                                        />
+                                        <span>"—"</span>
+                                        <input
+                                            type="date"
+                                            class="doc-filter__input"
+                                            prop:value=move || funnel_date_to.get()
+                                            on:change=move |ev| funnel_date_to.set(event_target_value(&ev))
+                                        />
+                                    </div>
+                                    <div class="doc-filter" style="align-items:flex-start;">
+                                        <label class="doc-filter__label">"Кабинеты:"</label>
+                                        <div style="display:flex;flex-direction:column;gap:6px;">
+                                            <ConnectionMpMultiSelect selected=funnel_connection_mp_refs />
+                                            <span style="font-size:var(--font-size-xs);color:var(--color-text-secondary);">
+                                                "Если ничего не выбрано, будут обработаны все кабинеты"
+                                            </span>
+                                        </div>
+                                    </div>
+                                </Flex>
+                            </div>
+                        </Flex>
+                    </Card>
+                </div>
+
+                <div style="margin-left:16px;margin-right:16px;">
+                    <Card>
+                        <Flex vertical=true gap=FlexGap::Small>
                             <div style="font-weight:600;">"Статус выполнения"</div>
 
                             {move || {
@@ -554,6 +667,67 @@ pub fn RepostDocumentsWidget() -> impl IntoView {
                         </Flex>
                     </Card>
                 </div>
+
+                {move || {
+                    if let Some(s) = funnel_diagnostics.get() {
+                        let pct = |num: i64, den: i64| -> String {
+                            if den > 0 {
+                                format!("{:.1}%", (num as f64 / den as f64) * 100.0)
+                            } else {
+                                "—".to_string()
+                            }
+                        };
+                        let row = |label: &str, value: String| {
+                            view! {
+                                <div style="display:flex;justify-content:space-between;gap:16px;padding:2px 0;border-bottom:1px solid var(--color-border);">
+                                    <span style="color:var(--color-text-secondary);">{label.to_string()}</span>
+                                    <span style="font-variant-numeric:tabular-nums;">{value}</span>
+                                </div>
+                            }
+                        };
+                        view! {
+                            <div style="margin-left:16px;margin-right:16px;">
+                                <Card>
+                                    <Flex vertical=true gap=FlexGap::Small>
+                                        <div style="font-weight:600;">
+                                            {format!("Диагностика воронки за период {} — {}", s.date_from, s.date_to)}
+                                        </div>
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px;font-size:var(--font-size-sm);">
+                                            <div>
+                                                <div style="font-weight:600;margin-bottom:4px;">"Верх воронки"</div>
+                                                {row("Переходы (openCard)", s.open_count.to_string())}
+                                                {row("В корзину", s.cart_count.to_string())}
+                                                {row("Отложенные", s.wishlist_count.to_string())}
+                                                {row("Заказы (воронка a036)", format!("{} / {:.0} ₽", s.funnel_order_count, s.funnel_order_sum))}
+                                                {row("Конв. в корзину", pct(s.cart_count, s.open_count))}
+                                                {row("Конв. в заказ", pct(s.funnel_order_count, s.cart_count))}
+                                            </div>
+                                            <div>
+                                                <div style="font-weight:600;margin-bottom:4px;">"Заказ → завершение"</div>
+                                                {row("Заказы (a015)", format!("{} / {:.0} ₽", s.order_count, s.order_sum))}
+                                                {row("Отмены", format!("{} / {:.0} ₽", s.cancel_count, s.cancel_sum))}
+                                                {row("Выкупы (a012)", format!("{} / {:.0} ₽", s.buyout_count, s.buyout_sum))}
+                                                {row("Возвраты", format!("{} / {:.0} ₽", s.return_count, s.return_sum))}
+                                                {row("Доля отмен", pct(s.cancel_count, s.order_count))}
+                                                {row("Выкуп (от заказов)", pct(s.buyout_count, s.order_count))}
+                                                {row("Доля возвратов", pct(s.return_count, s.buyout_count))}
+                                            </div>
+                                        </div>
+                                        <div style="font-size:var(--font-size-xs);color:var(--color-text-secondary);">
+                                            {format!(
+                                                "Строк движений p916: маркетинг {}, fulfillment {}. Примечание: «заказы воронки» (a036) и «заказы» (a015) — разные метрики и могут не совпадать.",
+                                                s.marketing_rows, s.fulfillment_rows
+                                            )}
+                                        </div>
+                                    </Flex>
+                                </Card>
+                            </div>
+                        }
+                        .into_any()
+                    } else {
+                        view! { <></> }.into_any()
+                    }
+                }}
             </div>
         </PageFrame>
     }

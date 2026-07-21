@@ -121,6 +121,25 @@ pub async fn replace_for_period(
         insert_with_conn(&txn, document).await?;
     }
 
+    // Стадия 1 воронки p916: заменяем маркетинговые движения периода целиком
+    // (delete-by-period + insert из документов), в той же транзакции.
+    use crate::projections::p916_mp_sales_funnel_turnovers::{builder as funnel_builder, repository as funnel_repo};
+    funnel_repo::delete_marketing_for_period_with_conn(
+        &txn,
+        funnel_builder::REG_A036,
+        connection_id,
+        date_from,
+        date_to,
+    )
+    .await?;
+    for document in documents {
+        let registrator_ref = document.base.id.value().to_string();
+        let rows = funnel_builder::from_wb_funnel_daily(document, &registrator_ref);
+        for row in &rows {
+            funnel_repo::insert_entry_raw_with_conn(&txn, row).await?;
+        }
+    }
+
     txn.commit().await?;
     tracing::info!(
         "a036_wb_sales_funnel_daily replace_for_period: committed connection={}, inserted={}, elapsed_ms={}",
@@ -174,6 +193,106 @@ pub async fn get_by_id(id: Uuid) -> Result<Option<WbSalesFunnelDaily>> {
     let db = get_connection();
     let model = Entity::find_by_id(id.to_string()).one(db).await?;
     Ok(model.map(Into::into))
+}
+
+/// Разовый бэкфилл стадии 1 воронки p916 из всех сохранённых документов a036.
+/// Полностью перестраивает a036-движения (wipe + rebuild) в одной транзакции —
+/// полезно для истории, накопленной глубже текущего окна выдачи WB. Возвращает
+/// число вставленных строк движений.
+pub async fn backfill_stage1_funnel() -> Result<usize> {
+    use crate::projections::p916_mp_sales_funnel_turnovers::{
+        builder as funnel_builder, repository as funnel_repo,
+    };
+
+    let db = get_connection();
+    let models = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .all(db)
+        .await?;
+
+    let txn = db.begin().await?;
+    funnel_repo::delete_all_by_registrator_type_with_conn(&txn, funnel_builder::REG_A036).await?;
+
+    let mut inserted = 0usize;
+    for model in models {
+        let document: WbSalesFunnelDaily = model.into();
+        let registrator_ref = document.base.id.value().to_string();
+        let rows = funnel_builder::from_wb_funnel_daily(&document, &registrator_ref);
+        for row in &rows {
+            funnel_repo::insert_entry_raw_with_conn(&txn, row).await?;
+            inserted += 1;
+        }
+    }
+
+    txn.commit().await?;
+    tracing::info!("a036 → p916 stage-1 backfill: inserted {} movements", inserted);
+    Ok(inserted)
+}
+
+/// Пересобрать стадию 1 воронки p916 за период `[date_from, date_to]` из сохранённых
+/// документов a036 (без обращения к API WB). Пустой `connection_ids` → все кабинеты,
+/// встреченные в периоде. Идемпотентно: сначала удаляются маркетинговые движения периода
+/// по каждому кабинету, затем вставляются заново. Возвращает число вставленных строк.
+pub async fn rebuild_stage1_for_period(
+    connection_ids: &[String],
+    date_from: &str,
+    date_to: &str,
+) -> Result<usize> {
+    use crate::projections::p916_mp_sales_funnel_turnovers::{
+        builder as funnel_builder, repository as funnel_repo,
+    };
+
+    let db = get_connection();
+    let mut query = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::DocumentDate.gte(date_from))
+        .filter(Column::DocumentDate.lte(date_to));
+    if !connection_ids.is_empty() {
+        query = query.filter(Column::ConnectionId.is_in(connection_ids.iter().cloned()));
+    }
+    let models = query.all(db).await?;
+
+    // Кабинеты для очистки: явный список либо различные из найденных документов.
+    let connections: Vec<String> = if connection_ids.is_empty() {
+        let mut set: Vec<String> = models.iter().map(|m| m.connection_id.clone()).collect();
+        set.sort();
+        set.dedup();
+        set
+    } else {
+        connection_ids.to_vec()
+    };
+
+    let txn = db.begin().await?;
+    for connection_id in &connections {
+        funnel_repo::delete_marketing_for_period_with_conn(
+            &txn,
+            funnel_builder::REG_A036,
+            connection_id,
+            date_from,
+            date_to,
+        )
+        .await?;
+    }
+
+    let mut inserted = 0usize;
+    for model in models {
+        let document: WbSalesFunnelDaily = model.into();
+        let registrator_ref = document.base.id.value().to_string();
+        let rows = funnel_builder::from_wb_funnel_daily(&document, &registrator_ref);
+        for row in &rows {
+            funnel_repo::insert_entry_raw_with_conn(&txn, row).await?;
+            inserted += 1;
+        }
+    }
+
+    txn.commit().await?;
+    tracing::info!(
+        "a036 → p916 stage-1 rebuild for period {}..{}: inserted {} movements",
+        date_from,
+        date_to,
+        inserted
+    );
+    Ok(inserted)
 }
 
 /// Суммарные метрики воронки по товару (nm_id) за период.

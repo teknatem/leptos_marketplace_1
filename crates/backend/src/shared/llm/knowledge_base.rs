@@ -112,6 +112,16 @@ const EMBEDDED_LLM_DOCS: &[EmbeddedKnowledgeSource] = &[
         raw: include_str!("../../projections/p904_sales_data/llm.md"),
     },
     EmbeddedKnowledgeSource {
+        id: "projection-p916_mp_sales_funnel_turnovers",
+        source_path: "crates/backend/src/projections/p916_mp_sales_funnel_turnovers/llm.md",
+        raw: include_str!("../../projections/p916_mp_sales_funnel_turnovers/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "domain-a040_wb_search_analytics_daily",
+        source_path: "crates/backend/src/domain/a040_wb_search_analytics_daily/llm.md",
+        raw: include_str!("../../domain/a040_wb_search_analytics_daily/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
         id: "data-view-dv001",
         source_path: "crates/backend/src/data_view/dv001/llm.md",
         raw: include_str!("../../data_view/dv001/llm.md"),

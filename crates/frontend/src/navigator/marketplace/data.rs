@@ -274,6 +274,15 @@ const ADVERT_LINKS: &[NavLink] = &[
         entity_type: EntityType::Aggregate,
     },
     NavLink {
+        tab_key: "a040_wb_search_analytics_daily",
+        label: "Поисковая аналитика по дням",
+        annotation: "Показы, позиции в выдаче и поисковые запросы товаров WB",
+        icon: "search",
+        scope_id: Some("a040_wb_search_analytics_daily"),
+        marketplaces: LinkScope::Only(WB_ONLY),
+        entity_type: EntityType::Aggregate,
+    },
+    NavLink {
         tab_key: "p911_wb_advert_by_items",
         label: "Реклама в разрезе товаров",
         annotation: "Эффективность рекламы Wildberries по позициям",

@@ -17,7 +17,8 @@ use super::{
         Task015KbPostManager, Task016KbIntakeManager, Task017WbReturnsClaimsManager,
         Task018YmReturnsManager, Task019YmPaymentReportManager, Task020WbProductSnapshotManager,
         Task021MailIntakeManager, Task022MailReplyManager, Task023WbSalesFunnelDailyManager,
-        U501ImportUtManager, U502ImportOzonManager, U503ImportYandexManager,
+        Task024WbSearchAnalyticsDailyManager, U501ImportUtManager, U502ImportOzonManager,
+        U503ImportYandexManager,
     },
     registry::{set_global_registry, TaskManagerRegistry},
     worker::ScheduledTaskWorker,
@@ -79,6 +80,7 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
     registry.register(Task012WbAdvertCampaignsManager::new(wb_executor!()));
     registry.register(Task020WbProductSnapshotManager::new(wb_executor!()));
     registry.register(Task023WbSalesFunnelDailyManager::new(wb_executor!()));
+    registry.register(Task024WbSearchAnalyticsDailyManager::new(wb_executor!()));
 
     // ---- Yandex atomic task managers ----
 
@@ -123,6 +125,7 @@ mod tests {
         for task_type in [
             "task020_wb_product_snapshot",
             "task023_wb_sales_funnel_daily",
+            "task024_wb_search_analytics_daily",
         ] {
             let manager = registry
                 .get(task_type)

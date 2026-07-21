@@ -245,6 +245,23 @@ pub async fn get_product_metrics(
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct BackfillFunnelResponse {
+    pub inserted: usize,
+}
+
+/// Разовый бэкфилл стадии 1 универсальной воронки p916 из сохранённых документов a036.
+pub async fn rebuild_funnel_projection(
+) -> Result<Json<BackfillFunnelResponse>, axum::http::StatusCode> {
+    match a036_wb_sales_funnel_daily::service::backfill_stage1_funnel().await {
+        Ok(inserted) => Ok(Json(BackfillFunnelResponse { inserted })),
+        Err(e) => {
+            tracing::error!("Failed to backfill p916 stage-1 from a036: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
 pub async fn get_by_id(
     Path(id): Path<String>,
 ) -> Result<Json<WbSalesFunnelDailyDetailsDto>, axum::http::StatusCode> {

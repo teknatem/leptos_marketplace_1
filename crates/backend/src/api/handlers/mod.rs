@@ -36,6 +36,7 @@ pub mod a034_ym_realization;
 pub mod a035_ym_settlement_recon;
 pub mod a036_wb_sales_funnel_daily;
 pub mod a037_wb_product_snapshot;
+pub mod a040_wb_search_analytics_daily;
 pub mod a038_llm_connection;
 pub mod a039_mail_message;
 
@@ -82,6 +83,7 @@ pub mod usecases;
 pub mod ext_1c_wb_supply;
 // External BI API (Power BI) — WB sales funnel a036
 pub mod ext_bi_wb_funnel;
+pub mod ext_bi_wb_advert;
 // External BI API (Power BI) — WB stock balances a037
 pub mod ext_bi_wb_stocks;
 // External BI API (Power BI) — WB finance report p903 (raw native rows)

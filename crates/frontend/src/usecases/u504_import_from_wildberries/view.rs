@@ -727,6 +727,14 @@ pub fn ImportWidget() -> impl IntoView {
                             needs_period=true
                             selected_connection=selected_connection
                         />
+                        <ServiceRow
+                            row_id="a040"
+                            title="Поисковая аналитика WB (показы)"
+                            details_text="Собирает поисковую аналитику Wildberries в разрезе номенклатуры (органические показы, переходы из поиска, средняя позиция в выдаче, видимость + топ поисковых запросов) в документ a040 за дату. Показы питают верх воронки p916. Требует подписки «Джем» — при отсутствии доступа сбор завершится без данных. Данные фиксируются только вперёд."
+                            aggregate="a040_wb_search_analytics_daily"
+                            needs_period=true
+                            selected_connection=selected_connection
+                        />
                     </TaskSection>
                 </div>
             </div>

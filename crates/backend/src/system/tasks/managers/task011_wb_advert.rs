@@ -46,8 +46,10 @@ static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task011_wb_advert",
     display_name: "WB Реклама (статистика)",
     description: "Загружает статистику рекламных кампаний WB через Advert API. \
-        advertId берутся из a030_wb_advert_campaign, чтобы не смешивать справочник \
-        кампаний и fullstats. Данные сохраняются в a026_wb_advert_daily.",
+        Перед fullstats сам обновляет список advertId в a030_wb_advert_campaign \
+        (дешёвый /promotion/count), чтобы новые кампании сразу попадали в статистику; \
+        info_json (свойства/размещения) по-прежнему наполняет task012 порциями. \
+        Данные сохраняются в a026_wb_advert_daily.",
     external_apis: &[ExternalApiInfo {
         name: "WB Advert API",
         base_url: "https://advert-api.wildberries.ru/",
@@ -55,7 +57,7 @@ static METADATA: TaskMetadata = TaskMetadata {
     }],
     constraints: &[
         "Требует API-токена WB с правами на Advert API",
-        "Перед регулярным запуском необходимо включить task012_wb_advert_campaigns",
+        "Список advertId обновляется автоматически перед каждым запуском; task012_wb_advert_campaigns нужен лишь для info_json (свойства/размещения кампаний)",
         "Завершённые кампании (status=7) старше date_from автоматически исключаются из запросов",
         "Статистика загружается чанками по 50 кампаний (лимит WB API) с задержкой 21 с между чанками",
         "overlap_days (по умолчанию 1) — перекрытие от last_run_at",

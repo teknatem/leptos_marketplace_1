@@ -77,6 +77,8 @@ use crate::domain::a036_wb_sales_funnel_daily::ui::details::WbSalesFunnelDailyDe
 use crate::domain::a036_wb_sales_funnel_daily::ui::list::WbSalesFunnelDailyList;
 use crate::domain::a037_wb_product_snapshot::ui::details::WbProductSnapshotDetail;
 use crate::domain::a037_wb_product_snapshot::ui::list::WbProductSnapshotList;
+use crate::domain::a040_wb_search_analytics_daily::ui::details::WbSearchAnalyticsDetail;
+use crate::domain::a040_wb_search_analytics_daily::ui::list::WbSearchAnalyticsList;
 use crate::general_ledger::ui::{
     GeneralLedgerDetailsPage, GeneralLedgerDimensionsPage, GeneralLedgerEntitiesPage,
     GeneralLedgerLayerTurnoverMatrixPage, GeneralLedgerLayersPage, GeneralLedgerPage,
@@ -510,6 +512,25 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
                 .to_string();
             view! {
                 <WbProductSnapshotDetail
+                    id=id
+                    on_close=Callback::new({
+                        let key_for_close = key_for_close.clone();
+                        move |_| {
+                            tabs_store.close_tab(&key_for_close);
+                        }
+                    })
+                />
+            }
+            .into_any()
+        }
+        "a040_wb_search_analytics_daily" => view! { <WbSearchAnalyticsList /> }.into_any(),
+        k if k.starts_with("a040_wb_search_analytics_daily_details_") => {
+            let id = k
+                .strip_prefix("a040_wb_search_analytics_daily_details_")
+                .unwrap()
+                .to_string();
+            view! {
+                <WbSearchAnalyticsDetail
                     id=id
                     on_close=Callback::new({
                         let key_for_close = key_for_close.clone();

@@ -40,3 +40,17 @@ pub async fn product_metrics_sum(
 ) -> Result<Vec<FunnelProductMetrics>> {
     repository::product_metrics_sum(connection_id, date_from, date_to).await
 }
+
+/// Разовый бэкфилл стадии 1 воронки p916 из сохранённых документов a036.
+pub async fn backfill_stage1_funnel() -> Result<usize> {
+    repository::backfill_stage1_funnel().await
+}
+
+/// Пересобрать стадию 1 воронки p916 за период из сохранённых документов a036.
+pub async fn rebuild_stage1_for_period(
+    connection_ids: &[String],
+    date_from: &str,
+    date_to: &str,
+) -> Result<usize> {
+    repository::rebuild_stage1_for_period(connection_ids, date_from, date_to).await
+}

@@ -47,6 +47,7 @@
 | `a037` | Данные по товарам WB | `a037_wb_product_snapshot` | Ежедневные снимки состояния товаров Wildberries в разрезе номенклатуры: остатки на складах WB и продавца, сумма остатков, рейтинг карточки и… | a006_connection_mp, a002_organization, a007_marketplace_product, a036_wb_sales_funnel_daily |
 | `a038` | Подключение LLM | `a038_llm_connection` | Подключение к провайдеру LLM (OpenAI, OpenRouter). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tokens), системный промпт… | a018_llm_chat, a019_llm_artifact |
 | `a039` | Письмо | `a039_mail_message` | Журнал входящих и исходящих писем почтового конвейера. Одна запись = одно письмо (кратко): направление, отправитель/получатель, тема, статус… | a018_llm_chat, a038_llm_connection, a019_llm_artifact |
+| `a040` | Поисковая аналитика WB | `a040_wb_search_analytics_daily` | Ежедневные снимки поисковой аналитики Wildberries в разрезе номенклатуры (search-report / «Товары по контенту», подписка «Джем»): органическ… | a006_connection_mp, a002_organization, a007_marketplace_product, a036_wb_sales_funnel_daily, a037_wb_product_snapshot |
 
 ## Projections (p9XX)
 
@@ -68,6 +69,7 @@
 | `p913` | wb advert order attr |
 | `p914` | mp finance turnovers |
 | `p915` | mp order events |
+| `p916` | mp sales funnel turnovers |
 
 ## Use-cases (u5XX)
 
@@ -123,6 +125,7 @@
 | `task021` | mail intake |
 | `task022` | mail reply |
 | `task023` | wb sales funnel daily |
+| `task024` | wb search analytics daily |
 
 ## Chart of accounts (account_registry)
 
@@ -197,7 +200,7 @@
 | `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
 | `commission_percent` | Процент комиссии |  |  |  |
 
-## API routes (388)
+## API routes (394)
 
 ### `/a004`
 - `GET` /api/a004/nomenclature
@@ -441,6 +444,7 @@
 - `GET` /api/a036/wb-sales-funnel/export-lines
 - `GET` /api/a036/wb-sales-funnel/list
 - `GET` /api/a036/wb-sales-funnel/product-metrics
+- `POST` /api/a036/wb-sales-funnel/rebuild-funnel-projection
 
 ### `/a037`
 - `GET` /api/a037/wb-product-snapshot/:id
@@ -460,6 +464,10 @@
 - `GET` /api/a039-mail-message
 - `GET DELETE` /api/a039-mail-message/:id
 - `GET` /api/a039-mail-message/list
+
+### `/a040`
+- `GET` /api/a040/wb-search-analytics/:id
+- `GET` /api/a040/wb-search-analytics/list
 
 ### `/bi-timeline`
 - `GET` /api/bi-timeline/indicators
@@ -541,6 +549,7 @@
 ### `/ext`
 - `GET` /api/ext/v1/wb-finance-report
 - `GET` /api/ext/v1/wb-sales-funnel
+- `GET` /api/ext/v1/wb-advert-daily
 - `GET` /api/ext/v1/wb-stocks
 - `GET` /api/ext/v1/wb-supplies
 - `GET` /api/ext/v1/wb-supplies/:id
@@ -742,6 +751,8 @@
 - `GET` /api/u508/repost/:session_id/progress
 - `POST` /api/u508/repost/aggregate/start
 - `GET` /api/u508/repost/aggregates
+- `GET` /api/u508/repost/funnel/diagnostics
+- `POST` /api/u508/repost/funnel/start
 - `GET` /api/u508/repost/projections
 - `POST` /api/u508/repost/start
 

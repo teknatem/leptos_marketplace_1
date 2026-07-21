@@ -154,6 +154,11 @@ pub fn MegaMenuBar() -> impl IntoView {
             icon_name: "package",
         },
         MegaMenuItem {
+            key: "a040_wb_search_analytics_daily",
+            title: tab_label_for_key("a040_wb_search_analytics_daily"),
+            icon_name: "search",
+        },
+        MegaMenuItem {
             key: "a027_wb_documents",
             title: tab_label_for_key("a027_wb_documents"),
             icon_name: "file-text",

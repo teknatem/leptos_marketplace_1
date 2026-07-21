@@ -213,6 +213,16 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         all_label: "Управление данными по товарам WB",
     },
     ScopeDescriptor {
+        scope_id: "a040_wb_search_analytics_daily",
+        scope_type: ScopeType::Aggregate,
+        label: "Поисковая аналитика WB",
+        description: "Показы, позиции в выдаче и поисковые запросы товаров Wildberries",
+        icon: "search",
+        category: "marketplace_data",
+        read_label: "Просмотр поисковой аналитики WB",
+        all_label: "Управление поисковой аналитикой WB",
+    },
+    ScopeDescriptor {
         scope_id: "a034_ym_realization",
         scope_type: ScopeType::Aggregate,
         label: "Реализация YM (Отчёт о реализации)",
