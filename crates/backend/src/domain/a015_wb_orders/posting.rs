@@ -124,6 +124,30 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     crate::projections::p909_mp_order_line_turnovers::service::project_wb_order(&document, id)
         .await?;
 
+    // Стадия 2 воронки p916: движения «заказ»/«отмена» (delete-by-registrator + insert).
+    {
+        use sea_orm::TransactionTrait;
+        let reg_ref = id.to_string();
+        let db = crate::shared::data::db::get_connection();
+        let txn = db.begin().await?;
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_with_conn(
+            &txn,
+            crate::projections::p916_mp_sales_funnel_turnovers::builder::REG_A015,
+            &reg_ref,
+        )
+        .await?;
+        let rows = crate::projections::p916_mp_sales_funnel_turnovers::builder::from_wb_orders(
+            &document, &reg_ref,
+        );
+        for row in &rows {
+            crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_entry_raw_with_conn(
+                &txn, row,
+            )
+            .await?;
+        }
+        txn.commit().await?;
+    }
+
     // Сигнал клиентам обновить открытые списки a015 (margin_pro и пр. могли измениться).
     super::change_token::TOKEN.bump();
 
@@ -148,6 +172,10 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
         .await?;
     crate::general_ledger::service::remove_by_registrator(REGISTRATOR_TYPE, &id.to_string())
         .await?;
+    crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_ref(
+        &id.to_string(),
+    )
+    .await?;
 
     // Сигнал клиентам обновить открытые списки a015.
     super::change_token::TOKEN.bump();

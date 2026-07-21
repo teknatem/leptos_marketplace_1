@@ -15,3 +15,4 @@ pub mod p912_nomenclature_costs;
 pub mod p913_wb_advert_order_attr;
 pub mod p914_mp_finance_turnovers;
 pub mod p915_mp_order_events;
+pub mod p916_mp_sales_funnel_turnovers;

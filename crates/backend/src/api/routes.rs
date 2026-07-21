@@ -44,6 +44,7 @@ pub fn configure_business_routes() -> Router {
         .merge(a026_routes())
         .merge(a036_routes())
         .merge(a037_routes())
+        .merge(a040_routes())
         .merge(a038_routes())
         .merge(a039_routes())
         .merge(a034_routes())
@@ -1030,6 +1031,10 @@ fn a036_routes() -> Router {
             get(handlers::a036_wb_sales_funnel_daily::get_product_metrics),
         )
         .route(
+            "/api/a036/wb-sales-funnel/rebuild-funnel-projection",
+            post(handlers::a036_wb_sales_funnel_daily::rebuild_funnel_projection),
+        )
+        .route(
             "/api/a036/wb-sales-funnel/:id",
             get(handlers::a036_wb_sales_funnel_daily::get_by_id),
         )
@@ -1061,6 +1066,23 @@ fn a037_routes() -> Router {
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a037_wb_product_snapshot", req, next).await
+            },
+        ))
+}
+
+fn a040_routes() -> Router {
+    Router::new()
+        .route(
+            "/api/a040/wb-search-analytics/list",
+            get(handlers::a040_wb_search_analytics_daily::list_paginated),
+        )
+        .route(
+            "/api/a040/wb-search-analytics/:id",
+            get(handlers::a040_wb_search_analytics_daily::get_by_id),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a040_wb_search_analytics_daily", req, next).await
             },
         ))
 }
@@ -1649,6 +1671,14 @@ fn u508_routes() -> Router {
         .route(
             "/api/u508/repost/aggregate/start",
             post(handlers::usecases::u508_start_aggregate_repost),
+        )
+        .route(
+            "/api/u508/repost/funnel/start",
+            post(handlers::usecases::u508_start_funnel_rebuild),
+        )
+        .route(
+            "/api/u508/repost/funnel/diagnostics",
+            get(handlers::usecases::u508_funnel_diagnostics),
         )
         .route(
             "/api/u508/repost/:session_id/progress",
@@ -2323,6 +2353,10 @@ fn ext_routes() -> Router {
         .route(
             "/api/ext/v1/wb-sales-funnel",
             get(handlers::ext_bi_wb_funnel::list_funnel),
+        )
+        .route(
+            "/api/ext/v1/wb-advert-daily",
+            get(handlers::ext_bi_wb_advert::list_advert),
         )
         .route(
             "/api/ext/v1/wb-stocks",

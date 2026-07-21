@@ -213,6 +213,12 @@ pub async fn post_document_with_cache(
         &registrator_ref,
     )
     .await?;
+    crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_with_conn(
+        &txn,
+        crate::projections::p916_mp_sales_funnel_turnovers::builder::REG_A012,
+        &registrator_ref,
+    )
+    .await?;
 
     // Вставляем заново собранные строки.
     crate::projections::p900_mp_sales_register::repository::upsert_entry_with_conn(
@@ -251,6 +257,18 @@ pub async fn post_document_with_cache(
     for entry in &p913_expense_entries {
         crate::projections::p913_wb_advert_order_attr::repository::save_entry_with_conn(
             &txn, entry,
+        )
+        .await?;
+    }
+
+    // Стадия 2 воронки p916: выкуп/возврат из a012 (одна строка на дату продажи).
+    let p916_rows = crate::projections::p916_mp_sales_funnel_turnovers::builder::from_wb_sales(
+        &document,
+        &registrator_ref,
+    );
+    for row in &p916_rows {
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_entry_raw_with_conn(
+            &txn, row,
         )
         .await?;
     }
@@ -330,6 +348,12 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     crate::projections::p913_wb_advert_order_attr::repository::delete_by_registrator_with_conn(
         &txn,
         REGISTRATOR_TYPE,
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_with_conn(
+        &txn,
+        crate::projections::p916_mp_sales_funnel_turnovers::builder::REG_A012,
         &registrator_ref,
     )
     .await?;

@@ -1,3 +1,6 @@
+use contracts::projections::p916_mp_sales_funnel_turnovers::dto::{
+    FunnelPeriodSummary, FunnelRebuildRequest,
+};
 use contracts::usecases::u508_repost_documents::{
     aggregate::AggregateOption, aggregate_request::AggregateRepostRequest,
     progress::RepostProgress, projection::ProjectionOption, request::RepostRequest,
@@ -138,6 +141,93 @@ pub async fn start_aggregate_repost(
     req.headers()
         .set("Content-Type", "application/json")
         .map_err(|e| format!("Failed to set header: {:?}", e))?;
+
+    let resp_val = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&req))
+        .await
+        .map_err(|e| format!("Fetch failed: {:?}", e))?;
+
+    let response: Response = resp_val.dyn_into().map_err(|_| "Not a Response")?;
+
+    if !response.ok() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+
+    let json = wasm_bindgen_futures::JsFuture::from(
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+    )
+    .await
+    .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
+
+    serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())
+}
+
+pub async fn start_funnel_rebuild(
+    request: FunnelRebuildRequest,
+) -> Result<RepostResponse, String> {
+    let window = window().ok_or("No window object")?;
+
+    let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
+
+    let opts = RequestInit::new();
+    opts.set_method("POST");
+    opts.set_mode(RequestMode::Cors);
+    opts.set_body(&JsValue::from_str(&body));
+
+    let req = web_sys::Request::new_with_str_and_init(
+        &format!("{}/api/u508/repost/funnel/start", api_base()),
+        &opts,
+    )
+    .map_err(|e| format!("Failed to create request: {:?}", e))?;
+
+    req.headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("Failed to set header: {:?}", e))?;
+
+    let resp_val = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&req))
+        .await
+        .map_err(|e| format!("Fetch failed: {:?}", e))?;
+
+    let response: Response = resp_val.dyn_into().map_err(|_| "Not a Response")?;
+
+    if !response.ok() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+
+    let json = wasm_bindgen_futures::JsFuture::from(
+        response
+            .json()
+            .map_err(|e| format!("Failed to parse JSON: {:?}", e))?,
+    )
+    .await
+    .map_err(|e| format!("Failed to get JSON: {:?}", e))?;
+
+    serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())
+}
+
+pub async fn get_funnel_diagnostics(
+    date_from: &str,
+    date_to: &str,
+    connection_mp_refs: &[String],
+) -> Result<FunnelPeriodSummary, String> {
+    let window = window().ok_or("No window object")?;
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
+    let conns = connection_mp_refs.join(",");
+    let url = format!(
+        "{}/api/u508/repost/funnel/diagnostics?date_from={}&date_to={}&connection_mp_refs={}",
+        api_base(),
+        date_from,
+        date_to,
+        conns
+    );
+
+    let req = web_sys::Request::new_with_str_and_init(&url, &opts)
+        .map_err(|e| format!("Failed to create request: {:?}", e))?;
 
     let resp_val = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&req))
         .await

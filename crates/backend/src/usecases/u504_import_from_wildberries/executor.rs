@@ -8,8 +8,8 @@ use super::{
     progress_tracker::ProgressTracker,
     wildberries_api_client::{
         WbAdvertFullStat, WbAdvertFullStatApp, WbAdvertFullStatDay, WbAdvertFullStatNm,
-        WbProductSnapshotRow, WbSalesFunnelHistoryDay, WbSalesFunnelHistoryItem,
-        WildberriesApiClient,
+        WbProductSnapshotRow, WbSalesFunnelHistoryDay, WbSalesFunnelHistoryItem, WbSearchQueryRow,
+        WbSearchReportRow, WildberriesApiClient,
     },
 };
 use crate::shared::marketplaces::wildberries::datetime::{wb_day_end_utc, wb_day_start_utc};
@@ -28,6 +28,11 @@ use contracts::domain::a036_wb_sales_funnel_daily::aggregate::{
 use contracts::domain::a037_wb_product_snapshot::aggregate::{
     WbProductSnapshot, WbProductSnapshotHeader, WbProductSnapshotLine, WbProductSnapshotSourceMeta,
     WbProductSnapshotState, WbProductSnapshotTotals,
+};
+use contracts::domain::a040_wb_search_analytics_daily::aggregate::{
+    WbSearchAnalyticsDaily, WbSearchAnalyticsDailyHeader, WbSearchAnalyticsDailyLine,
+    WbSearchAnalyticsDailySourceMeta, WbSearchAnalyticsDailyTotals, WbSearchMetrics,
+    WbSearchQueryStat,
 };
 use contracts::domain::common::AggregateId;
 use contracts::system::tasks::progress::TaskProgress;
@@ -534,6 +539,15 @@ impl ImportExecutor {
                 }
                 "a037_wb_product_snapshot" => {
                     self.import_wb_product_snapshot(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a040_wb_search_analytics_daily" => {
+                    self.import_wb_search_analytics(
                         session_id,
                         connection,
                         request.date_from,
@@ -2497,6 +2511,88 @@ impl ImportExecutor {
         Ok(total_count)
     }
 
+    /// Обновляет справочник кампаний a030 перед загрузкой статистики, чтобы новые
+    /// кампании гарантированно попадали в fullstats, даже если task012 отстаёт или выключена.
+    ///
+    /// Синхронизируется только список advertId/статус/change_time одним дешёвым запросом
+    /// `/adv/v1/promotion/count`; `info_json` НЕ запрашивается — им по-прежнему занимается
+    /// task012 порциями (лимит WB на `/api/advert/v2/adverts`). Для fullstats info_json не нужен.
+    ///
+    /// Best-effort: при ошибке API справочник a030 остаётся прежним, а импорт статистики
+    /// продолжается по уже известным кампаниям (ошибка фиксируется в прогрессе сессии).
+    async fn refresh_advert_campaign_ids(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+    ) -> Result<()> {
+        let summaries = match self
+            .api_client
+            .fetch_advert_campaign_summaries(connection)
+            .await
+        {
+            Ok(summaries) => summaries,
+            Err(err) => {
+                let message = format!(
+                    "WB Advert: обновление справочника кампаний перед статистикой не удалось; \
+                     используется существующий список a030: {}",
+                    err
+                );
+                tracing::warn!("{}", message);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some("wb_advert_stats".to_string()),
+                    message,
+                    Some(err.to_string()),
+                );
+                return Ok(());
+            }
+        };
+
+        if summaries.is_empty() {
+            return Ok(());
+        }
+
+        let fetched_at = chrono::Utc::now().to_rfc3339();
+        let mut campaigns = Vec::with_capacity(summaries.len());
+        for summary in &summaries {
+            // info_json = Null: upsert сохраняет уже накопленный info_json для известных
+            // кампаний, а новым проставит null (info заполнит следующий прогон task012).
+            let header = WbAdvertCampaignHeader {
+                advert_id: summary.advert_id,
+                connection_id: connection.to_string_id(),
+                organization_id: connection.organization_ref.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+                campaign_type: summary.campaign_type,
+                status: summary.status,
+                change_time: summary.change_time.clone(),
+                nm_count: 0, // recalculated by before_write() from info_json
+            };
+            let source_meta = WbAdvertCampaignSourceMeta {
+                source: "wb_advert_campaigns".to_string(),
+                fetched_at: fetched_at.clone(),
+                info_json: serde_json::Value::Null,
+            };
+            let mut campaign = WbAdvertCampaign::new_for_insert(header, source_meta);
+            campaign.before_write();
+            campaign.validate().map_err(|e| anyhow::anyhow!(e))?;
+            campaigns.push(campaign);
+        }
+
+        let (new_count, total_count) =
+            crate::domain::a030_wb_advert_campaign::service::upsert_many(&campaigns)
+                .await
+                .context("Failed to refresh a030_wb_advert_campaign before stats")?;
+
+        tracing::info!(
+            "WB Advert: справочник кампаний обновлён перед статистикой: connection={}, total={}, new={}",
+            connection.to_string_id(),
+            total_count,
+            new_count,
+        );
+
+        Ok(())
+    }
+
     /// Загрузка статистики рекламы WB без промежуточного CSV.
     /// Возвращает `true`, если были частичные ошибки API (данные за период всё равно пересобираются из успешных ответов).
     async fn import_wb_advert_stats(
@@ -2516,6 +2612,11 @@ impl ImportExecutor {
             begin_date,
             end_date
         );
+
+        // Синхронизируем справочник кампаний a030 непосредственно перед fullstats: без этого
+        // новые кампании, ещё не подхваченные task012, не попадут в статистику (100% покрытие).
+        self.refresh_advert_campaign_ids(session_id, connection)
+            .await?;
 
         let all_advert_ids =
             crate::domain::a030_wb_advert_campaign::service::list_advert_ids_by_connection(
@@ -2813,6 +2914,24 @@ impl ImportExecutor {
             replace_started_at.elapsed().as_millis()
         );
 
+        // Догрузка истории для впервые обнаруженных кампаний (best-effort, не влияет на watermark).
+        if let Err(err) = self
+            .backfill_new_advert_campaigns(session_id, connection, date_from)
+            .await
+        {
+            tracing::warn!(
+                "WB Advert backfill failed for connection={}: {}",
+                connection.to_string_id(),
+                err
+            );
+            self.progress_tracker.add_error(
+                session_id,
+                Some(aggregate_index.to_string()),
+                "Догрузка истории новых рекламных кампаний не выполнена".to_string(),
+                Some(err.to_string()),
+            );
+        }
+
         self.progress_tracker
             .complete_aggregate(session_id, aggregate_index);
         tracing::info!(
@@ -2823,6 +2942,198 @@ impl ImportExecutor {
         );
 
         Ok(had_fetch_errors)
+    }
+
+    /// Догружает историю рекламной статистики для впервые обнаруженных кампаний.
+    ///
+    /// Основное окно task011 движется вперёд от watermark, поэтому кампания, появившаяся
+    /// в a030 позже, теряет свои ранние дни. Здесь для каждой кампании без покрытия ниже
+    /// текущего окна (`min(document_date)` отсутствует или > `date_from`) один раз догружается
+    /// диапазон `[account_floor, date_from-1]`, где `account_floor` — самая ранняя дата a026,
+    /// уже загруженная по этому подключению (горизонт «полных данных»).
+    ///
+    /// Детекция по покрытию делает шаг самозавершающимся (после успешной догрузки `min_date`
+    /// опускается ниже границы окна) и устойчивым к разовым сбоям (при ошибке ничего не
+    /// пишется — кампания попадёт в догрузку на следующем запуске). Best-effort: ошибки
+    /// логируются, watermark основного окна не затрагивается.
+    async fn backfill_new_advert_campaigns(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+    ) -> Result<()> {
+        let aggregate_index = "wb_advert_stats";
+        let connection_id = connection.to_string_id();
+
+        // Покрытие уже загруженной статистики: min(document_date) по каждой кампании.
+        let min_by_campaign =
+            crate::domain::a026_wb_advert_daily::service::min_date_by_campaign(&connection_id)
+                .await
+                .context("Failed to read a026 coverage for advert backfill")?;
+
+        // Горизонт «полных данных» — самая ранняя загруженная дата по подключению.
+        // Если статистики ещё нет вовсе, догружать нечего (первый прогон закрывает всё сам).
+        let Some(account_floor) = min_by_campaign.values().min().cloned() else {
+            return Ok(());
+        };
+        let Ok(floor_date) = chrono::NaiveDate::parse_from_str(&account_floor, "%Y-%m-%d") else {
+            return Ok(());
+        };
+        // Диапазон догрузки — строго до текущего окна.
+        let Some(backfill_end) = date_from.pred_opt() else {
+            return Ok(());
+        };
+        if floor_date > backfill_end {
+            return Ok(()); // окно уже стоит на горизонте — пропусков ниже нет
+        }
+
+        let date_from_str = date_from.format("%Y-%m-%d").to_string();
+
+        // Кандидаты: кампании, способные иметь активность с горизонта (тот же фильтр
+        // завершённых, что и в основном окне, но с нижней границей = account_floor),
+        // у которых нет покрытия ниже текущего окна.
+        let candidates_raw =
+            crate::domain::a030_wb_advert_campaign::service::list_advert_ids_for_period(
+                &connection_id,
+                &account_floor,
+            )
+            .await
+            .context("Failed to read advert ids for backfill")?;
+
+        let backfill_ids: Vec<i64> = candidates_raw
+            .into_iter()
+            .filter(|advert_id| match min_by_campaign.get(advert_id) {
+                None => true, // покрытия нет вовсе
+                Some(min_d) => min_d.as_str() > date_from_str.as_str(), // покрытие только внутри/выше окна
+            })
+            .collect();
+
+        if backfill_ids.is_empty() {
+            return Ok(());
+        }
+
+        let begin_date = account_floor.clone();
+        let end_date = backfill_end.format("%Y-%m-%d").to_string();
+
+        tracing::info!(
+            "WB Advert backfill: connection={}, campaigns={}, range={}..{}",
+            connection_id,
+            backfill_ids.len(),
+            begin_date,
+            end_date,
+        );
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!(
+                "Догрузка истории {} новых кампаний ({}..{})",
+                backfill_ids.len(),
+                begin_date,
+                end_date
+            )),
+        );
+
+        let chunks: Vec<&[i64]> = backfill_ids.chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE).collect();
+        let total_chunks = chunks.len();
+        let mut all_stats: Vec<WbAdvertFullStat> = Vec::new();
+        let mut successful_advert_ids: Vec<i64> = Vec::new();
+        let mut stopped_by_rate_limit = false;
+
+        for (chunk_idx, chunk) in chunks.iter().enumerate() {
+            match self
+                .api_client
+                .fetch_advert_fullstats(connection, chunk, &begin_date, &end_date)
+                .await
+            {
+                Ok(stats) => {
+                    successful_advert_ids.extend(chunk.iter().copied());
+                    all_stats.extend(stats);
+                }
+                Err(e) => {
+                    let error_text = e.to_string();
+                    tracing::warn!(
+                        "WB Advert backfill: chunk {}/{} failed connection={} range={}..{} error={}",
+                        chunk_idx + 1,
+                        total_chunks,
+                        connection_id,
+                        begin_date,
+                        end_date,
+                        error_text
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!(
+                            "Догрузка истории рекламы: чанк {}/{} не загружен (будет повторено позже)",
+                            chunk_idx + 1,
+                            total_chunks
+                        ),
+                        Some(error_text.clone()),
+                    );
+                    if is_wb_advert_fullstats_rate_limit(&error_text) {
+                        stopped_by_rate_limit = true;
+                        break;
+                    }
+                }
+            }
+
+            if chunk_idx + 1 < total_chunks {
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS,
+                ))
+                .await;
+            }
+        }
+
+        if successful_advert_ids.is_empty() {
+            tracing::warn!(
+                "WB Advert backfill: no chunks succeeded connection={} rate_limited={}; \
+                 campaigns remain uncovered and will retry next run",
+                connection_id,
+                stopped_by_rate_limit
+            );
+            return Ok(());
+        }
+
+        let documents = self
+            .build_wb_advert_documents(connection, &all_stats)
+            .await
+            .context("Failed to build backfill advert documents")?;
+        let document_ids: Vec<Uuid> = documents.iter().map(|d| d.base.id.value()).collect();
+
+        successful_advert_ids.sort_unstable();
+        successful_advert_ids.dedup();
+        // Кандидаты не имеют покрытия в [begin_date, end_date], поэтому scoped-replace
+        // ничего лишнего не удаляет — только вставляет догруженные документы.
+        crate::domain::a026_wb_advert_daily::service::replace_for_period_advert_ids(
+            &connection_id,
+            &begin_date,
+            &end_date,
+            &successful_advert_ids,
+            &documents,
+        )
+        .await
+        .context("Failed to store backfill advert documents")?;
+
+        for document_id in &document_ids {
+            crate::domain::a026_wb_advert_daily::posting::post_document(*document_id)
+                .await
+                .with_context(|| {
+                    format!("Failed to post backfill advert document {}", document_id)
+                })?;
+        }
+
+        tracing::info!(
+            "WB Advert backfill completed: connection={}, campaigns={}, documents={}, range={}..{}, rate_limited={}",
+            connection_id,
+            successful_advert_ids.len(),
+            document_ids.len(),
+            begin_date,
+            end_date,
+            stopped_by_rate_limit,
+        );
+
+        Ok(())
     }
 
     async fn build_wb_advert_documents(
@@ -3493,6 +3804,215 @@ impl ImportExecutor {
         };
 
         let mut document = WbProductSnapshot::new_for_insert(header, totals, lines, source_meta);
+        document.before_write();
+        document.validate().map_err(|e| anyhow::anyhow!(e))?;
+        Ok(document)
+    }
+
+    /// Импорт поисковой аналитики WB (a040): один снимок за сегодня по кабинету.
+    /// Показы/позиции/видимость из search-report + топ-запросы из search-texts. Питает
+    /// `show_count` воронки p916 (внутри `replace_for_period`). Требует подписки «Джем» —
+    /// при 403/пустом ответе мягко деградирует (лог + пустой прогон).
+    async fn import_wb_search_analytics(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        _date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        let aggregate_index = "a040_wb_search_analytics_daily";
+        // Снимок за один день (date_to, обычно = сегодня): период отчёта = этот день.
+        let snapshot_date = date_to.format("%Y-%m-%d").to_string();
+
+        tracing::info!(
+            "WB Search analytics: session={}, snapshot_date={}",
+            session_id,
+            snapshot_date
+        );
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some("Сбор поисковой аналитики (показы, позиции)".to_string()),
+        );
+
+        let rows = match self
+            .api_client
+            .fetch_search_report(connection, &snapshot_date, &snapshot_date)
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                // Нет «Джем»/доступа или временная ошибка — не роняем прогон.
+                let msg = format!("WB search-report недоступен: {}", e);
+                tracing::warn!("{}", msg);
+                self.progress_tracker.add_error(
+                    session_id,
+                    Some(aggregate_index.to_string()),
+                    msg,
+                    None,
+                );
+                self.progress_tracker
+                    .complete_aggregate(session_id, aggregate_index);
+                return Ok(());
+            }
+        };
+
+        // Топ поисковых запросов по товарам (best-effort, чанками по 20 nm_id).
+        if rows.is_empty() {
+            let msg = format!(
+                "WB search-report вернул 0 товаров за {} (документ a040 не создан)",
+                snapshot_date
+            );
+            tracing::warn!("{}", msg);
+            self.progress_tracker.add_error(
+                session_id,
+                Some(aggregate_index.to_string()),
+                msg,
+                None,
+            );
+            self.progress_tracker
+                .complete_aggregate(session_id, aggregate_index);
+            return Ok(());
+        }
+
+        // Search-text details are enrichment only. Fetch them once for up to 50 products
+        // with actual search activity; requesting every product with a 21-second rate-limit
+        // pause made one cabinet take several minutes.
+        let nm_ids: Vec<i64> = rows
+            .iter()
+            .filter(|row| row.open_card > 0 || row.add_to_cart > 0 || row.orders > 0)
+            .take(50)
+            .map(|row| row.nm_id)
+            .collect();
+        let mut queries_by_nm: HashMap<i64, Vec<WbSearchQueryRow>> = HashMap::new();
+        if !nm_ids.is_empty() {
+            match self
+                .api_client
+                .fetch_search_texts(connection, &nm_ids, &snapshot_date, &snapshot_date, 30)
+                .await
+            {
+                Ok(qrows) => {
+                    for query in qrows {
+                        queries_by_nm.entry(query.nm_id).or_default().push(query);
+                    }
+                }
+                Err(error) => tracing::warn!(
+                    "WB search-texts enrichment failed ({}); document will be saved without queries",
+                    error
+                ),
+            }
+        }
+
+        let document = self
+            .build_wb_search_analytics_document(connection, &rows, &queries_by_nm, &snapshot_date)
+            .await?;
+
+        let documents_count =
+            crate::domain::a040_wb_search_analytics_daily::service::replace_for_period(
+                &connection.to_string_id(),
+                &snapshot_date,
+                &snapshot_date,
+                &[document],
+            )
+            .await?;
+
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            rows.len() as i32,
+            Some(rows.len() as i32),
+            documents_count as i32,
+            0,
+        );
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB Search analytics completed: connection={}, snapshot_date={}, products={}",
+            connection.to_string_id(),
+            snapshot_date,
+            rows.len()
+        );
+        Ok(())
+    }
+
+    async fn build_wb_search_analytics_document(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        rows: &[WbSearchReportRow],
+        queries_by_nm: &HashMap<i64, Vec<WbSearchQueryRow>>,
+        snapshot_date: &str,
+    ) -> Result<WbSearchAnalyticsDaily> {
+        let mut nomenclature_cache: HashMap<i64, Option<String>> = HashMap::new();
+        let mut seen: HashSet<i64> = HashSet::new();
+        let mut lines: Vec<WbSearchAnalyticsDailyLine> = Vec::with_capacity(rows.len());
+        let mut totals = WbSearchAnalyticsDailyTotals::default();
+
+        for row in rows {
+            if !seen.insert(row.nm_id) {
+                continue;
+            }
+            let nomenclature_ref = self
+                .resolve_wb_nomenclature_ref(connection, row.nm_id, &mut nomenclature_cache)
+                .await?;
+            let top_queries = queries_by_nm
+                .get(&row.nm_id)
+                .map(|qs| {
+                    qs.iter()
+                        .map(|q| WbSearchQueryStat {
+                            text: q.text.clone(),
+                            frequency: q.frequency,
+                            impressions: q.impressions,
+                            clicks: q.clicks,
+                            orders: q.orders,
+                            avg_position: q.avg_position,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            lines.push(WbSearchAnalyticsDailyLine {
+                nm_id: row.nm_id,
+                title: row.title.clone(),
+                vendor_code: row.vendor_code.clone(),
+                brand_name: row.brand_name.clone(),
+                subject_id: row.subject_id,
+                subject_name: row.subject_name.clone(),
+                nomenclature_ref,
+                metrics: WbSearchMetrics {
+                    impressions: row.impressions,
+                    open_card: row.open_card,
+                    ctr: row.ctr,
+                    add_to_cart: row.add_to_cart,
+                    orders: row.orders,
+                    avg_position: row.avg_position,
+                    visibility: row.visibility,
+                    open_to_cart_conv: 0.0,
+                    cart_to_order_conv: 0.0,
+                },
+                top_queries,
+            });
+        }
+
+        lines.sort_by(|a, b| b.metrics.impressions.cmp(&a.metrics.impressions));
+        for line in &lines {
+            totals.total_impressions += line.metrics.impressions;
+            totals.total_open_card += line.metrics.open_card;
+            totals.total_orders += line.metrics.orders;
+        }
+
+        let header = WbSearchAnalyticsDailyHeader {
+            document_no: format!("WB-SEARCH-{}", snapshot_date),
+            snapshot_date: snapshot_date.to_string(),
+            connection_id: connection.to_string_id(),
+            organization_id: connection.organization_ref.clone(),
+            marketplace_id: connection.marketplace_id.clone(),
+        };
+        let source_meta = WbSearchAnalyticsDailySourceMeta {
+            source: "wb_search_analytics".to_string(),
+            fetched_at: chrono::Utc::now().to_rfc3339(),
+        };
+
+        let mut document =
+            WbSearchAnalyticsDaily::new_for_insert(header, totals, lines, source_meta);
         document.before_write();
         document.validate().map_err(|e| anyhow::anyhow!(e))?;
         Ok(document)

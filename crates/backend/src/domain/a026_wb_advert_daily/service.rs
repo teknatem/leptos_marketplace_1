@@ -47,6 +47,12 @@ pub async fn list_by_advert_id(connection_id: &str, advert_id: i64) -> Result<Ve
     repository::list_by_advert_id(connection_id, advert_id).await
 }
 
+pub async fn min_date_by_campaign(
+    connection_id: &str,
+) -> Result<std::collections::HashMap<i64, String>> {
+    repository::min_date_by_campaign(connection_id).await
+}
+
 pub async fn list_paginated(query: WbAdvertDailyListQuery) -> Result<WbAdvertDailyListResult> {
     repository::list_sql(query).await
 }

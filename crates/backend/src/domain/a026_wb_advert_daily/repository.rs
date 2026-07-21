@@ -772,7 +772,106 @@ pub async fn list_by_advert_id(connection_id: &str, advert_id: i64) -> Result<Ve
 /// Возвращает диапазон document_date для каждой пары (connection_id, advert_id):
 /// HashMap<(connection_id, advert_id), (min_date, max_date)>.
 /// Используется для списка a030, чтобы показать первый/последний день отчёта по кампании.
-pub async fn date_range_by_campaign() -> Result<HashMap<(String, i64), (String, String)>> {
+/// Date bounds keyed by connection and advertising campaign.
+pub type CampaignDateRange = HashMap<(String, i64), (String, String)>;
+
+/// Flat advertising row for external BI consumers: one product in one campaign on one day.
+#[derive(Debug, Clone)]
+pub struct AdvertProductRow {
+    pub date: String,
+    pub connection_id: String,
+    pub connection_name: Option<String>,
+    pub organization_name: Option<String>,
+    pub advert_id: i64,
+    pub nm_id: i64,
+    pub nm_name: String,
+    pub nomenclature_ref: Option<String>,
+    pub app_types: Vec<i32>,
+    pub placements: Vec<String>,
+    pub metrics: WbAdvertDailyMetrics,
+}
+
+pub struct AdvertProductRowsResult {
+    pub rows: Vec<AdvertProductRow>,
+    pub total: usize,
+}
+
+async fn load_descriptions<C: ConnectionTrait>(
+    db: &C,
+    table: &str,
+) -> Result<HashMap<String, String>> {
+    let rows = db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            format!("SELECT id, description FROM {table}"),
+        ))
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let id: String = row.try_get("", "id").ok()?;
+            let description: String = row.try_get("", "description").unwrap_or_default();
+            Some((id, description))
+        })
+        .collect())
+}
+
+/// Returns flattened a026 lines for the inclusive period, with stable pagination.
+pub async fn product_rows_for_period(
+    date_from: &str,
+    date_to: &str,
+    connection_id: Option<&str>,
+    limit: usize,
+    offset: usize,
+) -> Result<AdvertProductRowsResult> {
+    let db = get_connection();
+    let mut find = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::DocumentDate.gte(date_from))
+        .filter(Column::DocumentDate.lte(date_to));
+    if let Some(connection_id) = connection_id.filter(|value| !value.is_empty()) {
+        find = find.filter(Column::ConnectionId.eq(connection_id));
+    }
+
+    let models = find.all(db).await?;
+    let connection_names = load_descriptions(db, "a006_connection_mp").await?;
+    let organization_names = load_descriptions(db, "a002_organization").await?;
+    let mut rows = Vec::new();
+
+    for model in models {
+        let lines: Vec<contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDailyLine> =
+            serde_json::from_str(&model.lines_json).unwrap_or_default();
+        let connection_name = connection_names.get(&model.connection_id).cloned();
+        let organization_name = organization_names.get(&model.organization_id).cloned();
+        for line in lines {
+            rows.push(AdvertProductRow {
+                date: model.document_date.clone(),
+                connection_id: model.connection_id.clone(),
+                connection_name: connection_name.clone(),
+                organization_name: organization_name.clone(),
+                advert_id: model.advert_id,
+                nm_id: line.nm_id,
+                nm_name: line.nm_name,
+                nomenclature_ref: line.nomenclature_ref,
+                app_types: line.app_types,
+                placements: line.placements,
+                metrics: line.metrics,
+            });
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.date
+            .cmp(&b.date)
+            .then_with(|| a.connection_id.cmp(&b.connection_id))
+            .then_with(|| a.advert_id.cmp(&b.advert_id))
+            .then_with(|| a.nm_id.cmp(&b.nm_id))
+    });
+    let total = rows.len();
+    let rows = rows.into_iter().skip(offset).take(limit).collect();
+    Ok(AdvertProductRowsResult { rows, total })
+}
+
+pub async fn date_range_by_campaign() -> Result<CampaignDateRange> {
     let db = get_connection();
     let sql = "SELECT connection_id, advert_id, MIN(document_date) AS min_d, MAX(document_date) AS max_d \
                FROM a026_wb_advert_daily \
@@ -793,6 +892,35 @@ pub async fn date_range_by_campaign() -> Result<HashMap<(String, i64), (String, 
         let max_d: String = row.try_get("", "max_d").unwrap_or_default();
         if !conn_id.is_empty() && advert_id > 0 {
             map.insert((conn_id, advert_id), (min_d, max_d));
+        }
+    }
+    Ok(map)
+}
+
+/// Минимальная `document_date` уже загруженной статистики по каждой кампании подключения:
+/// HashMap<advert_id, min_date>. Используется для расчёта покрытия и догрузки истории
+/// впервые обнаруженных кампаний (см. backfill в executor u504).
+pub async fn min_date_by_campaign(connection_id: &str) -> Result<HashMap<i64, String>> {
+    let db = get_connection();
+    let sql = format!(
+        "SELECT advert_id, MIN(document_date) AS min_d \
+         FROM a026_wb_advert_daily \
+         WHERE connection_id = '{}' AND is_deleted = 0 \
+         GROUP BY advert_id",
+        connection_id.replace('\'', "''"),
+    );
+    let rows = db
+        .query_all(Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+        ))
+        .await?;
+    let mut map = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let advert_id: i64 = row.try_get("", "advert_id").unwrap_or_default();
+        let min_d: String = row.try_get("", "min_d").unwrap_or_default();
+        if advert_id > 0 && !min_d.is_empty() {
+            map.insert(advert_id, min_d);
         }
     }
     Ok(map)

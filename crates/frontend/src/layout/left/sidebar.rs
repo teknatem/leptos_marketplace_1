@@ -194,6 +194,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "package",
                 ),
                 SidebarItem::with_scope(
+                    "a040_wb_search_analytics_daily",
+                    tab_label_for_key("a040_wb_search_analytics_daily"),
+                    "search",
+                ),
+                SidebarItem::with_scope(
                     "a033_wb_day_close",
                     tab_label_for_key("a033_wb_day_close"),
                     "calendar-check",

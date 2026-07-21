@@ -3962,6 +3962,199 @@ impl WildberriesApiClient {
 
         Ok(items)
     }
+
+    /// POST /api/v2/search-report/table/details — поисковая аналитика по товарам за период
+    /// (органические показы, переходы, позиция, видимость). Требует подписки «Джем».
+    ///
+    /// ВАЖНО: точная форма запроса/ответа WB не верифицирована офлайн — парсинг сделан
+    /// толерантно (несколько кандидатов-ключей, метрики берутся из `{current}`), сырой
+    /// ответ логируется (`=== SEARCH REPORT RESPONSE ===`). При первом живом прогоне
+    /// сверить имена полей и при необходимости поправить `extract_*` ниже.
+    pub async fn fetch_search_report(
+        &self,
+        connection: &ConnectionMP,
+        date_from: &str,
+        date_to: &str,
+    ) -> Result<Vec<WbSearchReportRow>> {
+        // The main `/report` method only returns summary widgets and groups.
+        // Product rows are provided by `/table/details`, including when no group filter is set.
+        let url = "https://seller-analytics-api.wildberries.ru/api/v2/search-report/table/details";
+        // pastPeriod обязателен: окно той же длины, оканчивающееся за день до currentPeriod.
+        let (past_start, past_end) = past_period(date_from, date_to);
+        let request_body = serde_json::json!({
+            "currentPeriod": { "start": date_from, "end": date_to },
+            "pastPeriod": { "start": past_start, "end": past_end },
+            "nmIds": [],
+            "orderBy": { "field": "openCard", "mode": "desc" },
+            "positionCluster": "all",
+            "includeSubstitutedSKUs": true,
+            "includeSearchTexts": true,
+            "limit": 1000,
+            "offset": 0
+        });
+        let body = serde_json::to_string(&request_body)?;
+        self.log_to_file(&format!("=== REQUEST ===\nPOST {}\n{}", url, body));
+
+        let response = match self
+            .client
+            .post(url)
+            .header("Authorization", &connection.api_key)
+            .header("Content-Type", "application/json")
+            .timeout(std::time::Duration::from_secs(180))
+            .body(body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                self.log_to_file(&format!("CONNECTION ERROR (search-report): {e:?}"));
+                anyhow::bail!("Connection error for search-report: {}", e);
+            }
+        };
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+        if status.as_u16() == 403 {
+            // Нет подписки «Джем» / нет доступа — мягкая деградация.
+            anyhow::bail!("WB search-report: 403 (нет доступа/подписки «Джем»)");
+        }
+        if !status.is_success() {
+            let resp_body = self.read_body_tracked(response).await.unwrap_or_default();
+            let preview: String = resp_body.chars().take(200).collect();
+            anyhow::bail!("WB search-report: {} — {}", status, preview.trim());
+        }
+
+        let resp_body = self.read_body_tracked(response).await?;
+        let preview: String = resp_body.chars().take(2000).collect();
+        self.log_to_file(&format!("=== SEARCH REPORT RESPONSE ===\n{}\n", preview));
+        if resp_body.trim() == "null" || resp_body.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+            .map_err(|e| anyhow::anyhow!("Failed to parse WB search-report: {}", e))?;
+        let data = parsed.get("data").unwrap_or(&parsed);
+        let items = data
+            .get("products")
+            .or_else(|| data.get("items"))
+            .or_else(|| data.get("cards"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let rows = items
+            .iter()
+            .filter_map(parse_search_report_row)
+            .collect::<Vec<_>>();
+        tracing::info!("WB search-report: {} product rows", rows.len());
+        Ok(rows)
+    }
+
+    /// POST /api/v2/search-report/product/search-texts — топ поисковых запросов по товарам.
+    /// Та же оговорка про верификацию полей, что и у `fetch_search_report`.
+    pub async fn fetch_search_texts(
+        &self,
+        connection: &ConnectionMP,
+        nm_ids: &[i64],
+        date_from: &str,
+        date_to: &str,
+        top_limit: i64,
+    ) -> Result<Vec<WbSearchQueryRow>> {
+        if nm_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let url =
+            "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts";
+        let (past_start, past_end) = past_period(date_from, date_to);
+        let request_body = serde_json::json!({
+            "currentPeriod": { "start": date_from, "end": date_to },
+            "pastPeriod": { "start": past_start, "end": past_end },
+            "nmIds": nm_ids,
+            "topOrderBy": "openCard",
+            "includeSubstitutedSKUs": true,
+            "includeSearchTexts": true,
+            "orderBy": { "field": "avgPosition", "mode": "asc" },
+            "limit": top_limit
+        });
+        let body = serde_json::to_string(&request_body)?;
+        self.log_to_file(&format!("=== REQUEST ===\nPOST {}\n{}", url, body));
+
+        let response = match self
+            .client
+            .post(url)
+            .header("Authorization", &connection.api_key)
+            .header("Content-Type", "application/json")
+            .timeout(std::time::Duration::from_secs(180))
+            .body(body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                self.log_to_file(&format!("CONNECTION ERROR (search-texts): {e:?}"));
+                anyhow::bail!("Connection error for search-texts: {}", e);
+            }
+        };
+
+        let status = response.status();
+        self.log_to_file(&format!("Response status: {}", status));
+        if status.as_u16() == 403 {
+            anyhow::bail!("WB search-texts: 403 (нет доступа/подписки «Джем»)");
+        }
+        if !status.is_success() {
+            let resp_body = self.read_body_tracked(response).await.unwrap_or_default();
+            let preview: String = resp_body.chars().take(200).collect();
+            anyhow::bail!("WB search-texts: {} — {}", status, preview.trim());
+        }
+
+        let resp_body = self.read_body_tracked(response).await?;
+        let preview: String = resp_body.chars().take(2000).collect();
+        self.log_to_file(&format!("=== SEARCH TEXTS RESPONSE ===\n{}\n", preview));
+        if resp_body.trim() == "null" || resp_body.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+            .map_err(|e| anyhow::anyhow!("Failed to parse WB search-texts: {}", e))?;
+        let data = parsed.get("data").unwrap_or(&parsed);
+        // Ответ может быть массивом по товарам (каждый с массивом запросов) либо плоским.
+        let mut rows: Vec<WbSearchQueryRow> = Vec::new();
+        if let Some(products) = data
+            .get("products")
+            .or_else(|| data.get("items"))
+            .and_then(|v| v.as_array())
+        {
+            for product in products {
+                let nm_id = json_i64(product, &["nmId", "nmID", "nm_id"]).unwrap_or(0);
+                // Current WB response is a flat `data.items` array: one item per search text.
+                if product.get("text").is_some() || product.get("searchText").is_some() {
+                    rows.push(parse_search_query_row(nm_id, product));
+                    continue;
+                }
+                if let Some(texts) = product
+                    .get("searchTexts")
+                    .or_else(|| product.get("texts"))
+                    .or_else(|| product.get("queries"))
+                    .and_then(|v| v.as_array())
+                {
+                    for t in texts {
+                        rows.push(parse_search_query_row(nm_id, t));
+                    }
+                }
+            }
+        } else if let Some(arr) = data.as_array() {
+            for t in arr {
+                let nm_id = json_i64(t, &["nmId", "nmID", "nm_id"]).unwrap_or(0);
+                rows.push(parse_search_query_row(nm_id, t));
+            }
+        }
+        tracing::info!(
+            "WB search-texts: {} query rows for {} nm_ids",
+            rows.len(),
+            nm_ids.len()
+        );
+        Ok(rows)
+    }
 }
 
 impl Default for WildberriesApiClient {
@@ -5795,4 +5988,185 @@ pub struct WbProductSnapshotRow {
     pub stock_balance_sum: f64,
     pub product_rating: f64,
     pub feedback_rating: f64,
+}
+
+// ============================================================================
+// WB Search Analytics (search-report v2) — для агрегата a040
+// ============================================================================
+
+/// Метрики поиска по одному товару (nm_id) за период. Имена полей WB не
+/// верифицированы офлайн — см. оговорку в `fetch_search_report`.
+#[derive(Debug, Clone, Default)]
+pub struct WbSearchReportRow {
+    pub nm_id: i64,
+    pub title: String,
+    pub vendor_code: String,
+    pub brand_name: String,
+    pub subject_id: i64,
+    pub subject_name: String,
+    pub impressions: i64,
+    pub open_card: i64,
+    pub ctr: f64,
+    pub add_to_cart: i64,
+    pub orders: i64,
+    pub avg_position: f64,
+    pub visibility: f64,
+}
+
+/// Статистика по одному поисковому запросу для товара.
+#[derive(Debug, Clone, Default)]
+pub struct WbSearchQueryRow {
+    pub nm_id: i64,
+    pub text: String,
+    pub frequency: i64,
+    pub impressions: i64,
+    pub clicks: i64,
+    pub orders: i64,
+    pub avg_position: f64,
+}
+
+/// Первый существующий ключ → i64 (принимает как число, так и объект `{current}`).
+fn json_i64(value: &serde_json::Value, keys: &[&str]) -> Option<i64> {
+    for k in keys {
+        if let Some(v) = value.get(*k) {
+            if let Some(n) = v.as_i64() {
+                return Some(n);
+            }
+            if let Some(n) = v.as_f64() {
+                return Some(n.round() as i64);
+            }
+            if let Some(c) = v.get("current").and_then(|c| c.as_f64()) {
+                return Some(c.round() as i64);
+            }
+        }
+    }
+    None
+}
+
+/// Первый существующий ключ → f64 (принимает число или объект `{current}`).
+fn json_f64(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
+    for k in keys {
+        if let Some(v) = value.get(*k) {
+            if let Some(n) = v.as_f64() {
+                return Some(n);
+            }
+            if let Some(c) = v.get("current").and_then(|c| c.as_f64()) {
+                return Some(c);
+            }
+        }
+    }
+    None
+}
+
+/// Прошлый период для search-report: окно той же длины, оканчивающееся за день
+/// до `date_from`. Обязательное поле `pastPeriod` в запросе WB.
+fn past_period(date_from: &str, date_to: &str) -> (String, String) {
+    use chrono::{Duration, NaiveDate};
+    let parse = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+    match (parse(date_from), parse(date_to)) {
+        (Some(from), Some(to)) => {
+            let len = (to - from).num_days().max(0);
+            let past_end = from - Duration::days(1);
+            let past_start = past_end - Duration::days(len);
+            (
+                past_start.format("%Y-%m-%d").to_string(),
+                past_end.format("%Y-%m-%d").to_string(),
+            )
+        }
+        _ => (date_from.to_string(), date_to.to_string()),
+    }
+}
+
+fn json_str(value: &serde_json::Value, keys: &[&str]) -> String {
+    for k in keys {
+        if let Some(s) = value.get(*k).and_then(|v| v.as_str()) {
+            return s.to_string();
+        }
+    }
+    String::new()
+}
+
+fn parse_search_report_row(item: &serde_json::Value) -> Option<WbSearchReportRow> {
+    // Метрики могут лежать в объекте `product` и/или в корне строки.
+    let product = item.get("product").unwrap_or(item);
+    let nm_id = json_i64(product, &["nmId", "nmID", "nm_id"])
+        .or_else(|| json_i64(item, &["nmId", "nmID", "nm_id"]))?;
+    Some(WbSearchReportRow {
+        nm_id,
+        title: json_str(product, &["title", "name"]),
+        vendor_code: json_str(product, &["vendorCode", "vendor_code"]),
+        brand_name: json_str(product, &["brandName", "brand"]),
+        subject_id: json_i64(product, &["subjectId", "subjectID"]).unwrap_or(0),
+        subject_name: json_str(product, &["subjectName", "subject"]),
+        // `/table/details` does not expose impression count. `visibility` is a percentage
+        // and must not be written into impressions (it is bounded by 100).
+        impressions: json_i64(item, &["impressions", "views", "shows"]).unwrap_or(0),
+        open_card: json_i64(item, &["openCard", "openCardCount", "clicks"]).unwrap_or(0),
+        ctr: json_f64(item, &["ctr"]).unwrap_or(0.0),
+        add_to_cart: json_i64(item, &["addToCart", "addToCartCount", "tocart"]).unwrap_or(0),
+        orders: json_i64(item, &["orders", "ordersCount"]).unwrap_or(0),
+        avg_position: json_f64(item, &["avgPosition", "position"]).unwrap_or(0.0),
+        visibility: json_f64(item, &["visibility"]).unwrap_or(0.0),
+    })
+}
+
+fn parse_search_query_row(nm_id: i64, item: &serde_json::Value) -> WbSearchQueryRow {
+    WbSearchQueryRow {
+        nm_id,
+        text: json_str(item, &["text", "searchText", "query", "name"]),
+        frequency: json_i64(item, &["frequency", "requestCount", "freq"]).unwrap_or(0),
+        impressions: json_i64(item, &["impressions", "views", "shows"]).unwrap_or(0),
+        clicks: json_i64(item, &["clicks", "openCard", "openCardCount"]).unwrap_or(0),
+        orders: json_i64(item, &["orders", "ordersCount"]).unwrap_or(0),
+        avg_position: json_f64(item, &["avgPosition", "position"]).unwrap_or(0.0),
+    }
+}
+
+#[cfg(test)]
+mod search_analytics_tests {
+    use super::*;
+
+    #[test]
+    fn parses_search_details_product_from_current_wb_shape() {
+        let item = serde_json::json!({
+            "nmId": 268913787,
+            "name": "Test product",
+            "vendorCode": "SKU-1",
+            "subjectName": "Subject",
+            "brandName": "Brand",
+            "avgPosition": { "current": 12.5, "dynamics": 1 },
+            "openCard": { "current": 42, "dynamics": 2 },
+            "addToCart": { "current": 7, "dynamics": 0 },
+            "orders": { "current": 3, "dynamics": 0 },
+            "visibility": { "current": 81.2, "dynamics": 4 }
+        });
+
+        let row = parse_search_report_row(&item).expect("product must be parsed");
+        assert_eq!(row.nm_id, 268913787);
+        assert_eq!(row.title, "Test product");
+        assert_eq!(row.open_card, 42);
+        assert_eq!(row.add_to_cart, 7);
+        assert_eq!(row.orders, 3);
+        assert_eq!(row.avg_position, 12.5);
+        assert_eq!(row.visibility, 81.2);
+        assert_eq!(row.impressions, 0);
+    }
+
+    #[test]
+    fn parses_flat_search_text_item() {
+        let item = serde_json::json!({
+            "text": "test query",
+            "nmId": 211131895,
+            "openCard": { "current": 9 },
+            "orders": { "current": 2 },
+            "avgPosition": { "current": 6.5 }
+        });
+
+        let row = parse_search_query_row(211131895, &item);
+        assert_eq!(row.nm_id, 211131895);
+        assert_eq!(row.text, "test query");
+        assert_eq!(row.clicks, 9);
+        assert_eq!(row.orders, 2);
+        assert_eq!(row.avg_position, 6.5);
+    }
 }
