@@ -15,7 +15,7 @@ use crate::domain::a015_wb_orders;
 use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::general_ledger::turnover_registry::get_turnover_class;
 use crate::shared::analytics::normalization::is_significant_amount;
-use crate::shared::data::db::get_connection;
+use crate::shared::data::db::{acquire_sqlite_write_lock, get_connection};
 
 const REGISTRATOR_TYPE: &str = "a026_wb_advert_daily";
 const TURNOVER_CODE_RESERVE: &str = "advert_clicks_order_accrual";
@@ -515,6 +515,7 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     );
 
     let registrator_ref = id.to_string();
+    let legacy_projection_ref = format!("a026:{registrator_ref}");
 
     // GL проводка advert_clicks_order_accrual (Phase 1 p913): Д9601/К7609.
     let reserve_amount: f64 = document
@@ -564,20 +565,29 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         gl_direct_entry.as_ref().map(|entry| entry.id.as_str()),
         &product_refs,
     );
+    // Serialize all document JSON before acquiring the write lock/transaction.
+    let prepared_document = repository::prepare_document_update(&document)?;
+    let gl_entries: Vec<_> = gl_reserve_entry
+        .iter()
+        .chain(gl_direct_entry.iter())
+        .cloned()
+        .collect();
+    let prepared_gl_entries =
+        crate::projections::general_ledger::repository::prepare_entries(&gl_entries);
+    let prepared_p913_entries =
+        crate::projections::p913_wb_advert_order_attr::repository::prepare_entries(&p913_entries);
+    let prepared_p911_entries =
+        crate::projections::p911_wb_advert_by_items::repository::prepare_entries(&p911_entries);
 
     let db = get_connection();
+    let _write_guard = acquire_sqlite_write_lock().await;
+    let transaction_started_at = std::time::Instant::now();
     let txn = db.begin().await?;
 
-    // Документ мог быть удалён replace_for_period, пока считалась атрибуция.
-    if !repository::exists_with_conn(&txn, &registrator_ref).await? {
-        txn.rollback().await?;
-        anyhow::bail!(
-            "Document {} was removed during posting preparation; projections were not written",
-            id
-        );
-    }
-
-    repository::update_document_with_conn(&txn, &document).await?;
+    // UPDATE is intentionally the first statement in this DEFERRED transaction.
+    // It acquires the SQLite write lock immediately instead of first creating a
+    // read snapshot which could later fail to upgrade with SQLITE_BUSY_SNAPSHOT.
+    repository::update_prepared_document_with_conn(&txn, prepared_document).await?;
 
     crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
         &txn,
@@ -598,28 +608,32 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     .await?;
     crate::projections::p911_wb_advert_by_items::repository::delete_by_registrator_ref_with_conn(
         &txn,
-        &format!("a026:{registrator_ref}"),
+        &legacy_projection_ref,
     )
     .await?;
 
-    if let Some(entry) = &gl_reserve_entry {
-        crate::projections::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
-    }
-    if let Some(entry) = &gl_direct_entry {
-        crate::projections::general_ledger::repository::save_entry_with_conn(&txn, entry).await?;
-    }
-    for entry in &p913_entries {
-        crate::projections::p913_wb_advert_order_attr::repository::save_entry_with_conn(
-            &txn, entry,
-        )
-        .await?;
-    }
-    for entry in &p911_entries {
-        crate::projections::p911_wb_advert_by_items::repository::save_entry_with_conn(&txn, entry)
-            .await?;
-    }
+    crate::projections::general_ledger::repository::insert_prepared_entries_with_conn(
+        &txn,
+        prepared_gl_entries,
+    )
+    .await?;
+    crate::projections::p913_wb_advert_order_attr::repository::insert_prepared_entries_with_conn(
+        &txn,
+        prepared_p913_entries,
+    )
+    .await?;
+    crate::projections::p911_wb_advert_by_items::repository::insert_prepared_entries_with_conn(
+        &txn,
+        prepared_p911_entries,
+    )
+    .await?;
 
     txn.commit().await?;
+    tracing::info!(
+        "a026 post_document: SQL transaction committed document_id={}, elapsed_ms={}",
+        id,
+        transaction_started_at.elapsed().as_millis()
+    );
 
     Ok(())
 }
@@ -638,8 +652,10 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     repository::upsert_document(&document).await?;
 
     let registrator_ref = id.to_string();
+    let legacy_projection_ref = format!("a026:{registrator_ref}");
 
     let db = get_connection();
+    let _write_guard = acquire_sqlite_write_lock().await;
     let txn = db.begin().await?;
 
     crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
@@ -661,7 +677,7 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     .await?;
     crate::projections::p911_wb_advert_by_items::repository::delete_by_registrator_ref_with_conn(
         &txn,
-        &format!("a026:{registrator_ref}"),
+        &legacy_projection_ref,
     )
     .await?;
 

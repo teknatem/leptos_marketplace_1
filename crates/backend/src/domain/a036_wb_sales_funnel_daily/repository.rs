@@ -135,9 +135,7 @@ pub async fn replace_for_period(
     for document in documents {
         let registrator_ref = document.base.id.value().to_string();
         let rows = funnel_builder::from_wb_funnel_daily(document, &registrator_ref);
-        for row in &rows {
-            funnel_repo::insert_entry_raw_with_conn(&txn, row).await?;
-        }
+        funnel_repo::insert_many_with_conn(&txn, &rows).await?;
     }
 
     txn.commit().await?;
@@ -218,10 +216,8 @@ pub async fn backfill_stage1_funnel() -> Result<usize> {
         let document: WbSalesFunnelDaily = model.into();
         let registrator_ref = document.base.id.value().to_string();
         let rows = funnel_builder::from_wb_funnel_daily(&document, &registrator_ref);
-        for row in &rows {
-            funnel_repo::insert_entry_raw_with_conn(&txn, row).await?;
-            inserted += 1;
-        }
+        funnel_repo::insert_many_with_conn(&txn, &rows).await?;
+        inserted += rows.len();
     }
 
     txn.commit().await?;
@@ -279,10 +275,8 @@ pub async fn rebuild_stage1_for_period(
         let document: WbSalesFunnelDaily = model.into();
         let registrator_ref = document.base.id.value().to_string();
         let rows = funnel_builder::from_wb_funnel_daily(&document, &registrator_ref);
-        for row in &rows {
-            funnel_repo::insert_entry_raw_with_conn(&txn, row).await?;
-            inserted += 1;
-        }
+        funnel_repo::insert_many_with_conn(&txn, &rows).await?;
+        inserted += rows.len();
     }
 
     txn.commit().await?;

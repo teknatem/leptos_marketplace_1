@@ -5,8 +5,13 @@ use sea_orm::{
 };
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::time::Duration;
+use tokio::sync::{Mutex, MutexGuard};
 
 static DB_CONN: OnceCell<DatabaseConnection> = OnceCell::new();
+// SQLite has exactly one writer. Serializing the application's compound write
+// transactions avoids DEFERRED transaction upgrade races (SQLITE_BUSY_SNAPSHOT)
+// without reducing concurrency of API calls and read-only work.
+static SQLITE_WRITE_LOCK: Mutex<()> = Mutex::const_new(());
 
 /// Pool sizing. SQLite serializes writes regardless of pool size, so a larger pool does NOT add
 /// write throughput — its job is to avoid *connection starvation* (the "pool timed out" failure)
@@ -65,6 +70,12 @@ pub fn get_connection() -> &'static DatabaseConnection {
     DB_CONN
         .get()
         .expect("Database connection has not been initialized")
+}
+
+/// Serialize compound SQLite write transactions inside this application process.
+/// Keep the guard only for the actual database transaction; prepare data before acquiring it.
+pub async fn acquire_sqlite_write_lock() -> MutexGuard<'static, ()> {
+    SQLITE_WRITE_LOCK.lock().await
 }
 
 /// Migrate existing WB Sales documents to fill denormalized columns from JSON

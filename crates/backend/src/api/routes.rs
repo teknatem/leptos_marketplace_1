@@ -2006,6 +2006,10 @@ fn dashboard_routes() -> Router {
             get(handlers::dashboards::wb_advert_report),
         )
         .route(
+            "/api/dashboards/wb-sales-funnel",
+            get(handlers::dashboards::wb_sales_funnel),
+        )
+        .route(
             "/api/d400/periods",
             get(handlers::d400_monthly_summary::get_available_periods),
         )

@@ -65,12 +65,12 @@
 }
 
 .schema-id {
-    font-family: monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.875rem;
 }
 
 .schema-table-name {
-    font-family: monospace;
+    font-family: var(--font-family-mono);
     color: var(--thaw-color-neutral-foreground-2);
 }
 
@@ -144,7 +144,7 @@
 }
 
 .validation-card .card-title {
-    font-family: monospace;
+    font-family: var(--font-family-mono);
     font-weight: 600;
 }
 

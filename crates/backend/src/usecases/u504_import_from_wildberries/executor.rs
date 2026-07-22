@@ -83,6 +83,44 @@ fn is_wb_advert_fullstats_rate_limit(error: &str) -> bool {
     error.contains(WB_ADVERT_RATE_LIMIT_MARKER) || error.contains("429 Too Many Requests")
 }
 
+fn is_sqlite_lock_error(error: &anyhow::Error) -> bool {
+    let message = format!("{:#}", error).to_ascii_lowercase();
+    message.contains("database is locked")
+        || message.contains("database table is locked")
+        || message.contains("(code: 5)")
+        || message.contains("(code: 6)")
+        || message.contains("(code: 517)")
+}
+
+/// Retry the complete posting operation. SQLITE_BUSY_SNAPSHOT cannot be fixed by
+/// busy_timeout: the stale DEFERRED transaction must be rolled back and recreated.
+async fn post_wb_advert_document_with_retry(document_id: Uuid) -> Result<()> {
+    const MAX_ATTEMPTS: u32 = 8;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match crate::domain::a026_wb_advert_daily::posting::post_document(document_id).await {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < MAX_ATTEMPTS && is_sqlite_lock_error(&error) => {
+                let backoff_ms = 50u64 * u64::from(attempt);
+                let jitter_ms = (document_id.as_u128() as u64 % 51) + 1;
+                let delay_ms = backoff_ms + jitter_ms;
+                tracing::warn!(
+                    "WB advert auto-post hit SQLite lock: document_id={}, attempt={}/{}, retry_in_ms={}, error={:#}",
+                    document_id,
+                    attempt,
+                    MAX_ATTEMPTS,
+                    delay_ms,
+                    error
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    unreachable!("retry loop always returns on its final attempt")
+}
+
 fn extract_wb_rate_limit_retry_seconds(error: &str) -> Option<u64> {
     let marker = "retry=";
     let start = error.find(marker)? + marker.len();
@@ -2877,7 +2915,7 @@ impl ImportExecutor {
             document_ids.len()
         );
         for document_id in &document_ids {
-            crate::domain::a026_wb_advert_daily::posting::post_document(*document_id)
+            post_wb_advert_document_with_retry(*document_id)
                 .await
                 .with_context(|| {
                     format!(
@@ -3811,7 +3849,7 @@ impl ImportExecutor {
 
     /// Импорт поисковой аналитики WB (a040): один снимок за сегодня по кабинету.
     /// Показы/позиции/видимость из search-report + топ-запросы из search-texts. Питает
-    /// `show_count` воронки p916 (внутри `replace_for_period`). Требует подписки «Джем» —
+    /// `show_free_count` воронки p916 (внутри `replace_for_period`). Требует подписки «Джем» —
     /// при 403/пустом ответе мягко деградирует (лог + пустой прогон).
     async fn import_wb_search_analytics(
         &self,

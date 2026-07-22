@@ -1,0 +1,176 @@
+/* ============================================================
+   Login page — per-page styles (scoped under the `.login` root)
+
+   Loaded globally from index.html, but every rule is scoped under `.login`,
+   so it effectively applies only on the login screen. Don't put general /
+   reusable rules here — those belong in themes/core/components.css.
+
+   The login screen has a self-contained dark "grid + glow" identity in ALL
+   themes (dark void + 64px grid + dual radial glow, dark glass card), so there
+   are no per-theme (`body[data-theme=…]`) overrides. Tokens: see
+   themes/core/variables.css (--login-*).
+   ============================================================ */
+
+.login {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  overflow: hidden;
+}
+
+/* Dark void + subtle grid + two soft radial glows */
+.login__background {
+  position: absolute;
+  inset: 0;
+  background-color: var(--login-bg);
+  background-image:
+    radial-gradient(circle at 22% 18%, var(--login-glow-1) 0%, transparent 55%),
+    radial-gradient(circle at 82% 85%, var(--login-glow-2) 0%, transparent 55%),
+    linear-gradient(var(--login-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--login-grid-line) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    var(--login-grid-size) var(--login-grid-size),
+    var(--login-grid-size) var(--login-grid-size);
+  animation: loginGlowDrift 24s ease-in-out infinite;
+}
+
+/* Very slow, subtle glow drift — calm, not flashy */
+@keyframes loginGlowDrift {
+  0%, 100% { background-position: 0% 0%, 100% 100%, 0 0, 0 0; }
+  50%      { background-position: 6% 4%, 94% 96%, 0 0, 0 0; }
+}
+
+.login__theme-selector {
+  position: absolute;
+  top: var(--spacing-lg);
+  right: var(--spacing-lg);
+  z-index: var(--z-header);
+}
+
+.login__card {
+  position: relative;
+  z-index: var(--z-base);
+  width: 100%;
+  max-width: 420px;
+  background: var(--login-card-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--login-card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--login-card-shadow);
+  padding: var(--spacing-3xl);
+  animation: loginCardFadeIn 0.6s ease-out;
+}
+
+@keyframes loginCardFadeIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login__header {
+  text-align: center;
+  margin-bottom: var(--spacing-2xl);
+}
+
+.login__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.login__logo img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.login__title {
+  margin: 0 0 var(--spacing-xs) 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--login-card-fg);
+  letter-spacing: -0.5px;
+}
+
+.login__subtitle {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--login-card-fg-muted);
+  font-weight: 500;
+}
+
+.login__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.login__error {
+  margin-bottom: var(--spacing-lg);
+}
+
+.login__form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.login__label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--login-card-fg-muted);
+}
+
+/* Inputs are pinned to the dark glass card regardless of the active app theme,
+   so the shared themed --form-input-* tokens don't wash them out in light mode. */
+.login .form__input {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--login-card-fg);
+}
+
+.login .form__input::placeholder {
+  color: rgba(250, 250, 250, 0.40);
+}
+
+.login .form__input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.20);
+}
+
+.login__button {
+  width: 100%;
+}
+
+.login__footer {
+  margin: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.login__footer-text {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--login-card-fg-muted);
+  line-height: 1.5;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .login__card {
+    padding: var(--spacing-xl);
+  }
+
+  .login__title {
+    font-size: 24px;
+  }
+}

@@ -6,6 +6,7 @@
 use crate::dashboards::MetadataDashboard;
 use crate::dashboards::{
     D401WbFinanceDashboard, MonthlySummaryDashboard, WbAdvertReportDashboard, WbOrderFlowDashboard,
+    WbSalesFunnelDashboard,
     YmOrderFlowDashboard,
 };
 use crate::data_view::ui::{DataViewDetail, DataViewList, FilterRegistryPage};
@@ -34,9 +35,6 @@ use crate::domain::a015_wb_orders::ui::list::WbOrdersList;
 use crate::domain::a016_ym_returns::ui::details::YmReturnDetail;
 use crate::domain::a016_ym_returns::ui::list::YmReturnsList;
 use crate::domain::a017_llm_agent::ui::list::LlmAgentList;
-use crate::domain::a038_llm_connection::ui::details::LlmConnectionDetails;
-use crate::domain::a038_llm_connection::ui::list::LlmConnectionList;
-use crate::domain::a039_mail_message::ui::list::MailMessageList;
 use crate::domain::a018_llm_chat::ui::context_details::LlmContextDetails;
 use crate::domain::a018_llm_chat::ui::details::LlmChatDetails;
 use crate::domain::a018_llm_chat::ui::list::LlmChatList;
@@ -77,6 +75,9 @@ use crate::domain::a036_wb_sales_funnel_daily::ui::details::WbSalesFunnelDailyDe
 use crate::domain::a036_wb_sales_funnel_daily::ui::list::WbSalesFunnelDailyList;
 use crate::domain::a037_wb_product_snapshot::ui::details::WbProductSnapshotDetail;
 use crate::domain::a037_wb_product_snapshot::ui::list::WbProductSnapshotList;
+use crate::domain::a038_llm_connection::ui::details::LlmConnectionDetails;
+use crate::domain::a038_llm_connection::ui::list::LlmConnectionList;
+use crate::domain::a039_mail_message::ui::list::MailMessageList;
 use crate::domain::a040_wb_search_analytics_daily::ui::details::WbSearchAnalyticsDetail;
 use crate::domain::a040_wb_search_analytics_daily::ui::list::WbSearchAnalyticsList;
 use crate::general_ledger::ui::{
@@ -106,6 +107,7 @@ use crate::shared::bi_timeline::ui::{BiTimelineInitial, BiTimelinePage};
 use crate::shared::drilldown_report::DrilldownReportPage;
 use crate::shared::knowledge_base::ui::{KnowledgeArticlePage, KnowledgeBaseWorkspace};
 use crate::shared::universal_dashboard::{SchemaBrowser, UniversalDashboard};
+use crate::system::pages::style_guide::StyleGuidePage;
 use crate::system::pages::thaw_test::ThawTestPage;
 use crate::system::raw_storage::ui::RawStoragePage;
 use crate::system::s3::ui::list::S3FilesPage;
@@ -1335,6 +1337,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
             log!("✅ Creating ThawTestPage");
             view! { <ThawTestPage /> }.into_any()
         }
+        "sys_style_guide" => {
+            log!("✅ Creating StyleGuidePage");
+            view! { <StyleGuidePage /> }.into_any()
+        }
         "dom_inspector" => {
             log!("✅ Creating DomValidatorPage");
             view! { <crate::shared::dom_validator::page::DomValidatorPage /> }.into_any()
@@ -1372,6 +1378,10 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         "d404_wb_advert_report" => {
             log!("✅ Creating WbAdvertReportDashboard");
             view! { <WbAdvertReportDashboard /> }.into_any()
+        }
+        "d406_wb_sales_funnel" => {
+            log!("✅ Creating WbSalesFunnelDashboard");
+            view! { <WbSalesFunnelDashboard /> }.into_any()
         }
         k if k.starts_with("d402_wb_order_flow_srid_") => {
             let srid = k

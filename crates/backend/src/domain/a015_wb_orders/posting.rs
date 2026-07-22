@@ -124,7 +124,10 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     crate::projections::p909_mp_order_line_turnovers::service::project_wb_order(&document, id)
         .await?;
 
-    // Стадия 2 воронки p916: движения «заказ»/«отмена» (delete-by-registrator + insert).
+    // Стадия 2 воронки p916: движения «заказ»/«отмена». delete-by-registrator + insert
+    // атомарны в собственной транзакции. Проведение a015 в целом не обёрнуто в единую
+    // транзакцию (p909/GL идут отдельными autocommit-вызовами) — это существующее свойство
+    // модуля, не специфика p916; общий рефактор проведения — вне рамок этой задачи.
     {
         use sea_orm::TransactionTrait;
         let reg_ref = id.to_string();
@@ -139,12 +142,10 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         let rows = crate::projections::p916_mp_sales_funnel_turnovers::builder::from_wb_orders(
             &document, &reg_ref,
         );
-        for row in &rows {
-            crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_entry_raw_with_conn(
-                &txn, row,
-            )
-            .await?;
-        }
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_many_with_conn(
+            &txn, &rows,
+        )
+        .await?;
         txn.commit().await?;
     }
 

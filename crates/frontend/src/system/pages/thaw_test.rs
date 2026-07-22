@@ -21,7 +21,7 @@ pub fn ThawTestPage() -> impl IntoView {
             </h1>
 
             // Секция кнопок
-            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--card-bg);">
                 <h2 style="margin-bottom: 15px; font-size: 18px; font-weight: 600;">
                     "1. Кнопки (Buttons)"
                 </h2>
@@ -71,13 +71,13 @@ pub fn ThawTestPage() -> impl IntoView {
                     </Button>
                 </div>
 
-                <div style="padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+                <div style="padding: 10px; background-color: var(--color-bg-secondary); border-radius: 4px;">
                     <p><strong>"Результат:"</strong> {move || format!("Счётчик = {}, Загрузка = {}", count.get(), loading.get())}</p>
                 </div>
             </div>
 
             // Секция полей ввода
-            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--card-bg);">
                 <h2 style="margin-bottom: 15px; font-size: 18px; font-weight: 600;">
                     "2. Поля ввода (Input)"
                 </h2>
@@ -89,13 +89,13 @@ pub fn ThawTestPage() -> impl IntoView {
                     />
                 </div>
 
-                <div style="margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+                <div style="margin-top: 10px; padding: 10px; background-color: var(--color-bg-secondary); border-radius: 4px;">
                     <p><strong>"Введённый текст:"</strong> {move || text.get()}</p>
                 </div>
             </div>
 
             // Секция выбора
-            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--card-bg);">
                 <h2 style="margin-bottom: 15px; font-size: 18px; font-weight: 600;">
                     "3. Выпадающий список (Select)"
                 </h2>
@@ -109,7 +109,7 @@ pub fn ThawTestPage() -> impl IntoView {
                     </Select>
                 </div>
 
-                <div style="margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+                <div style="margin-top: 10px; padding: 10px; background-color: var(--color-bg-secondary); border-radius: 4px;">
                     <p><strong>"Выбрано:"</strong> {move || {
                         let val = selected.get();
                         if val.is_empty() { "Ничего не выбрано".to_string() } else { val }
@@ -118,7 +118,7 @@ pub fn ThawTestPage() -> impl IntoView {
             </div>
 
             // Секция индикаторов
-            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--card-bg);">
                 <h2 style="margin-bottom: 15px; font-size: 18px; font-weight: 600;">
                     "4. Индикаторы загрузки"
                 </h2>
@@ -131,19 +131,19 @@ pub fn ThawTestPage() -> impl IntoView {
                 </Show>
 
                 <Show when=move || !loading.get()>
-                    <p style="color: #666;">"Нажмите 'Запустить' чтобы увидеть спиннер"</p>
+                    <p style="color: var(--color-text-secondary);">"Нажмите 'Запустить' чтобы увидеть спиннер"</p>
                 </Show>
             </div>
 
             // Секция Checkbox и Switch
-            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--card-bg);">
                 <h2 style="margin-bottom: 15px; font-size: 18px; font-weight: 600;">
                     "5. Checkbox и Switch"
                 </h2>
 
                 <div style="margin-bottom: 20px;">
                     <Checkbox checked=checked label="Checkbox с привязкой"/>
-                    <div style="margin-top: 5px; padding: 5px; background-color: #f5f5f5; border-radius: 4px; display: inline-block;">
+                    <div style="margin-top: 5px; padding: 5px; background-color: var(--color-bg-secondary); border-radius: 4px; display: inline-block;">
                         <span>{move || if checked.get() { "Выбрано ✓" } else { "Не выбрано" }}</span>
                     </div>
                 </div>
@@ -157,7 +157,7 @@ pub fn ThawTestPage() -> impl IntoView {
                             <Checkbox label="Option C" value="c"/>
                         </div>
                     </CheckboxGroup>
-                    <div style="margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+                    <div style="margin-top: 10px; padding: 10px; background-color: var(--color-bg-secondary); border-radius: 4px;">
                         <p><strong>"Выбрано:"</strong> {move || format!("{:?}", checkbox_group.get())}</p>
                     </div>
                 </div>
@@ -167,14 +167,14 @@ pub fn ThawTestPage() -> impl IntoView {
                     <div>
                         <Switch checked=switch_value label="Toggle Switch"/>
                     </div>
-                    <div style="margin-top: 5px; padding: 5px; background-color: #f5f5f5; border-radius: 4px; display: inline-block;">
+                    <div style="margin-top: 5px; padding: 5px; background-color: var(--color-bg-secondary); border-radius: 4px; display: inline-block;">
                         <span>{move || if switch_value.get() { "Включено" } else { "Выключено" }}</span>
                     </div>
                 </div>
             </div>
 
             // Секция Badge
-            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--card-bg);">
                 <h2 style="margin-bottom: 15px; font-size: 18px; font-weight: 600;">
                     "6. Badge (Значки)"
                 </h2>
@@ -214,27 +214,27 @@ pub fn ThawTestPage() -> impl IntoView {
             </div>
 
             // Секция Layout (Space и Flex)
-            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <div style="margin-bottom: 30px; padding: 20px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--card-bg);">
                 <h2 style="margin-bottom: 15px; font-size: 18px; font-weight: 600;">
                     "7. Layout компоненты (Space & Flex)"
                 </h2>
 
                 <div style="margin-bottom: 20px;">
                     <h3 style="margin-bottom: 10px; font-size: 14px;">"Flex Justify:"</h3>
-                    <div style="border: 1px dashed #ccc; padding: 10px; margin-bottom: 10px;">
+                    <div style="border: 1px dashed var(--color-border); padding: 10px; margin-bottom: 10px;">
                         <Flex justify=FlexJustify::SpaceAround>
                             <Badge>"1"</Badge>
                             <Badge>"2"</Badge>
                             <Badge>"3"</Badge>
                         </Flex>
                     </div>
-                    <div style="border: 1px dashed #ccc; padding: 10px; margin-bottom: 10px;">
+                    <div style="border: 1px dashed var(--color-border); padding: 10px; margin-bottom: 10px;">
                         <Flex justify=FlexJustify::Center>
                             <Badge>"Center"</Badge>
                             <Badge>"Center"</Badge>
                         </Flex>
                     </div>
-                    <div style="border: 1px dashed #ccc; padding: 10px;">
+                    <div style="border: 1px dashed var(--color-border); padding: 10px;">
                         <Flex justify=FlexJustify::End>
                             <Badge>"End"</Badge>
                             <Badge>"End"</Badge>
@@ -253,16 +253,16 @@ pub fn ThawTestPage() -> impl IntoView {
             </div>
 
             // Информация о совместимости
-            <div style="margin-top: 30px; padding: 20px; background-color: #e8f5e9; border-radius: 8px;">
-                <h2 style="margin-bottom: 10px; font-size: 18px; font-weight: 600; color: #2e7d32;">
+            <div style="margin-top: 30px; padding: 20px; background: var(--activity-success-bg); border: 1px solid var(--color-success); border-radius: 8px;">
+                <h2 style="margin-bottom: 10px; font-size: 18px; font-weight: 600; color: var(--color-success);">
                     "✅ Статус совместимости"
                 </h2>
                 <p style="margin: 5px 0;"><strong>"Leptos версия:"</strong> " 0.8"</p>
                 <p style="margin: 5px 0;"><strong>"Thaw версия:"</strong> " 0.5.0-beta"</p>
-                <p style="margin: 5px 0; color: #2e7d32;">
+                <p style="margin: 5px 0; color: var(--color-success);">
                     "Все компоненты загружены успешно. Библиотека Thaw совместима с проектом!"
                 </p>
-                <div style="margin-top: 15px; padding: 10px; background-color: white; border-radius: 4px;">
+                <div style="margin-top: 15px; padding: 10px; background: var(--color-bg-secondary); border-radius: 4px;">
                     <p style="font-size: 14px; margin: 5px 0;">
                         <strong>"Протестированные компоненты:"</strong>
                     </p>

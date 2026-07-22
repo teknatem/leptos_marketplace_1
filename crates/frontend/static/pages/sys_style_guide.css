@@ -1,0 +1,273 @@
+/* ============================================================
+   Style Guide — per-page styles (scoped under #sys_style_guide--system)
+
+   Loaded globally from index.html, but every rule is scoped under the page
+   root id, so it applies only on this page. This page is a living reference
+   for the components actually used across the app. Each example carries a
+   copyable identifier (its real class/token name) — see the .sg-item chip.
+   Don't add reusable rules here.
+   ============================================================ */
+
+#sys_style_guide--system {
+  padding: var(--spacing-lg);
+  max-width: 1100px;
+}
+
+#sys_style_guide--system .sg-page-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+#sys_style_guide--system .sg-page-sub {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+#sys_style_guide--system .sg-page-sub code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+}
+
+/* ── Section shell ─────────────────────────────────────────── */
+#sys_style_guide--system .sg-section {
+  margin-bottom: var(--spacing-2xl);
+}
+
+#sys_style_guide--system .sg-section__title {
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+#sys_style_guide--system .sg-section__note {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  margin: -4px 0 var(--spacing-md);
+}
+
+#sys_style_guide--system .sg-section__note code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+  background: var(--color-code-bg);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Item grid ─────────────────────────────────────────────── */
+#sys_style_guide--system .sg-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--spacing-md);
+  align-items: start;
+}
+
+/* ── One example with a copyable identifier ────────────────── */
+#sys_style_guide--system .sg-item {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+#sys_style_guide--system .sg-item--wide { grid-column: 1 / -1; }
+
+#sys_style_guide--system .sg-item__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+/* the copyable id chip (a button) */
+#sys_style_guide--system .sg-item__id {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+#sys_style_guide--system .sg-item__id:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+#sys_style_guide--system .sg-item__id--copied {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+#sys_style_guide--system .sg-item__copy { opacity: 0.75; font-size: 11px; }
+
+#sys_style_guide--system .sg-item__note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#sys_style_guide--system .sg-item__demo {
+  padding: var(--spacing-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+/* ── Colour swatch (used inside an sg-item demo) ───────────── */
+#sys_style_guide--system .sg-swatch {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+#sys_style_guide--system .sg-swatch__chip {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+/* ── Typography samples ────────────────────────────────────── */
+#sys_style_guide--system .sg-type-sans { font-family: 'Roboto', sans-serif; font-size: var(--font-size-lg); color: var(--color-text-primary); }
+#sys_style_guide--system .sg-type-mono { font-family: var(--font-family-mono); font-size: var(--font-size-lg); color: var(--color-text-primary); }
+
+/* ── "Mode" tint cards (Auto-Reply / Human-in-the-Loop / Full Delegation) ── */
+#sys_style_guide--system .sg-mode-card {
+  flex: 1 1 180px;
+  padding: var(--spacing-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+#sys_style_guide--system .sg-mode-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  font-size: 18px;
+  margin-bottom: var(--spacing-sm);
+}
+
+#sys_style_guide--system .sg-mode-card__title { font-size: var(--font-size-md); font-weight: 700; margin-bottom: 4px; }
+#sys_style_guide--system .sg-mode-card__desc { font-size: var(--font-size-sm); color: var(--color-text-secondary); line-height: 1.5; }
+
+#sys_style_guide--system .sg-mode-card--success { background: var(--activity-success-bg); border-color: color-mix(in srgb, var(--color-success) 30%, transparent); }
+#sys_style_guide--system .sg-mode-card--success .sg-mode-card__icon { background: color-mix(in srgb, var(--color-success) 18%, transparent); }
+#sys_style_guide--system .sg-mode-card--success .sg-mode-card__title { color: var(--color-success); }
+
+#sys_style_guide--system .sg-mode-card--warning { background: var(--activity-warning-bg); border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); }
+#sys_style_guide--system .sg-mode-card--warning .sg-mode-card__icon { background: color-mix(in srgb, var(--color-warning) 18%, transparent); }
+#sys_style_guide--system .sg-mode-card--warning .sg-mode-card__title { color: var(--color-warning); }
+
+#sys_style_guide--system .sg-mode-card--accent { background: var(--badge-accent-bg); border-color: var(--badge-accent-border); }
+#sys_style_guide--system .sg-mode-card--accent .sg-mode-card__icon { background: var(--badge-accent-bg); }
+#sys_style_guide--system .sg-mode-card--accent .sg-mode-card__title { color: var(--badge-accent-text); }
+
+/* ── Focal node glow (echoes .gldim-hero / knowledge-graph center node) ── */
+#sys_style_guide--system .sg-focal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 16px 28px;
+  border-radius: var(--radius-lg);
+  font-weight: 700;
+  color: var(--badge-accent-text);
+  background: var(--badge-accent-bg);
+  border: 1px solid var(--badge-accent-border);
+  box-shadow: 0 0 40px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* ── Login backdrop preview (uses the real --login-* tokens) ──── */
+#sys_style_guide--system .sg-login-preview {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background-color: var(--login-bg);
+  background-image:
+    radial-gradient(circle at 22% 18%, var(--login-glow-1) 0%, transparent 55%),
+    radial-gradient(circle at 82% 85%, var(--login-glow-2) 0%, transparent 55%),
+    linear-gradient(var(--login-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--login-grid-line) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, var(--login-grid-size) var(--login-grid-size), var(--login-grid-size) var(--login-grid-size);
+}
+
+#sys_style_guide--system .sg-login-preview__tag {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #fafafa;
+  background: rgba(20, 20, 26, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+/* ── Status/activity boxes ─────────────────────────────────── */
+#sys_style_guide--system .sg-activity {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+#sys_style_guide--system .sg-activity--success { background: var(--activity-success-bg); color: var(--activity-success-fg); }
+#sys_style_guide--system .sg-activity--warning { background: var(--activity-warning-bg); color: var(--activity-warning-fg); }
+#sys_style_guide--system .sg-activity--error   { background: var(--activity-error-bg);   color: var(--activity-error-fg); }
+
+/* full-width demo tables/panels shouldn't overflow the card */
+#sys_style_guide--system .sg-item__demo .table { width: 100%; }
+#sys_style_guide--system .sg-item__demo > * { max-width: 100%; }
+
+/* Badges are inline-flex; inside a flex-column .form__group they would stretch
+   full width (align-items:stretch). Keep them sized to their content. */
+#sys_style_guide--system .sg-item__demo .badge { align-self: flex-start; }
+
+/* .detail-grid needs 600px+ columns for real pages; shrink it to fit the demo card. */
+#sys_style_guide--system .sg-item__demo .detail-grid {
+  grid-template-columns: 1fr 1fr;
+  padding: 0;
+}
+#sys_style_guide--system .sg-item__demo .detail-grid__col { min-width: 0; }
+
+/* mini page-header mockup */
+#sys_style_guide--system .sg-mock {
+  width: 100%;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+}

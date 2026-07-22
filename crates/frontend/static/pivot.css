@@ -82,12 +82,12 @@
 }
 
 .schema-id {
-    font-family: monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.875rem;
 }
 
 .schema-table-name {
-    font-family: monospace;
+    font-family: var(--font-family-mono);
     color: var(--thaw-color-neutral-foreground-2);
 }
 
@@ -169,7 +169,7 @@
 }
 
 .validation-card .card-title {
-    font-family: monospace;
+    font-family: var(--font-family-mono);
     font-weight: 600;
 }
 
@@ -349,7 +349,7 @@
     padding: 8px 12px;
     background: var(--thaw-color-neutral-background-2);
     border-radius: 4px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: var(--font-family-mono);
     font-size: 13px;
 }
 

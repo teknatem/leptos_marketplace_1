@@ -1799,7 +1799,7 @@ span.gl-dim-chip:hover {
 }
 
 .nomenclature-picker__cell--mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-family-mono);
 }
 
 .nomenclature-picker__empty {

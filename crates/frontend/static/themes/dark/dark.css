@@ -9,6 +9,7 @@
   --color-success: #22c55e;
   --color-warning: #fbbf24;
   --color-error: #ef4444;
+  --color-accent: #a78bfa; /* purple accent — graph center node, special highlights */
 
   /* Text Colors */
   --color-text-primary: rgba(255, 255, 255, 0.95);
@@ -86,6 +87,10 @@
   --badge-neutral-bg: rgba(255, 255, 255, 0.20);
   --badge-neutral-text: rgba(255, 255, 255, 0.85);
   --badge-neutral-border: rgba(255, 255, 255, 0.30);
+
+  --badge-accent-bg: rgba(167, 139, 250, 0.18);
+  --badge-accent-text: #a78bfa;
+  --badge-accent-border: rgba(167, 139, 250, 0.35);
 
   /* Tab Colors */
   --tab-text: rgba(255, 255, 255, 0.90);

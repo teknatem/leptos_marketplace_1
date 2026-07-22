@@ -118,6 +118,15 @@ pub async fn post_document_with_cache(
             prod_item_cost_total,
         )?;
 
+    // Дата заказа по srid (a015) для когортной привязки выкупа/возврата в p916 — чтение вне
+    // транзакции. None → воронка фолбэком возьмёт дату продажи (заказ не найден в a015).
+    let funnel_order_cohort_date =
+        crate::domain::a015_wb_orders::repository::order_date_by_srid(&document.header.document_no)
+            .await?
+            .map(|dt| {
+                crate::projections::p916_mp_sales_funnel_turnovers::builder::msk_date_from_utc(&dt)
+            });
+
     // Группы p909 для пересчёта link_status = (группы, имевшие строки до перепроведения)
     // ∪ (группы, вставляемые сейчас). Первое читаем до удаления, чтобы у оставшихся строк
     // групп, которые в этот раз не создаются, статус тоже корректно пересчитался.
@@ -261,17 +270,17 @@ pub async fn post_document_with_cache(
         .await?;
     }
 
-    // Стадия 2 воронки p916: выкуп/возврат из a012 (одна строка на дату продажи).
+    // Стадия 2 воронки p916: выкуп/возврат из a012. Когорта — по дате заказа (a015 по srid),
+    // фолбэк на дату продажи, если заказ не найден.
     let p916_rows = crate::projections::p916_mp_sales_funnel_turnovers::builder::from_wb_sales(
         &document,
         &registrator_ref,
+        funnel_order_cohort_date,
     );
-    for row in &p916_rows {
-        crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_entry_raw_with_conn(
-            &txn, row,
-        )
-        .await?;
-    }
+    crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_many_with_conn(
+        &txn, &p916_rows,
+    )
+    .await?;
 
     txn.commit().await?;
 

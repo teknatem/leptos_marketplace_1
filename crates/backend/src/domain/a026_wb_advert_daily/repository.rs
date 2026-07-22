@@ -7,13 +7,14 @@ use contracts::domain::a026_wb_advert_daily::aggregate::{
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
+    ActiveValue::NotSet, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set, Statement,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::shared::data::db::get_connection;
+use crate::shared::data::db::{acquire_sqlite_write_lock, get_connection};
 
 fn projection_registrator_ref(document_id: &str) -> String {
     format!("a026:{document_id}")
@@ -155,6 +156,12 @@ async fn replace_for_period_scoped(
             .into_iter()
             .collect()
     });
+    // JSON serialization and ActiveModel construction can be relatively expensive for
+    // documents with many lines. Complete it before taking the application write lock.
+    let prepared_documents: Vec<ActiveModel> = documents
+        .iter()
+        .map(prepare_document_insert)
+        .collect::<Result<_>>()?;
     tracing::info!(
         "a026_wb_advert_daily replace_for_period: acquiring transaction connection={}, period={}..{}, advert_scope={:?}, documents={}",
         connection_id,
@@ -163,12 +170,7 @@ async fn replace_for_period_scoped(
         advert_scope,
         documents.len()
     );
-    let txn = db.begin().await?;
-    tracing::info!(
-        "a026_wb_advert_daily replace_for_period: transaction started connection={}, elapsed_ms={}",
-        connection_id,
-        started_at.elapsed().as_millis()
-    );
+    let _write_guard = acquire_sqlite_write_lock().await;
 
     let mut existing_query = Entity::find()
         .filter(Column::ConnectionId.eq(connection_id))
@@ -179,7 +181,7 @@ async fn replace_for_period_scoped(
     }
 
     let existing_ids: Vec<String> = existing_query
-        .all(&txn)
+        .all(db)
         .await?
         .into_iter()
         .map(|item| item.id)
@@ -190,17 +192,39 @@ async fn replace_for_period_scoped(
         connection_id,
         existing_ids.len()
     );
+    let existing_projection_refs: Vec<String> = existing_ids
+        .iter()
+        .map(|id| projection_registrator_ref(id))
+        .collect();
 
-    for id in &existing_ids {
-        let registrator_ref = id.clone();
-        let projection_ref = projection_registrator_ref(id);
+    let transaction_started_at = std::time::Instant::now();
+    let txn = db.begin().await?;
+    tracing::info!(
+        "a026_wb_advert_daily replace_for_period: transaction started connection={}, elapsed_ms={}",
+        connection_id,
+        started_at.elapsed().as_millis()
+    );
+
+    for projection_ref in &existing_projection_refs {
         // Legacy p911 rows could use `a026:{id}` registrator_ref outside date-scoped bulk delete.
         crate::projections::p911_wb_advert_by_items::repository::delete_by_registrator_ref_with_conn(
             &txn,
-            &projection_ref,
+            projection_ref,
         )
         .await?;
-        let _ = registrator_ref;
+    }
+
+    // Стадия 1 воронки p916: платные показы (show_paid_count). Идемпотентность —
+    // delete-by-registrator по каждому заменяемому документу (a026 = много документов
+    // на дату, по одному на advert_id; период-delete стёр бы чужие кампании при
+    // scoped-переимпорте). registrator_ref = id документа (совпадает с новым по stable id).
+    for id in &existing_ids {
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_with_conn(
+            &txn,
+            crate::projections::p916_mp_sales_funnel_turnovers::builder::REG_A026,
+            id,
+        )
+        .await?;
     }
 
     let advert_scope_slice = advert_ids;
@@ -260,21 +284,35 @@ async fn replace_for_period_scoped(
         started_at.elapsed().as_millis()
     );
 
+    for active_model in prepared_documents {
+        Entity::insert(active_model).exec(&txn).await?;
+    }
+
+    // Стадия 1 воронки p916: вставляем платные показы из заменяемых документов.
     for document in documents {
-        insert_with_conn(&txn, document).await?;
+        let registrator_ref = document.base.id.value().to_string();
+        let rows = crate::projections::p916_mp_sales_funnel_turnovers::builder::from_wb_advert_daily(
+            document,
+            &registrator_ref,
+        );
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_many_with_conn(
+            &txn, &rows,
+        )
+        .await?;
     }
 
     txn.commit().await?;
     tracing::info!(
-        "a026_wb_advert_daily replace_for_period: committed connection={}, inserted={}, elapsed_ms={}",
+        "a026_wb_advert_daily replace_for_period: committed connection={}, inserted={}, elapsed_ms={}, transaction_elapsed_ms={}",
         connection_id,
         documents.len(),
-        started_at.elapsed().as_millis()
+        started_at.elapsed().as_millis(),
+        transaction_started_at.elapsed().as_millis()
     );
     Ok(documents.len())
 }
 
-async fn insert_with_conn<C: ConnectionTrait>(db: &C, document: &WbAdvertDaily) -> Result<()> {
+fn prepare_document_insert(document: &WbAdvertDaily) -> Result<ActiveModel> {
     let header_json = serde_json::to_string(&document.header)?;
     let totals_json = serde_json::to_string(&document.totals)?;
     let unattributed_totals_json = serde_json::to_string(&document.unattributed_totals)?;
@@ -282,7 +320,7 @@ async fn insert_with_conn<C: ConnectionTrait>(db: &C, document: &WbAdvertDaily) 
     let source_meta_json = serde_json::to_string(&document.source_meta)?;
     let linked_orders_json = serde_json::to_string(&document.linked_orders)?;
 
-    let active_model = ActiveModel {
+    Ok(ActiveModel {
         id: Set(document.base.id.value().to_string()),
         code: Set(document.base.code.clone()),
         description: Set(document.base.description.clone()),
@@ -313,10 +351,7 @@ async fn insert_with_conn<C: ConnectionTrait>(db: &C, document: &WbAdvertDaily) 
         created_at: Set(Some(Utc::now())),
         updated_at: Set(Some(Utc::now())),
         version: Set(1),
-    };
-
-    Entity::insert(active_model).exec(db).await?;
-    Ok(())
+    })
 }
 
 pub async fn upsert_document(document: &WbAdvertDaily) -> Result<()> {
@@ -390,12 +425,12 @@ pub async fn update_document_with_conn<C: ConnectionTrait>(
     db: &C,
     document: &WbAdvertDaily,
 ) -> Result<()> {
-    let id = document.base.id.value().to_string();
-    let existing = Entity::find_by_id(id.clone())
-        .one(db)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Document not found for update: {}", id))?;
+    let active_model = prepare_document_update(document)?;
+    update_prepared_document_with_conn(db, active_model).await
+}
 
+pub fn prepare_document_update(document: &WbAdvertDaily) -> Result<ActiveModel> {
+    let id = document.base.id.value().to_string();
     let header_json = serde_json::to_string(&document.header)?;
     let totals_json = serde_json::to_string(&document.totals)?;
     let unattributed_totals_json = serde_json::to_string(&document.unattributed_totals)?;
@@ -431,11 +466,21 @@ pub async fn update_document_with_conn<C: ConnectionTrait>(
         has_linked_orders: Set(document.has_linked_orders),
         linked_orders_count: Set(document.linked_orders_count),
         linked_orders_json: Set(linked_orders_json),
-        created_at: Set(existing.created_at),
+        // Preserve the value already stored in the row. Avoiding a preliminary
+        // SELECT makes UPDATE the first statement and acquires the SQLite write
+        // lock before a read snapshot can become stale.
+        created_at: NotSet,
         updated_at: Set(Some(Utc::now())),
         version: Set(document.base.metadata.version),
     };
 
+    Ok(active_model)
+}
+
+pub async fn update_prepared_document_with_conn<C: ConnectionTrait>(
+    db: &C,
+    active_model: ActiveModel,
+) -> Result<()> {
     active_model.update(db).await?;
     Ok(())
 }

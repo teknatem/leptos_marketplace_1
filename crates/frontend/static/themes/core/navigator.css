@@ -473,7 +473,7 @@
   margin-left: auto;
   font-size: 10px;
   color: var(--color-text-muted, #aaa);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   letter-spacing: 0.3px;
   opacity: 0.7;
 }

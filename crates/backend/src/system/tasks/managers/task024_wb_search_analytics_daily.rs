@@ -32,7 +32,7 @@ static METADATA: TaskMetadata = TaskMetadata {
         "Загружает поисковую аналитику Wildberries (органические показы, переходы из поиска, \
         средняя позиция в выдаче, видимость + топ поисковых запросов на товар) через \
         search-report API и сохраняет как документы агрегата a040 — один документ на дату, \
-        строка на nm_id. Показы питают верх воронки p916 (show_count). Требует подписки «Джем». \
+        строка на nm_id. Показы питают верх воронки p916 (show_free_count). Требует подписки «Джем». \
         Данные forward-only — запускать регулярно.",
     external_apis: &[ExternalApiInfo {
         name: "WB Analytics API (search-report/report + product/search-texts)",
