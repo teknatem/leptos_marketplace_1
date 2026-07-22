@@ -9,6 +9,7 @@
   --color-success: #4caf50;
   --color-warning: #ffc107;
   --color-error: #f44336;
+  --color-accent: #b39ddb; /* purple accent — graph center node, special highlights */
 
   /* Text Colors */
   --color-text-primary: #f1f2f5;
@@ -87,6 +88,10 @@
   --badge-neutral-bg: #eeeeee;
   --badge-neutral-text: #424242;
   --badge-neutral-border: #e0e0e0;
+
+  --badge-accent-bg: rgba(179, 157, 219, 0.18);
+  --badge-accent-text: #d1c4e9;
+  --badge-accent-border: rgba(179, 157, 219, 0.35);
 
   /* Tab Colors */
   --tab-text: rgba(255, 255, 255, 0.70);
@@ -205,17 +210,8 @@
   /* Component tokens */
   --detail-form-header-bg: linear-gradient(135deg, #2e7d3294 0%, #1b5e1f8d 100%);
   --detail-form-header-text: #ffffff;
-
-  --activity-success-bg: rgba(76, 175, 80, 0.12);
-  --activity-success-fg: #2e7d32;
-  --activity-warning-bg: rgba(255, 193, 7, 0.14);
-  --activity-warning-fg: #f57f17;
-  --activity-error-bg: rgba(244, 67, 54, 0.12);
-  --activity-error-fg: #c62828;
-
-  --stat-success-gradient: linear-gradient(135deg, #43a047, #81c784);
-  --stat-warning-gradient: linear-gradient(135deg, #ffc107, #ffecb3);
-  --stat-error-gradient: linear-gradient(135deg, #f44336, #e57373);
+  /* --activity-* / --stat-*-gradient derive from the semantic palette in
+     themes/core/variables.css — no per-theme override needed. */
 
   /* Layout tokens */
 

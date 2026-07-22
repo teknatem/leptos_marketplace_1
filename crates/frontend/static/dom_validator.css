@@ -14,7 +14,7 @@
 
 /* Tree Node */
 .dom-tree-node {
-  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-family: var(--font-family-mono);
   font-size: 14px;
   line-height: 1.3;
 }
@@ -245,7 +245,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-family: var(--font-family-mono);
 }
 
 .dom-validator-table thead th {

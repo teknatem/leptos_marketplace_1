@@ -101,6 +101,48 @@ pub async fn save_entry_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> 
     Ok(())
 }
 
+/// Insert freshly built projection rows without per-row existence checks.
+/// The caller must remove the registrator's previous rows in the same transaction first.
+pub async fn insert_entries_bulk_with_conn<C: ConnectionTrait>(
+    db: &C,
+    entries: &[Model],
+) -> Result<()> {
+    insert_prepared_entries_with_conn(db, prepare_entries(entries)).await
+}
+
+pub fn prepare_entries(entries: &[Model]) -> Vec<ActiveModel> {
+    entries
+        .iter()
+        .map(|entry| ActiveModel {
+            id: Set(entry.id.clone()),
+            connection_mp_ref: Set(entry.connection_mp_ref.clone()),
+            entry_date: Set(entry.entry_date.clone()),
+            turnover_code: Set(entry.turnover_code.clone()),
+            amount: Set(entry.amount),
+            nomenclature_ref: Set(entry.nomenclature_ref.clone()),
+            wb_advert_campaign_code: Set(entry.wb_advert_campaign_code.clone()),
+            registrator_type: Set(entry.registrator_type.clone()),
+            registrator_ref: Set(entry.registrator_ref.clone()),
+            general_ledger_ref: Set(entry.general_ledger_ref.clone()),
+            marketplace_product_ref: Set(entry.marketplace_product_ref.clone()),
+            is_problem: Set(entry.is_problem),
+            created_at: Set(entry.created_at.clone()),
+            updated_at: Set(entry.updated_at.clone()),
+        })
+        .collect()
+}
+
+pub async fn insert_prepared_entries_with_conn<C: ConnectionTrait>(
+    db: &C,
+    active_models: Vec<ActiveModel>,
+) -> Result<()> {
+    if active_models.is_empty() {
+        return Ok(());
+    }
+    Entity::insert_many(active_models).exec(db).await?;
+    Ok(())
+}
+
 pub async fn upsert_entry(entry: &Model) -> Result<()> {
     save_entry(entry).await
 }

@@ -11,14 +11,14 @@ use contracts::domain::a006_connection_mp::ENTITY_METADATA as A006;
 use contracts::domain::a012_wb_sales::ENTITY_METADATA as A012;
 use contracts::domain::a013_ym_order::ENTITY_METADATA as A013;
 use contracts::domain::a017_llm_agent::ENTITY_METADATA as A017;
-use contracts::domain::a038_llm_connection::ENTITY_METADATA as A038;
-use contracts::domain::a039_mail_message::ENTITY_METADATA as A039;
 use contracts::domain::a018_llm_chat::ENTITY_METADATA as A018;
 use contracts::domain::a019_llm_artifact::ENTITY_METADATA as A019;
 use contracts::domain::a020_wb_promotion::ENTITY_METADATA as A020;
 use contracts::domain::a024_bi_indicator::ENTITY_METADATA as A024;
 use contracts::domain::a025_bi_dashboard::ENTITY_METADATA as A025;
 use contracts::domain::a027_wb_documents::ENTITY_METADATA as A027;
+use contracts::domain::a038_llm_connection::ENTITY_METADATA as A038;
+use contracts::domain::a039_mail_message::ENTITY_METADATA as A039;
 
 /// Возвращает читаемый заголовок таба для данного ключа.
 ///
@@ -123,6 +123,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
 
         "d400_monthly_summary" => "Сводка за месяц",
         "d405_metadata_dashboard" => "Метаданные",
+        "d406_wb_sales_funnel" => "Воронка продаж WB",
         "d401_wb_finance" => "WB Finance",
         "d402_wb_order_flow" => "WB История заказов",
         k if k.starts_with("d402_wb_order_flow_srid_") => "Вся история",
@@ -140,6 +141,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         k if k.starts_with("sys_task_details_") => "Задача",
         "sys_task_type_registry" => "Реестр типов заданий",
         "sys_thaw_test" => "Тест Thaw UI",
+        "sys_style_guide" => "Гид по стилям",
         "dom_inspector" => "DOM Inspector",
 
         "universal_dashboard" => "Конструктор запросов",

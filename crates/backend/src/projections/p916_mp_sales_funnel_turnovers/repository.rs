@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use sea_orm::entity::prelude::*;
+use sea_orm::sea_query::OnConflict;
 use sea_orm::{ConnectionTrait, Set, Statement};
 use serde::{Deserialize, Serialize};
 
@@ -34,8 +35,12 @@ pub struct Model {
     pub registrator_ref: String,
 
     // стадия 1 (маркетинговая воронка):
+    /// Бесплатные/органические показы (поисковая аналитика a040).
     #[sea_orm(nullable)]
-    pub show_count: Option<i64>,
+    pub show_free_count: Option<i64>,
+    /// Платные показы (реклама a026, views).
+    #[sea_orm(nullable)]
+    pub show_paid_count: Option<i64>,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,
@@ -77,7 +82,8 @@ fn active_from_model(entry: &Model) -> ActiveModel {
         nm_id: Set(entry.nm_id),
         registrator_type: Set(entry.registrator_type.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
-        show_count: Set(entry.show_count),
+        show_free_count: Set(entry.show_free_count),
+        show_paid_count: Set(entry.show_paid_count),
         open_count: Set(entry.open_count),
         cart_count: Set(entry.cart_count),
         wishlist_count: Set(entry.wishlist_count),
@@ -96,10 +102,60 @@ fn active_from_model(entry: &Model) -> ActiveModel {
     }
 }
 
-/// Прямой INSERT без SELECT-проверки. Используется в контексте проведения,
-/// где строки регистратора предварительно удалены.
+/// Конфликт по детерминированному `id` (натуральный ключ строки движения): при повторной
+/// вставке той же строки перезаписываем метрики, а не задваиваем обороты. `created_at_msk`
+/// в перезапись не входит (сохраняем момент первой записи). Защита сверх delete-by-period:
+/// даже при неверном scope удаления повтор не породит дубль.
+fn funnel_on_conflict() -> OnConflict {
+    OnConflict::column(Column::Id)
+        .update_columns([
+            Column::ShowFreeCount,
+            Column::ShowPaidCount,
+            Column::OpenCount,
+            Column::CartCount,
+            Column::WishlistCount,
+            Column::FunnelOrderCount,
+            Column::FunnelOrderSum,
+            Column::OrderCount,
+            Column::OrderSum,
+            Column::CancelCount,
+            Column::CancelSum,
+            Column::BuyoutCount,
+            Column::BuyoutSum,
+            Column::ReturnCount,
+            Column::ReturnSum,
+            Column::MarketplaceProductRef,
+            Column::NomenclatureRef,
+            Column::UpdatedAtMsk,
+        ])
+        .to_owned()
+}
+
+/// Прямой upsert без SELECT-проверки. Используется в контексте проведения,
+/// где строки регистратора предварительно удалены (delete-by-registrator).
 pub async fn insert_entry_raw_with_conn<C: ConnectionTrait>(db: &C, entry: &Model) -> Result<()> {
-    active_from_model(entry).insert(db).await?;
+    Entity::insert(active_from_model(entry))
+        .on_conflict(funnel_on_conflict())
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+/// Пакетный upsert строк движений (один INSERT ... VALUES ON CONFLICT на чанк). Используется в
+/// бэкфиллах/пересборах, где на кабинет × период приходятся сотни строк nm_id × дата.
+/// Чанкуем, чтобы не упереться в лимит переменных SQLite (999). Пустой срез — no-op.
+pub async fn insert_many_with_conn<C: ConnectionTrait>(db: &C, entries: &[Model]) -> Result<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    // ~26 колонок на строку → 30 строк ≈ 780 плейсхолдеров, с запасом до лимита 999.
+    for chunk in entries.chunks(30) {
+        let models = chunk.iter().map(active_from_model);
+        Entity::insert_many(models)
+            .on_conflict(funnel_on_conflict())
+            .exec(db)
+            .await?;
+    }
     Ok(())
 }
 
@@ -204,7 +260,10 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
             marketplace_product_ref,
             nomenclature_ref,
             nm_id,
-            SUM(COALESCE(show_count, 0)) AS show_count,
+            SUM(COALESCE(show_free_count, 0)) AS show_free_count,
+            SUM(COALESCE(show_paid_count, 0)) AS show_paid_count,
+            SUM(CASE WHEN show_free_count IS NOT NULL THEN 1 ELSE 0 END) AS show_free_present,
+            SUM(CASE WHEN show_paid_count IS NOT NULL THEN 1 ELSE 0 END) AS show_paid_present,
             SUM(open_count) AS open_count,
             SUM(cart_count) AS cart_count,
             SUM(wishlist_count) AS wishlist_count,
@@ -240,7 +299,10 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
             marketplace_product_ref: row.try_get("", "marketplace_product_ref").ok(),
             nomenclature_ref: row.try_get("", "nomenclature_ref").ok(),
             nm_id: row.try_get("", "nm_id").ok(),
-            show_count: row.try_get("", "show_count").unwrap_or(0),
+            show_free_count: row.try_get("", "show_free_count").unwrap_or(0),
+            show_paid_count: row.try_get("", "show_paid_count").unwrap_or(0),
+            show_free_available: row.try_get::<i64>("", "show_free_present").unwrap_or(0) > 0,
+            show_paid_available: row.try_get::<i64>("", "show_paid_present").unwrap_or(0) > 0,
             open_count: row.try_get("", "open_count").unwrap_or(0),
             cart_count: row.try_get("", "cart_count").unwrap_or(0),
             wishlist_count: row.try_get("", "wishlist_count").unwrap_or(0),
@@ -285,7 +347,10 @@ pub async fn funnel_period_summary(
 
     let sql = format!(
         "SELECT
-            SUM(COALESCE(show_count, 0)) AS show_count,
+            SUM(COALESCE(show_free_count, 0)) AS show_free_count,
+            SUM(COALESCE(show_paid_count, 0)) AS show_paid_count,
+            SUM(CASE WHEN show_free_count IS NOT NULL THEN 1 ELSE 0 END) AS show_free_present,
+            SUM(CASE WHEN show_paid_count IS NOT NULL THEN 1 ELSE 0 END) AS show_paid_present,
             SUM(open_count) AS open_count,
             SUM(cart_count) AS cart_count,
             SUM(wishlist_count) AS wishlist_count,
@@ -318,7 +383,10 @@ pub async fn funnel_period_summary(
         ..Default::default()
     };
     if let Some(row) = row {
-        summary.show_count = row.try_get("", "show_count").unwrap_or(0);
+        summary.show_free_count = row.try_get("", "show_free_count").unwrap_or(0);
+        summary.show_paid_count = row.try_get("", "show_paid_count").unwrap_or(0);
+        summary.show_free_available = row.try_get::<i64>("", "show_free_present").unwrap_or(0) > 0;
+        summary.show_paid_available = row.try_get::<i64>("", "show_paid_present").unwrap_or(0) > 0;
         summary.open_count = row.try_get("", "open_count").unwrap_or(0);
         summary.cart_count = row.try_get("", "cart_count").unwrap_or(0);
         summary.wishlist_count = row.try_get("", "wishlist_count").unwrap_or(0);

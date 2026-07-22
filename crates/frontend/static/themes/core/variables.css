@@ -20,16 +20,33 @@
    --detail-form-header-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
    --detail-form-header-text: #ffffff;
 
-   --activity-success-bg: rgba(76, 175, 80, 0.1);
-   --activity-success-fg: #4caf50;
-   --activity-warning-bg: rgba(255, 152, 0, 0.1);
-   --activity-warning-fg: #ff9800;
-   --activity-error-bg: rgba(244, 67, 54, 0.1);
-   --activity-error-fg: #f44336;
+   /* Activity / stat status colors — derived from the theme's semantic palette
+      (--color-success/warning/error) so they follow the active theme. Themes no
+      longer need to override these individually. */
+   --activity-success-bg: color-mix(in srgb, var(--color-success) 12%, transparent);
+   --activity-success-fg: var(--color-success);
+   --activity-warning-bg: color-mix(in srgb, var(--color-warning) 12%, transparent);
+   --activity-warning-fg: var(--color-warning);
+   --activity-error-bg: color-mix(in srgb, var(--color-error) 12%, transparent);
+   --activity-error-fg: var(--color-error);
 
-   --stat-success-gradient: linear-gradient(135deg, #4caf50, #81c784);
-   --stat-warning-gradient: linear-gradient(135deg, #ff9800, #ffb74d);
-   --stat-error-gradient: linear-gradient(135deg, #f44336, #e57373);
+   --stat-success-gradient: linear-gradient(135deg, var(--color-success), color-mix(in srgb, var(--color-success) 55%, white));
+   --stat-warning-gradient: linear-gradient(135deg, var(--color-warning), color-mix(in srgb, var(--color-warning) 55%, white));
+   --stat-error-gradient: linear-gradient(135deg, var(--color-error), color-mix(in srgb, var(--color-error) 55%, white));
+
+   /* Login page — self-contained dark "grid + glow" identity (same in all themes).
+      Inspired by the hero background of the Miras landing (dark void + 64px grid +
+      dual radial glow). Consumed by static/pages/login.css. */
+   --login-bg: #0a0a0f;
+   --login-grid-line: rgba(255, 255, 255, 0.02);
+   --login-grid-size: 64px;
+   --login-glow-1: rgba(128, 104, 255, 0.12); /* purple */
+   --login-glow-2: rgba(138, 255, 188, 0.07); /* mint */
+   --login-card-bg: rgba(20, 20, 26, 0.72);
+   --login-card-border: rgba(255, 255, 255, 0.08);
+   --login-card-fg: #fafafa;
+   --login-card-fg-muted: rgba(250, 250, 250, 0.60);
+   --login-card-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
 
    /* List header + pagination (used in core/layout.css) */
 
@@ -92,6 +109,11 @@
    --font-size-lg: 16px;
    --font-size-xl: 18px;
    --font-size-h3: 1.3rem;
+
+   /* Typography - Font Families */
+   /* Monospace / "technical" role: table headers, object codes (a0XX/p9XX), code blocks.
+      Self-hosted JetBrains Mono (see static/fonts/jetbrains-mono.css). */
+   --font-family-mono: 'JetBrains Mono', 'Consolas', 'Menlo', 'Monaco', monospace;
 
    /* Typography - Font Weights */
    --font-weight-normal: 400;

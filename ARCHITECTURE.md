@@ -200,7 +200,7 @@
 | `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
 | `commission_percent` | Процент комиссии |  |  |  |
 
-## API routes (394)
+## API routes (395)
 
 ### `/a004`
 - `GET` /api/a004/nomenclature
@@ -513,6 +513,7 @@
 - `GET` /api/dashboards/d402/schemas/:schema_id/fields/:field_id/values
 - `GET` /api/dashboards/wb-advert-report
 - `GET` /api/dashboards/wb-order-flow
+- `GET` /api/dashboards/wb-sales-funnel
 - `GET` /api/dashboards/ym-order-flow
 
 ### `/data-view`
@@ -547,9 +548,9 @@
 - `GET` /api/ds02/schemas/:schema_id/fields/:field_id/values
 
 ### `/ext`
+- `GET` /api/ext/v1/wb-advert-daily
 - `GET` /api/ext/v1/wb-finance-report
 - `GET` /api/ext/v1/wb-sales-funnel
-- `GET` /api/ext/v1/wb-advert-daily
 - `GET` /api/ext/v1/wb-stocks
 - `GET` /api/ext/v1/wb-supplies
 - `GET` /api/ext/v1/wb-supplies/:id

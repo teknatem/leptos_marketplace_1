@@ -96,7 +96,12 @@
 
 .thaw-table-header-cell__button {
   color: var(--form-label-text) !important;
-
+  /* Unified "technical header" treatment (mono, uppercase, tracked) */
+  font-family: var(--font-family-mono) !important;
+  font-size: var(--font-size-xs) !important;
+  font-weight: var(--font-weight-semibold) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* Унификация размера шрифта для контента внутри ячеек Thaw */

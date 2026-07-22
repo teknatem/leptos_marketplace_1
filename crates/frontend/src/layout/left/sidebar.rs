@@ -101,6 +101,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     tab_label_for_key("d403_ym_order_flow"),
                     "list-ordered",
                 ),
+                SidebarItem::new(
+                    "d406_wb_sales_funnel",
+                    tab_label_for_key("d406_wb_sales_funnel"),
+                    "filter",
+                ),
             ],
             admin_only: false,
         },
@@ -630,6 +635,11 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     "sys_thaw_test",
                     tab_label_for_key("sys_thaw_test"),
                     "test-tube",
+                ),
+                SidebarItem::new(
+                    "sys_style_guide",
+                    tab_label_for_key("sys_style_guide"),
+                    "palette",
                 ),
             ],
             admin_only: true,

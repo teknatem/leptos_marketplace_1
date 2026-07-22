@@ -122,6 +122,8 @@
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--color-primary) 7%, var(--color-bg-secondary));
   border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border));
+  /* Focal "node" glow (echoes the knowledge-graph center node) — subtle, calm. */
+  box-shadow: 0 0 34px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .gldim-hero__body {

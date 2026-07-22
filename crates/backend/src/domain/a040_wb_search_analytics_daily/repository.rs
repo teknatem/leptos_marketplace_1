@@ -121,7 +121,7 @@ pub async fn replace_for_period(
         insert_with_conn(&txn, document).await?;
     }
 
-    // Стадия 1 воронки p916: показы (show_count). Заменяем движения a040 периода целиком.
+    // Стадия 1 воронки p916: органические показы (show_free_count). Заменяем движения a040 периода целиком.
     funnel_repo::delete_marketing_for_period_with_conn(
         &txn,
         funnel_builder::REG_A040,
@@ -133,9 +133,7 @@ pub async fn replace_for_period(
     for document in documents {
         let registrator_ref = document.base.id.value().to_string();
         let rows = funnel_builder::from_wb_search_analytics(document, &registrator_ref);
-        for row in &rows {
-            funnel_repo::insert_entry_raw_with_conn(&txn, row).await?;
-        }
+        funnel_repo::insert_many_with_conn(&txn, &rows).await?;
     }
 
     txn.commit().await?;

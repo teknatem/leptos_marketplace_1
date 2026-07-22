@@ -64,7 +64,7 @@
 }
 
 .scheduled-task-list .ext-api__note code {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   padding: 1px 4px;
   border-radius: 3px;
@@ -128,7 +128,7 @@
 .scheduled-task-list .ext-api__stat-value {
   font-size: 20px;
   font-weight: 700;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   color: var(--color-text-primary);
 }
 
@@ -204,7 +204,7 @@
 
 .scheduled-task-list .ext-api__num {
   text-align: right;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 .scheduled-task-list .ext-api__num--error {
@@ -213,7 +213,7 @@
 }
 
 .scheduled-task-list .ext-api__mono {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 .scheduled-task-list .ext-api__key,
@@ -224,7 +224,7 @@
 }
 
 .scheduled-task-list .ext-api__query {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   color: var(--color-text-secondary);
 }
 

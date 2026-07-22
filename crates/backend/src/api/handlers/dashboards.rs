@@ -11,6 +11,11 @@ use contracts::dashboards::d404_wb_advert_report::{
     WbAdvertReportLink, WbAdvertReportNode, WbAdvertReportRequest, WbAdvertReportResponse,
     WbAdvertReportTotals,
 };
+use contracts::dashboards::d406_wb_sales_funnel::{
+    WbSalesFunnelConversions, WbSalesFunnelMetrics, WbSalesFunnelRequest, WbSalesFunnelResponse,
+    WbSalesFunnelRow,
+};
+use contracts::projections::p916_mp_sales_funnel_turnovers::dto::MpFunnelListRequest;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -985,4 +990,147 @@ async fn resolve_nomenclature_descriptions(
     };
 
     (nom_desc, base_desc)
+}
+
+/// GET /api/dashboards/wb-sales-funnel
+/// Воронка продаж WB (d406) — агрегат p916 `товар × дата` по выбранной оси
+/// (когорта/событие) с именами товаров (джойн a004) и производными конверсиями.
+pub async fn wb_sales_funnel(
+    Query(filters): Query<WbSalesFunnelRequest>,
+) -> Result<Json<WbSalesFunnelResponse>, axum::http::StatusCode> {
+    let request = MpFunnelListRequest {
+        date_from: filters.date_from.clone(),
+        date_to: filters.date_to.clone(),
+        connection_mp_ref: filters.connection_mp_ref.clone(),
+        nm_id: filters.nm_id,
+        axis: filters.axis,
+        offset: None,
+        limit: Some(50_000),
+    };
+
+    let agg_rows =
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::aggregate_by_product(
+            &request,
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!("wb_sales_funnel p916 aggregation failed: {}", error);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Имена товаров: джойн a004 по nomenclature_ref (одним запросом на весь набор).
+    let nomenclature_refs: Vec<String> = agg_rows
+        .iter()
+        .filter_map(|row| row.nomenclature_ref.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let nomenclature_names = crate::domain::a004_nomenclature::repository::list_by_ids(
+        &nomenclature_refs,
+    )
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|item| {
+        let id = item.base.id.0.to_string();
+        let label = if item.article.trim().is_empty() {
+            item.base.description
+        } else {
+            format!("{} — {}", item.article, item.base.description)
+        };
+        (id, label)
+    })
+    .collect::<HashMap<_, _>>();
+
+    let mut totals = WbSalesFunnelMetrics::default();
+    let rows: Vec<WbSalesFunnelRow> = agg_rows
+        .into_iter()
+        .map(|row| {
+            let show_total = row.show_total_count();
+            let metrics = WbSalesFunnelMetrics {
+                show_free_count: row.show_free_count,
+                show_paid_count: row.show_paid_count,
+                show_total_count: show_total,
+                show_free_available: row.show_free_available,
+                show_paid_available: row.show_paid_available,
+                show_total_available: row.show_free_available || row.show_paid_available,
+                open_count: row.open_count,
+                cart_count: row.cart_count,
+                wishlist_count: row.wishlist_count,
+                funnel_order_count: row.funnel_order_count,
+                funnel_order_sum: row.funnel_order_sum,
+                order_count: row.order_count,
+                order_sum: row.order_sum,
+                cancel_count: row.cancel_count,
+                cancel_sum: row.cancel_sum,
+                buyout_count: row.buyout_count,
+                buyout_sum: row.buyout_sum,
+                return_count: row.return_count,
+                return_sum: row.return_sum,
+            };
+            accumulate_funnel_totals(&mut totals, &metrics);
+
+            let product_name = row
+                .nomenclature_ref
+                .as_ref()
+                .and_then(|r| nomenclature_names.get(r).cloned());
+            let conversions = WbSalesFunnelConversions::from_metrics(
+                metrics.open_count,
+                metrics.cart_count,
+                metrics.order_count,
+                metrics.buyout_count,
+                metrics.cancel_count,
+            );
+
+            WbSalesFunnelRow {
+                date: row.date,
+                connection_mp_ref: row.connection_mp_ref,
+                nm_id: row.nm_id,
+                marketplace_product_ref: row.marketplace_product_ref,
+                nomenclature_ref: row.nomenclature_ref,
+                product_name,
+                brand: None,
+                metrics,
+                conversions,
+            }
+        })
+        .collect();
+
+    let totals_conversions = WbSalesFunnelConversions::from_metrics(
+        totals.open_count,
+        totals.cart_count,
+        totals.order_count,
+        totals.buyout_count,
+        totals.cancel_count,
+    );
+
+    Ok(Json(WbSalesFunnelResponse {
+        filters,
+        rows,
+        totals,
+        totals_conversions,
+    }))
+}
+
+/// Прибавить метрики строки к аккумулятору итогов периода (аддитивные поля).
+fn accumulate_funnel_totals(totals: &mut WbSalesFunnelMetrics, row: &WbSalesFunnelMetrics) {
+    totals.show_free_count += row.show_free_count;
+    totals.show_paid_count += row.show_paid_count;
+    totals.show_total_count += row.show_total_count;
+    totals.show_free_available |= row.show_free_available;
+    totals.show_paid_available |= row.show_paid_available;
+    totals.show_total_available |= row.show_total_available;
+    totals.open_count += row.open_count;
+    totals.cart_count += row.cart_count;
+    totals.wishlist_count += row.wishlist_count;
+    totals.funnel_order_count += row.funnel_order_count;
+    totals.funnel_order_sum += row.funnel_order_sum;
+    totals.order_count += row.order_count;
+    totals.order_sum += row.order_sum;
+    totals.cancel_count += row.cancel_count;
+    totals.cancel_sum += row.cancel_sum;
+    totals.buyout_count += row.buyout_count;
+    totals.buyout_sum += row.buyout_sum;
+    totals.return_count += row.return_count;
+    totals.return_sum += row.return_sum;
 }

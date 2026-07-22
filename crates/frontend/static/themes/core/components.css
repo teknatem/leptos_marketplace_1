@@ -19,7 +19,7 @@
   font-weight: 500;
   line-height: 1;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm); /* align to Thaw/Fluent tighter 4px radius */
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
@@ -203,7 +203,16 @@
 }
 
 .results-table thead tr {
-  background: var(--color-bg-secondary);
+  background: var(--table-header-bg);
+}
+
+.results-table thead th {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--table-header-fg);
 }
 
 .results-table__id code {
@@ -337,7 +346,7 @@
 
 /* Monospace textarea (Thaw Textarea) */
 .monospace-textarea {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-family-mono);
 }
 
 .form__select {
@@ -671,6 +680,12 @@
   border: 1px solid var(--badge-neutral-border);
 }
 
+.badge--accent {
+  background: var(--badge-accent-bg);
+  color: var(--badge-accent-text);
+  border: 1px solid var(--badge-accent-border);
+}
+
 .badge--status {
   display: inline-flex;
   align-items: center;
@@ -818,12 +833,17 @@
 .table__header-cell {
   padding: var(--spacing-sm) 12px;
   text-align: left;
-  font-weight: 500;
   white-space: nowrap;
   user-select: none;
   background: var(--table-header-bg);
   color: var(--table-header-fg);
   position: relative;
+  /* Unified "technical header" treatment (mono, uppercase, tracked) */
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .table__header-cell--sortable {
@@ -1358,7 +1378,7 @@ th.resizable {
   background: var(--color-bg-tertiary, rgba(128, 128, 128, 0.15));
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs, 11px);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   white-space: nowrap;
 }
 
@@ -1796,10 +1816,13 @@ th.resizable {
 }
 
 .data-table__cell--header {
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold, 600);
-  font-size: var(--font-size-sm, 12px);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-secondary);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--table-header-fg);
+  background: var(--table-header-bg);
   border-bottom: 2px solid var(--color-border);
   position: sticky;
   top: 0;
@@ -1935,13 +1958,13 @@ th.resizable {
 }
 
 .field-value-mono {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 
 .field-value-mono-sm {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   white-space: nowrap;
@@ -2235,7 +2258,7 @@ th.resizable {
   border: 1px solid var(--color-border-lighter);
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   overflow-x: auto;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   line-height: 1.5;
   max-height: 600px;
@@ -2244,7 +2267,7 @@ th.resizable {
 }
 
 .json-preview {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   background: var(--color-code-bg);
   padding: var(--spacing-sm);
@@ -2433,154 +2456,7 @@ th.resizable {
   color: white;
 }
 
-/* ============================================
-   Login Page Styles (BEM)
-   ============================================ */
-
-.login {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-xl);
-  overflow: hidden;
-}
-
-.login__background {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(125deg,
-      #a8e063 0%,
-      #56ab2f 25%,
-      #00b4db 50%,
-      #56ccf2 75%,
-      #a8e063 100%);
-  background-size: 200% 200%;
-  animation: gradientFlow 15s ease infinite;
-}
-
-@keyframes gradientFlow {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.login__theme-selector {
-  position: absolute;
-  top: var(--spacing-lg);
-  right: var(--spacing-lg);
-  z-index: var(--z-header);
-}
-
-.login__card {
-  position: relative;
-  z-index: var(--z-base);
-  width: 100%;
-  max-width: 420px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.5);
-  padding: var(--spacing-3xl);
-  animation: cardFadeIn 0.6s ease-out;
-}
-
-@keyframes cardFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.95);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.login__header {
-  text-align: center;
-  margin-bottom: var(--spacing-2xl);
-}
-
-.login__logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--spacing-md);
-}
-
-.login__logo img {
-  width: 64px;
-  height: 64px;
-  object-fit: contain;
-}
-
-.login__title {
-  margin: 0 0 var(--spacing-xs) 0;
-  font-size: 28px;
-  font-weight: 700;
-  color: #1f2937;
-  letter-spacing: -0.5px;
-}
-
-.login__subtitle {
-  margin: 0;
-  font-size: var(--font-size-base);
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.login__form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-}
-
-.login__error {
-  margin-bottom: var(--spacing-lg);
-}
-
-.login__form-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-}
-
-.login__label {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: #374151;
-}
-
-.login__button {
-  width: 100%;
-}
-
-.login__footer {
-  margin: var(--spacing-xl);
-  padding: var(--spacing-lg);
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-  text-align: center;
-}
-
-.login__footer-text {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: #6b7280;
-  line-height: 1.5;
-}
+/* Login Page styles moved to static/pages/login.css (per-page convention). */
 
 /* ============================================
    Scheduled Tasks - Details
@@ -2711,7 +2587,7 @@ th.resizable {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-family-mono);
   font-size: 14px;
   line-height: 1.2;
   color: var(--color-text-primary);
@@ -2959,7 +2835,7 @@ th.resizable {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-primary);
@@ -2982,69 +2858,7 @@ th.resizable {
 }
 
 
-/* Dark theme overrides for login */
-body[data-theme="dark"] .login__background {
-  background: linear-gradient(125deg,
-      #1a1a2e 0%,
-      #16213e 25%,
-      #0f3460 50%,
-      #533483 75%,
-      #1a1a2e 100%);
-  background-size: 200% 200%;
-}
-
-body[data-theme="dark"] .login__card {
-  background: rgba(30, 41, 59, 0.95);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
-}
-
-body[data-theme="dark"] .login__title {
-  color: #f9fafb;
-}
-
-body[data-theme="dark"] .login__subtitle {
-  color: #d1d5db;
-}
-
-body[data-theme="dark"] .login__label {
-  color: #e5e7eb;
-}
-
-body[data-theme="dark"] .login__footer {
-  border-top-color: rgba(255, 255, 255, 0.1);
-}
-
-body[data-theme="dark"] .login__footer-text {
-  color: #9ca3af;
-}
-
-/* Forest theme overrides for login */
-body[data-theme="forest"] .login__background {
-  background: linear-gradient(125deg,
-      #2e7d32 0%,
-      #1b5e20 25%,
-      #43a047 50%,
-      #66bb6a 75%,
-      #2e7d32 100%);
-  background-size: 200% 200%;
-}
-
-body[data-theme="forest"] .login__card {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 20px 60px rgba(46, 125, 50, 0.3), 0 0 0 1px rgba(76, 175, 80, 0.2);
-}
-
-
-/* Responsive */
-@media (max-width: 640px) {
-  .login__card {
-    padding: var(--spacing-xl);
-  }
-
-  .login__title {
-    font-size: 24px;
-  }
-}
+/* Login theme overrides + responsive moved to static/pages/login.css. */
 
 /* ============================================
    Picker Component (for selecting items in modal)
@@ -3239,15 +3053,19 @@ body[data-theme="dark"] .picker__loading::before {
 }
 
 .schema-table thead {
-  background: var(--color-neutral-50);
-  border-bottom: 2px solid var(--color-neutral-200);
+  background: var(--table-header-bg);
+  border-bottom: 2px solid var(--color-border);
 }
 
 .schema-table th {
   padding: var(--spacing-md);
   text-align: left;
-  font-weight: 600;
-  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--table-header-fg);
 }
 
 .schema-table tbody tr {
@@ -3324,18 +3142,19 @@ body[data-theme="dark"] .picker__loading::before {
 }
 
 .schema-fields-table thead {
-  background: var(--color-neutral-50);
-  border-bottom: 2px solid var(--color-neutral-200);
+  background: var(--table-header-bg);
+  border-bottom: 2px solid var(--color-border);
 }
 
 .schema-fields-table th {
   padding: var(--spacing-sm) var(--spacing-md);
   text-align: left;
-  font-weight: 600;
-  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  color: var(--table-header-fg);
   font-size: var(--font-size-xs);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.04em;
 }
 
 .schema-fields-table tbody tr {
@@ -3352,7 +3171,7 @@ body[data-theme="dark"] .picker__loading::before {
 }
 
 .field-id {
-  font-family: var(--font-mono);
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }
@@ -3362,13 +3181,13 @@ body[data-theme="dark"] .picker__loading::before {
 }
 
 .field-type {
-  font-family: var(--font-mono);
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   color: var(--color-primary);
 }
 
 .field-db-column {
-  font-family: var(--font-mono);
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
 }
 
@@ -3404,15 +3223,19 @@ body[data-theme="dark"] .picker__loading::before {
 }
 
 .configs-table thead {
-  background: var(--color-neutral-50);
-  border-bottom: 2px solid var(--color-neutral-200);
+  background: var(--table-header-bg);
+  border-bottom: 2px solid var(--color-border);
 }
 
 .configs-table th {
   padding: var(--spacing-md);
   text-align: left;
-  font-weight: 600;
-  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--table-header-fg);
 }
 
 .configs-table tbody tr {
@@ -3470,7 +3293,7 @@ body[data-theme="dark"] .picker__loading::before {
   border: 1px solid var(--color-neutral-200);
   border-radius: var(--radius-md);
   padding: var(--spacing-lg);
-  font-family: var(--font-mono);
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
   line-height: 1.6;
   overflow-x: auto;
@@ -3493,7 +3316,7 @@ body[data-theme="dark"] .picker__loading::before {
   background: var(--color-neutral-50);
   border-left: 3px solid var(--color-primary);
   margin-bottom: var(--spacing-sm);
-  font-family: var(--font-mono);
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
 }
 
@@ -3522,23 +3345,15 @@ body[data-theme="dark"] .picker__loading::before {
   border: 1px dashed var(--color-neutral-200);
 }
 
-/* Dark theme adjustments */
-body[data-theme="dark"] .schema-table thead {
-  background: var(--color-neutral-800);
-  border-bottom-color: var(--color-neutral-700);
-}
-
+/* Dark theme adjustments
+   (table headers are now driven by the themed --table-header-* tokens,
+   so the per-table `thead` dark overrides were removed.) */
 body[data-theme="dark"] .schema-table tbody tr {
   border-bottom-color: var(--color-neutral-700);
 }
 
 body[data-theme="dark"] .schema-table tbody tr:hover {
   background-color: var(--color-neutral-800);
-}
-
-body[data-theme="dark"] .schema-fields-table thead {
-  background: var(--color-neutral-800);
-  border-bottom-color: var(--color-neutral-700);
 }
 
 body[data-theme="dark"] .schema-fields-table tbody tr {
@@ -3571,11 +3386,6 @@ body[data-theme="dark"] .sql-params li {
 body[data-theme="dark"] .empty-state {
   background: var(--color-neutral-800);
   border-color: var(--color-neutral-700);
-}
-
-body[data-theme="dark"] .configs-table thead {
-  background: var(--color-neutral-800);
-  border-bottom-color: var(--color-neutral-700);
 }
 
 body[data-theme="dark"] .configs-table tbody tr {
@@ -3669,7 +3479,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
   padding: 8px 12px;
   background: var(--thaw-color-neutral-background-2);
   border-radius: 4px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 13px;
 }
 
@@ -4234,7 +4044,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 }
 
 .proj-detail__source-ref {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--color-text-secondary);
   word-break: break-word;
@@ -4304,7 +4114,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 }
 
 .proj-detail__value--mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
 }
 
@@ -4554,7 +4364,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
   border: 1px solid var(--color-border);
   background: var(--color-surface-2);
   color: var(--color-text-secondary);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -4587,7 +4397,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-secondary);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 .bi-indicator-dataspec__metric-pill {
@@ -4616,7 +4426,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 .bi-indicator-filter-list__id {
   min-width: 160px;
   color: var(--color-accent);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
 }
 
@@ -4661,7 +4471,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 .bi-indicator-test-result__value {
   font-size: 20px;
   font-weight: 700;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   color: var(--color-text);
 }
 
@@ -4805,7 +4615,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 }
 
 .bi-viewspec__hint code {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 11px;
   background: var(--color-bg-tertiary, rgba(0,0,0,.05));
   padding: 1px 4px;
@@ -5667,11 +5477,13 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 .param-table thead th {
   padding: 6px 10px;
   text-align: left;
-  font-weight: 600;
-  font-size: 13px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-xs);
   text-transform: uppercase;
-  letter-spacing: .05em;
-  color: var(--color-text-secondary);
+  letter-spacing: 0.04em;
+  color: var(--table-header-fg);
+  background: var(--table-header-bg);
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }
@@ -5708,7 +5520,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 
 .param-table__cell--id code {
   font-size: 13px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-family-mono);
   color: var(--color-primary);
 }
 
@@ -5732,14 +5544,14 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 
 .param-table__source {
   font-size: 13px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-family-mono);
   color: var(--color-text-secondary);
   opacity: .7;
 }
 
 .param-table__data {
   font-size: 13px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-family-mono);
   color: var(--color-success, #22c55e);
   font-weight: 500;
 }
@@ -5811,7 +5623,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 }
 
 .dv-card__id {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--color-accent);
   font-weight: 600;
@@ -5870,7 +5682,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 
 .dv-status-banner--active code {
   color: var(--color-accent);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-weight: 600;
   margin: 0 4px;
 }
@@ -5927,7 +5739,7 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 }
 
 .dv-picker-card__id {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-family-mono);
   font-size: 11px;
   color: var(--color-accent);
   font-weight: 500;
@@ -6049,14 +5861,14 @@ body[data-theme="dark"] .configs-table tbody tr:hover {
 }
 
 .filter-reg__id {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--color-accent);
   word-break: break-all;
 }
 
 .filter-reg__code {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--color-accent);
   background: var(--color-surface-3, rgba(0,0,0,.04));

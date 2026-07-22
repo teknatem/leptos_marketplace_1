@@ -573,6 +573,13 @@ pub async fn get_by_document_no(document_no: &str) -> Result<Option<WbOrders>> {
     Ok(model.map(|m| m.into()))
 }
 
+/// Дата заказа (`state.order_dt`) по srid (= `document_no`). Используется воронкой p916 для
+/// когортной привязки выкупа/возврата a012 к дате исходного заказа. `None` — заказ не найден
+/// (тогда p916 фолбэком берёт дату продажи).
+pub async fn order_date_by_srid(srid: &str) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+    Ok(get_by_document_no(srid).await?.map(|o| o.state.order_dt))
+}
+
 pub async fn search_by_document_no(document_no: &str) -> Result<Vec<WbOrders>> {
     let db = get_connection();
     let search_pattern = format!("%{}%", document_no);

@@ -179,10 +179,24 @@
   background: var(--code-box-bg);
   border: 1px solid var(--code-box-border);
   border-radius: var(--radius-sm);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
   color: var(--code-box-text);
   line-height: 1.5;
+}
+
+/* ============================================
+   Technical label (mono, uppercase, tracked)
+   Shared "technical header" treatment — table headers, object codes,
+   small eyebrow labels. Inspired by the JetBrains-Mono header style.
+   ============================================ */
+
+.u-tech-label {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* ============================================
@@ -222,7 +236,7 @@
 }
 
 .checkbox-list__item--mono {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
 }
 
 /* ============================================

@@ -60,7 +60,10 @@ pub struct MpFunnelTurnoverDto {
     pub registrator_ref: String,
 
     // стадия 1 (маркетинговая воронка):
-    pub show_count: Option<i64>,
+    /// Бесплатные/органические показы (поисковая аналитика a040), nullable.
+    pub show_free_count: Option<i64>,
+    /// Платные показы (реклама a026, views), nullable.
+    pub show_paid_count: Option<i64>,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,
@@ -91,7 +94,17 @@ pub struct MpFunnelAggRow {
     pub nomenclature_ref: Option<String>,
     pub nm_id: Option<i64>,
 
-    pub show_count: i64,
+    /// Бесплатные/органические показы (a040).
+    pub show_free_count: i64,
+    /// Платные показы (реклама a026).
+    pub show_paid_count: i64,
+    /// Есть ли данные органических показов (a040/«Джем») в срезе. `false` → показывать `N/A`,
+    /// а не `0` (источник недоступен, напр. нет подписки/403), см. §6/§21 ТЗ воронки.
+    #[serde(default)]
+    pub show_free_available: bool,
+    /// Есть ли данные платных показов (реклама a026) в срезе. `false` → `N/A`.
+    #[serde(default)]
+    pub show_paid_available: bool,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,
@@ -106,6 +119,13 @@ pub struct MpFunnelAggRow {
     pub buyout_sum: f64,
     pub return_count: i64,
     pub return_sum: f64,
+}
+
+impl MpFunnelAggRow {
+    /// Всего показов = бесплатные + платные (не хранится, считается на чтении).
+    pub fn show_total_count(&self) -> i64 {
+        self.show_free_count + self.show_paid_count
+    }
 }
 
 /// Ось агрегации при чтении воронки.
@@ -163,7 +183,14 @@ pub struct FunnelPeriodSummary {
     pub date_to: String,
 
     // Верх воронки (стадия marketing):
-    pub show_count: i64,
+    pub show_free_count: i64,
+    pub show_paid_count: i64,
+    /// Доступность органических показов (a040) в периоде: `false` → `N/A`, а не `0`.
+    #[serde(default)]
+    pub show_free_available: bool,
+    /// Доступность платных показов (a026) в периоде: `false` → `N/A`, а не `0`.
+    #[serde(default)]
+    pub show_paid_available: bool,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,

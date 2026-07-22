@@ -95,10 +95,11 @@ pub async fn insert_entries_bulk_with_conn<C: ConnectionTrait>(
     db: &C,
     entries: &[Model],
 ) -> Result<()> {
-    if entries.is_empty() {
-        return Ok(());
-    }
-    let models: Vec<ActiveModel> = entries
+    insert_prepared_entries_with_conn(db, prepare_entries(entries)).await
+}
+
+pub fn prepare_entries(entries: &[Model]) -> Vec<ActiveModel> {
+    entries
         .iter()
         .map(|entry| ActiveModel {
             id: Set(entry.id.clone()),
@@ -119,8 +120,17 @@ pub async fn insert_entries_bulk_with_conn<C: ConnectionTrait>(
             resource_sign: Set(entry.resource_sign),
             created_at: Set(entry.created_at.clone()),
         })
-        .collect();
-    Entity::insert_many(models).exec(db).await?;
+        .collect()
+}
+
+pub async fn insert_prepared_entries_with_conn<C: ConnectionTrait>(
+    db: &C,
+    entries: Vec<ActiveModel>,
+) -> Result<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    Entity::insert_many(entries).exec(db).await?;
     Ok(())
 }
 
