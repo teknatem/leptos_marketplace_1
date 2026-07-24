@@ -21,6 +21,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task012_wb_advert_campaigns",
+    write_tables: &["a030_wb_advert_campaign"],
     display_name: "WB Реклама (кампании)",
     description: "Обновляет справочник рекламных кампаний WB: список advertId, тип, статус, \
         changeTime и сырые свойства кампаний из Advert API. Данные сохраняются в \

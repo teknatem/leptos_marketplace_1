@@ -30,6 +30,5 @@ pub async fn set_raw_json_capture_enabled(enabled: bool) -> Result<()> {
         if enabled { "true" } else { "false" },
     )
     .await?;
-    crate::shared::data::raw_storage::set_capture_enabled_cache(enabled);
     Ok(())
 }

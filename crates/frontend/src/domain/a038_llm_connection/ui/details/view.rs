@@ -48,7 +48,8 @@ pub fn LlmConnectionDetails(
                     vm.max_tokens.set(connection.max_tokens.to_string());
                     vm.system_prompt
                         .set(connection.system_prompt.unwrap_or_default());
-                    vm.agent_type.set(connection.agent_type.as_str().to_string());
+                    vm.agent_type
+                        .set(connection.agent_type.as_str().to_string());
                     vm.is_primary.set(connection.is_primary);
 
                     if let Some(models_json) = connection.available_models {

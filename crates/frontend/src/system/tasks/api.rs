@@ -13,6 +13,7 @@ use contracts::system::tasks::request::{
 use contracts::system::tasks::response::{ScheduledTaskListResponse, ScheduledTaskResponse};
 use contracts::system::tasks::runs::{
     LiveMemoryProgressResponse, RecentRunsResponse, RunTaskResponse, TaskRun, TaskRunListResponse,
+    TaskStartConflict,
 };
 use gloo_net::http::Request;
 use serde_json;
@@ -331,11 +332,20 @@ pub async fn run_task_now(task_id: &str) -> Result<RunTaskNowOutcome, String> {
     let status = response.status();
 
     if status == 409 {
-        let run: TaskRun = response
-            .json()
+        let body = response
+            .text()
             .await
-            .map_err(|e| format!("Failed to parse conflict body: {}", e))?;
-        return Ok(RunTaskNowOutcome::AlreadyRunning(run));
+            .map_err(|e| format!("Failed to read conflict body: {}", e))?;
+        if let Ok(run) = serde_json::from_str::<TaskRun>(&body) {
+            return Ok(RunTaskNowOutcome::AlreadyRunning(run));
+        }
+        if let Ok(conflict) = serde_json::from_str::<TaskStartConflict>(&body) {
+            return Err(format!(
+                "Ресурс «{}» уже используется заданием «{}»",
+                conflict.resource, conflict.owner_task
+            ));
+        }
+        return Err("Задание конфликтует с уже выполняющимся запуском".to_string());
     }
 
     if !response.ok() {

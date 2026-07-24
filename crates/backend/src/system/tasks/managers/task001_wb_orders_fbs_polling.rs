@@ -17,6 +17,7 @@ use crate::usecases::u504_import_from_wildberries::ImportExecutor;
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task001_wb_orders_fbs_polling",
+    write_tables: &["a015_wb_orders_new"],
     display_name: "WB Заказы FBS — адаптивный поллер",
     description: "Каждые 5 минут загружает новые заказы FBS из Wildberries через Marketplace API. \
         Работает в двух режимах: FAST (только /orders/new + /orders за текущий день — если последний \

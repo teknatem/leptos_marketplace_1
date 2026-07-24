@@ -33,6 +33,9 @@ pub struct Model {
     pub nm_id: Option<i64>,
     pub registrator_type: String,
     pub registrator_ref: String,
+    /// srid заказа (только fulfillment-строки) — мост к атрибуции рекламы p913 (канальный сплит).
+    #[sea_orm(nullable)]
+    pub order_key: Option<String>,
 
     // стадия 1 (маркетинговая воронка):
     /// Бесплатные/органические показы (поисковая аналитика a040).
@@ -41,6 +44,12 @@ pub struct Model {
     /// Платные показы (реклама a026, views).
     #[sea_orm(nullable)]
     pub show_paid_count: Option<i64>,
+    /// Платные переходы (реклама a026, clicks).
+    #[sea_orm(nullable)]
+    pub paid_open_count: Option<i64>,
+    /// Платная корзина (реклама a026, atbs).
+    #[sea_orm(nullable)]
+    pub paid_cart_count: Option<i64>,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,
@@ -82,8 +91,11 @@ fn active_from_model(entry: &Model) -> ActiveModel {
         nm_id: Set(entry.nm_id),
         registrator_type: Set(entry.registrator_type.clone()),
         registrator_ref: Set(entry.registrator_ref.clone()),
+        order_key: Set(entry.order_key.clone()),
         show_free_count: Set(entry.show_free_count),
         show_paid_count: Set(entry.show_paid_count),
+        paid_open_count: Set(entry.paid_open_count),
+        paid_cart_count: Set(entry.paid_cart_count),
         open_count: Set(entry.open_count),
         cart_count: Set(entry.cart_count),
         wishlist_count: Set(entry.wishlist_count),
@@ -109,8 +121,11 @@ fn active_from_model(entry: &Model) -> ActiveModel {
 fn funnel_on_conflict() -> OnConflict {
     OnConflict::column(Column::Id)
         .update_columns([
+            Column::OrderKey,
             Column::ShowFreeCount,
             Column::ShowPaidCount,
+            Column::PaidOpenCount,
+            Column::PaidCartCount,
             Column::OpenCount,
             Column::CartCount,
             Column::WishlistCount,
@@ -167,6 +182,20 @@ pub async fn delete_by_registrator_ref(registrator_ref: &str) -> Result<u64> {
         .exec(conn())
         .await?;
     Ok(result.rows_affected)
+}
+
+/// Все строки движения конкретного регистратора (тип + ссылка). Используется закладкой
+/// «Проекции» документа-источника — показывает ровно те движения воронки, что он породил.
+pub async fn list_by_registrator(
+    registrator_type: &str,
+    registrator_ref: &str,
+) -> Result<Vec<Model>> {
+    let rows = Entity::find()
+        .filter(Column::RegistratorType.eq(registrator_type))
+        .filter(Column::RegistratorRef.eq(registrator_ref))
+        .all(conn())
+        .await?;
+    Ok(rows)
 }
 
 /// Удаление строк конкретного регистратора (тип + ссылка) в рамках транзакции.
@@ -253,17 +282,26 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
     let limit = request.limit.unwrap_or(5000).min(50000);
     let offset = request.offset.unwrap_or(0);
 
+    // Канальный сплит: fulfillment-строка «платная», если её srid (order_key) есть в атрибуции
+    // рекламы p913 (advert_clicks_order_accrual). DISTINCT — чтобы множественные кампании одного
+    // заказа не размножали строки. Верх воронки (paid показы/переходы/корзина) — из собственных
+    // платных колонок a026. `advert_present` — есть ли рекламные данные в срезе (иначе paid = N/A).
     let sql = format!(
         "SELECT
             {date_col} AS d,
-            connection_mp_ref,
-            marketplace_product_ref,
-            nomenclature_ref,
-            nm_id,
+            t.connection_mp_ref AS connection_mp_ref,
+            t.marketplace_product_ref AS marketplace_product_ref,
+            t.nomenclature_ref AS nomenclature_ref,
+            t.nm_id AS nm_id,
             SUM(COALESCE(show_free_count, 0)) AS show_free_count,
             SUM(COALESCE(show_paid_count, 0)) AS show_paid_count,
+            SUM(COALESCE(paid_open_count, 0)) AS paid_open_count,
+            SUM(COALESCE(paid_cart_count, 0)) AS paid_cart_count,
             SUM(CASE WHEN show_free_count IS NOT NULL THEN 1 ELSE 0 END) AS show_free_present,
             SUM(CASE WHEN show_paid_count IS NOT NULL THEN 1 ELSE 0 END) AS show_paid_present,
+            MAX(CASE WHEN pj.order_key IS NOT NULL OR show_paid_count IS NOT NULL
+                          OR paid_open_count IS NOT NULL OR paid_cart_count IS NOT NULL
+                     THEN 1 ELSE 0 END) AS advert_present,
             SUM(open_count) AS open_count,
             SUM(cart_count) AS cart_count,
             SUM(wishlist_count) AS wishlist_count,
@@ -271,16 +309,27 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
             SUM(funnel_order_sum) AS funnel_order_sum,
             SUM(order_count) AS order_count,
             SUM(order_sum) AS order_sum,
+            SUM(CASE WHEN pj.order_key IS NOT NULL THEN order_count ELSE 0 END) AS paid_order_count,
+            SUM(CASE WHEN pj.order_key IS NOT NULL THEN order_sum ELSE 0 END) AS paid_order_sum,
             SUM(cancel_count) AS cancel_count,
             SUM(cancel_sum) AS cancel_sum,
+            SUM(CASE WHEN pj.order_key IS NOT NULL THEN cancel_count ELSE 0 END) AS paid_cancel_count,
+            SUM(CASE WHEN pj.order_key IS NOT NULL THEN cancel_sum ELSE 0 END) AS paid_cancel_sum,
             SUM(buyout_count) AS buyout_count,
             SUM(buyout_sum) AS buyout_sum,
+            SUM(CASE WHEN pj.order_key IS NOT NULL THEN buyout_count ELSE 0 END) AS paid_buyout_count,
+            SUM(CASE WHEN pj.order_key IS NOT NULL THEN buyout_sum ELSE 0 END) AS paid_buyout_sum,
             SUM(return_count) AS return_count,
-            SUM(return_sum) AS return_sum
-         FROM p916_mp_sales_funnel_turnovers
+            SUM(return_sum) AS return_sum,
+            SUM(CASE WHEN pj.order_key IS NOT NULL THEN return_count ELSE 0 END) AS paid_return_count,
+            SUM(CASE WHEN pj.order_key IS NOT NULL THEN return_sum ELSE 0 END) AS paid_return_sum
+         FROM p916_mp_sales_funnel_turnovers t
+         LEFT JOIN (SELECT DISTINCT order_key FROM p913_wb_advert_order_attr
+                    WHERE turnover_code = 'advert_clicks_order_accrual' AND order_key <> '') pj
+                ON pj.order_key = t.order_key
          WHERE {where_clause}
-         GROUP BY {date_col}, connection_mp_ref, nm_id, marketplace_product_ref, nomenclature_ref
-         ORDER BY {date_col} ASC, nm_id ASC
+         GROUP BY {date_col}, t.connection_mp_ref, t.nm_id, t.marketplace_product_ref, t.nomenclature_ref
+         ORDER BY {date_col} ASC, t.nm_id ASC
          LIMIT {limit} OFFSET {offset}"
     );
 
@@ -301,8 +350,11 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
             nm_id: row.try_get("", "nm_id").ok(),
             show_free_count: row.try_get("", "show_free_count").unwrap_or(0),
             show_paid_count: row.try_get("", "show_paid_count").unwrap_or(0),
+            paid_open_count: row.try_get("", "paid_open_count").unwrap_or(0),
+            paid_cart_count: row.try_get("", "paid_cart_count").unwrap_or(0),
             show_free_available: row.try_get::<i64>("", "show_free_present").unwrap_or(0) > 0,
             show_paid_available: row.try_get::<i64>("", "show_paid_present").unwrap_or(0) > 0,
+            advert_available: row.try_get::<i64>("", "advert_present").unwrap_or(0) > 0,
             open_count: row.try_get("", "open_count").unwrap_or(0),
             cart_count: row.try_get("", "cart_count").unwrap_or(0),
             wishlist_count: row.try_get("", "wishlist_count").unwrap_or(0),
@@ -310,12 +362,20 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
             funnel_order_sum: row.try_get("", "funnel_order_sum").unwrap_or(0.0),
             order_count: row.try_get("", "order_count").unwrap_or(0),
             order_sum: row.try_get("", "order_sum").unwrap_or(0.0),
+            paid_order_count: row.try_get("", "paid_order_count").unwrap_or(0),
+            paid_order_sum: row.try_get("", "paid_order_sum").unwrap_or(0.0),
             cancel_count: row.try_get("", "cancel_count").unwrap_or(0),
             cancel_sum: row.try_get("", "cancel_sum").unwrap_or(0.0),
+            paid_cancel_count: row.try_get("", "paid_cancel_count").unwrap_or(0),
+            paid_cancel_sum: row.try_get("", "paid_cancel_sum").unwrap_or(0.0),
             buyout_count: row.try_get("", "buyout_count").unwrap_or(0),
             buyout_sum: row.try_get("", "buyout_sum").unwrap_or(0.0),
+            paid_buyout_count: row.try_get("", "paid_buyout_count").unwrap_or(0),
+            paid_buyout_sum: row.try_get("", "paid_buyout_sum").unwrap_or(0.0),
             return_count: row.try_get("", "return_count").unwrap_or(0),
             return_sum: row.try_get("", "return_sum").unwrap_or(0.0),
+            paid_return_count: row.try_get("", "paid_return_count").unwrap_or(0),
+            paid_return_sum: row.try_get("", "paid_return_sum").unwrap_or(0.0),
         })
         .collect();
 

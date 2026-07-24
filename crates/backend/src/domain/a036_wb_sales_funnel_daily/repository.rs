@@ -93,6 +93,34 @@ impl From<Model> for WbSalesFunnelDaily {
     }
 }
 
+/// Проведение одного документа a036 = пересборка его маркетинговых движений p916
+/// (стадия 1). Идемпотентно: delete-by-registrator + insert из текущего документа
+/// в одной транзакции. registrator_ref = id документа. Импортный `replace_for_period`
+/// продолжает заменять весь период; эта функция — точечное перепроведение из UI.
+pub async fn post_document(id: Uuid) -> Result<()> {
+    let document = get_by_id(id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
+
+    use crate::projections::p916_mp_sales_funnel_turnovers::{
+        builder as funnel_builder, repository as funnel_repo,
+    };
+    let registrator_ref = id.to_string();
+    let rows = funnel_builder::from_wb_funnel_daily(&document, &registrator_ref);
+
+    let db = get_connection();
+    let txn = db.begin().await?;
+    funnel_repo::delete_by_registrator_with_conn(
+        &txn,
+        funnel_builder::REG_A036,
+        &registrator_ref,
+    )
+    .await?;
+    funnel_repo::insert_many_with_conn(&txn, &rows).await?;
+    txn.commit().await?;
+    Ok(())
+}
+
 pub async fn replace_for_period(
     connection_id: &str,
     date_from: &str,
@@ -123,7 +151,9 @@ pub async fn replace_for_period(
 
     // Стадия 1 воронки p916: заменяем маркетинговые движения периода целиком
     // (delete-by-period + insert из документов), в той же транзакции.
-    use crate::projections::p916_mp_sales_funnel_turnovers::{builder as funnel_builder, repository as funnel_repo};
+    use crate::projections::p916_mp_sales_funnel_turnovers::{
+        builder as funnel_builder, repository as funnel_repo,
+    };
     funnel_repo::delete_marketing_for_period_with_conn(
         &txn,
         funnel_builder::REG_A036,
@@ -221,7 +251,10 @@ pub async fn backfill_stage1_funnel() -> Result<usize> {
     }
 
     txn.commit().await?;
-    tracing::info!("a036 → p916 stage-1 backfill: inserted {} movements", inserted);
+    tracing::info!(
+        "a036 → p916 stage-1 backfill: inserted {} movements",
+        inserted
+    );
     Ok(inserted)
 }
 
@@ -489,7 +522,9 @@ pub struct WbSalesFunnelExportRow {
 
 /// Позиции всех документов, попадающих под фильтры списка (период/кабинет/поиск),
 /// без пагинации. Артикул 1С резолвится одним запросом в a004.
-pub async fn export_rows(query: WbSalesFunnelDailyListQuery) -> Result<Vec<WbSalesFunnelExportRow>> {
+pub async fn export_rows(
+    query: WbSalesFunnelDailyListQuery,
+) -> Result<Vec<WbSalesFunnelExportRow>> {
     let db = get_connection();
     let where_clause = build_list_where(&query);
 

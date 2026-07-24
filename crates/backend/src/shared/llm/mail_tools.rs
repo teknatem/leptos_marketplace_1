@@ -117,13 +117,17 @@ pub async fn execute_mail_tool(name: &str, arguments_json: &str) -> Value {
                         }
                     })
                 }
-                Err(e) => json!({ "ok": false, "error": format!("Не удалось получить письма: {e}") }),
+                Err(e) => {
+                    json!({ "ok": false, "error": format!("Не удалось получить письма: {e}") })
+                }
             }
         }
         "read_email" => {
             let uid = match args.get("uid").and_then(Value::as_u64) {
                 Some(u) => u as u32,
-                None => return json!({ "ok": false, "error": "Не указан обязательный параметр uid." }),
+                None => {
+                    return json!({ "ok": false, "error": "Не указан обязательный параметр uid." })
+                }
             };
             match crate::shared::mail::read_email(uid).await {
                 Ok(email) => {
@@ -138,7 +142,9 @@ pub async fn execute_mail_tool(name: &str, arguments_json: &str) -> Value {
                     }
                     json!({ "ok": true, "email": email })
                 }
-                Err(e) => json!({ "ok": false, "error": format!("Не удалось прочитать письмо: {e}") }),
+                Err(e) => {
+                    json!({ "ok": false, "error": format!("Не удалось прочитать письмо: {e}") })
+                }
             }
         }
         "send_email" => {
@@ -174,9 +180,13 @@ pub async fn execute_mail_tool(name: &str, arguments_json: &str) -> Value {
                     "subject": subject,
                     "hint": "Письмо отправлено."
                 }),
-                Err(e) => json!({ "ok": false, "error": format!("Не удалось отправить письмо: {e}") }),
+                Err(e) => {
+                    json!({ "ok": false, "error": format!("Не удалось отправить письмо: {e}") })
+                }
             }
         }
-        other => json!({ "ok": false, "error": format!("Неизвестный почтовый инструмент: {other}") }),
+        other => {
+            json!({ "ok": false, "error": format!("Неизвестный почтовый инструмент: {other}") })
+        }
     }
 }

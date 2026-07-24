@@ -33,8 +33,18 @@ fn open_session() -> anyhow::Result<ImapSession> {
         .build()
         .map_err(|e| anyhow::anyhow!("TLS setup failed: {e}"))?;
 
-    let client = imap::connect((cfg.imap_host.as_str(), cfg.imap_port), &cfg.imap_host, &tls)
-        .map_err(|e| anyhow::anyhow!("IMAP connect to {}:{} failed: {e}", cfg.imap_host, cfg.imap_port))?;
+    let client = imap::connect(
+        (cfg.imap_host.as_str(), cfg.imap_port),
+        &cfg.imap_host,
+        &tls,
+    )
+    .map_err(|e| {
+        anyhow::anyhow!(
+            "IMAP connect to {}:{} failed: {e}",
+            cfg.imap_host,
+            cfg.imap_port
+        )
+    })?;
 
     let session = client
         .login(&cfg.username, &cfg.password)

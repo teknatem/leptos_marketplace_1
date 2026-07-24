@@ -44,6 +44,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task010_wb_documents",
+    write_tables: &["a027_wb_documents"],
     display_name: "WB Документы",
     description: "Загружает список документов из Wildberries Documents API \
         (/api/v1/documents/list) за указанный период. \

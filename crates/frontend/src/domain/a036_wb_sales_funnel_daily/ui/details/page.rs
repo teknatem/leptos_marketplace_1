@@ -3,7 +3,7 @@
 //! Thin wrapper that creates the ViewModel, renders the header,
 //! the tab bar, and routes to tab components.
 
-use super::tabs::{GeneralTab, LinesTab};
+use super::tabs::{GeneralTab, LinesTab, ProjectionsTab};
 use super::view_model::WbSalesFunnelDailyDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
@@ -21,6 +21,16 @@ pub fn WbSalesFunnelDailyDetail(id: String, #[prop(into)] on_close: Callback<()>
     let stored_id = StoredValue::new(id.clone());
 
     vm.load(id);
+
+    // Ленивая загрузка движений проекции p916 при активации вкладки «Проекции».
+    Effect::new({
+        let vm = vm.clone();
+        move || {
+            if vm.active_tab.get() == "projections" && !vm.projections_loaded.get() {
+                vm.load_projections();
+            }
+        }
+    });
 
     let vm_header = vm.clone();
     let vm_tabs = vm.clone();
@@ -78,6 +88,8 @@ fn Header(
                 <h1 class="page__title">{move || title.get()}</h1>
             </div>
             <div class="page__header-right">
+                <PostButton vm=vm.clone() />
+
                 <Button
                     appearance=ButtonAppearance::Subtle
                     size=ButtonSize::Medium
@@ -93,11 +105,49 @@ fn Header(
     }
 }
 
+// ── Post button ───────────────────────────────────────────────────────────────
+
+#[component]
+fn PostButton(vm: WbSalesFunnelDailyDetailsVm) -> impl IntoView {
+    let posting = vm.posting;
+    let doc = vm.doc;
+
+    let on_post = {
+        let vm = vm;
+        Callback::new(move |_: ()| vm.post())
+    };
+
+    view! {
+        <Show when=move || doc.get().is_some()>
+            <Button
+                appearance=ButtonAppearance::Subtle
+                size=ButtonSize::Medium
+                on_click=move |_| on_post.run(())
+                disabled=Signal::derive(move || posting.get())
+            >
+                <span class="page-action-button__content">
+                    <span class="page-action-button__icon">
+                        {move || {
+                            if posting.get() {
+                                view! { <span class="page-action-button__spinner"></span> }.into_any()
+                            } else {
+                                view! { <>{icon("refresh-cw")}</> }.into_any()
+                            }
+                        }}
+                    </span>
+                    <span class="page-action-button__text page-action-button__text--post">"Post"</span>
+                </span>
+            </Button>
+        </Show>
+    }
+}
+
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
 #[component]
 fn TabBar(vm: WbSalesFunnelDailyDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
+    let projections_count = vm.projections_count();
 
     view! {
         <div class="page__tabs">
@@ -116,6 +166,28 @@ fn TabBar(vm: WbSalesFunnelDailyDetailsVm) -> impl IntoView {
             >
                 "Позиции"
             </button>
+
+            <button
+                class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "projections"
+                on:click={ let vm = vm.clone(); move |_| vm.set_tab("projections") }
+            >
+                "Проекции"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "projections" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || projections_count.get().to_string()}
+                </Badge>
+            </button>
         </div>
     }
 }
@@ -127,12 +199,14 @@ fn TabContent(vm: WbSalesFunnelDailyDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let vm_general = vm.clone();
     let vm_lines = vm.clone();
+    let vm_projections = vm.clone();
 
     view! {
         {move || match active_tab.get() {
-            "general" => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
-            "lines"   => view! { <LinesTab   vm=vm_lines.clone()   /> }.into_any(),
-            _         => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+            "general"     => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
+            "lines"       => view! { <LinesTab   vm=vm_lines.clone()   /> }.into_any(),
+            "projections" => view! { <ProjectionsTab vm=vm_projections.clone() /> }.into_any(),
+            _             => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
         }}
     }
 }

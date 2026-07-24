@@ -14,8 +14,8 @@ use contracts::system::tasks::aggregate::{ScheduledTask, ScheduledTaskId};
 use contracts::system::tasks::progress::TaskStatus;
 
 use super::{
-    abort_registry, change_token, logger::TaskLogger, registry::TaskManagerRegistry, runs_service,
-    service,
+    abort_registry, change_token, logger::TaskLogger, registry::TaskManagerRegistry,
+    resource_coordinator::TaskResourceGuard, runs_service, service,
 };
 
 fn progress_to_run_metrics(
@@ -82,6 +82,8 @@ pub struct TaskSessionParams {
     pub recompute_next_run_if_elapsed: bool,
     pub logger: Arc<TaskLogger>,
     pub registry: Arc<TaskManagerRegistry>,
+    /// Holds the task id and all declared write tables until the run future exits.
+    pub resource_guard: TaskResourceGuard,
 }
 
 /// Запускает задачу в фоновом Tokio-задании и регистрирует `AbortHandle` в реестре.
@@ -97,6 +99,7 @@ pub fn spawn_task_session(params: TaskSessionParams) {
         recompute_next_run_if_elapsed,
         logger,
         registry,
+        resource_guard,
     } = params;
 
     let task_id: ScheduledTaskId = task.base.id;
@@ -110,6 +113,7 @@ pub fn spawn_task_session(params: TaskSessionParams) {
         .unwrap_or(7200);
 
     let join_handle = tokio::spawn(async move {
+        let _resource_guard = resource_guard;
         let manager = match registry.get(&task_type) {
             Some(m) => m,
             None => {

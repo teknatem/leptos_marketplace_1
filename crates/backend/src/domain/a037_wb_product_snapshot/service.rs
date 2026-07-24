@@ -36,9 +36,6 @@ pub async fn series_for_nm(
     repository::series_for_nm(connection_id, nm_id, date_from, date_to).await
 }
 
-pub async fn previous_before(
-    connection_id: &str,
-    date: &str,
-) -> Result<Option<WbProductSnapshot>> {
+pub async fn previous_before(connection_id: &str, date: &str) -> Result<Option<WbProductSnapshot>> {
     repository::previous_before(connection_id, date).await
 }

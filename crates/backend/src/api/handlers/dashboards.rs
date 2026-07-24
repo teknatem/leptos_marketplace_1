@@ -12,8 +12,8 @@ use contracts::dashboards::d404_wb_advert_report::{
     WbAdvertReportTotals,
 };
 use contracts::dashboards::d406_wb_sales_funnel::{
-    WbSalesFunnelConversions, WbSalesFunnelMetrics, WbSalesFunnelRequest, WbSalesFunnelResponse,
-    WbSalesFunnelRow,
+    FunnelOrderChannel, WbSalesFunnelConversions, WbSalesFunnelMetrics, WbSalesFunnelOrderItem,
+    WbSalesFunnelOrdersResponse, WbSalesFunnelRequest, WbSalesFunnelResponse, WbSalesFunnelRow,
 };
 use contracts::projections::p916_mp_sales_funnel_turnovers::dto::MpFunnelListRequest;
 use serde::Deserialize;
@@ -1019,28 +1019,29 @@ pub async fn wb_sales_funnel(
         })?;
 
     // Имена товаров: джойн a004 по nomenclature_ref (одним запросом на весь набор).
+    // Артикул и наименование храним раздельно — d406 показывает только артикул (наим. в тултипе).
     let nomenclature_refs: Vec<String> = agg_rows
         .iter()
         .filter_map(|row| row.nomenclature_ref.clone())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let nomenclature_names = crate::domain::a004_nomenclature::repository::list_by_ids(
-        &nomenclature_refs,
-    )
-    .await
-    .unwrap_or_default()
-    .into_iter()
-    .map(|item| {
-        let id = item.base.id.0.to_string();
-        let label = if item.article.trim().is_empty() {
-            item.base.description
-        } else {
-            format!("{} — {}", item.article, item.base.description)
-        };
-        (id, label)
-    })
-    .collect::<HashMap<_, _>>();
+    let nomenclature_names: HashMap<String, (Option<String>, Option<String>)> =
+        crate::domain::a004_nomenclature::repository::list_by_ids(&nomenclature_refs)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| {
+                let id = item.base.id.0.to_string();
+                let article = Some(item.article.trim().to_string()).filter(|s| !s.is_empty());
+                let name =
+                    Some(item.base.description.trim().to_string()).filter(|s| !s.is_empty());
+                (id, (article, name))
+            })
+            .collect();
+
+    // Маркетплейс по connection_mp_ref: a006 (подключение) → a005 (справочник) → тип МП.
+    let marketplace_by_connection = funnel_marketplace_labels().await;
 
     let mut totals = WbSalesFunnelMetrics::default();
     let rows: Vec<WbSalesFunnelRow> = agg_rows
@@ -1054,26 +1055,43 @@ pub async fn wb_sales_funnel(
                 show_free_available: row.show_free_available,
                 show_paid_available: row.show_paid_available,
                 show_total_available: row.show_free_available || row.show_paid_available,
+                advert_available: row.advert_available,
                 open_count: row.open_count,
                 cart_count: row.cart_count,
+                paid_open_count: row.paid_open_count,
+                paid_cart_count: row.paid_cart_count,
                 wishlist_count: row.wishlist_count,
                 funnel_order_count: row.funnel_order_count,
                 funnel_order_sum: row.funnel_order_sum,
                 order_count: row.order_count,
                 order_sum: row.order_sum,
+                paid_order_count: row.paid_order_count,
+                paid_order_sum: row.paid_order_sum,
                 cancel_count: row.cancel_count,
                 cancel_sum: row.cancel_sum,
+                paid_cancel_count: row.paid_cancel_count,
+                paid_cancel_sum: row.paid_cancel_sum,
                 buyout_count: row.buyout_count,
                 buyout_sum: row.buyout_sum,
+                paid_buyout_count: row.paid_buyout_count,
+                paid_buyout_sum: row.paid_buyout_sum,
                 return_count: row.return_count,
                 return_sum: row.return_sum,
+                paid_return_count: row.paid_return_count,
+                paid_return_sum: row.paid_return_sum,
             };
             accumulate_funnel_totals(&mut totals, &metrics);
 
-            let product_name = row
+            let (article, product_name) = row
                 .nomenclature_ref
                 .as_ref()
-                .and_then(|r| nomenclature_names.get(r).cloned());
+                .and_then(|r| nomenclature_names.get(r).cloned())
+                .unwrap_or((None, None));
+            let (marketplace, marketplace_code) = marketplace_by_connection
+                .get(&row.connection_mp_ref)
+                .cloned()
+                .unwrap_or((None, None));
+            // Конверсии «всего» (для строки total-канала); канальные конверсии считает клиент.
             let conversions = WbSalesFunnelConversions::from_metrics(
                 metrics.open_count,
                 metrics.cart_count,
@@ -1088,6 +1106,9 @@ pub async fn wb_sales_funnel(
                 nm_id: row.nm_id,
                 marketplace_product_ref: row.marketplace_product_ref,
                 nomenclature_ref: row.nomenclature_ref,
+                marketplace,
+                marketplace_code,
+                article,
                 product_name,
                 brand: None,
                 metrics,
@@ -1120,17 +1141,156 @@ fn accumulate_funnel_totals(totals: &mut WbSalesFunnelMetrics, row: &WbSalesFunn
     totals.show_free_available |= row.show_free_available;
     totals.show_paid_available |= row.show_paid_available;
     totals.show_total_available |= row.show_total_available;
+    totals.advert_available |= row.advert_available;
     totals.open_count += row.open_count;
     totals.cart_count += row.cart_count;
+    totals.paid_open_count += row.paid_open_count;
+    totals.paid_cart_count += row.paid_cart_count;
     totals.wishlist_count += row.wishlist_count;
     totals.funnel_order_count += row.funnel_order_count;
     totals.funnel_order_sum += row.funnel_order_sum;
     totals.order_count += row.order_count;
     totals.order_sum += row.order_sum;
+    totals.paid_order_count += row.paid_order_count;
+    totals.paid_order_sum += row.paid_order_sum;
     totals.cancel_count += row.cancel_count;
     totals.cancel_sum += row.cancel_sum;
+    totals.paid_cancel_count += row.paid_cancel_count;
+    totals.paid_cancel_sum += row.paid_cancel_sum;
     totals.buyout_count += row.buyout_count;
     totals.buyout_sum += row.buyout_sum;
+    totals.paid_buyout_count += row.paid_buyout_count;
+    totals.paid_buyout_sum += row.paid_buyout_sum;
     totals.return_count += row.return_count;
     totals.return_sum += row.return_sum;
+    totals.paid_return_count += row.paid_return_count;
+    totals.paid_return_sum += row.paid_return_sum;
+}
+
+#[derive(Deserialize)]
+pub struct WbSalesFunnelOrdersQuery {
+    pub connection_mp_ref: String,
+    pub nm_id: i64,
+    /// Дата заказа (когорта), YYYY-MM-DD.
+    pub date: String,
+    /// Фильтр канала: `paid` | `free` | (пусто → все).
+    #[serde(default)]
+    pub channel: Option<String>,
+}
+
+/// Drilldown воронки: конкретные заказы одной ячейки `nm_id × дата` с меткой канала.
+/// «Платный» ⇔ srid заказа входит в атрибуцию рекламы p913 (`advert_clicks_order_accrual`).
+/// Счётчики `paid_count`/`free_count` считаются по всей ячейке (до фильтра `channel`).
+pub async fn wb_sales_funnel_orders(
+    Query(query): Query<WbSalesFunnelOrdersQuery>,
+) -> Result<Json<WbSalesFunnelOrdersResponse>, axum::http::StatusCode> {
+    let channel = match query.channel.as_deref() {
+        Some("paid") => FunnelOrderChannel::Paid,
+        Some("free") => FunnelOrderChannel::Free,
+        _ => FunnelOrderChannel::All,
+    };
+
+    let orders = crate::domain::a015_wb_orders::repository::list_for_advert_attribution(
+        query.nm_id,
+        &query.connection_mp_ref,
+        &query.date,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!("wb_sales_funnel_orders a015 lookup failed: {}", error);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let srids: Vec<String> = orders.iter().map(|o| o.header.document_no.clone()).collect();
+    let paid_map =
+        crate::projections::p913_wb_advert_order_attr::repository::sum_reserve_by_order_keys(
+            &srids, None,
+        )
+        .await
+        .unwrap_or_default();
+
+    let mut items = Vec::new();
+    let mut paid_count = 0i64;
+    let mut free_count = 0i64;
+    for order in &orders {
+        let srid = order.header.document_no.clone();
+        let is_paid = paid_map.contains_key(&srid);
+        if is_paid {
+            paid_count += 1;
+        } else {
+            free_count += 1;
+        }
+
+        let keep = match channel {
+            FunnelOrderChannel::Paid => is_paid,
+            FunnelOrderChannel::Free => !is_paid,
+            FunnelOrderChannel::All => true,
+        };
+        if !keep {
+            continue;
+        }
+
+        let advert_campaign = if is_paid {
+            crate::projections::p913_wb_advert_order_attr::repository::list_by_order_key_and_turnover(
+                &srid,
+                "advert_clicks_order_accrual",
+            )
+            .await
+            .ok()
+            .and_then(|rows| {
+                rows.into_iter()
+                    .find_map(|r| Some(r.wb_advert_campaign_code).filter(|c| !c.is_empty()))
+            })
+        } else {
+            None
+        };
+
+        items.push(WbSalesFunnelOrderItem {
+            srid,
+            order_date:
+                crate::projections::p916_mp_sales_funnel_turnovers::builder::msk_date_from_utc(
+                    &order.state.order_dt,
+                ),
+            amount: order.line.allocation_basis(),
+            is_cancel: order.state.is_cancel,
+            is_paid,
+            advert_campaign,
+        });
+    }
+
+    Ok(Json(WbSalesFunnelOrdersResponse {
+        items,
+        paid_count,
+        free_count,
+    }))
+}
+
+/// Карта `connection_mp_ref → (человекочитаемое название МП, код типа МП)`.
+/// Резолв через a006 (подключение → marketplace_id) и a005 (справочник → тип МП).
+/// Ошибки чтения не критичны — при их наличии колонка «Маркетплейс» будет пустой.
+async fn funnel_marketplace_labels() -> HashMap<String, (Option<String>, Option<String>)> {
+    use contracts::enums::marketplace_type::MarketplaceType;
+
+    let marketplaces = crate::domain::a005_marketplace::repository::list_all()
+        .await
+        .unwrap_or_default();
+    // marketplace_id → тип МП.
+    let type_by_marketplace: HashMap<String, MarketplaceType> = marketplaces
+        .into_iter()
+        .filter_map(|mp| mp.marketplace_type.map(|t| (mp.base.id.0.to_string(), t)))
+        .collect();
+
+    let connections = crate::domain::a006_connection_mp::repository::list_all()
+        .await
+        .unwrap_or_default();
+    connections
+        .into_iter()
+        .map(|conn| {
+            let label = type_by_marketplace
+                .get(&conn.marketplace_id)
+                .map(|t| (Some(t.display_name().to_string()), Some(t.code().to_string())))
+                .unwrap_or((None, None));
+            (conn.to_string_id(), label)
+        })
+        .collect()
 }

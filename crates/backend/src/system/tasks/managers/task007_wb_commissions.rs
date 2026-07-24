@@ -29,6 +29,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task007_wb_commissions",
+    write_tables: &["p905_wb_commission_history"],
     display_name: "WB Тарифы и комиссии",
     description: "Загружает актуальный снимок тарифов и комиссий WB из Common API \
         (/api/v1/tariffs/commission). Один запрос, без пагинации и дат — всегда текущий \

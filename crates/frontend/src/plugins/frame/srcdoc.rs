@@ -33,6 +33,15 @@ const host = Object.freeze({
     return new Promise((resolve, reject) => {
       pending.set(requestId, { resolve, reject });
     });
+  },
+  openTab(key, title = key) {
+    window.parent.postMessage({
+      type: "plugin_open_tab",
+      instanceId: INSTANCE_ID,
+      secret: BRIDGE_SECRET,
+      key: String(key),
+      title: String(title)
+    }, "*");
   }
 });
 

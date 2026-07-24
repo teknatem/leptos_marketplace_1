@@ -27,6 +27,7 @@ fn default_window_days() -> i64 {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task024_wb_search_analytics_daily",
+    write_tables: &["a040_wb_search_analytics_daily"],
     display_name: "WB Поисковая аналитика (показы)",
     description:
         "Загружает поисковую аналитику Wildberries (органические показы, переходы из поиска, \

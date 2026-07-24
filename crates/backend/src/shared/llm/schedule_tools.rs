@@ -100,7 +100,9 @@ pub async fn execute_schedule_tool(name: &str, arguments_json: &str) -> Value {
             let task_type = args.get("task_type").and_then(|v| v.as_str());
             describe_task_types(task_type)
         }
-        other => json!({ "ok": false, "error": format!("Неизвестный инструмент планировщика: {other}") }),
+        other => {
+            json!({ "ok": false, "error": format!("Неизвестный инструмент планировщика: {other}") })
+        }
     }
 }
 

@@ -357,7 +357,16 @@ fn RawApiAmountsCard(vm: YmOrderDetailsVm, currency: String) -> impl IntoView {
                 .get()
                 .and_then(|json| serde_json::from_str::<Value>(&json).ok());
             let Some(raw_value) = raw_value else {
-                return view! { <></> }.into_any();
+                // raw-payload может отсутствовать в БД — штатная ситуация, не спиннер.
+                return view! {
+                    <CardAnimated delay_ms=80 nav_id="a013_ym_order_details_detail_raw_empty">
+                        <h4 class="details-section__title">"Raw API сверка"</h4>
+                        <div style="color: var(--color-text-secondary);">
+                            "Исходный JSON Partner API для этого заказа не сохранён в БД."
+                        </div>
+                    </CardAnimated>
+                }
+                .into_any();
             };
 
             let payload = order_payload(&raw_value);
@@ -445,8 +454,16 @@ fn PaymentReportsSummaryCard(vm: YmOrderDetailsVm, currency: String) -> impl Int
 
             let reports = vm.payment_reports.get();
             let reports_count = reports.len();
+            // Справочные строки p907 («Справочно: …») дублируют суммы и не идут в итог.
             let total_transaction_sum: f64 = reports
                 .iter()
+                .filter(|report| {
+                    !report
+                        .payment_status
+                        .as_deref()
+                        .map(|s| s.trim_start().starts_with("Справочно"))
+                        .unwrap_or(false)
+                })
                 .filter_map(|report| report.transaction_sum)
                 .sum();
 
@@ -461,8 +478,8 @@ fn PaymentReportsSummaryCard(vm: YmOrderDetailsVm, currency: String) -> impl Int
                             unit="шт."
                         />
                         <MoneyMetricRow
-                            label="Сумма транзакций"
-                            field="sum(transaction_sum)"
+                            label="Сумма (без справочных)"
+                            field="sum(transaction_sum ∉ «Справочно»)"
                             value=Signal::derive(move || Some(total_transaction_sum))
                             unit=currency.get_value()
                             color_by_sign=false

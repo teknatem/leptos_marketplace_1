@@ -214,19 +214,8 @@ async fn replace_for_period_scoped(
         .await?;
     }
 
-    // Стадия 1 воронки p916: платные показы (show_paid_count). Идемпотентность —
-    // delete-by-registrator по каждому заменяемому документу (a026 = много документов
-    // на дату, по одному на advert_id; период-delete стёр бы чужие кампании при
-    // scoped-переимпорте). registrator_ref = id документа (совпадает с новым по stable id).
-    for id in &existing_ids {
-        crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_with_conn(
-            &txn,
-            crate::projections::p916_mp_sales_funnel_turnovers::builder::REG_A026,
-            id,
-        )
-        .await?;
-    }
-
+    // Стадия 1 воронки p916 (show_paid_count) пишется при ПРОВЕДЕНИИ документа
+    // (`posting::post_document`), а не на импорте — импорт auto-постит каждый документ.
     let advert_scope_slice = advert_ids;
     crate::projections::p913_wb_advert_order_attr::repository::delete_a026_by_connection_and_date_range_with_conn(
         &txn,
@@ -288,18 +277,7 @@ async fn replace_for_period_scoped(
         Entity::insert(active_model).exec(&txn).await?;
     }
 
-    // Стадия 1 воронки p916: вставляем платные показы из заменяемых документов.
-    for document in documents {
-        let registrator_ref = document.base.id.value().to_string();
-        let rows = crate::projections::p916_mp_sales_funnel_turnovers::builder::from_wb_advert_daily(
-            document,
-            &registrator_ref,
-        );
-        crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_many_with_conn(
-            &txn, &rows,
-        )
-        .await?;
-    }
+    // p916 (show_paid_count) формируется при проведении документа, не здесь.
 
     txn.commit().await?;
     tracing::info!(

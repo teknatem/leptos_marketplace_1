@@ -29,6 +29,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task017_wb_returns_claims",
+    write_tables: &["a032_wb_returns_claims"],
     display_name: "WB Заявки на возврат (Claims)",
     description: "Загружает заявки покупателей на возврат товара из WB feedbacks-api \
         (/api/v1/claims). Опрашивает активные (is_archive=false) и архивные (is_archive=true) \

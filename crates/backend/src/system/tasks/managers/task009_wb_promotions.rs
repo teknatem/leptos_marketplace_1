@@ -44,6 +44,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task009_wb_promotions",
+    write_tables: &["a020_wb_promotion"],
     display_name: "WB Промоакции",
     description: "Загружает промо-календарь из Wildberries Calendar API. Последовательность \
         неразрывна: список акций → детали по каждой акции → номенклатуры акций. \

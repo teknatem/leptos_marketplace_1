@@ -127,6 +127,9 @@ impl YmOrderDetailsVm {
                     vm.order.set(Some(data.clone()));
                     vm.load_line_links(data.lines);
                     vm.load_projections();
+                    // Грузим сразу, чтобы бейдж на ярлыке «Связи» показывал реальное
+                    // количество строк с самого открытия, а не 0 до первого клика.
+                    vm.load_payment_reports();
                     vm.loading.set(false);
                 }
                 Err(e) => {
@@ -202,10 +205,12 @@ impl YmOrderDetailsVm {
     }
 
     pub fn load_raw_json(&self) {
-        if self.raw_json_loaded.get() || self.raw_json_loading.get() {
+        // get_untracked: не создавать реактивную зависимость в вызывающем Effect,
+        // иначе тумблер raw_json_loading перезапускал бы Effect бесконечно.
+        if self.raw_json_loaded.get_untracked() || self.raw_json_loading.get_untracked() {
             return;
         }
-        let Some(order) = self.order.get() else {
+        let Some(order) = self.order.get_untracked() else {
             return;
         };
 
@@ -217,10 +222,12 @@ impl YmOrderDetailsVm {
             match fetch_raw_json(&raw_payload_ref).await {
                 Ok(json) => {
                     vm.raw_json.set(Some(json));
-                    vm.raw_json_loaded.set(true);
                 }
                 Err(e) => leptos::logging::log!("Failed to load raw JSON: {}", e),
             }
+            // Помечаем как «загружено» и при ошибке: raw-payload может отсутствовать
+            // в БД (штатная ситуация) — не повторяем запрос и не крутим спиннер вечно.
+            vm.raw_json_loaded.set(true);
             vm.raw_json_loading.set(false);
         });
     }

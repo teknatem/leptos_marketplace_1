@@ -17,6 +17,7 @@ use crate::usecases::u503_import_from_yandex::ImportExecutor;
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task013_ym_orders_polling",
+    write_tables: &["a013_ym_order", "a013_ym_order_items"],
     display_name: "YM Заказы — адаптивный поллер",
     description: "Каждые 5 минут загружает заказы Yandex Market через Partner API. \
         Фильтрует по дате ОБНОВЛЕНИЯ заказа (updatedAtFrom/updatedAtTo), поэтому ловит и новые \

@@ -48,6 +48,9 @@ pub struct TaskMetadata {
     pub description: &'static str,
     pub external_apis: &'static [ExternalApiInfo],
     pub constraints: &'static [&'static str],
+    /// Business tables modified by this task. Scheduler uses this list to avoid concurrent
+    /// writers. Scheduler bookkeeping and shared raw-storage tables are intentionally omitted.
+    pub write_tables: &'static [&'static str],
     /// Schema for the task's config_json — drives the UI editor.
     /// Empty slice means no structured editor; raw JSON textarea is shown.
     pub config_fields: &'static [TaskConfigField],
@@ -94,6 +97,7 @@ pub struct TaskMetadataDto {
     pub description: String,
     pub external_apis: Vec<ExternalApiInfoDto>,
     pub constraints: Vec<String>,
+    pub write_tables: Vec<String>,
     /// Structured config schema — empty vec means show raw JSON textarea.
     pub config_fields: Vec<TaskConfigFieldDto>,
     pub max_duration_seconds: u64,
@@ -115,6 +119,7 @@ impl From<&TaskMetadata> for TaskMetadataDto {
                 })
                 .collect(),
             constraints: m.constraints.iter().map(|s| s.to_string()).collect(),
+            write_tables: m.write_tables.iter().map(|s| s.to_string()).collect(),
             max_duration_seconds: m.max_duration_seconds,
             config_fields: m
                 .config_fields

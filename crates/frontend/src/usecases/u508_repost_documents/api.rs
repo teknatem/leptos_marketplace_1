@@ -163,9 +163,7 @@ pub async fn start_aggregate_repost(
     serde_wasm_bindgen::from_value(json).map_err(|e| e.to_string())
 }
 
-pub async fn start_funnel_rebuild(
-    request: FunnelRebuildRequest,
-) -> Result<RepostResponse, String> {
+pub async fn start_funnel_rebuild(request: FunnelRebuildRequest) -> Result<RepostResponse, String> {
     let window = window().ok_or("No window object")?;
 
     let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;

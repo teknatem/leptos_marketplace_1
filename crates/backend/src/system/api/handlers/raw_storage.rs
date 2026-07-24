@@ -1,7 +1,7 @@
 use axum::{http::StatusCode, Json};
 use contracts::system::raw_storage::{
-    DbVacuumResult, DbVacuumStatus, RawStorageCleanupPreview, RawStorageCleanupRequest,
-    RawStorageSettings, RawStorageStatus,
+    DbVacuumResult, DbVacuumStatus, DbWalCheckpointResult, RawStorageCleanupPreview,
+    RawStorageCleanupRequest, RawStorageSettings, RawStorageStatus,
 };
 
 pub async fn get_status() -> Result<Json<RawStorageStatus>, StatusCode> {
@@ -67,6 +67,16 @@ pub async fn run_vacuum() -> Result<Json<DbVacuumResult>, StatusCode> {
         .map(Json)
         .map_err(|e| {
             tracing::error!("Failed to run VACUUM: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+pub async fn truncate_wal() -> Result<Json<DbWalCheckpointResult>, StatusCode> {
+    crate::shared::data::raw_storage::truncate_wal()
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Failed to checkpoint and truncate WAL: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })
 }

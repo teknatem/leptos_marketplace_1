@@ -1,8 +1,8 @@
 use crate::shared::api_utils::api_base;
 use crate::system::auth::storage;
 use contracts::system::raw_storage::{
-    DbVacuumResult, DbVacuumStatus, RawStorageCleanupPreview, RawStorageCleanupRequest,
-    RawStorageSettings, RawStorageStatus,
+    DbVacuumResult, DbVacuumStatus, DbWalCheckpointResult, RawStorageCleanupPreview,
+    RawStorageCleanupRequest, RawStorageSettings, RawStorageStatus,
 };
 use gloo_net::http::Request;
 
@@ -139,4 +139,27 @@ pub async fn run_vacuum() -> Result<DbVacuumResult, String> {
         .json()
         .await
         .map_err(|e| format!("Failed to parse vacuum result: {}", e))
+}
+
+pub async fn truncate_wal() -> Result<DbWalCheckpointResult, String> {
+    let response = Request::post(&format!(
+        "{}/api/sys/raw-storage/wal-checkpoint",
+        api_base()
+    ))
+    .header("Authorization", &auth_header()?)
+    .send()
+    .await
+    .map_err(|e| format!("Failed to checkpoint WAL: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!(
+            "Failed to checkpoint WAL: HTTP {}",
+            response.status()
+        ));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse WAL checkpoint result: {}", e))
 }

@@ -2,6 +2,7 @@ use crate::system::tasks::abort_registry;
 use crate::system::tasks::change_token;
 use crate::system::tasks::logger::get_global_task_logger;
 use crate::system::tasks::registry::get_global_registry;
+use crate::system::tasks::resource_coordinator::get_global_resource_coordinator;
 use crate::system::tasks::runs_service;
 use crate::system::tasks::service;
 use crate::system::tasks::task_session_runner::{spawn_task_session, TaskSessionParams};
@@ -21,6 +22,7 @@ use contracts::system::tasks::request::{
 use contracts::system::tasks::response::{ScheduledTaskListResponse, ScheduledTaskResponse};
 use contracts::system::tasks::runs::{
     LiveMemoryProgressResponse, RecentRunsResponse, RunTaskResponse, TaskRunListResponse,
+    TaskStartConflict,
 };
 use serde::Deserialize;
 use uuid::Uuid;
@@ -161,13 +163,33 @@ pub async fn run_task_now(
         .clone();
 
     // Убеждаемся что тип задачи известен до создания записи в БД.
-    if registry.get(&task.task_type).is_none() {
+    let Some(manager) = registry.get(&task.task_type) else {
         tracing::warn!("No manager for task type '{}'", task.task_type);
         return Err(axum::http::StatusCode::NOT_IMPLEMENTED);
-    }
+    };
 
     let logger = get_global_task_logger();
     let session_id = Uuid::new_v4().to_string();
+    let task_label = format!("{} ({})", task.base.description, id);
+    let resource_guard = match get_global_resource_coordinator().try_acquire(
+        &id,
+        &task_label,
+        &session_id,
+        manager.metadata().write_tables,
+    ) {
+        Ok(guard) => guard,
+        Err(conflict) => {
+            return Ok((
+                axum::http::StatusCode::CONFLICT,
+                Json(TaskStartConflict {
+                    resource: conflict.resource,
+                    owner_task: conflict.owner_task,
+                    owner_session_id: conflict.owner_session_id,
+                }),
+            )
+                .into_response());
+        }
+    };
     let log_file_path = logger.get_log_file_path(&session_id);
     let now = Utc::now();
     let next_run_at = task.next_run_at.unwrap_or(now);
@@ -202,6 +224,7 @@ pub async fn run_task_now(
         recompute_next_run_if_elapsed: false,
         logger,
         registry,
+        resource_guard,
     });
 
     Ok(Json(RunTaskResponse {

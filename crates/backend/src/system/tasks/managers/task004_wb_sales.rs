@@ -45,6 +45,15 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task004_wb_sales",
+    write_tables: &[
+        "a012_wb_sales",
+        "p900_sales_register",
+        "p904_sales_data",
+        "p909_mp_order_line_turnovers",
+        "p913_wb_advert_order_attr",
+        "p916_mp_sales_funnel_turnovers",
+        "sys_general_ledger",
+    ],
     display_name: "WB Продажи (Statistics API)",
     description: "Загружает историю продаж из Wildberries через Statistics API \
         (/api/v1/supplier/sales). Использует скользящее окно от последнего успешного \

@@ -123,7 +123,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
 
         "d400_monthly_summary" => "Сводка за месяц",
         "d405_metadata_dashboard" => "Метаданные",
-        "d406_wb_sales_funnel" => "Воронка продаж WB",
+        "d406_wb_sales_funnel" => "Воронка продаж",
         "d401_wb_finance" => "WB Finance",
         "d402_wb_order_flow" => "WB История заказов",
         k if k.starts_with("d402_wb_order_flow_srid_") => "Вся история",
@@ -135,7 +135,7 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         "sys_roles" => "Роли",
         "sys_roles_matrix" => "Матрица ролей",
         "sys_audit" => "Аудит доступа",
-        "sys_raw_storage" => "Raw JSON",
+        "sys_raw_storage" => "Настройка raw JSON",
         "sys_tasks" => "Регламентные задания",
         "sys_task_details" => "Новая задача",
         k if k.starts_with("sys_task_details_") => "Задача",

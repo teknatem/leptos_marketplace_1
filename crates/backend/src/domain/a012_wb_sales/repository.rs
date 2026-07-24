@@ -682,6 +682,49 @@ pub async fn list_ids_by_connection_and_document_nos(
     Ok(ids)
 }
 
+/// ID неудалённых a012 по srid из списка (`document_no`) с нижней границей `sale_date >= date_from`
+/// (YYYY-MM-DD), без верхней границы. Используется в пересборе воронки p916: выкупы/возвраты
+/// отбираются по периоду заказов (srid'ы a015), а не по дате продажи. srid уникален по кабинету,
+/// поэтому кабинетный фильтр не нужен — отбор кабинетов сделан на стороне a015.
+pub async fn list_ids_by_document_nos_since(
+    date_from: &str,
+    document_nos: &[String],
+    only_posted: bool,
+) -> Result<Vec<String>> {
+    if document_nos.is_empty() {
+        return Ok(vec![]);
+    }
+
+    const CHUNK: usize = 400;
+    let mut ids = Vec::new();
+    for chunk in document_nos.chunks(CHUNK) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let mut sql = format!(
+            "SELECT id FROM a012_wb_sales \
+             WHERE is_deleted = 0 \
+               AND sale_date IS NOT NULL \
+               AND substr(sale_date, 1, 10) >= ? \
+               AND document_no IN ({placeholders})"
+        );
+        if only_posted {
+            sql.push_str(" AND is_posted = 1");
+        }
+        let mut params: Vec<sea_orm::Value> = vec![date_from.into()];
+        params.extend(chunk.iter().map(|s| s.as_str().into()));
+        let stmt =
+            sea_orm::Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+        let rows = conn().query_all(stmt).await?;
+        for row in rows {
+            if let Ok(id) = row.try_get::<String>("", "id") {
+                ids.push(id);
+            }
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
 /// DTO for list view - uses denormalized columns, no JSON parsing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesListRow {

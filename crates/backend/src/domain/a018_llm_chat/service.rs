@@ -609,13 +609,9 @@ pub async fn send_message(
                 match provider.chat_completion(&sum_messages).await {
                     Ok(resp) if !resp.content.trim().is_empty() => {
                         let new_summary = resp.content.trim().to_string();
-                        if let Err(e) = repository::set_chat_summary(
-                            &db,
-                            &chat_id_obj,
-                            &new_summary,
-                            &upto_rfc,
-                        )
-                        .await
+                        if let Err(e) =
+                            repository::set_chat_summary(&db, &chat_id_obj, &new_summary, &upto_rfc)
+                                .await
                         {
                             tracing::warn!("set_chat_summary failed for chat {}: {}", chat_id, e);
                         }
@@ -1495,10 +1491,7 @@ async fn read_text_file(filepath: &str) -> anyhow::Result<String> {
 const MAX_ATTACHMENT_FILE_BYTES: usize = 64_000;
 
 /// Дописать к тексту сообщения содержимое его вложений (для контекста LLM).
-async fn append_attachments_text(
-    db: &sea_orm::DatabaseConnection,
-    msg: &mut LlmChatMessage,
-) {
+async fn append_attachments_text(db: &sea_orm::DatabaseConnection, msg: &mut LlmChatMessage) {
     let atts = match repository::find_attachments_by_message_id(db, &msg.id).await {
         Ok(atts) => atts,
         Err(e) => {

@@ -134,7 +134,9 @@ impl MailConfig {
     /// Проверяет, что почта включена и минимально сконфигурирована.
     pub fn validate_ready(&self) -> anyhow::Result<()> {
         if !self.enabled {
-            return Err(anyhow::anyhow!("Mail is disabled in config.toml ([mail].enabled = false)"));
+            return Err(anyhow::anyhow!(
+                "Mail is disabled in config.toml ([mail].enabled = false)"
+            ));
         }
         if self.username.trim().is_empty() {
             return Err(anyhow::anyhow!("[mail].username must be set"));

@@ -20,9 +20,15 @@ pub struct WbSalesFunnelDailyDetailsVm {
     // === Main data (loaded from API) ===
     pub doc: RwSignal<Option<DetailsDto>>,
 
+    // === Projections (p916 funnel movements) ===
+    pub projections: RwSignal<Option<serde_json::Value>>,
+    pub projections_loaded: RwSignal<bool>,
+    pub projections_loading: RwSignal<bool>,
+
     // === UI State ===
     pub active_tab: RwSignal<&'static str>,
     pub loading: RwSignal<bool>,
+    pub posting: RwSignal<bool>,
     pub error: RwSignal<Option<String>>,
 
     // === Tab-local UI state ===
@@ -38,8 +44,13 @@ impl WbSalesFunnelDailyDetailsVm {
             id: RwSignal::new(None),
             doc: RwSignal::new(None),
 
+            projections: RwSignal::new(None),
+            projections_loaded: RwSignal::new(false),
+            projections_loading: RwSignal::new(false),
+
             active_tab: RwSignal::new("general"),
             loading: RwSignal::new(true),
+            posting: RwSignal::new(false),
             error: RwSignal::new(None),
 
             lines_sort_field: RwSignal::new("title".to_string()),
@@ -126,6 +137,71 @@ impl WbSalesFunnelDailyDetailsVm {
                     vm.loading.set(false);
                 }
             }
+        });
+    }
+
+    /// Кол-во строк движений p916 для бейджа вкладки «Проекции».
+    pub fn projections_count(&self) -> Signal<usize> {
+        let projections = self.projections;
+        Signal::derive(move || {
+            projections
+                .get()
+                .as_ref()
+                .map(|p| {
+                    p["p916_mp_sales_funnel_turnovers"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0)
+                })
+                .unwrap_or(0)
+        })
+    }
+
+    /// Ленивая загрузка движений проекции p916 (при активации вкладки «Проекции»).
+    pub fn load_projections(&self) {
+        if self.projections_loaded.get_untracked() || self.projections_loading.get_untracked() {
+            return;
+        }
+        let Some(id) = self.id.get_untracked() else {
+            return;
+        };
+
+        let vm = self.clone();
+        vm.projections_loading.set(true);
+
+        spawn_local(async move {
+            match fetch_projections(&id).await {
+                Ok(value) => {
+                    vm.projections.set(Some(value));
+                    vm.projections_loaded.set(true);
+                }
+                Err(e) => leptos::logging::log!("Failed to load a036 projections: {}", e),
+            }
+            vm.projections_loading.set(false);
+        });
+    }
+
+    /// Провести документ: пересобрать движения p916, затем обновить закладку «Проекции».
+    pub fn post(&self) {
+        let Some(id) = self.id.get_untracked() else {
+            return;
+        };
+        let vm = self.clone();
+        vm.posting.set(true);
+
+        spawn_local(async move {
+            match post_document(&id).await {
+                Ok(()) => {
+                    // Проекции пересобраны — перезагружаем, если уже показывались.
+                    if vm.projections_loaded.get_untracked() {
+                        vm.projections_loaded.set(false);
+                        vm.projections_loading.set(false);
+                        vm.load_projections();
+                    }
+                }
+                Err(e) => leptos::logging::log!("Failed to post a036 document: {}", e),
+            }
+            vm.posting.set(false);
         });
     }
 

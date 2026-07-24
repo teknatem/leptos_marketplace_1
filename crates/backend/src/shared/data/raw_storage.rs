@@ -1,8 +1,8 @@
 use anyhow::Result;
 use chrono::Utc;
 use contracts::system::raw_storage::{
-    DbVacuumResult, DbVacuumStatus, RawStorageCleanupMode, RawStorageCleanupPreview,
-    RawStorageCleanupRequest, RawStorageStatus, RawStorageTypeStat,
+    DbVacuumResult, DbVacuumStatus, DbWalCheckpointResult, RawStorageCleanupMode,
+    RawStorageCleanupPreview, RawStorageCleanupRequest, RawStorageStatus, RawStorageTypeStat,
 };
 use sea_orm::entity::prelude::*;
 use sea_orm::{
@@ -11,13 +11,10 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 use super::db::get_connection;
-
-static RAW_CAPTURE_LOADED: AtomicBool = AtomicBool::new(false);
-static RAW_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// Модель для хранения сырых JSON от маркетплейсов
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -43,21 +40,13 @@ fn conn() -> &'static DatabaseConnection {
     get_connection()
 }
 
-pub fn set_capture_enabled_cache(enabled: bool) {
-    RAW_CAPTURE_ENABLED.store(enabled, Ordering::Relaxed);
-    RAW_CAPTURE_LOADED.store(true, Ordering::Release);
-}
-
 async fn capture_enabled() -> Result<bool> {
-    if RAW_CAPTURE_LOADED.load(Ordering::Acquire) {
-        return Ok(RAW_CAPTURE_ENABLED.load(Ordering::Relaxed));
-    }
-
+    // Do not cache this safety switch. A process-local cache can remain stale when
+    // another backend instance changes the setting, and concurrent first reads can
+    // overwrite a freshly disabled value. Reading the setting makes "off" strict.
     let value =
         crate::system::settings::repository::get_setting("raw_json_capture_enabled").await?;
-    let enabled = value.map_or(false, |v| v == "true");
-    set_capture_enabled_cache(enabled);
-    Ok(enabled)
+    Ok(value.is_some_and(|v| v == "true"))
 }
 
 fn raw_hash(raw_json: &str) -> String {
@@ -320,6 +309,40 @@ async fn pragma_i64(pragma: &str, column: &str) -> Result<i64> {
     Ok(row.try_get("", column)?)
 }
 
+async fn main_database_path() -> Result<PathBuf> {
+    let rows = conn()
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "PRAGMA database_list".to_string(),
+        ))
+        .await?;
+
+    for row in rows {
+        let name: String = row.try_get("", "name")?;
+        if name == "main" {
+            let file: String = row.try_get("", "file")?;
+            if file.is_empty() {
+                anyhow::bail!("main SQLite database has no file path");
+            }
+            return Ok(PathBuf::from(file));
+        }
+    }
+
+    anyhow::bail!("main SQLite database is missing from PRAGMA database_list")
+}
+
+async fn wal_file_mb() -> Result<f64> {
+    let db_path = main_database_path().await?;
+    let mut wal_path = db_path.into_os_string();
+    wal_path.push("-wal");
+    let bytes = match std::fs::metadata(PathBuf::from(wal_path)) {
+        Ok(metadata) => metadata.len(),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(err) => return Err(err.into()),
+    };
+    Ok(bytes as f64 / 1024.0 / 1024.0)
+}
+
 /// Текущий размер файла БД и объём, реально освобождаемый VACUUM (свободные
 /// страницы копятся от DELETE/UPDATE во ВСЕХ таблицах, не только document_raw_storage).
 pub async fn vacuum_status() -> Result<DbVacuumStatus> {
@@ -330,6 +353,29 @@ pub async fn vacuum_status() -> Result<DbVacuumStatus> {
     Ok(DbVacuumStatus {
         file_mb: (page_count * page_size) as f64 / 1024.0 / 1024.0,
         reclaimable_mb: (freelist_count * page_size) as f64 / 1024.0 / 1024.0,
+        wal_mb: wal_file_mb().await?,
+    })
+}
+
+/// Move committed WAL pages into the main database and physically truncate the
+/// `-wal` file. SQLite reports `busy = 1` when an active reader prevents truncation;
+/// in that case the operation is safe to retry later without running VACUUM again.
+pub async fn truncate_wal() -> Result<DbWalCheckpointResult> {
+    let wal_mb_before = wal_file_mb().await?;
+    let row = conn()
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "PRAGMA wal_checkpoint(TRUNCATE)".to_string(),
+        ))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("wal_checkpoint(TRUNCATE) returned no row"))?;
+    let busy: i64 = row.try_get("", "busy")?;
+    let wal_mb_after = wal_file_mb().await?;
+
+    Ok(DbWalCheckpointResult {
+        wal_mb_before,
+        wal_mb_after,
+        truncated: busy == 0,
     })
 }
 
@@ -347,6 +393,11 @@ pub async fn vacuum() -> Result<DbVacuumResult> {
         ))
         .await?;
 
+    // VACUUM in WAL mode may leave the rebuilt database contents in app.db-wal.
+    // Checkpoint and truncate it automatically instead of waiting for a later
+    // automatic checkpoint (which does not guarantee physical truncation).
+    let wal = truncate_wal().await?;
+
     let duration_ms = started.elapsed().as_millis() as u64;
     let after = vacuum_status().await?;
 
@@ -355,5 +406,8 @@ pub async fn vacuum() -> Result<DbVacuumResult> {
         file_mb_after: after.file_mb,
         freed_mb: (before.file_mb - after.file_mb).max(0.0),
         duration_ms,
+        wal_mb_before: wal.wal_mb_before,
+        wal_mb_after: wal.wal_mb_after,
+        wal_truncated: wal.truncated,
     })
 }

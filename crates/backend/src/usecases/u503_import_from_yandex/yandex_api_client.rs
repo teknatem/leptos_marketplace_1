@@ -5,6 +5,54 @@ use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::sync::Mutex;
+
+const YANDEX_LOG_PATH: &str = "yandex_api_requests.log";
+const YANDEX_LOG_BACKUP_PATH: &str = "yandex_api_requests.log.1";
+const YANDEX_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
+const YANDEX_LOG_MAX_ENTRY_CHARS: usize = 4_096;
+static YANDEX_LOG_LOCK: Mutex<()> = Mutex::new(());
+
+fn write_yandex_log(message: &str) {
+    let Ok(_guard) = YANDEX_LOG_LOCK.lock() else {
+        return;
+    };
+
+    if let Ok(metadata) = std::fs::metadata(YANDEX_LOG_PATH) {
+        if metadata.len() >= YANDEX_LOG_MAX_BYTES {
+            let _ = std::fs::remove_file(YANDEX_LOG_BACKUP_PATH);
+            if metadata.len() >= YANDEX_LOG_MAX_BYTES * 2 {
+                // Do not retain a legacy multi-gigabyte log as the backup.
+                let _ = OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(YANDEX_LOG_PATH);
+            } else {
+                if std::fs::rename(YANDEX_LOG_PATH, YANDEX_LOG_BACKUP_PATH).is_err() {
+                    let _ = OpenOptions::new()
+                        .write(true)
+                        .truncate(true)
+                        .open(YANDEX_LOG_PATH);
+                }
+            }
+        }
+    }
+
+    let mut chars = message.chars();
+    let mut bounded: String = chars.by_ref().take(YANDEX_LOG_MAX_ENTRY_CHARS).collect();
+    if chars.next().is_some() {
+        bounded.push_str("… [truncated]");
+    }
+
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(YANDEX_LOG_PATH)
+    {
+        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
+        let _ = writeln!(file, "[{}] {}", timestamp, bounded);
+    }
+}
 
 /// HTTP-клиент для работы с Yandex Market API
 pub struct YandexApiClient {
@@ -30,14 +78,7 @@ impl YandexApiClient {
 
     /// Записать в лог-файл
     fn log_to_file(&self, message: &str) {
-        if let Ok(mut file) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("yandex_api_requests.log")
-        {
-            let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
-            let _ = writeln!(file, "[{}] {}", timestamp, message);
-        }
+        write_yandex_log(message);
     }
 
     fn apply_auth(
@@ -159,7 +200,7 @@ impl YandexApiClient {
         }
 
         let body = response.text().await?;
-        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+        self.log_to_file(&format!("Response received: {} bytes", body.len()));
 
         let preview: String = body.chars().take(500).collect::<String>();
         let preview = if preview.len() < body.len() {
@@ -270,7 +311,7 @@ impl YandexApiClient {
         }
 
         let body = response.text().await?;
-        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+        self.log_to_file(&format!("Response received: {} bytes", body.len()));
 
         match serde_json::from_str::<YandexProductInfoResponse>(&body) {
             Ok(data) => {
@@ -663,7 +704,7 @@ impl YandexApiClient {
         }
 
         let body = response.text().await?;
-        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+        self.log_to_file(&format!("Response received: {} bytes", body.len()));
 
         match serde_json::from_str::<YmOrdersResponse>(&body) {
             Ok(data) => {
@@ -744,7 +785,7 @@ impl YandexApiClient {
         }
 
         let body = response.text().await?;
-        self.log_to_file(&format!("=== RESPONSE BODY ===\n{}\n", body));
+        self.log_to_file(&format!("Response received: {} bytes", body.len()));
 
         match serde_json::from_str::<YmOrderDetailsResponse>(&body) {
             Ok(data) => {
@@ -1303,7 +1344,7 @@ impl YandexApiClient {
         }
 
         let body = response.text().await?;
-        self.log_to_file(&format!("=== RETURNS RESPONSE BODY ===\n{}\n", body));
+        self.log_to_file(&format!("Returns response received: {} bytes", body.len()));
 
         match serde_json::from_str::<YmReturnsApiResponse>(&body) {
             Ok(api_response) => {
@@ -1394,7 +1435,6 @@ impl YandexApiClient {
         }
 
         let resp_body = response.text().await?;
-        self.log_to_file(&format!("Generate payment report response: {}", resp_body));
 
         let parsed: serde_json::Value = serde_json::from_str(&resp_body)
             .map_err(|e| anyhow::anyhow!("Failed to parse generate response: {}", e))?;
@@ -1513,11 +1553,6 @@ impl YandexApiClient {
             );
         }
 
-        self.log_to_file(&format!(
-            "Generate realization report response: {}",
-            resp_body
-        ));
-
         let parsed: serde_json::Value = serde_json::from_str(&resp_body)
             .map_err(|e| anyhow::anyhow!("Failed to parse generate response: {}", e))?;
 
@@ -1567,10 +1602,6 @@ impl YandexApiClient {
         }
 
         let resp_body = response.text().await?;
-        self.log_to_file(&format!(
-            "Poll report status ({}): {}",
-            report_id, resp_body
-        ));
 
         let parsed: serde_json::Value = serde_json::from_str(&resp_body)
             .map_err(|e| anyhow::anyhow!("Failed to parse status response: {}", e))?;
@@ -1586,6 +1617,13 @@ impl YandexApiClient {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
+        self.log_to_file(&format!(
+            "Poll report status ({}): status={}, file_available={}",
+            report_id,
+            report_status,
+            file_url.is_some()
+        ));
+
         Ok((report_status, file_url))
     }
 
@@ -1598,7 +1636,10 @@ impl YandexApiClient {
         url: &str,
         subdir: &str,
     ) -> Result<(String, String, String)> {
-        self.log_to_file(&format!("Downloading payment report ZIP from: {}", url));
+        self.log_to_file(&format!(
+            "Downloading payment report ZIP (target={})",
+            subdir
+        ));
 
         let response = self
             .client
@@ -1628,16 +1669,7 @@ impl YandexApiClient {
         ));
 
         // Save ZIP and extract CSV in a blocking thread (zip operations are synchronous)
-        let log_closure = {
-            let log_path = "yandex_api_requests.log".to_string();
-            move |msg: String| {
-                use std::io::Write;
-                if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_path) {
-                    let ts = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                    let _ = writeln!(f, "[{}] {}", ts, msg);
-                }
-            }
-        };
+        let log_closure = |msg: String| write_yandex_log(&msg);
 
         let bytes_vec = bytes.to_vec();
         let subdir = subdir.to_string();
@@ -1728,7 +1760,10 @@ impl YandexApiClient {
         url: &str,
         subdir: &str,
     ) -> Result<Vec<(String, String)>> {
-        self.log_to_file(&format!("Downloading multi-CSV report ZIP from: {}", url));
+        self.log_to_file(&format!(
+            "Downloading multi-CSV report ZIP (target={})",
+            subdir
+        ));
 
         let response = self
             .client
@@ -1750,16 +1785,7 @@ impl YandexApiClient {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to read report file body: {}", e))?;
 
-        let log_closure = {
-            let log_path = "yandex_api_requests.log".to_string();
-            move |msg: String| {
-                use std::io::Write;
-                if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_path) {
-                    let ts = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                    let _ = writeln!(f, "[{}] {}", ts, msg);
-                }
-            }
-        };
+        let log_closure = |msg: String| write_yandex_log(&msg);
 
         let bytes_vec = bytes.to_vec();
         let subdir = subdir.to_string();

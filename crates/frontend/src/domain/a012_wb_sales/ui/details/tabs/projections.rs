@@ -1,4 +1,4 @@
-//! Projections tab - p900, p904 and p913 projection data
+//! Projections tab - p900, p904, p913 and p916 projection data
 
 use super::super::view_model::WbSalesDetailsVm;
 use crate::shared::json_viewer::widget::JsonViewer;
@@ -34,6 +34,10 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
                     .as_array()
                     .map(|a| a.len())
                     .unwrap_or(0);
+                let p916_len = proj_data["p916_mp_sales_funnel_turnovers"]
+                    .as_array()
+                    .map(|a| a.len())
+                    .unwrap_or(0);
                 let pretty = serde_json::to_string_pretty(&proj_data)
                     .unwrap_or_else(|_| proj_data.to_string());
 
@@ -50,12 +54,15 @@ pub fn ProjectionsTab(vm: WbSalesDetailsVm) -> impl IntoView {
                             <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>
                                 {format!("p913 expense: {}", p913_len)}
                             </Badge>
+                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Success>
+                                {format!("p916_mp_sales_funnel_turnovers: {}", p916_len)}
+                            </Badge>
                         </Flex>
 
                         // JSON content with highlighting
                         <JsonViewer
                             json_content=pretty
-                            title="Проекции (p900 / p904 / p913 expense)".to_string()
+                            title="Проекции (p900 / p904 / p913 expense / p916)".to_string()
                         />
                     </div>
                 }.into_any()

@@ -6,6 +6,7 @@ pub mod manager;
 pub mod managers;
 pub mod registry;
 pub mod repository;
+pub mod resource_coordinator;
 pub mod runs_repository;
 pub mod runs_service;
 pub mod service;

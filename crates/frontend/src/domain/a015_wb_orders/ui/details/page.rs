@@ -1,6 +1,6 @@
 //! Main page component for WB Orders details (MVVM Standard)
 
-use super::tabs::{GeneralTab, JsonTab, LineTab, LinksTab, SalesTab};
+use super::tabs::{GeneralTab, JsonTab, LineTab, LinksTab, ProjectionsTab, SalesTab};
 use super::view_model::WbOrdersDetailsVm;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::icons::icon;
@@ -44,6 +44,9 @@ pub fn WbOrdersDetails(id: String, #[prop(into)] on_close: Callback<()>) -> impl
             }
             if active_tab == "sales" && !vm.wb_sales_loaded.get() {
                 vm.load_wb_sales();
+            }
+            if active_tab == "projections" && !vm.projections_loaded.get() {
+                vm.load_projections();
             }
         }
     });
@@ -223,6 +226,7 @@ fn TabBar(vm: WbOrdersDetailsVm) -> impl IntoView {
     let active_tab = vm.active_tab;
     let finance_reports_count = vm.finance_reports_count();
     let wb_sales_count = vm.wb_sales_count();
+    let projections_count = vm.projections_count();
 
     view! {
         <div class="page__tabs">
@@ -286,6 +290,31 @@ fn TabBar(vm: WbOrdersDetailsVm) -> impl IntoView {
 
             <button
                 class="page__tab"
+                class:page__tab--active=move || active_tab.get() == "projections"
+                on:click={
+                    let vm = vm.clone();
+                    move |_| vm.set_tab("projections")
+                }
+            >
+                {icon("activity")} "Проекции"
+                <Badge
+                    appearance=BadgeAppearance::Tint
+                    color=Signal::derive({
+                        let active_tab = active_tab;
+                        move || if active_tab.get() == "projections" {
+                            BadgeColor::Brand
+                        } else {
+                            BadgeColor::Informative
+                        }
+                    })
+                    attr:style="margin-left: 6px;"
+                >
+                    {move || projections_count.get().to_string()}
+                </Badge>
+            </button>
+
+            <button
+                class="page__tab"
                 class:page__tab--active=move || active_tab.get() == "sales"
                 on:click=move |_| vm.set_tab("sales")
             >
@@ -317,6 +346,7 @@ fn TabContent(vm: WbOrdersDetailsVm) -> impl IntoView {
     let vm_json = vm.clone();
     let vm_links = vm.clone();
     let vm_sales = vm.clone();
+    let vm_projections = vm.clone();
 
     view! {
         {move || match active_tab.get() {
@@ -325,6 +355,7 @@ fn TabContent(vm: WbOrdersDetailsVm) -> impl IntoView {
             "json" => view! { <JsonTab vm=vm_json.clone() /> }.into_any(),
             "links" => view! { <LinksTab vm=vm_links.clone() /> }.into_any(),
             "sales" => view! { <SalesTab vm=vm_sales.clone() /> }.into_any(),
+            "projections" => view! { <ProjectionsTab vm=vm_projections.clone() /> }.into_any(),
             _ => view! { <GeneralTab vm=vm_general.clone() /> }.into_any(),
         }}
     }

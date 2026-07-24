@@ -213,7 +213,14 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
         return IntentResult::new("kb_curation", 0.4, "rules");
     }
     if any(&[
-        "письм", "почт", "email", "e-mail", "mail", "входящ", "отправь письмо", "напиши письмо",
+        "письм",
+        "почт",
+        "email",
+        "e-mail",
+        "mail",
+        "входящ",
+        "отправь письмо",
+        "напиши письмо",
     ]) {
         return IntentResult::new("mailbox", 0.45, "rules");
     }

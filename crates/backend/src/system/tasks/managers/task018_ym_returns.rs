@@ -45,6 +45,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task018_ym_returns",
+    write_tables: &["a016_ym_returns"],
     display_name: "YM Возвраты",
     description: "Загружает возвраты Yandex Market через Partner API \
         (GET /v2/campaigns/{campaignId}/returns). API фильтрует по дате ОБНОВЛЕНИЯ возврата \

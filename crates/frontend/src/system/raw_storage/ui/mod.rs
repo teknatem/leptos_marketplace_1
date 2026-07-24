@@ -190,17 +190,51 @@ fn RawStorageContent() -> impl IntoView {
         spawn_local(async move {
             match api::run_vacuum().await {
                 Ok(result) => {
+                    let wal_message = if result.wal_truncated {
+                        format!(
+                            "; WAL очищен: {} → {}",
+                            format_mb(result.wal_mb_before),
+                            format_mb(result.wal_mb_after)
+                        )
+                    } else {
+                        "; WAL пока не усечён из-за активного читателя — повторите «Очистить WAL» позже".to_string()
+                    };
                     notice.set(Some(format!(
-                        "VACUUM выполнен за {}: файл {} → {} (освобождено {})",
+                        "VACUUM выполнен за {}: файл {} → {} (освобождено {}){}",
                         format_duration(result.duration_ms),
                         format_mb(result.file_mb_before),
                         format_mb(result.file_mb_after),
-                        format_mb(result.freed_mb)
+                        format_mb(result.freed_mb),
+                        wal_message
                     )));
                     reload.run(());
                 }
                 Err(err) => error.set(Some(err)),
             }
+            action_busy.set(false);
+            busy_label.set(None);
+        });
+    };
+
+    let truncate_wal = move |_| {
+        action_busy.set(true);
+        busy_label.set(Some("Выполняется checkpoint и очистка WAL...".to_string()));
+        error.set(None);
+        notice.set(None);
+        spawn_local(async move {
+            match api::truncate_wal().await {
+                Ok(result) if result.truncated => notice.set(Some(format!(
+                    "WAL очищен: {} → {}",
+                    format_mb(result.wal_mb_before),
+                    format_mb(result.wal_mb_after)
+                ))),
+                Ok(_) => error.set(Some(
+                    "WAL не удалось усечь: база удерживается активным читателем. Повторите позже."
+                        .to_string(),
+                )),
+                Err(err) => error.set(Some(err)),
+            }
+            reload.run(());
             action_busy.set(false);
             busy_label.set(None);
         });
@@ -358,9 +392,24 @@ fn RawStorageContent() -> impl IntoView {
                             </span>
                         </div>
                         <div class="raw-storage__list-row">
+                            <span class="raw-storage__list-label">"Файл WAL"</span>
+                            <span
+                                class="raw-storage__list-value"
+                                class:raw-storage__list-value--warn=move || vacuum_status.get().map(|s| s.wal_mb > 0.0).unwrap_or(false)
+                            >
+                                {move || vacuum_status.get().map(|s| format_mb(s.wal_mb)).unwrap_or_else(|| "-".to_string())}
+                            </span>
+                        </div>
+                        <div class="raw-storage__list-row">
                             <span class="raw-storage__list-label">"Пересобрать файл базы данных"</span>
                             <button class="button button--warning" disabled=move || action_busy.get() on:click=run_vacuum>
                                 {icon("shield-check")} "Выполнить VACUUM базы данных"
+                            </button>
+                        </div>
+                        <div class="raw-storage__list-row">
+                            <span class="raw-storage__list-label">"Перенести WAL в основной файл БД и усечь журнал"</span>
+                            <button class="button button--secondary" disabled=move || action_busy.get() on:click=truncate_wal>
+                                {icon("database")} "Очистить WAL"
                             </button>
                         </div>
                     </div>

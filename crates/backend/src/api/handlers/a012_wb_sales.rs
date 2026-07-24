@@ -713,11 +713,24 @@ pub async fn get_projections(
         .filter(|row| row.turnover_code == "advert_clicks_order_expense")
         .collect();
 
+    // p916 (воронка): выкуп/возврат из a012. registrator_ref = «сырой» id (см. a012::posting).
+    let p916_items =
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::list_by_registrator(
+            "a012_wb_sales",
+            &id,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p916 projections for a012 {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     // Объединяем результаты
     let result = serde_json::json!({
         "p900_sales_register": p900_items,
         "p904_sales_data": p904_items,
         "p913_wb_advert_order_attr": p913_expense,
+        "p916_mp_sales_funnel_turnovers": p916_items,
     });
 
     Ok(Json(result))

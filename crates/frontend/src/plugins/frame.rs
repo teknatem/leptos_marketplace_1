@@ -46,6 +46,8 @@ pub fn PluginFrame(
     let iframe_element = StoredValue::new_local(None::<HtmlIFrameElement>);
     let instance_id = uuid::Uuid::new_v4().to_string();
     let bridge_secret = uuid::Uuid::new_v4().to_string();
+    let tabs_store = use_context::<crate::layout::global_context::AppGlobalContext>()
+        .expect("AppGlobalContext must be provided");
 
     let log = Callback::new(move |message: String| {
         if !dev {
@@ -153,6 +155,15 @@ pub fn PluginFrame(
                         log,
                         dev,
                     ),
+                    "plugin_open_tab" => {
+                        let key = string_property(&data, "key").unwrap_or_default();
+                        let title = string_property(&data, "title").unwrap_or_else(|| key.clone());
+                        if key.starts_with("a013_ym_order_details_") && key.len() <= 128 {
+                            tabs_store.open_tab(&key, &title);
+                        } else {
+                            log.run("blocked plugin tab navigation".to_string());
+                        }
+                    }
                     _ => {}
                 }
             }) as Box<dyn FnMut(_)>);
@@ -229,7 +240,9 @@ pub fn PluginFrame(
             })}
             <iframe
                 class="plugin-host__iframe"
-                sandbox="allow-scripts"
+                sandbox="allow-scripts allow-downloads"
+                allow="fullscreen"
+                allowfullscreen=true
                 srcdoc=srcdoc
                 on:load=move |event| {
                     let iframe = event

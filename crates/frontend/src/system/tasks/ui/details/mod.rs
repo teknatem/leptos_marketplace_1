@@ -989,6 +989,17 @@ pub fn ScheduledTaskDetails(id: String) -> impl IntoView {
                                         <div style="font-size:var(--font-size-sm);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:6px;">"Описание"</div>
                                         <div style="font-size:var(--font-size-base);color:var(--color-text);line-height:1.6;">{m.description.clone()}</div>
                                     </div>
+                                    {if !m.write_tables.is_empty() { view! {
+                                        <div>
+                                            <div style="font-size:var(--font-size-sm);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px;">"Таблицы записи"</div>
+                                            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                                {m.write_tables.iter().map(|table| {
+                                                    let table = table.clone();
+                                                    view! { <code style="font-size:var(--font-size-sm);padding:4px 8px;border-radius:var(--radius-sm);background:var(--colorNeutralBackground3);">{table}</code> }
+                                                }).collect_view()}
+                                            </div>
+                                        </div>
+                                    }.into_any() } else { view! { <></> }.into_any() }}
                                     {if !m.external_apis.is_empty() { view! {
                                         <div>
                                             <div style="font-size:var(--font-size-sm);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px;">"Внешние API"</div>

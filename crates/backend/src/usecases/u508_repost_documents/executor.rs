@@ -2,6 +2,7 @@ use super::progress_tracker::ProgressTracker;
 use anyhow::{anyhow, Result};
 use chrono::NaiveDate;
 use contracts::domain::common::AggregateId;
+use contracts::projections::p916_mp_sales_funnel_turnovers::dto::FunnelRebuildRequest;
 use contracts::usecases::u508_repost_documents::{
     aggregate::AggregateOption,
     aggregate_request::AggregateRepostRequest,
@@ -10,7 +11,6 @@ use contracts::usecases::u508_repost_documents::{
     request::RepostRequest,
     response::{RepostResponse, RepostStartStatus},
 };
-use contracts::projections::p916_mp_sales_funnel_turnovers::dto::FunnelRebuildRequest;
 use std::sync::{
     atomic::{AtomicI32, Ordering},
     Arc,
@@ -216,10 +216,11 @@ impl RepostExecutor {
         })
     }
 
-    /// Три шага пересбора воронки. Перепроведение a015/a012 переиспользует
+    /// Четыре шага пересбора воронки. Перепроведение a015/a012/a026 переиспользует
     /// `dispatch_aggregate_repost_with_retry` (внутри — p916-хуки в проведении);
-    /// стадия 1 — `a036::service::rebuild_stage1_for_period`. Ошибки шага не
-    /// прерывают прогон — копятся в сессии.
+    /// стадия 1 a036 — `a036::service::rebuild_stage1_for_period`. a012 отбирается по
+    /// периоду заказов (srid'ы a015), a026 — по `document_date` за период. Ошибки шага
+    /// не прерывают прогон — копятся в сессии.
     async fn execute_funnel_rebuild(
         &self,
         session_id: &str,
@@ -237,41 +238,46 @@ impl RepostExecutor {
         )
         .await?;
 
-        let a012_chunks =
-            crate::domain::a012_wb_sales::repository::list_repost_chunks_by_sale_date_range(
+        // a012 отбираем «по периоду заказов»: srid'ы заказов a015 за период → продажи a012 по этим
+        // srid'ам с нижней границей sale_date >= date_from (без верхней), чтобы захватить выкупы
+        // когорты, проданные после конца периода.
+        let a012_order_srids =
+            crate::domain::a015_wb_orders::repository::list_order_srids_by_date_range(
                 &request.date_from,
                 &request.date_to,
-                only_posted,
                 &request.connection_mp_refs,
             )
             .await?;
-        let mut a012_ids: Vec<String> = Vec::new();
-        for chunk in &a012_chunks {
-            let ids =
-                crate::domain::a012_wb_sales::repository::list_ids_by_sale_date_and_connection(
-                    &chunk.sale_date,
-                    &chunk.connection_mp_ref,
-                    only_posted,
-                )
-                .await?;
-            a012_ids.extend(ids);
-        }
+        let a012_ids = crate::domain::a012_wb_sales::repository::list_ids_by_document_nos_since(
+            &request.date_from,
+            &a012_order_srids,
+            only_posted,
+        )
+        .await?;
+
+        // Документы рекламы a026 за период (стадия 1, платные показы p916).
+        let a026_ids = crate::domain::a026_wb_advert_daily::repository::list_ids_by_period(
+            &request.date_from,
+            &request.date_to,
+            only_posted,
+        )
+        .await?;
 
         // +1 — шаг пересборки стадии 1 (a036).
-        let total = (a015_ids.len() + a012_ids.len() + 1) as i32;
+        let total = (a015_ids.len() + a012_ids.len() + a026_ids.len() + 1) as i32;
         self.progress_tracker.set_total(session_id, total);
-        self.progress_tracker.set_chunks_total(session_id, 3);
+        self.progress_tracker.set_chunks_total(session_id, 4);
 
         let mut processed = 0i32;
         let mut reposted = 0i32;
 
-        // === Шаг 1/3: a015 — заказы/отмены (стадия 2) ===
+        // === Шаг 1/4: a015 — заказы/отмены (стадия 2) ===
         self.progress_tracker.update_chunk_progress(
             session_id,
             0,
             None,
             None,
-            Some("Шаг 1/3: заказы a015 (стадия 2)".to_string()),
+            Some("Шаг 1/4: заказы a015 (стадия 2)".to_string()),
         );
         for id_str in &a015_ids {
             match Uuid::parse_str(id_str) {
@@ -294,13 +300,13 @@ impl RepostExecutor {
             );
         }
 
-        // === Шаг 2/3: a012 — выкупы/возвраты (стадия 2) ===
+        // === Шаг 2/4: a012 — выкупы/возвраты (стадия 2) ===
         self.progress_tracker.update_chunk_progress(
             session_id,
             1,
             None,
             None,
-            Some("Шаг 2/3: продажи a012 (стадия 2)".to_string()),
+            Some("Шаг 2/4: продажи a012 (стадия 2)".to_string()),
         );
         for id_str in &a012_ids {
             match Uuid::parse_str(id_str) {
@@ -323,13 +329,43 @@ impl RepostExecutor {
             );
         }
 
-        // === Шаг 3/3: a036 — стадия 1 (маркетинг) из сохранённых документов ===
+        // === Шаг 3/4: a026 — реклама/платные показы (стадия 1) ===
         self.progress_tracker.update_chunk_progress(
             session_id,
             2,
             None,
             None,
-            Some("Шаг 3/3: воронка a036 (стадия 1)".to_string()),
+            Some("Шаг 3/4: реклама a026 (стадия 1)".to_string()),
+        );
+        for id_str in &a026_ids {
+            match Uuid::parse_str(id_str) {
+                Ok(id) => match dispatch_aggregate_repost_with_retry(A026_WB_ADVERT_DAILY, id).await
+                {
+                    Ok(()) => reposted += 1,
+                    Err(error) => self
+                        .progress_tracker
+                        .add_error(session_id, format!("a026 {}: {}", id_str, error)),
+                },
+                Err(error) => self
+                    .progress_tracker
+                    .add_error(session_id, format!("Invalid a026 id {}: {}", id_str, error)),
+            }
+            processed += 1;
+            self.progress_tracker.update_progress(
+                session_id,
+                processed,
+                reposted,
+                Some(format!("a026 {}", id_str)),
+            );
+        }
+
+        // === Шаг 4/4: a036 — стадия 1 (маркетинг) из сохранённых документов ===
+        self.progress_tracker.update_chunk_progress(
+            session_id,
+            3,
+            None,
+            None,
+            Some("Шаг 4/4: воронка a036 (стадия 1)".to_string()),
         );
         match crate::domain::a036_wb_sales_funnel_daily::service::rebuild_stage1_for_period(
             &request.connection_mp_refs,
@@ -346,8 +382,13 @@ impl RepostExecutor {
         processed += 1;
         self.progress_tracker
             .update_progress(session_id, processed, reposted, None);
-        self.progress_tracker
-            .update_chunk_progress(session_id, 3, None, None, Some("Готово".to_string()));
+        self.progress_tracker.update_chunk_progress(
+            session_id,
+            4,
+            None,
+            None,
+            Some("Готово".to_string()),
+        );
 
         let final_status = if self
             .progress_tracker

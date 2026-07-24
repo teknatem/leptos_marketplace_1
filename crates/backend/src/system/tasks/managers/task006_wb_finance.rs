@@ -46,6 +46,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task006_wb_finance",
+    write_tables: &["p903_wb_finance_report"],
     display_name: "WB Финансовый отчёт",
     description: "Загружает детальный финансовый отчёт из Wildberries через Statistics API \
         (/api/v5/supplier/reportDetailByPeriod). Запросы выполняются по одному на каждый день \

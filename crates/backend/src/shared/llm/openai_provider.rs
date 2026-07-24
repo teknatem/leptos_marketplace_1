@@ -454,7 +454,11 @@ impl LlmProvider for OpenAiProvider {
                     let backoff_ms = 400u64 * 2u64.pow(attempt - 1);
                     tracing::warn!(
                         "[llm-stream] обрыв потока ({}) попытка {}/{}, повтор через {}ms: {}",
-                        self.provider_name, attempt, MAX_ATTEMPTS, backoff_ms, err_str
+                        self.provider_name,
+                        attempt,
+                        MAX_ATTEMPTS,
+                        backoff_ms,
+                        err_str
                     );
                     tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
                     continue 'retry;

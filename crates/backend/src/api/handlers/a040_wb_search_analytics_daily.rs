@@ -122,9 +122,7 @@ pub async fn list_paginated(
     }
 }
 
-pub async fn get_by_id(
-    Path(id): Path<String>,
-) -> Result<Json<DetailsDto>, axum::http::StatusCode> {
+pub async fn get_by_id(Path(id): Path<String>) -> Result<Json<DetailsDto>, axum::http::StatusCode> {
     let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
     let doc = match a040_wb_search_analytics_daily::service::get_by_id(uuid).await {
         Ok(Some(doc)) => doc,

@@ -36,6 +36,15 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "u501_import_ut",
+    write_tables: &[
+        "a002_organization",
+        "a003_counterparty",
+        "a004_nomenclature",
+        "a022_kit_variant",
+        "a023_purchase_of_goods",
+        "p901_barcodes",
+        "p906_prices",
+    ],
     display_name: "Импорт из 1С:Управление торговлей",
     description: "Регулярный импорт справочников и документов из базы 1С:УТ11 через OData API: \
         организации (a002), контрагенты (a003), номенклатура (a004), \

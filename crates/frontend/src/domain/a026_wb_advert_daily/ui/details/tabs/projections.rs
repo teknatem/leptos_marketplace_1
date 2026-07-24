@@ -1,4 +1,4 @@
-//! Projections tab - all serialized projection records (p913 + p911) as JSON.
+//! Projections tab - all serialized projection records (p913 + p911 + p916) as JSON.
 
 use super::super::view_model::WbAdvertDailyDetailsVm;
 use crate::shared::json_viewer::widget::JsonViewer;
@@ -32,6 +32,10 @@ pub fn ProjectionsTab(vm: WbAdvertDailyDetailsVm) -> impl IntoView {
                     .as_array()
                     .map(|a| a.len())
                     .unwrap_or(0);
+                let p916_len = proj["p916_mp_sales_funnel_turnovers"]
+                    .as_array()
+                    .map(|a| a.len())
+                    .unwrap_or(0);
                 let pretty = serde_json::to_string_pretty(&proj)
                     .unwrap_or_else(|_| proj.to_string());
 
@@ -44,11 +48,14 @@ pub fn ProjectionsTab(vm: WbAdvertDailyDetailsVm) -> impl IntoView {
                             <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>
                                 {format!("p911_wb_advert_by_items: {}", p911_len)}
                             </Badge>
+                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Success>
+                                {format!("p916_mp_sales_funnel_turnovers: {}", p916_len)}
+                            </Badge>
                         </Flex>
 
                         <JsonViewer
                             json_content=pretty
-                            title="Проекции (p913 / p911)".to_string()
+                            title="Проекции (p913 / p911 / p916)".to_string()
                         />
                     </div>
                 }.into_any()

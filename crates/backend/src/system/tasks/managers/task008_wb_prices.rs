@@ -29,6 +29,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task008_wb_prices",
+    write_tables: &["p908_wb_goods_prices"],
     display_name: "WB Цены и скидки",
     description: "Загружает актуальные розничные цены и скидки из Wildberries Prices API \
         (/api/v2/list/goods/filter). Пагинация по cursor, данные обогащаются \

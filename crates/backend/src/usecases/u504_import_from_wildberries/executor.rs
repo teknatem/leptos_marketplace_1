@@ -3041,7 +3041,7 @@ impl ImportExecutor {
         let backfill_ids: Vec<i64> = candidates_raw
             .into_iter()
             .filter(|advert_id| match min_by_campaign.get(advert_id) {
-                None => true, // покрытия нет вовсе
+                None => true,                                           // покрытия нет вовсе
                 Some(min_d) => min_d.as_str() > date_from_str.as_str(), // покрытие только внутри/выше окна
             })
             .collect();
@@ -3071,7 +3071,9 @@ impl ImportExecutor {
             )),
         );
 
-        let chunks: Vec<&[i64]> = backfill_ids.chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE).collect();
+        let chunks: Vec<&[i64]> = backfill_ids
+            .chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE)
+            .collect();
         let total_chunks = chunks.len();
         let mut all_stats: Vec<WbAdvertFullStat> = Vec::new();
         let mut successful_advert_ids: Vec<i64> = Vec::new();

@@ -284,6 +284,49 @@ pub async fn get_by_id(
     }
 }
 
+/// Проведение документа a036: пересобрать его движения воронки p916 (стадия 1).
+pub async fn post(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+
+    a036_wb_sales_funnel_daily::service::post_document(uuid)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to post a036 document {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(
+        serde_json::json!({"success": true, "message": "Document posted"}),
+    ))
+}
+
+/// Движения воронки p916, которые документ a036 порождает при импорте (маркетинговая
+/// стадия: переходы/корзина/заказы-воронки). Закладка «Проекции» показывает JSON,
+/// соответствующий записанным данным. registrator_ref = id документа.
+pub async fn get_projections(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let raw_ref = uuid.to_string();
+
+    let p916_items =
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::list_by_registrator(
+            "a036_wb_sales_funnel_daily",
+            &raw_ref,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p916 projections for {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({
+        "p916_mp_sales_funnel_turnovers": p916_items
+    })))
+}
+
 async fn build_details_dto(
     doc: WbSalesFunnelDaily,
 ) -> anyhow::Result<WbSalesFunnelDailyDetailsDto> {

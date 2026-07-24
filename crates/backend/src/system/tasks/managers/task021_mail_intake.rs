@@ -25,6 +25,13 @@ use crate::system::tasks::manager::{TaskManager, TaskRunOutcome};
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task021_mail_intake",
+    write_tables: &[
+        "a039_mail_message",
+        "a038_llm_connection",
+        "a018_llm_chat",
+        "a018_llm_chat_message",
+        "sys_tool_trace",
+    ],
     display_name: "Почта — приём и обработка запросов",
     description: "Читает входящие письма от зарегистрированных пользователей, определяет нужного \
         специалиста по содержимому, проверяет права отправителя, прогоняет LLM-агента и \
@@ -108,7 +115,10 @@ impl TaskManager for Task021MailIntakeManager {
         let sla_minutes = config.sla_minutes.clamp(5, 1440);
 
         if !crate::shared::config::get_mail_config().enabled {
-            logger.write_log(session_id, "Почта отключена ([mail].enabled=false) — пропуск.")?;
+            logger.write_log(
+                session_id,
+                "Почта отключена ([mail].enabled=false) — пропуск.",
+            )?;
             return Ok(TaskRunOutcome::completed());
         }
 
@@ -147,7 +157,10 @@ impl TaskManager for Task021MailIntakeManager {
             }
         }
 
-        logger.write_log(session_id, &format!("Mail intake завершён: обработано {processed}"))?;
+        logger.write_log(
+            session_id,
+            &format!("Mail intake завершён: обработано {processed}"),
+        )?;
         Ok(TaskRunOutcome::completed())
     }
 
@@ -185,9 +198,14 @@ impl Task021MailIntakeManager {
             Some(u) => u,
             None => {
                 rec.status = status::REJECTED_UNKNOWN_SENDER.to_string();
-                rec.error = Some(format!("Отправитель '{from_addr}' не найден среди активных пользователей"));
+                rec.error = Some(format!(
+                    "Отправитель '{from_addr}' не найден среди активных пользователей"
+                ));
                 a039_mail_message::service::save(&mut rec).await?;
-                logger.write_log(session_id, &format!("UID {uid}: отклонено (неизвестный отправитель {from_addr})"))?;
+                logger.write_log(
+                    session_id,
+                    &format!("UID {uid}: отклонено (неизвестный отправитель {from_addr})"),
+                )?;
                 return Ok(());
             }
         };
@@ -211,12 +229,19 @@ impl Task021MailIntakeManager {
             ));
             rec.due_at = Some((Utc::now() + Duration::minutes(sla_minutes)).to_rfc3339());
             a039_mail_message::service::save(&mut rec).await?;
-            logger.write_log(session_id, &format!("UID {uid}: отказано (нет прав на {})", agent_type.display_name()))?;
+            logger.write_log(
+                session_id,
+                &format!(
+                    "UID {uid}: отказано (нет прав на {})",
+                    agent_type.display_name()
+                ),
+            )?;
             return Ok(());
         }
 
         // Выбор подключения нужного типа + прогон агента.
-        let connection = a038_llm_connection::service::ensure_connection_for(agent_type.clone()).await?;
+        let connection =
+            a038_llm_connection::service::ensure_connection_for(agent_type.clone()).await?;
         let chat_id = a018_llm_chat::service::create(
             a018_llm_chat::service::LlmChatDto {
                 id: None,
@@ -252,14 +277,21 @@ impl Task021MailIntakeManager {
                 a039_mail_message::service::save(&mut rec).await?;
                 logger.write_log(
                     session_id,
-                    &format!("UID {uid}: подготовлен ответ ({}, чат {})", agent_type.display_name(), chat_id),
+                    &format!(
+                        "UID {uid}: подготовлен ответ ({}, чат {})",
+                        agent_type.display_name(),
+                        chat_id
+                    ),
                 )?;
             }
             Err(e) => {
                 rec.status = status::FAILED.to_string();
                 rec.error = Some(format!("Ошибка прогона агента: {e}"));
                 a039_mail_message::service::save(&mut rec).await?;
-                logger.write_log(session_id, &format!("UID {uid}: ошибка прогона агента: {e}"))?;
+                logger.write_log(
+                    session_id,
+                    &format!("UID {uid}: ошибка прогона агента: {e}"),
+                )?;
             }
         }
 

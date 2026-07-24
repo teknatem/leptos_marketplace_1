@@ -6,8 +6,7 @@
 use crate::dashboards::MetadataDashboard;
 use crate::dashboards::{
     D401WbFinanceDashboard, MonthlySummaryDashboard, WbAdvertReportDashboard, WbOrderFlowDashboard,
-    WbSalesFunnelDashboard,
-    YmOrderFlowDashboard,
+    WbSalesFunnelDashboard, YmOrderFlowDashboard,
 };
 use crate::data_view::ui::{DataViewDetail, DataViewList, FilterRegistryPage};
 use crate::domain::a001_connection_1c::ui::list::Connection1CList;

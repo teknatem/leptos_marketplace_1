@@ -18,7 +18,6 @@ use contracts::domain::a012_wb_sales::aggregate::WbSales;
 use contracts::domain::a015_wb_orders::aggregate::WbOrders;
 use contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDaily;
 use contracts::domain::a036_wb_sales_funnel_daily::aggregate::WbSalesFunnelDaily;
-use contracts::domain::a040_wb_search_analytics_daily::aggregate::WbSearchAnalyticsDaily;
 use contracts::projections::p916_mp_sales_funnel_turnovers::dto::FunnelStage;
 
 use super::repository::Model;
@@ -26,7 +25,6 @@ use super::repository::Model;
 pub const REG_A036: &str = "a036_wb_sales_funnel_daily";
 pub const REG_A015: &str = "a015_wb_orders";
 pub const REG_A012: &str = "a012_wb_sales";
-pub const REG_A040: &str = "a040_wb_search_analytics_daily";
 pub const REG_A026: &str = "a026_wb_advert_daily";
 
 /// Namespace для детерминированного `id` строки движения (uuid v5).
@@ -128,8 +126,11 @@ fn base_row(
         nm_id,
         registrator_type: registrator_type.to_string(),
         registrator_ref: registrator_ref.to_string(),
+        order_key: None,
         show_free_count: None,
         show_paid_count: None,
+        paid_open_count: None,
+        paid_cart_count: None,
         open_count: 0,
         cart_count: 0,
         wishlist_count: 0,
@@ -150,7 +151,8 @@ fn base_row(
 
 /// Стадия 1: строки маркетинговой воронки из a036 — по одной на `line.nm_id`.
 /// `cohort_date = event_date = header.document_date`. Показы (`show_free_count`/`show_paid_count`)
-/// a036 не заполняет — они за a040 (органика) и a026 (реклама).
+/// a036 не заполняет: `show_paid_count` — за a026 (реклама), `show_free_count` — источник
+/// органических показов пока не подключён (a040 исключён), поэтому остаётся N/A.
 pub fn from_wb_funnel_daily(doc: &WbSalesFunnelDaily, registrator_ref: &str) -> Vec<Model> {
     let now = now_msk();
     let Some(date) = msk_date_str(&doc.header.document_date) else {
@@ -194,46 +196,12 @@ pub fn from_wb_funnel_daily(doc: &WbSalesFunnelDaily, registrator_ref: &str) -> 
     rows
 }
 
-/// Стадия 1: бесплатные/органические показы из a040 (поисковая аналитика) — по строке
-/// на `line.nm_id`. Заполняется ТОЛЬКО `show_free_count` (органические импрешены);
-/// переходы/корзина остаются за a036, платные показы — за a026 (чтобы не задваивать).
-/// `cohort_date = event_date = snapshot_date`.
-pub fn from_wb_search_analytics(doc: &WbSearchAnalyticsDaily, registrator_ref: &str) -> Vec<Model> {
-    let now = now_msk();
-    let Some(date) = msk_date_str(&doc.header.snapshot_date) else {
-        return Vec::new();
-    };
-    let connection = doc.header.connection_id.clone();
-
-    let mut rows = Vec::new();
-    for line in &doc.lines {
-        // Разреженность: пропускаем товар без показов.
-        if line.metrics.impressions == 0 {
-            continue;
-        }
-        let mut row = base_row(
-            FunnelStage::Marketing,
-            "marketing",
-            date.clone(),
-            date.clone(),
-            connection.clone(),
-            None,
-            line.nomenclature_ref.clone(),
-            Some(line.nm_id),
-            REG_A040,
-            registrator_ref,
-            &now,
-        );
-        row.show_free_count = Some(line.metrics.impressions);
-        rows.push(row);
-    }
-    rows
-}
-
-/// Стадия 1: платные показы из a026 (рекламный суточный отчёт) — по строке на `line.nm_id`.
-/// Заполняется ТОЛЬКО `show_paid_count` (рекламные views); органика остаётся за a040,
-/// переходы/корзина — за a036. Один документ a026 = один advert_id × дата, строки — nm_id;
-/// на чтении SUM складывает views по всем кампаниям дня. `cohort_date = event_date = document_date`.
+/// Стадия 1: платный ВЕРХ воронки из a026 (рекламный суточный отчёт) — по строке на `line.nm_id`.
+/// Заполняются платные показы (`show_paid_count`=views), платные переходы
+/// (`paid_open_count`=clicks) и платная корзина (`paid_cart_count`=atbs). Органика — за a040,
+/// суммарные переходы/корзина — за a036. Каждая метрика nullable: пишем `Some` только при >0
+/// (N/A ≠ 0). Один документ a026 = один advert_id × дата, строки — nm_id; на чтении SUM
+/// складывает по всем кампаниям дня. `cohort_date = event_date = document_date`.
 pub fn from_wb_advert_daily(doc: &WbAdvertDaily, registrator_ref: &str) -> Vec<Model> {
     let now = now_msk();
     let Some(date) = msk_date_str(&doc.header.document_date) else {
@@ -243,8 +211,9 @@ pub fn from_wb_advert_daily(doc: &WbAdvertDaily, registrator_ref: &str) -> Vec<M
 
     let mut rows = Vec::new();
     for line in &doc.lines {
-        // Разреженность: пропускаем товар без рекламных показов.
-        if line.metrics.views == 0 {
+        let m = &line.metrics;
+        // Разреженность: пропускаем товар без платной активности верха воронки.
+        if m.views == 0 && m.clicks == 0 && m.atbs == 0 {
             continue;
         }
         let mut row = base_row(
@@ -260,7 +229,9 @@ pub fn from_wb_advert_daily(doc: &WbAdvertDaily, registrator_ref: &str) -> Vec<M
             registrator_ref,
             &now,
         );
-        row.show_paid_count = Some(line.metrics.views);
+        row.show_paid_count = (m.views > 0).then_some(m.views);
+        row.paid_open_count = (m.clicks > 0).then_some(m.clicks);
+        row.paid_cart_count = (m.atbs > 0).then_some(m.atbs);
         rows.push(row);
     }
     rows
@@ -276,6 +247,8 @@ pub fn from_wb_orders(doc: &WbOrders, registrator_ref: &str) -> Vec<Model> {
     let mp_ref = doc.marketplace_product_ref.clone();
     let nom_ref = doc.nomenclature_ref.clone();
     let nm_id = Some(doc.line.nm_id);
+    // srid — мост к атрибуции рекламы p913 (канальный сплит заказа/отмены на чтении).
+    let order_key = Some(doc.header.document_no.clone());
 
     let mut rows = Vec::new();
 
@@ -293,6 +266,7 @@ pub fn from_wb_orders(doc: &WbOrders, registrator_ref: &str) -> Vec<Model> {
         registrator_ref,
         &now,
     );
+    order_row.order_key = order_key.clone();
     order_row.order_count = 1;
     order_row.order_sum = amount;
     rows.push(order_row);
@@ -318,6 +292,7 @@ pub fn from_wb_orders(doc: &WbOrders, registrator_ref: &str) -> Vec<Model> {
             registrator_ref,
             &now,
         );
+        cancel_row.order_key = order_key.clone();
         cancel_row.cancel_count = 1;
         cancel_row.cancel_sum = amount;
         rows.push(cancel_row);
@@ -373,6 +348,8 @@ pub fn from_wb_sales(
         registrator_ref,
         &now,
     );
+    // srid — мост к атрибуции рекламы p913 (канальный сплит выкупа/возврата на чтении).
+    row.order_key = Some(doc.header.document_no.clone());
     if is_return {
         row.return_count = count;
         row.return_sum = amount;
@@ -391,8 +368,8 @@ mod tests {
         WbSales, WbSalesHeader, WbSalesLine, WbSalesSourceMeta, WbSalesState, WbSalesWarehouse,
     };
     use contracts::domain::a015_wb_orders::aggregate::{
-        WbOrders, WbOrdersGeography, WbOrdersHeader, WbOrdersLine, WbOrdersSourceMeta, WbOrdersState,
-        WbOrdersWarehouse,
+        WbOrders, WbOrdersGeography, WbOrdersHeader, WbOrdersLine, WbOrdersSourceMeta,
+        WbOrdersState, WbOrdersWarehouse,
     };
     use contracts::domain::a026_wb_advert_daily::aggregate::{
         WbAdvertDailyHeader, WbAdvertDailyLine, WbAdvertDailyMetrics, WbAdvertDailySourceMeta,
@@ -489,6 +466,7 @@ mod tests {
         assert_eq!(r.event_date, "2026-03-01");
         assert_eq!(r.cancel_count, 0);
         assert_eq!(r.nm_id, Some(777));
+        assert_eq!(r.order_key.as_deref(), Some("srid-1")); // мост к p913
     }
 
     #[test]
@@ -623,8 +601,11 @@ mod tests {
         assert_eq!(r.registrator_type, REG_A026);
         assert_eq!(r.nm_id, Some(303));
         assert_eq!(r.show_paid_count, Some(1200));
-        assert!(r.show_free_count.is_none()); // только платные показы
-        assert_eq!(r.open_count, 0); // переходы/корзина — не из a026
+        assert_eq!(r.paid_open_count, Some(30)); // платные переходы = clicks
+        assert!(r.paid_cart_count.is_none()); // atbs=0 → None (N/A ≠ 0)
+        assert!(r.show_free_count.is_none()); // органика — за a040
+        assert_eq!(r.open_count, 0); // суммарные переходы/корзина — не из a026
+        assert!(r.order_key.is_none()); // marketing-строка без srid
         assert_eq!(r.cohort_date, "2026-03-03");
         assert_eq!(r.event_date, "2026-03-03");
     }
@@ -709,6 +690,7 @@ mod tests {
         assert_eq!(rows.len(), 1);
         let r = &rows[0];
         assert_eq!(r.buyout_count, 1);
+        assert_eq!(r.order_key.as_deref(), Some("srid-9")); // мост к p913
         // Когорта = дата заказа (передана извне), событие = дата продажи (MSK +3).
         assert_eq!(r.cohort_date, "2026-03-01");
         assert_eq!(r.event_date, "2026-03-10");

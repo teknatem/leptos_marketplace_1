@@ -116,7 +116,7 @@ impl WbAdvertDailyDetailsVm {
         })
     }
 
-    /// Total projection rows (p913 + p911) for the tab badge.
+    /// Total projection rows (p913 + p911 + p916) for the tab badge.
     pub fn projections_count(&self) -> Signal<usize> {
         let projections = self.projections;
         Signal::derive(move || {
@@ -132,7 +132,11 @@ impl WbAdvertDailyDetailsVm {
                         .as_array()
                         .map(|a| a.len())
                         .unwrap_or(0);
-                    p913 + p911
+                    let p916 = p["p916_mp_sales_funnel_turnovers"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    p913 + p911 + p916
                 })
                 .unwrap_or(0)
         })

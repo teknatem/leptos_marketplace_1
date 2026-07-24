@@ -51,6 +51,7 @@ pub struct RawStorageCleanupPreview {
 pub struct DbVacuumStatus {
     pub file_mb: f64,
     pub reclaimable_mb: f64,
+    pub wal_mb: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,4 +60,14 @@ pub struct DbVacuumResult {
     pub file_mb_after: f64,
     pub freed_mb: f64,
     pub duration_ms: u64,
+    pub wal_mb_before: f64,
+    pub wal_mb_after: f64,
+    pub wal_truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbWalCheckpointResult {
+    pub wal_mb_before: f64,
+    pub wal_mb_after: f64,
+    pub truncated: bool,
 }

@@ -256,6 +256,11 @@ pub fn configure_system_routes() -> Router {
                 .post(handlers::raw_storage::run_vacuum)
                 .layer(middleware::from_fn(auth::middleware::require_admin)),
         )
+        .route(
+            "/api/sys/raw-storage/wal-checkpoint",
+            post(handlers::raw_storage::truncate_wal)
+                .layer(middleware::from_fn(auth::middleware::require_admin)),
+        )
         // ========================================
         // SYSTEM S3 FILE MANAGER
         // ========================================
