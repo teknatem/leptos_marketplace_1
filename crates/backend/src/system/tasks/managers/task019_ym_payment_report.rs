@@ -56,6 +56,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task019_ym_payment_report",
+    write_tables: &["p907_ym_payment_report"],
     display_name: "YM Отчёт по платежам",
     description: "Загружает отчёт по платежам Yandex Market через Partner API \
         (POST /v2/reports/united-netting/generate). Тяжёлый асинхронный процесс: \

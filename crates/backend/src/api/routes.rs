@@ -661,6 +661,10 @@ fn a015_routes() -> Router {
             "/api/a015/wb-orders/:id/unpost",
             post(handlers::a015_wb_orders::unpost_order),
         )
+        .route(
+            "/api/a015/wb-orders/:id/projections",
+            get(handlers::a015_wb_orders::get_projections),
+        )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope("a015_wb_orders", req, next).await
@@ -797,8 +801,7 @@ fn a039_routes() -> Router {
         )
         .route(
             "/api/a039-mail-message/:id",
-            get(handlers::a039_mail_message::get_by_id)
-                .delete(handlers::a039_mail_message::delete),
+            get(handlers::a039_mail_message::get_by_id).delete(handlers::a039_mail_message::delete),
         )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
@@ -1037,6 +1040,14 @@ fn a036_routes() -> Router {
         .route(
             "/api/a036/wb-sales-funnel/:id",
             get(handlers::a036_wb_sales_funnel_daily::get_by_id),
+        )
+        .route(
+            "/api/a036/wb-sales-funnel/:id/post",
+            post(handlers::a036_wb_sales_funnel_daily::post),
+        )
+        .route(
+            "/api/a036/wb-sales-funnel/:id/projections",
+            get(handlers::a036_wb_sales_funnel_daily::get_projections),
         )
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
@@ -2008,6 +2019,10 @@ fn dashboard_routes() -> Router {
         .route(
             "/api/dashboards/wb-sales-funnel",
             get(handlers::dashboards::wb_sales_funnel),
+        )
+        .route(
+            "/api/dashboards/wb-sales-funnel/orders",
+            get(handlers::dashboards::wb_sales_funnel_orders),
         )
         .route(
             "/api/d400/periods",

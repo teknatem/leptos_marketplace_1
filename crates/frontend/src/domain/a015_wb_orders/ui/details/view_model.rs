@@ -38,6 +38,10 @@ pub struct WbOrdersDetailsVm {
     pub organization_info: RwSignal<Option<OrganizationInfo>>,
     pub marketplace_info: RwSignal<Option<MarketplaceInfo>>,
 
+    pub projections: RwSignal<Option<serde_json::Value>>,
+    pub projections_loaded: RwSignal<bool>,
+    pub projections_loading: RwSignal<bool>,
+
     pub active_tab: RwSignal<&'static str>,
     pub loading: RwSignal<bool>,
     pub posting: RwSignal<bool>,
@@ -78,6 +82,10 @@ impl WbOrdersDetailsVm {
             organization_info: RwSignal::new(None),
             marketplace_info: RwSignal::new(None),
 
+            projections: RwSignal::new(None),
+            projections_loaded: RwSignal::new(false),
+            projections_loading: RwSignal::new(false),
+
             active_tab: RwSignal::new("general"),
             loading: RwSignal::new(false),
             posting: RwSignal::new(false),
@@ -108,6 +116,28 @@ impl WbOrdersDetailsVm {
     pub fn wb_sales_count(&self) -> Signal<usize> {
         let wb_sales = self.wb_sales;
         Signal::derive(move || wb_sales.get().len())
+    }
+
+    /// Кол-во строк движений проекций (p909 + p916) для бейджа вкладки.
+    pub fn projections_count(&self) -> Signal<usize> {
+        let projections = self.projections;
+        Signal::derive(move || {
+            projections
+                .get()
+                .as_ref()
+                .map(|p| {
+                    let p909 = p["p909_mp_order_line_turnovers"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    let p916 = p["p916_mp_sales_funnel_turnovers"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    p909 + p916
+                })
+                .unwrap_or(0)
+        })
     }
 
     pub fn set_tab(&self, tab: &'static str) {
@@ -331,6 +361,29 @@ impl WbOrdersDetailsVm {
         });
     }
 
+    pub fn load_projections(&self) {
+        if self.projections_loaded.get_untracked() || self.projections_loading.get_untracked() {
+            return;
+        }
+        let Some(id) = self.id.get_untracked() else {
+            return;
+        };
+
+        let vm = self.clone();
+        vm.projections_loading.set(true);
+
+        spawn_local(async move {
+            match fetch_projections(&id).await {
+                Ok(value) => {
+                    vm.projections.set(Some(value));
+                    vm.projections_loaded.set(true);
+                }
+                Err(e) => leptos::logging::log!("Failed to load a015 projections: {}", e),
+            }
+            vm.projections_loading.set(false);
+        });
+    }
+
     pub fn post(&self) {
         let Some(id) = self.id.get() else {
             return;
@@ -355,6 +408,12 @@ impl WbOrdersDetailsVm {
         if let Ok(data) = fetch_by_id(&id).await {
             self.order.set(Some(data.clone()));
             self.load_related_data(&data);
+        }
+        // Проекции могли измениться при проведении — перезагружаем, если уже показывались.
+        if self.projections_loaded.get_untracked() {
+            self.projections_loaded.set(false);
+            self.projections_loading.set(false);
+            self.load_projections();
         }
     }
 }

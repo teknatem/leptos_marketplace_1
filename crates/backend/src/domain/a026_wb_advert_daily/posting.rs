@@ -578,6 +578,13 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         crate::projections::p913_wb_advert_order_attr::repository::prepare_entries(&p913_entries);
     let prepared_p911_entries =
         crate::projections::p911_wb_advert_by_items::repository::prepare_entries(&p911_entries);
+    // Стадия 1 воронки p916: платные показы (show_paid_count = metrics.views).
+    // Формируется при проведении (idempotent: delete-by-registrator + insert ниже),
+    // registrator_ref = id документа.
+    let p916_rows = crate::projections::p916_mp_sales_funnel_turnovers::builder::from_wb_advert_daily(
+        &document,
+        &registrator_ref,
+    );
 
     let db = get_connection();
     let _write_guard = acquire_sqlite_write_lock().await;
@@ -625,6 +632,17 @@ pub async fn post_document(id: Uuid) -> Result<()> {
     crate::projections::p911_wb_advert_by_items::repository::insert_prepared_entries_with_conn(
         &txn,
         prepared_p911_entries,
+    )
+    .await?;
+    crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_with_conn(
+        &txn,
+        crate::projections::p916_mp_sales_funnel_turnovers::builder::REG_A026,
+        &registrator_ref,
+    )
+    .await?;
+    crate::projections::p916_mp_sales_funnel_turnovers::repository::insert_many_with_conn(
+        &txn,
+        &p916_rows,
     )
     .await?;
 
@@ -678,6 +696,12 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
     crate::projections::p911_wb_advert_by_items::repository::delete_by_registrator_ref_with_conn(
         &txn,
         &legacy_projection_ref,
+    )
+    .await?;
+    crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_with_conn(
+        &txn,
+        crate::projections::p916_mp_sales_funnel_turnovers::builder::REG_A026,
+        &registrator_ref,
     )
     .await?;
 

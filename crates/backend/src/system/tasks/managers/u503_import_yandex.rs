@@ -35,6 +35,13 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "u503_import_yandex",
+    write_tables: &[
+        "a007_marketplace_product",
+        "a013_ym_order",
+        "a013_ym_order_items",
+        "a016_ym_returns",
+        "p907_ym_payment_report",
+    ],
     display_name: "Импорт из Яндекс Маркет",
     description: "Регулярный импорт всех агрегатов из кабинета Яндекс Маркет через Partner API: \
         товары (a007), заказы (a013), возвраты (a016), финансовые отчёты (p907). \

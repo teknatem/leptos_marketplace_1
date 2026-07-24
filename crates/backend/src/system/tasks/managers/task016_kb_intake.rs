@@ -13,6 +13,7 @@ use crate::system::tasks::manager::{TaskManager, TaskRunOutcome};
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task016_kb_intake",
+    write_tables: &["a031_kb_edit", "a018_llm_chat", "a018_llm_chat_message", "sys_tool_trace"],
     display_name: "KB — сбор бизнес-знаний",
     description: "Регистратор знаний выбирает небольшой пробел в понимании работы фирмы \
         и создаёт a031_kb_edit с наводящими вопросами пользователю.",
@@ -106,14 +107,17 @@ impl TaskManager for Task016KbIntakeManager {
             ),
         )?;
 
-        let chat_id = a018_llm_chat::service::create(a018_llm_chat::service::LlmChatDto {
-            id: None,
-            code: Some(format!("KB-INTAKE-{}", session_id)),
-            description: format!("KB сбор бизнес-знаний {}", session_id),
-            comment: Some("Служебный чат task016_kb_intake".to_string()),
-            agent_id: agent.base.id.as_string(),
-            model_name: Some(agent.model_name.clone()),
-        }, None)
+        let chat_id = a018_llm_chat::service::create(
+            a018_llm_chat::service::LlmChatDto {
+                id: None,
+                code: Some(format!("KB-INTAKE-{}", session_id)),
+                description: format!("KB сбор бизнес-знаний {}", session_id),
+                comment: Some("Служебный чат task016_kb_intake".to_string()),
+                agent_id: agent.base.id.as_string(),
+                model_name: Some(agent.model_name.clone()),
+            },
+            None,
+        )
         .await?;
 
         let trigger = format!(

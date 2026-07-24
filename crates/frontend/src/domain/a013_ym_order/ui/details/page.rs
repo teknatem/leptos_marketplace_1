@@ -96,9 +96,9 @@ fn Header(vm: YmOrderDetailsVm, on_close: Callback<()>) -> impl IntoView {
     let order = vm.order;
 
     view! {
-        <div class="page__header">
-            <div class="page__header-left">
-                <h1 class="page__title">{move || format!("YM Order {}", document_no.get())}</h1>
+        <div class="modal-header">
+            <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                <h3 class="modal-title">{move || format!("YM Order {}", document_no.get())}</h3>
                 <Show when=move || order.get().is_some()>
                     {move || {
                         let posted = is_posted.get();
@@ -113,15 +113,15 @@ fn Header(vm: YmOrderDetailsVm, on_close: Callback<()>) -> impl IntoView {
                     }}
                 </Show>
             </div>
-            <div class="page__header-right">
+            <div class="modal-header-actions">
                 <OrderHistoryButton vm=vm.clone() />
                 <PostButtons vm=vm.clone() />
                 <Button
                     appearance=ButtonAppearance::Secondary
-                    size=ButtonSize::Medium
+                    size=ButtonSize::Small
                     on_click=move |_| on_close.run(())
                 >
-                    {icon("x")} "Закрыть"
+                    {icon("x")} " Закрыть"
                 </Button>
             </div>
         </div>
@@ -151,14 +151,11 @@ fn OrderHistoryButton(vm: YmOrderDetailsVm) -> impl IntoView {
     view! {
         <Show when=move || order.get().is_some()>
             <Button
-                appearance=ButtonAppearance::Subtle
-                size=ButtonSize::Medium
+                appearance=ButtonAppearance::Secondary
+                size=ButtonSize::Small
                 on_click=on_click.clone()
             >
-                <span class="page-action-button__content">
-                    <span class="page-action-button__icon">{icon("list-ordered")}</span>
-                    <span class="page-action-button__text">"Вся история"</span>
-                </span>
+                {icon("list-ordered")} " Вся история"
             </Button>
         </Show>
     }
@@ -172,35 +169,19 @@ fn PostButtons(vm: YmOrderDetailsVm) -> impl IntoView {
     let posting = vm.posting;
     let order = vm.order;
 
-    let on_post = {
-        let vm = vm.clone();
-        Callback::new(move |_: ()| vm.post())
-    };
-    let on_unpost = {
-        let vm = vm;
-        Callback::new(move |_: ()| vm.unpost())
-    };
+    let on_post = Callback::new(move |_: ()| vm.post());
 
     view! {
         <Show when=move || order.get().is_some()>
             <Show when=move || !is_posted.get()>
                 <Button
                     appearance=ButtonAppearance::Primary
-                    size=ButtonSize::Medium
+                    size=ButtonSize::Small
                     on_click=move |_| on_post.run(())
                     disabled=Signal::derive(move || posting.get())
                 >
-                    {move || if posting.get() { "Проведение..." } else { "✓ Post" }}
-                </Button>
-            </Show>
-            <Show when=move || is_posted.get()>
-                <Button
-                    appearance=ButtonAppearance::Secondary
-                    size=ButtonSize::Medium
-                    on_click=move |_| on_unpost.run(())
-                    disabled=Signal::derive(move || posting.get())
-                >
-                    {move || if posting.get() { "Отмена..." } else { "✗ Unpost" }}
+                    {icon("check")}
+                    {move || if posting.get() { " Проведение..." } else { " Провести" }}
                 </Button>
             </Show>
         </Show>

@@ -4,10 +4,12 @@ mod general;
 mod json;
 mod line;
 mod links;
+mod projections;
 mod sales;
 
 pub use general::GeneralTab;
 pub use json::JsonTab;
 pub use line::LineTab;
 pub use links::LinksTab;
+pub use projections::ProjectionsTab;
 pub use sales::SalesTab;

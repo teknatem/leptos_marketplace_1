@@ -345,8 +345,8 @@ pub async fn stream_job(
                         if partial.len() > st.sent_bytes {
                             let delta = partial[st.sent_bytes..].to_string();
                             st.sent_bytes = partial.len();
-                            let payload =
-                                serde_json::to_string(&json!({ "text": delta })).unwrap_or_default();
+                            let payload = serde_json::to_string(&json!({ "text": delta }))
+                                .unwrap_or_default();
                             return Some((Ok(Event::default().event("delta").data(payload)), st));
                         }
                     }

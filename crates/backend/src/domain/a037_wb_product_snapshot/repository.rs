@@ -172,10 +172,7 @@ pub async fn get_by_id(id: Uuid) -> Result<Option<WbProductSnapshot>> {
 
 /// Предыдущий по дате снимок того же кабинета (строго раньше `date`).
 /// Используется для сравнения рейтингов/оценок с прошлым получением данных.
-pub async fn previous_before(
-    connection_id: &str,
-    date: &str,
-) -> Result<Option<WbProductSnapshot>> {
+pub async fn previous_before(connection_id: &str, date: &str) -> Result<Option<WbProductSnapshot>> {
     let db = get_connection();
     let model = Entity::find()
         .filter(Column::ConnectionId.eq(connection_id))

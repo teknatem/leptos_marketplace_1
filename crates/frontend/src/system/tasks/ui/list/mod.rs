@@ -119,7 +119,9 @@ fn live_progress_caption(p: &TaskProgressResponse) -> String {
 /// Разбирает поле часа как список ("3" | "3,15"). None — если это диапазон/шаг
 /// или что-то непарсящееся, тогда вызывающий показывает cron как есть.
 fn parse_hour_list(hour: &str) -> Option<Vec<u8>> {
-    hour.split(',').map(|h| h.trim().parse::<u8>().ok()).collect()
+    hour.split(',')
+        .map(|h| h.trim().parse::<u8>().ok())
+        .collect()
 }
 
 fn describe_cron(cron: &str) -> String {
@@ -172,10 +174,7 @@ fn describe_cron(cron: &str) -> String {
     // Daily at HH:MM — hour may be a list ("3,15" → «Ежедневно 03:00, 15:00»)
     if day == "*" && weekday == "*" && !minute.contains('*') && !hour.contains('*') {
         if let (Ok(m), Some(hours)) = (minute.parse::<u8>(), parse_hour_list(hour)) {
-            let times: Vec<String> = hours
-                .iter()
-                .map(|h| format!("{:02}:{:02}", h, m))
-                .collect();
+            let times: Vec<String> = hours.iter().map(|h| format!("{:02}:{:02}", h, m)).collect();
             return format!("Ежедневно {}", times.join(", "));
         }
         return cron.to_string();

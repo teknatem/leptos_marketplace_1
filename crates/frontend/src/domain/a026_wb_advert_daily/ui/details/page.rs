@@ -166,26 +166,22 @@ fn PostButtons(
             // «Провести» всегда в заголовке: для непроведённого — проведение, для проведённого —
             // идемпотентное перепроведение. Спиннер в кнопке во время операции.
             <Button
-                appearance=ButtonAppearance::Primary
+                appearance=ButtonAppearance::Subtle
                 size=ButtonSize::Medium
                 on_click=move |_| on_post.run(())
                 disabled=Signal::derive(move || posting.get())
             >
                 <span class="page-action-button__content">
                     <span class="page-action-button__icon">
-                        {move || if posting.get() {
-                            view! { <Spinner size=SpinnerSize::Tiny /> }.into_any()
-                        } else {
-                            icon("check").into_any()
+                        {move || {
+                            if posting.get() {
+                                view! { <span class="page-action-button__spinner"></span> }.into_any()
+                            } else {
+                                view! { <>{icon("refresh-cw")}</> }.into_any()
+                            }
                         }}
                     </span>
-                    <span class="page-action-button__text">
-                        {move || match (is_posted.get(), posting.get()) {
-                            (_, true) => "Проведение...",
-                            (true, false) => "Перепровести",
-                            (false, false) => "Провести",
-                        }}
-                    </span>
+                    <span class="page-action-button__text page-action-button__text--post">"Post"</span>
                 </span>
             </Button>
             // Проведённый документ — отмена проведения в подменю «Ещё».

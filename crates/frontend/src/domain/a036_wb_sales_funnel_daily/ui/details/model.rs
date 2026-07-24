@@ -220,3 +220,36 @@ pub async fn fetch_by_id(id: &str) -> Result<DetailsDto, String> {
         .await
         .map_err(|e| format!("Ошибка парсинга: {}", e))
 }
+
+/// Провести документ: пересобрать его движения воронки p916.
+pub async fn post_document(id: &str) -> Result<(), String> {
+    let url = format!("{}/api/a036/wb-sales-funnel/{}/post", api_base(), id);
+    let response = Request::post(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка сети: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!("Ошибка сервера: HTTP {}", response.status()));
+    }
+    Ok(())
+}
+
+/// Движения проекции p916, порождённые документом a036, как raw JSON (закладка «Проекции»).
+pub async fn fetch_projections(id: &str) -> Result<serde_json::Value, String> {
+    let url = format!("{}/api/a036/wb-sales-funnel/{}/projections", api_base(), id);
+
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка сети: {}", e))?;
+
+    if !response.ok() {
+        return Err(format!("Ошибка сервера: HTTP {}", response.status()));
+    }
+
+    response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Ошибка парсинга: {}", e))
+}

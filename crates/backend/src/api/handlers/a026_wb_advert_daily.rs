@@ -868,9 +868,21 @@ pub async fn get_projections(
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
+    let p916_items =
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::list_by_registrator(
+            "a026_wb_advert_daily",
+            &id,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p916 projections for {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     Ok(Json(serde_json::json!({
         "p913_wb_advert_order_attr": p913_items,
-        "p911_wb_advert_by_items": p911_items
+        "p911_wb_advert_by_items": p911_items,
+        "p916_mp_sales_funnel_turnovers": p916_items
     })))
 }
 

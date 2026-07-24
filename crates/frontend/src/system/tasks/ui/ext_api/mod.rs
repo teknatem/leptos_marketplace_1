@@ -86,7 +86,11 @@ fn StatCard(label: &'static str, value: String, accent: bool) -> impl IntoView {
 }
 
 #[component]
-fn SummaryTable(title: &'static str, empty: &'static str, rows: Vec<ExtApiSummaryRow>) -> impl IntoView {
+fn SummaryTable(
+    title: &'static str,
+    empty: &'static str,
+    rows: Vec<ExtApiSummaryRow>,
+) -> impl IntoView {
     view! {
         <div class="ext-api__panel">
             <div class="ext-api__panel-title">{title}</div>

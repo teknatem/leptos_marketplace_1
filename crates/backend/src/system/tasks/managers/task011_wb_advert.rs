@@ -44,6 +44,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task011_wb_advert",
+    write_tables: &["a026_wb_advert_daily", "p916_mp_sales_funnel_turnovers"],
     display_name: "WB Реклама (статистика)",
     description: "Загружает статистику рекламных кампаний WB через Advert API. \
         Перед fullstats сам обновляет список advertId в a030_wb_advert_campaign \

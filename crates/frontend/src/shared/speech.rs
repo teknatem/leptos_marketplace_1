@@ -63,7 +63,8 @@ fn insecure_context_message() -> String {
 
 /// Chrome-флаг, который позволяет пометить конкретный HTTP-origin как «безопасный»
 /// и тем самым разблокировать микрофон в LAN-развёртывании без HTTPS.
-const CHROME_INSECURE_ORIGIN_FLAG: &str = "chrome://flags/#unsafely-treat-insecure-origin-as-secure";
+const CHROME_INSECURE_ORIGIN_FLAG: &str =
+    "chrome://flags/#unsafely-treat-insecure-origin-as-secure";
 
 /// Текущий origin страницы (напр. `http://192.168.1.10:8080`) — его нужно вписать
 /// в список разрешённых в chrome-флаге.
@@ -85,9 +86,7 @@ fn format_recognition_error(msg: &str) -> String {
         "audio-capture" => {
             "Распознавание речи: микрофон не найден или занят другим приложением.".to_string()
         }
-        "network" => {
-            "Распознавание речи: ошибка сети сервиса распознавания.".to_string()
-        }
+        "network" => "Распознавание речи: ошибка сети сервиса распознавания.".to_string(),
         other => format!("Распознавание речи: {}", other),
     }
 }

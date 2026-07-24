@@ -15,6 +15,12 @@ use crate::usecases::u504_import_from_wildberries::ImportExecutor;
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task002_wb_orders_stats_hourly",
+    write_tables: &[
+        "a015_wb_orders",
+        "p909_mp_order_line_turnovers",
+        "p916_mp_sales_funnel_turnovers",
+        "sys_general_ledger",
+    ],
     display_name: "WB Заказы — полная история (Statistics API)",
     description: "Загружает полные данные по заказам из Statistics API Wildberries \
         (/api/v1/supplier/orders). Содержит расширенные финансовые поля: forPay, finishedPrice, \

@@ -35,6 +35,7 @@ fn default_window_days() -> i64 {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task020_wb_product_snapshot",
+    write_tables: &["a037_wb_product_snapshot"],
     display_name: "WB Данные по товарам (остатки и рейтинги)",
     description:
         "Снимает текущее состояние товаров Wildberries (остатки на складах WB и продавца, \

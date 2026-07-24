@@ -51,6 +51,14 @@ pub struct RunTaskResponse {
     pub task_id: String,
 }
 
+/// HTTP 409 payload when another task run owns a required write table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskStartConflict {
+    pub resource: String,
+    pub owner_task: String,
+    pub owner_session_id: String,
+}
+
 /// Сессия прогресса только из памяти (без `sys_task_runs`, без чтения логов с диска).
 /// Нужна лёгкая панель мониторинга, не конкурирующая с воркером за БД.
 #[derive(Debug, Clone, Serialize, Deserialize)]

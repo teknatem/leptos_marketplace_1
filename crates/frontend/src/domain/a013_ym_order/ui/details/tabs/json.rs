@@ -32,7 +32,7 @@ pub fn JsonTab(vm: YmOrderDetailsVm) -> impl IntoView {
                     <CardAnimated delay_ms=0 nav_id="a013_ym_order_details_json_empty">
                         <h4 class="details-section__title">"Raw JSON from Yandex Market"</h4>
                         <div style="color: var(--color-text-secondary);">
-                            "JSON данные не загружены"
+                            "Исходный JSON для этого заказа не сохранён в БД."
                         </div>
                     </CardAnimated>
                 }

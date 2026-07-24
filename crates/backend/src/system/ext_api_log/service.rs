@@ -155,7 +155,10 @@ pub async fn summary(date_from: &str, scale: ExtApiScale) -> Result<ExtApiSummar
     let by_client = repository::summary_by_client(&period.from_sql, &period.to_sql)
         .await
         .map_err(|e| anyhow::anyhow!("Database error: {}", e))?;
-    Ok(ExtApiSummaryResponse { by_route, by_client })
+    Ok(ExtApiSummaryResponse {
+        by_route,
+        by_client,
+    })
 }
 
 /// Индекс бакета для метки времени события (UTC ISO8601) внутри периода.

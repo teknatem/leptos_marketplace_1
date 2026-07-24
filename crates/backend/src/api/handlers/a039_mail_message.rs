@@ -56,7 +56,9 @@ pub async fn list_paginated(
     }
 }
 
-pub async fn get_by_id(Path(id): Path<String>) -> Result<Json<MailMessage>, axum::http::StatusCode> {
+pub async fn get_by_id(
+    Path(id): Path<String>,
+) -> Result<Json<MailMessage>, axum::http::StatusCode> {
     match a039_mail_message::service::get_by_id(&id).await {
         Ok(Some(v)) => Ok(Json(v)),
         Ok(None) => Err(axum::http::StatusCode::NOT_FOUND),

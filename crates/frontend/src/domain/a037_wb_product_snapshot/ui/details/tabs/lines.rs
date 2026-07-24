@@ -24,7 +24,8 @@ fn SortHeaderCell(
     #[prop(default = false)] numeric: bool,
     /// Фиксированная ширина колонки в ch (заголовок + ячейки), чтобы числовые
     /// колонки не растягивались — излишек уходит в текстовые колонки.
-    #[prop(optional)] width_ch: Option<f32>,
+    #[prop(optional)]
+    width_ch: Option<f32>,
 ) -> impl IntoView {
     let header_style = if numeric {
         "cursor: pointer; text-align: right; justify-content: flex-end;"

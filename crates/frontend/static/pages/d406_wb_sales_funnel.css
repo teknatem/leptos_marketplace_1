@@ -1,0 +1,344 @@
+/* d406 «Воронка продаж» — per-page styles.
+   Scoped under .d406-page. Uses design-system CSS variables so light/dark themes
+   are handled by the tokens. */
+
+.d406-page .d406-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+    padding: 4px 2px 16px;
+}
+
+/* ---- header ---- */
+.d406-page .d406-head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.d406-page .d406-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.d406-page .d406-note {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-text-tertiary, var(--color-text-secondary));
+    max-width: 900px;
+}
+
+/* ---- toolbar ---- */
+.d406-page .d406-toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.d406-page .d406-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 150px;
+}
+.d406-page .d406-field--grow {
+    flex: 1 1 auto;
+}
+.d406-page .d406-field label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-text-secondary);
+}
+.d406-page .d406-field input,
+.d406-page .d406-field select {
+    height: 34px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md, 8px);
+    padding: 0 10px;
+    background: var(--colorNeutralBackground1, var(--color-surface));
+    color: var(--color-text-primary);
+    font-size: 13px;
+}
+.d406-page .d406-field input:focus,
+.d406-page .d406-field select:focus {
+    outline: none;
+    border-color: var(--color-brand, #2563eb);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand, #2563eb) 18%, transparent);
+}
+.d406-page .d406-actions {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    margin-left: auto;
+}
+.d406-page .d406-btn {
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md, 8px);
+    background: var(--colorNeutralBackground1, var(--color-surface));
+    color: var(--color-text-primary);
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+}
+.d406-page .d406-btn:hover:not(:disabled) {
+    background: var(--colorNeutralBackground1Hover, color-mix(in srgb, var(--color-brand, #2563eb) 6%, var(--color-surface)));
+    border-color: var(--color-brand, #2563eb);
+}
+.d406-page .d406-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+.d406-page .d406-btn--primary {
+    background: var(--color-brand, #2563eb);
+    border-color: var(--color-brand, #2563eb);
+    color: #fff;
+}
+.d406-page .d406-btn--primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-brand, #2563eb) 88%, #000);
+}
+
+/* ---- tabs (thaw TabList) ---- */
+.d406-page .d406-tabbar {
+    border-bottom: 1px solid var(--color-border);
+}
+
+/* ---- table (full width, no outer frame) ---- */
+.d406-page .d406-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+.d406-page .d406-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.d406-page .d406-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--color-bg-primary, #f4f5f7);
+    text-align: right;
+    border-bottom: 2px solid var(--color-border);
+    padding: 9px 10px;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+.d406-page .d406-table th:hover {
+    color: var(--color-text-primary);
+    background: color-mix(in srgb, var(--color-brand, #2563eb) 8%, var(--color-bg-primary, #f4f5f7));
+}
+/* Тёмная тема: непрозрачный фон заголовка/итога, иначе строки просвечивают сквозь sticky. */
+body[data-theme="dark"] .d406-page .d406-table th {
+    background: #333333;
+}
+body[data-theme="dark"] .d406-page .d406-table th:hover {
+    background: #3d3d3d;
+}
+.d406-page .d406-table th.d406-th--left {
+    text-align: left;
+}
+.d406-page .d406-sort {
+    margin-left: 4px;
+    font-size: 10px;
+    opacity: 0.35;
+}
+.d406-page .d406-sort--active {
+    opacity: 1;
+    color: var(--color-brand, #2563eb);
+}
+.d406-page .d406-table td {
+    border-bottom: 1px solid var(--color-border-light, var(--color-border));
+    padding: 8px 10px;
+}
+.d406-page .d406-table tbody tr:not(.d406-row--total):nth-child(even) {
+    background: color-mix(in srgb, var(--color-text-primary) 2.5%, transparent);
+}
+.d406-page .d406-table tbody tr:not(.d406-row--total):hover {
+    background: color-mix(in srgb, var(--color-brand, #2563eb) 7%, transparent);
+}
+.d406-page .d406-date {
+    white-space: nowrap;
+    color: var(--color-text-secondary);
+}
+.d406-page .d406-name {
+    min-width: 120px;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+.d406-page .d406-n,
+.d406-page .d406-money,
+.d406-page .d406-c {
+    text-align: right;
+    font-family: var(--font-family-mono, ui-monospace, monospace);
+    font-variant-numeric: tabular-nums;
+}
+.d406-page .d406-c {
+    color: var(--color-text-secondary);
+}
+.d406-page .d406-na {
+    color: var(--color-text-tertiary, var(--color-text-secondary));
+    opacity: 0.7;
+}
+.d406-page .d406-row--total {
+    font-weight: 700;
+}
+.d406-page .d406-row--total td {
+    position: sticky;
+    top: 39px;
+    z-index: 1;
+    border-bottom: 2px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-brand, #2563eb) 10%, var(--color-bg-primary, #f4f5f7));
+}
+body[data-theme="dark"] .d406-page .d406-row--total td {
+    background: color-mix(in srgb, var(--color-brand, #2563eb) 22%, #2b2b2b);
+}
+.d406-page .d406-state {
+    padding: 22px;
+    color: var(--color-text-secondary);
+    text-align: center;
+}
+
+/* ---- marketplace badge ---- */
+.d406-page .d406-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+.d406-page .d406-badge--mp-wb {
+    background: color-mix(in srgb, #a855f7 16%, transparent);
+    color: #9333ea;
+    border-color: color-mix(in srgb, #a855f7 35%, transparent);
+}
+.d406-page .d406-badge--mp-ozon {
+    background: color-mix(in srgb, #2563eb 16%, transparent);
+    color: #2563eb;
+    border-color: color-mix(in srgb, #2563eb 35%, transparent);
+}
+.d406-page .d406-badge--mp-ym {
+    background: color-mix(in srgb, #eab308 20%, transparent);
+    color: #b8890b;
+    border-color: color-mix(in srgb, #eab308 40%, transparent);
+}
+.d406-page .d406-badge--muted {
+    background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+    color: var(--color-text-secondary);
+}
+
+/* ---- funnel chart ---- */
+.d406-page .d406-chart-wrap {
+    padding: 12px 4px 8px;
+    max-width: 920px;
+}
+.d406-page .d406-chart-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.d406-page .d406-chart-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+}
+.d406-page .d406-chart-sub {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+.d406-page .d406-funnel-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.d406-page .d406-funnel-stage-label {
+    fill: var(--color-text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+.d406-page .d406-funnel-value {
+    fill: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.d406-page .d406-funnel-conv {
+    fill: var(--color-text-secondary);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Drilldown: платные/бесплатные заказы --- */
+.d406-page .d406-drill {
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
+.d406-page .d406-drill:hover {
+    background: var(--colorNeutralBackground1Hover, color-mix(in srgb, var(--color-brand, #2563eb) 10%, var(--color-surface)));
+}
+.d406-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 24px;
+}
+.d406-modal {
+    background: var(--colorNeutralBackground1, var(--color-surface));
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.d406-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+.d406-modal-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+}
+.d406-modal-body {
+    padding: 12px 16px;
+    overflow: auto;
+}
+.d406-drill-summary {
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}

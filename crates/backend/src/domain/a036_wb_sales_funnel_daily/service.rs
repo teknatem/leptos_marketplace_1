@@ -21,6 +21,11 @@ pub async fn get_by_id(id: Uuid) -> Result<Option<WbSalesFunnelDaily>> {
     repository::get_by_id(id).await
 }
 
+/// Проведение документа: пересобрать его движения воронки p916 (стадия 1).
+pub async fn post_document(id: Uuid) -> Result<()> {
+    repository::post_document(id).await
+}
+
 pub async fn list_paginated(
     query: WbSalesFunnelDailyListQuery,
 ) -> Result<WbSalesFunnelDailyListResult> {

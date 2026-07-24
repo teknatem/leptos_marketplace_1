@@ -44,6 +44,7 @@ fn default_chunk_days() -> i64 {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task005_wb_supplies",
+    write_tables: &["a029_wb_supply"],
     display_name: "WB Поставки FBS",
     description: "Загружает поставки FBS из Wildberries и привязывает их к заказам. \
         Последовательность неразрывна: список поставок -> ID заказов по каждой поставке -> \

@@ -180,6 +180,25 @@ pub async fn fetch_by_id(id: &str) -> Result<WbOrderDetailDto, String> {
     serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {}", e))
 }
 
+/// Движения проекций документа (p909 + p916) как raw JSON для закладки «Проекции».
+pub async fn fetch_projections(id: &str) -> Result<serde_json::Value, String> {
+    let url = format!("{}/api/a015/wb-orders/{}/projections", api_base(), id);
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch projections: {}", e))?;
+
+    if response.status() != 200 {
+        return Err(format!("Server error: {}", response.status()));
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    serde_json::from_str(&text).map_err(|e| format!("Failed to parse JSON: {}", e))
+}
+
 pub async fn fetch_raw_json(raw_payload_ref: &str) -> Result<String, String> {
     let url = format!("{}/api/a015/raw/{}", api_base(), raw_payload_ref);
     let response = Request::get(&url)

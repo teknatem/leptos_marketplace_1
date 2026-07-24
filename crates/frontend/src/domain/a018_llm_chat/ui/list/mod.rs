@@ -5,8 +5,8 @@ use crate::shared::icons::icon;
 use crate::shared::speech::{DictationButton, DictationDiagnostics};
 use crate::shared::table_utils::init_column_resize;
 use crate::system::auth::context::use_auth;
-use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
 use contracts::domain::a018_llm_chat::aggregate::LlmChatListItem;
+use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
 use leptos::prelude::*;
 use thaw::*;
 

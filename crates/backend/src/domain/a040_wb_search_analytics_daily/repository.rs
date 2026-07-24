@@ -12,9 +12,6 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::projections::p916_mp_sales_funnel_turnovers::{
-    builder as funnel_builder, repository as funnel_repo,
-};
 use crate::shared::data::db::get_connection;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -70,12 +67,11 @@ impl From<Model> for WbSearchAnalyticsDaily {
             });
         let totals = serde_json::from_str(&m.totals_json).unwrap_or_default();
         let lines = serde_json::from_str(&m.lines_json).unwrap_or_default();
-        let source_meta = serde_json::from_str(&m.source_meta_json).unwrap_or(
-            WbSearchAnalyticsDailySourceMeta {
+        let source_meta =
+            serde_json::from_str(&m.source_meta_json).unwrap_or(WbSearchAnalyticsDailySourceMeta {
                 source: "wb_search_analytics".to_string(),
                 fetched_at: m.fetched_at.clone(),
-            },
-        );
+            });
 
         WbSearchAnalyticsDaily {
             base: BaseAggregate::with_metadata(
@@ -121,20 +117,9 @@ pub async fn replace_for_period(
         insert_with_conn(&txn, document).await?;
     }
 
-    // Стадия 1 воронки p916: органические показы (show_free_count). Заменяем движения a040 периода целиком.
-    funnel_repo::delete_marketing_for_period_with_conn(
-        &txn,
-        funnel_builder::REG_A040,
-        connection_id,
-        date_from,
-        date_to,
-    )
-    .await?;
-    for document in documents {
-        let registrator_ref = document.base.id.value().to_string();
-        let rows = funnel_builder::from_wb_search_analytics(document, &registrator_ref);
-        funnel_repo::insert_many_with_conn(&txn, &rows).await?;
-    }
+    // p916: a040 больше НЕ питает воронку. Живой WB-эндпоинт /table/details отдаёт только
+    // `visibility` (% показов в поиске), а не счётчик показов — смешивать % с counts в
+    // `show_free_count` нельзя. Органические показы остаются `N/A` до реального источника.
 
     txn.commit().await?;
     tracing::info!(
@@ -243,17 +228,26 @@ pub async fn list_sql(query: WbSearchAnalyticsListQuery) -> Result<WbSearchAnaly
     let mut conditions = vec!["d.is_deleted = 0".to_string()];
     if let Some(ref date_from) = query.date_from {
         if !date_from.is_empty() {
-            conditions.push(format!("d.document_date >= '{}'", date_from.replace('\'', "''")));
+            conditions.push(format!(
+                "d.document_date >= '{}'",
+                date_from.replace('\'', "''")
+            ));
         }
     }
     if let Some(ref date_to) = query.date_to {
         if !date_to.is_empty() {
-            conditions.push(format!("d.document_date <= '{}'", date_to.replace('\'', "''")));
+            conditions.push(format!(
+                "d.document_date <= '{}'",
+                date_to.replace('\'', "''")
+            ));
         }
     }
     if let Some(ref connection_id) = query.connection_id {
         if !connection_id.is_empty() {
-            conditions.push(format!("d.connection_id = '{}'", connection_id.replace('\'', "''")));
+            conditions.push(format!(
+                "d.connection_id = '{}'",
+                connection_id.replace('\'', "''")
+            ));
         }
     }
     if let Some(ref search) = query.search_query {

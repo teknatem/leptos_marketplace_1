@@ -35,6 +35,10 @@ fn default_window_days() -> i64 {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task023_wb_sales_funnel_daily",
+    write_tables: &[
+        "a036_wb_sales_funnel_daily",
+        "p916_mp_sales_funnel_turnovers",
+    ],
     display_name: "WB Воронка продаж (по дням)",
     description:
         "Загружает воронку продаж Wildberries по дням (переходы в карточку, добавления в корзину, \

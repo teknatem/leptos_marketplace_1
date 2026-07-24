@@ -7,7 +7,10 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::task_session_runner::{spawn_task_session, TaskSessionParams};
-use super::{logger::TaskLogger, registry::TaskManagerRegistry, runs_service, service};
+use super::{
+    logger::TaskLogger, registry::TaskManagerRegistry,
+    resource_coordinator::get_global_resource_coordinator, runs_service, service,
+};
 use contracts::system::tasks::progress::TaskStatus;
 
 /// Следующее время запуска по cron-расписанию.
@@ -62,7 +65,13 @@ impl ScheduledTaskWorker {
         }
 
         let now = Utc::now();
-        let tasks = service::list_enabled_tasks().await?;
+        let mut tasks = service::list_enabled_tasks().await?;
+        tasks.sort_by(|a, b| {
+            a.next_run_at
+                .cmp(&b.next_run_at)
+                .then_with(|| a.base.id.as_string().cmp(&b.base.id.as_string()))
+        });
+        let coordinator = get_global_resource_coordinator();
 
         for task in tasks {
             let should_run = task.next_run_at.map_or(true, |t| t <= now);
@@ -86,6 +95,24 @@ impl ScheduledTaskWorker {
 
             let session_id = Uuid::new_v4().to_string();
             let task_id = task.base.id;
+            let task_label = format!("{} ({})", task.base.description, task_id_str);
+            let write_tables = self
+                .registry
+                .get(&task.task_type)
+                .map(|manager| manager.metadata().write_tables)
+                .unwrap_or_default();
+            let resource_guard =
+                match coordinator.try_acquire(&task_id_str, &task_label, &session_id, write_tables)
+                {
+                    Ok(guard) => guard,
+                    Err(conflict) => {
+                        warn!(
+                        "Task '{}' is due but resource '{}' is used by '{}'; retrying next tick",
+                        task_label, conflict.resource, conflict.owner_task
+                    );
+                        continue;
+                    }
+                };
 
             let next_run = task
                 .schedule_cron
@@ -125,6 +152,7 @@ impl ScheduledTaskWorker {
                 recompute_next_run_if_elapsed: true,
                 logger: Arc::clone(&self.logger),
                 registry: Arc::clone(&self.registry),
+                resource_guard,
             });
         }
         Ok(())

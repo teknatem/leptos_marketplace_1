@@ -1,37 +1,102 @@
 use crate::dashboards::d406_wb_sales_funnel::api;
+use crate::shared::api_utils::api_base;
+use crate::shared::export::{export_to_excel, ExcelExportable};
 use crate::shared::page_frame::PageFrame;
+use crate::shared::time_bar_chart::format_number_triads;
 use chrono::{Datelike, Utc};
 use contracts::dashboards::d406_wb_sales_funnel::{
-    FunnelDateAxis, WbSalesFunnelConversions, WbSalesFunnelMetrics, WbSalesFunnelResponse,
-    WbSalesFunnelRow,
+    FunnelChannel, FunnelDateAxis, WbSalesFunnelConversions, WbSalesFunnelMetrics,
+    WbSalesFunnelOrdersResponse, WbSalesFunnelResponse, WbSalesFunnelRow,
 };
+use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
+use contracts::domain::common::AggregateId;
+use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use std::cmp::Ordering;
+use thaw::{Tab, TabList};
 
-fn num(value: i64) -> String {
-    value.to_string()
+// ---------------------------------------------------------------------------
+// Форматирование
+// ---------------------------------------------------------------------------
+
+fn fmt_int(value: i64) -> String {
+    format_number_triads(value as f64, 0)
 }
 
 /// Показ метрики показов с учётом доступности источника: `N/A`, если источника нет
 /// (напр. нет подписки «Джем»/рекламы) — «недоступно» ≠ «ноль».
-fn num_avail(value: i64, available: bool) -> String {
+fn fmt_avail(value: i64, available: bool) -> String {
     if available {
-        value.to_string()
+        fmt_int(value)
     } else {
         "N/A".to_string()
     }
 }
 
-fn money(value: f64) -> String {
-    format!("{value:.0}")
+fn fmt_money(value: f64) -> String {
+    format_number_triads(value, 0)
 }
 
 /// Конверсия в % (или прочерк, если знаменатель = 0).
-fn pct(value: Option<f64>) -> String {
+fn fmt_pct(value: Option<f64>) -> String {
     match value {
         Some(v) => format!("{v:.1}%"),
         None => "—".to_string(),
     }
+}
+
+/// Сумма с учётом доступности: `N/A`, если стадия недоступна в выбранном канале.
+fn fmt_money_avail(value: f64, available: bool) -> String {
+    if available {
+        fmt_money(value)
+    } else {
+        "N/A".to_string()
+    }
+}
+
+/// Проекция метрик на выбранный канал (All/Paid/Free). Возвращает «отображаемые» метрики
+/// (поля показы/переходы/корзина/заказы/выкупы/отмены/возвраты/сумма замещены значениями канала)
+/// и флаг доступности рекламо-зависимых стадий (переходы…возвраты). Показы несут собственную
+/// доступность через `show_total_available`.
+///
+/// All — как есть; Paid — из `paid_*`; Free — `total − paid` (обрезка ≥0). Free показы =
+/// органические (a040), обычно N/A.
+fn channel_metrics(m: &WbSalesFunnelMetrics, ch: FunnelChannel) -> (WbSalesFunnelMetrics, bool) {
+    let mut d = m.clone();
+    let stages_available = matches!(ch, FunnelChannel::All) || m.advert_available;
+    match ch {
+        FunnelChannel::All => {}
+        FunnelChannel::Paid => {
+            d.show_total_count = m.show_paid_count;
+            d.show_total_available = m.show_paid_available;
+            d.open_count = m.paid_open_count;
+            d.cart_count = m.paid_cart_count;
+            d.order_count = m.paid_order_count;
+            d.order_sum = m.paid_order_sum;
+            d.buyout_count = m.paid_buyout_count;
+            d.buyout_sum = m.paid_buyout_sum;
+            d.cancel_count = m.paid_cancel_count;
+            d.cancel_sum = m.paid_cancel_sum;
+            d.return_count = m.paid_return_count;
+            d.return_sum = m.paid_return_sum;
+        }
+        FunnelChannel::Free => {
+            d.show_total_count = m.show_free_count;
+            d.show_total_available = m.show_free_available;
+            d.open_count = (m.open_count - m.paid_open_count).max(0);
+            d.cart_count = (m.cart_count - m.paid_cart_count).max(0);
+            d.order_count = (m.order_count - m.paid_order_count).max(0);
+            d.order_sum = (m.order_sum - m.paid_order_sum).max(0.0);
+            d.buyout_count = (m.buyout_count - m.paid_buyout_count).max(0);
+            d.buyout_sum = (m.buyout_sum - m.paid_buyout_sum).max(0.0);
+            d.cancel_count = (m.cancel_count - m.paid_cancel_count).max(0);
+            d.cancel_sum = (m.cancel_sum - m.paid_cancel_sum).max(0.0);
+            d.return_count = (m.return_count - m.paid_return_count).max(0);
+            d.return_sum = (m.return_sum - m.paid_return_sum).max(0.0);
+        }
+    }
+    (d, stages_available)
 }
 
 fn first_day_of_month() -> String {
@@ -43,50 +108,508 @@ fn today() -> String {
     Utc::now().date_naive().format("%Y-%m-%d").to_string()
 }
 
-fn product_label(row: &WbSalesFunnelRow) -> String {
-    if let Some(name) = row.product_name.as_ref().filter(|s| !s.trim().is_empty()) {
-        name.clone()
+/// Артикул для колонки «Артикул»: article → nm_id → a007-ref → прочерк.
+fn article_label(row: &WbSalesFunnelRow) -> String {
+    if let Some(a) = row.article.as_ref().filter(|s| !s.trim().is_empty()) {
+        a.clone()
     } else if let Some(nm) = row.nm_id {
         format!("nm {nm}")
+    } else if let Some(mpr) = row.marketplace_product_ref.as_ref() {
+        mpr.chars().take(8).collect::<String>()
     } else {
         "—".to_string()
     }
 }
 
-#[component]
-fn MetricRow(
-    #[prop(into)] label: String,
-    metrics: WbSalesFunnelMetrics,
-    conversions: WbSalesFunnelConversions,
-    #[prop(optional, into)] date: Option<String>,
-    #[prop(optional)] is_total: bool,
-) -> impl IntoView {
-    let row_class = if is_total {
-        "d406-row d406-row--total"
-    } else {
-        "d406-row"
-    };
-    view! {
-        <tr class=row_class>
-            <td class="d406-date">{date.unwrap_or_default()}</td>
-            <td class="d406-name">{label}</td>
-            <td class="d406-n">{num_avail(metrics.show_total_count, metrics.show_total_available)}</td>
-            <td class="d406-n">{num_avail(metrics.show_paid_count, metrics.show_paid_available)}</td>
-            <td class="d406-n">{num_avail(metrics.show_free_count, metrics.show_free_available)}</td>
-            <td class="d406-n">{num(metrics.open_count)}</td>
-            <td class="d406-n">{num(metrics.cart_count)}</td>
-            <td class="d406-n">{num(metrics.order_count)}</td>
-            <td class="d406-n">{num(metrics.buyout_count)}</td>
-            <td class="d406-n">{num(metrics.cancel_count)}</td>
-            <td class="d406-n">{num(metrics.return_count)}</td>
-            <td class="d406-money">{money(metrics.order_sum)}</td>
-            <td class="d406-c">{pct(conversions.open_to_cart)}</td>
-            <td class="d406-c">{pct(conversions.cart_to_order)}</td>
-            <td class="d406-c">{pct(conversions.order_to_buyout)}</td>
-            <td class="d406-c">{pct(conversions.cancel_rate)}</td>
-        </tr>
+// ---------------------------------------------------------------------------
+// Агрегация/сортировка на клиенте
+// ---------------------------------------------------------------------------
+
+/// Пересчитать «Итого» по (уже отфильтрованному) набору строк.
+fn compute_totals(rows: &[WbSalesFunnelRow]) -> WbSalesFunnelMetrics {
+    let mut t = WbSalesFunnelMetrics::default();
+    for r in rows {
+        let m = &r.metrics;
+        t.show_free_count += m.show_free_count;
+        t.show_paid_count += m.show_paid_count;
+        t.show_total_count += m.show_total_count;
+        t.show_free_available |= m.show_free_available;
+        t.show_paid_available |= m.show_paid_available;
+        t.show_total_available |= m.show_total_available;
+        t.advert_available |= m.advert_available;
+        t.open_count += m.open_count;
+        t.cart_count += m.cart_count;
+        t.paid_open_count += m.paid_open_count;
+        t.paid_cart_count += m.paid_cart_count;
+        t.wishlist_count += m.wishlist_count;
+        t.funnel_order_count += m.funnel_order_count;
+        t.funnel_order_sum += m.funnel_order_sum;
+        t.order_count += m.order_count;
+        t.order_sum += m.order_sum;
+        t.paid_order_count += m.paid_order_count;
+        t.paid_order_sum += m.paid_order_sum;
+        t.cancel_count += m.cancel_count;
+        t.cancel_sum += m.cancel_sum;
+        t.paid_cancel_count += m.paid_cancel_count;
+        t.paid_cancel_sum += m.paid_cancel_sum;
+        t.buyout_count += m.buyout_count;
+        t.buyout_sum += m.buyout_sum;
+        t.paid_buyout_count += m.paid_buyout_count;
+        t.paid_buyout_sum += m.paid_buyout_sum;
+        t.return_count += m.return_count;
+        t.return_sum += m.return_sum;
+        t.paid_return_count += m.paid_return_count;
+        t.paid_return_sum += m.paid_return_sum;
+    }
+    t
+}
+
+fn cmp_opt_f64(a: Option<f64>, b: Option<f64>) -> Ordering {
+    match (a, b) {
+        (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
+        (Some(_), None) => Ordering::Greater,
+        (None, Some(_)) => Ordering::Less,
+        (None, None) => Ordering::Equal,
     }
 }
+
+/// Сортировка строк по коду поля (см. заголовки таблицы).
+fn sort_rows(rows: &mut [WbSalesFunnelRow], field: &str, ascending: bool) {
+    rows.sort_by(|a, b| {
+        let ord = match field {
+            "date" => a.date.cmp(&b.date),
+            "marketplace" => a
+                .marketplace
+                .as_deref()
+                .unwrap_or("")
+                .cmp(b.marketplace.as_deref().unwrap_or("")),
+            "article" => article_label(a).cmp(&article_label(b)),
+            "show_total" => a.metrics.show_total_count.cmp(&b.metrics.show_total_count),
+            "show_paid" => a.metrics.show_paid_count.cmp(&b.metrics.show_paid_count),
+            "show_free" => a.metrics.show_free_count.cmp(&b.metrics.show_free_count),
+            "open" => a.metrics.open_count.cmp(&b.metrics.open_count),
+            "cart" => a.metrics.cart_count.cmp(&b.metrics.cart_count),
+            "order" => a.metrics.order_count.cmp(&b.metrics.order_count),
+            "buyout" => a.metrics.buyout_count.cmp(&b.metrics.buyout_count),
+            "cancel" => a.metrics.cancel_count.cmp(&b.metrics.cancel_count),
+            "return" => a.metrics.return_count.cmp(&b.metrics.return_count),
+            "order_sum" => a
+                .metrics
+                .order_sum
+                .partial_cmp(&b.metrics.order_sum)
+                .unwrap_or(Ordering::Equal),
+            "conv_open_cart" => cmp_opt_f64(a.conversions.open_to_cart, b.conversions.open_to_cart),
+            "conv_cart_order" => {
+                cmp_opt_f64(a.conversions.cart_to_order, b.conversions.cart_to_order)
+            }
+            "conv_order_buyout" => {
+                cmp_opt_f64(a.conversions.order_to_buyout, b.conversions.order_to_buyout)
+            }
+            "conv_cancel" => cmp_opt_f64(a.conversions.cancel_rate, b.conversions.cancel_rate),
+            _ => Ordering::Equal,
+        };
+        if ascending {
+            ord
+        } else {
+            ord.reverse()
+        }
+    });
+}
+
+/// Отфильтровать (по маркетплейсу) и отсортировать строки ответа.
+fn view_rows(
+    response: &WbSalesFunnelResponse,
+    marketplace: &str,
+    sort_field: &str,
+    ascending: bool,
+) -> Vec<WbSalesFunnelRow> {
+    let mut rows: Vec<WbSalesFunnelRow> = response
+        .rows
+        .iter()
+        .filter(|r| marketplace.is_empty() || r.marketplace.as_deref() == Some(marketplace))
+        .cloned()
+        .collect();
+    sort_rows(&mut rows, sort_field, ascending);
+    rows
+}
+
+// ---------------------------------------------------------------------------
+// CSV-экспорт
+// ---------------------------------------------------------------------------
+
+struct FunnelExportRow {
+    date: String,
+    marketplace: String,
+    article: String,
+    name: String,
+    /// Метрики уже спроецированы на выбранный канал (см. export_rows).
+    metrics: WbSalesFunnelMetrics,
+    conversions: WbSalesFunnelConversions,
+    /// Доступность рекламо-зависимых стадий в выбранном канале (иначе N/A).
+    stages_available: bool,
+}
+
+impl ExcelExportable for FunnelExportRow {
+    fn headers() -> Vec<&'static str> {
+        vec![
+            "Дата",
+            "Маркетплейс",
+            "Артикул",
+            "Наименование",
+            "Показы",
+            "Переходы",
+            "Корзина",
+            "Заказы",
+            "Выкупы",
+            "Отмены",
+            "Возвраты",
+            "Сумма заказов",
+            "Переход→корзина, %",
+            "Корзина→заказ, %",
+            "Заказ→выкуп, %",
+            "Доля отмен, %",
+        ]
+    }
+
+    fn to_csv_row(&self) -> Vec<String> {
+        let m = &self.metrics;
+        let c = &self.conversions;
+        let a = self.stages_available;
+        let pct = |v: Option<f64>| v.map(|x| format!("{x:.1}")).unwrap_or_default();
+        let cnt = |v: i64| if a { v.to_string() } else { "N/A".to_string() };
+        vec![
+            self.date.clone(),
+            self.marketplace.clone(),
+            self.article.clone(),
+            self.name.clone(),
+            fmt_avail(m.show_total_count, m.show_total_available),
+            cnt(m.open_count),
+            cnt(m.cart_count),
+            cnt(m.order_count),
+            cnt(m.buyout_count),
+            cnt(m.cancel_count),
+            cnt(m.return_count),
+            if a { format!("{:.0}", m.order_sum) } else { "N/A".to_string() },
+            pct(c.open_to_cart),
+            pct(c.cart_to_order),
+            pct(c.order_to_buyout),
+            pct(c.cancel_rate),
+        ]
+    }
+}
+
+fn export_rows(
+    rows: &[WbSalesFunnelRow],
+    totals: &WbSalesFunnelMetrics,
+    channel: FunnelChannel,
+) -> Vec<FunnelExportRow> {
+    // Конверсии/значения экспортируем по выбранному каналу.
+    let conv_of = |m: &WbSalesFunnelMetrics| {
+        WbSalesFunnelConversions::from_metrics(
+            m.open_count,
+            m.cart_count,
+            m.order_count,
+            m.buyout_count,
+            m.cancel_count,
+        )
+    };
+    let mut out: Vec<FunnelExportRow> = Vec::with_capacity(rows.len() + 1);
+    // Первая строка — «Итого за период».
+    let (dt, ta) = channel_metrics(totals, channel);
+    let dtc = conv_of(&dt);
+    out.push(FunnelExportRow {
+        date: "Итого за период".to_string(),
+        marketplace: String::new(),
+        article: String::new(),
+        name: String::new(),
+        metrics: dt,
+        conversions: dtc,
+        stages_available: ta,
+    });
+    for r in rows {
+        let (dm, avail) = channel_metrics(&r.metrics, channel);
+        let dc = conv_of(&dm);
+        out.push(FunnelExportRow {
+            date: r.date.clone(),
+            marketplace: r.marketplace.clone().unwrap_or_default(),
+            article: article_label(r),
+            name: r.product_name.clone().unwrap_or_default(),
+            metrics: dm,
+            conversions: dc,
+            stages_available: avail,
+        });
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Ячейки таблицы
+// ---------------------------------------------------------------------------
+
+/// Контекст ячейки для drilldown списка заказов (`nm_id × дата` одного кабинета).
+#[derive(Clone, Debug)]
+struct DrillCtx {
+    connection_mp_ref: String,
+    nm_id: i64,
+    date: String,
+    article: String,
+}
+
+/// Числовые `<td>` строки (метрики канала + конверсии) — общий фрагмент для строк и «Итого».
+/// `m` уже спроецированы на выбранный канал (`channel_metrics`); `stages_available` = доступны ли
+/// рекламо-зависимые стадии (переходы…возвраты) в этом канале (иначе `N/A`). `drill` (только у
+/// строк данных) делает ячейку «Заказы» кликабельной — открывает список заказов с меткой канала.
+fn metric_cells(
+    m: &WbSalesFunnelMetrics,
+    c: &WbSalesFunnelConversions,
+    stages_available: bool,
+    drill: Option<(RwSignal<Option<DrillCtx>>, DrillCtx)>,
+) -> impl IntoView {
+    let order_str = fmt_avail(m.order_count, stages_available);
+    let order_cell: AnyView = match drill {
+        Some((sig, ctx)) => view! {
+            <td
+                class="d406-n d406-drill"
+                title="Клик — список заказов с меткой канала (платн./беспл.)"
+                on:click=move |_| sig.set(Some(ctx.clone()))
+            >{order_str}</td>
+        }
+        .into_any(),
+        None => view! { <td class="d406-n">{order_str}</td> }.into_any(),
+    };
+    view! {
+        <td class="d406-n">{fmt_avail(m.show_total_count, m.show_total_available)}</td>
+        <td class="d406-n">{fmt_avail(m.open_count, stages_available)}</td>
+        <td class="d406-n">{fmt_avail(m.cart_count, stages_available)}</td>
+        {order_cell}
+        <td class="d406-n">{fmt_avail(m.buyout_count, stages_available)}</td>
+        <td class="d406-n">{fmt_avail(m.cancel_count, stages_available)}</td>
+        <td class="d406-n">{fmt_avail(m.return_count, stages_available)}</td>
+        <td class="d406-money">{fmt_money_avail(m.order_sum, stages_available)}</td>
+        <td class="d406-c">{fmt_pct(c.open_to_cart)}</td>
+        <td class="d406-c">{fmt_pct(c.cart_to_order)}</td>
+        <td class="d406-c">{fmt_pct(c.order_to_buyout)}</td>
+        <td class="d406-c">{fmt_pct(c.cancel_rate)}</td>
+    }
+}
+
+/// Бейдж маркетплейса.
+fn marketplace_badge(row: &WbSalesFunnelRow) -> impl IntoView {
+    match row.marketplace.as_ref() {
+        Some(name) => {
+            let code = row.marketplace_code.clone().unwrap_or_default();
+            let cls = format!("d406-badge d406-badge--{}", if code.is_empty() { "muted".to_string() } else { code });
+            view! { <span class=cls>{name.clone()}</span> }.into_any()
+        }
+        None => view! { <span class="d406-badge d406-badge--muted">"—"</span> }.into_any(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Заголовок с сортировкой
+// ---------------------------------------------------------------------------
+
+fn sort_th(
+    label: &'static str,
+    field: &'static str,
+    left: bool,
+    title: &'static str,
+    sort_field: RwSignal<String>,
+    sort_asc: RwSignal<bool>,
+) -> impl IntoView {
+    let class = if left { "d406-th--left" } else { "" };
+    let indicator = move || {
+        if sort_field.get() == field {
+            if sort_asc.get() {
+                "▲"
+            } else {
+                "▼"
+            }
+        } else {
+            "↕"
+        }
+    };
+    let ind_class = move || {
+        if sort_field.get() == field {
+            "d406-sort d406-sort--active"
+        } else {
+            "d406-sort"
+        }
+    };
+    view! {
+        <th
+            class=class
+            title=title
+            on:click=move |_| {
+                if sort_field.get() == field {
+                    sort_asc.update(|v| *v = !*v);
+                } else {
+                    sort_field.set(field.to_string());
+                    sort_asc.set(false); // по числовым — сначала по убыванию (интереснее)
+                }
+            }
+        >
+            {label}
+            <span class=ind_class>{indicator}</span>
+        </th>
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Диаграмма-воронка (инлайн SVG)
+// ---------------------------------------------------------------------------
+
+/// Ступени воронки из «Итого». Показы включаются только если источник доступен.
+fn funnel_stages(m: &WbSalesFunnelMetrics) -> Vec<(&'static str, i64)> {
+    let mut stages: Vec<(&'static str, i64)> = Vec::new();
+    if m.show_total_available {
+        stages.push(("Показы", m.show_total_count));
+    }
+    stages.push(("Переходы", m.open_count));
+    stages.push(("Корзина", m.cart_count));
+    stages.push(("Заказы", m.order_count));
+    stages.push(("Выкупы", m.buyout_count));
+    stages
+}
+
+fn render_funnel(m: &WbSalesFunnelMetrics) -> impl IntoView {
+    let stages = funnel_stages(m);
+    let n = stages.len();
+
+    // Геометрия viewBox.
+    let vb_w = 1000.0_f64;
+    let gutter_x = 196.0_f64; // правый край левой колонки с названиями
+    let x0 = 214.0_f64; // левый край области воронки
+    let region_w = 984.0_f64 - x0; // ширина области воронки
+    let stage_h = 46.0_f64;
+    let gap_v = 38.0_f64;
+    let pad_top = 22.0_f64;
+    let pad_bottom = 14.0_f64;
+    let vb_h = pad_top + (n as f64) * stage_h + (n.saturating_sub(1) as f64) * gap_v + pad_bottom;
+
+    let max_val = stages.iter().map(|(_, v)| *v).max().unwrap_or(0).max(1) as f64;
+    let cx = x0 + region_w / 2.0;
+
+    let mut bars: Vec<AnyView> = Vec::new();
+    let mut labels: Vec<AnyView> = Vec::new();
+
+    for (i, (name, value)) in stages.iter().enumerate() {
+        let y = pad_top + (i as f64) * (stage_h + gap_v);
+        let frac = (*value as f64) / max_val;
+        let bw = (region_w * frac).max(3.0);
+        let bx = x0 + (region_w - bw) / 2.0;
+        let mid_y = y + stage_h / 2.0;
+
+        // Полоса.
+        bars.push(
+            view! {
+                <rect
+                    x=bx
+                    y=y
+                    width=bw
+                    height=stage_h
+                    rx="6"
+                    fill="#2563eb"
+                />
+            }
+            .into_any(),
+        );
+
+        // Название ступени (левая колонка, выравнивание вправо).
+        labels.push(
+            view! {
+                <text
+                    x=gutter_x
+                    y=mid_y
+                    text-anchor="end"
+                    dominant-baseline="central"
+                    class="d406-funnel-stage-label"
+                >
+                    {name.to_string()}
+                </text>
+            }
+            .into_any(),
+        );
+
+        // Значение: белым по центру полосы, если она достаточно широкая; иначе — справа.
+        let value_str = format_number_triads(*value as f64, 0);
+        if bw >= 88.0 {
+            labels.push(
+                view! {
+                    <text
+                        x=cx
+                        y=mid_y
+                        text-anchor="middle"
+                        dominant-baseline="central"
+                        class="d406-funnel-value"
+                    >
+                        {value_str}
+                    </text>
+                }
+                .into_any(),
+            );
+        } else {
+            let right_x = bx + bw + 8.0;
+            labels.push(
+                view! {
+                    <text
+                        x=right_x
+                        y=mid_y
+                        text-anchor="start"
+                        dominant-baseline="central"
+                        class="d406-funnel-stage-label"
+                    >
+                        {value_str}
+                    </text>
+                }
+                .into_any(),
+            );
+        }
+
+        // Конверсия к следующей ступени — в промежутке.
+        if i + 1 < n {
+            let next_val = stages[i + 1].1;
+            let conv = if *value > 0 {
+                format!("↓ {:.1}%", next_val as f64 / *value as f64 * 100.0)
+            } else {
+                "↓ —".to_string()
+            };
+            let conv_y = y + stage_h + gap_v / 2.0;
+            labels.push(
+                view! {
+                    <text
+                        x=cx
+                        y=conv_y
+                        text-anchor="middle"
+                        dominant-baseline="central"
+                        class="d406-funnel-conv"
+                    >
+                        {conv}
+                    </text>
+                }
+                .into_any(),
+            );
+        }
+    }
+
+    let view_box = format!("0 0 {vb_w} {vb_h}");
+    view! {
+        <svg
+            class="d406-funnel-svg"
+            viewBox=view_box
+            preserveAspectRatio="xMidYMid meet"
+            role="img"
+            aria-label="Диаграмма воронки продаж"
+        >
+            {bars}
+            {labels}
+        </svg>
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Главный компонент
+// ---------------------------------------------------------------------------
 
 #[component]
 pub fn WbSalesFunnelDashboard() -> impl IntoView {
@@ -98,6 +621,46 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
     let data = RwSignal::new(None::<WbSalesFunnelResponse>);
     let loading = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
+    // Список кабинетов (id, подпись) для выпадающего выбора вместо ручного ввода UUID.
+    let cabinets = RwSignal::new(Vec::<(String, String)>::new());
+
+    // Новое состояние.
+    let active_tab = RwSignal::new("table".to_string());
+    let marketplace_filter = RwSignal::new(String::new());
+    let channel = RwSignal::new(FunnelChannel::All);
+    let sort_field = RwSignal::new("date".to_string());
+    let sort_asc = RwSignal::new(true);
+
+    // Drilldown списка заказов ячейки (платн./беспл.).
+    let drilldown = RwSignal::new(None::<DrillCtx>);
+    let drill_data = RwSignal::new(None::<WbSalesFunnelOrdersResponse>);
+    let drill_loading = RwSignal::new(false);
+    let drill_error = RwSignal::new(None::<String>);
+
+    spawn_local(async move {
+        let url = format!("{}/api/connection_mp", api_base());
+        let Ok(resp) = Request::get(&url).send().await else {
+            return;
+        };
+        if !resp.ok() {
+            return;
+        }
+        if let Ok(data) = resp.json::<Vec<ConnectionMP>>().await {
+            let mut opts: Vec<(String, String)> = data
+                .into_iter()
+                .map(|conn| {
+                    let label = if conn.base.description.trim().is_empty() {
+                        conn.base.code.clone()
+                    } else {
+                        conn.base.description.clone()
+                    };
+                    (conn.base.id.as_string(), label)
+                })
+                .collect();
+            opts.sort_by(|a, b| a.1.cmp(&b.1));
+            cabinets.set(opts);
+        }
+    });
 
     let load = move || {
         let df = date_from.get_untracked();
@@ -123,35 +686,56 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
 
     Effect::new(move |_| load());
 
+    // Загрузка drilldown-списка при открытии ячейки.
+    Effect::new(move |_| {
+        let Some(ctx) = drilldown.get() else {
+            return;
+        };
+        drill_data.set(None);
+        drill_error.set(None);
+        drill_loading.set(true);
+        let conn = ctx.connection_mp_ref.clone();
+        let nm = ctx.nm_id;
+        let date = ctx.date.clone();
+        spawn_local(async move {
+            match api::get_wb_sales_funnel_orders(&conn, nm, &date).await {
+                Ok(response) => {
+                    drill_data.set(Some(response));
+                    drill_loading.set(false);
+                }
+                Err(message) => {
+                    drill_error.set(Some(message));
+                    drill_loading.set(false);
+                }
+            }
+        });
+    });
+
+    // Экспорт текущего (отфильтрованного+отсортированного) набора в CSV.
+    let do_export = move |_| {
+        let Some(response) = data.get_untracked() else {
+            return;
+        };
+        let rows = view_rows(
+            &response,
+            &marketplace_filter.get_untracked(),
+            &sort_field.get_untracked(),
+            sort_asc.get_untracked(),
+        );
+        let totals = compute_totals(&rows);
+        let export = export_rows(&rows, &totals, channel.get_untracked());
+        let _ = export_to_excel(&export, "sales_funnel.csv");
+    };
+
     view! {
-        <PageFrame page_id="d406_wb_sales_funnel--dashboard" category="dashboard" class="page--wide">
-            <style>
-                ".d406-shell{display:flex;flex-direction:column;gap:12px;height:100%}
-                .d406-toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:10px 0}
-                .d406-field{display:flex;flex-direction:column;gap:4px;min-width:150px}
-                .d406-field label{font-size:12px;color:var(--color-text-secondary)}
-                .d406-field input,.d406-field select{height:32px;border:1px solid var(--color-border);border-radius:6px;padding:0 8px;background:var(--color-surface);color:var(--color-text-primary)}
-                .d406-btn{height:32px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text-primary);padding:0 12px;cursor:pointer}
-                .d406-note{font-size:12px;color:var(--color-text-tertiary)}
-                .d406-table-wrap{overflow:auto;border:1px solid var(--color-border-light,var(--color-border));border-radius:8px;background:var(--color-surface)}
-                .d406-table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
-                .d406-table th{position:sticky;top:0;background:var(--color-surface);z-index:1;text-align:right;border-bottom:1px solid var(--color-border);padding:8px;color:var(--color-text-secondary);font-weight:600}
-                .d406-table th:nth-child(1),.d406-table th:nth-child(2){text-align:left}
-                .d406-table td{border-bottom:1px solid var(--color-border-light,var(--color-border));padding:7px 8px}
-                .d406-date{white-space:nowrap;color:var(--color-text-secondary)}
-                .d406-name{min-width:200px;overflow:hidden;text-overflow:ellipsis;max-width:320px}
-                .d406-n,.d406-money,.d406-c{text-align:right;font-variant-numeric:tabular-nums}
-                .d406-c{color:var(--color-text-secondary)}
-                .d406-row--total{background:color-mix(in srgb,var(--color-brand,#2563eb) 8%,transparent);font-weight:700}
-                .d406-row--total td{border-bottom:2px solid var(--color-border)}
-                .d406-state{padding:18px;color:var(--color-text-secondary)}
-                .d406-group{border-right:1px solid var(--color-border)}"
-            </style>
+        <PageFrame page_id="d406_wb_sales_funnel--dashboard" category="dashboard" class="page--wide d406-page">
             <div class="d406-shell">
-                <div>
-                    <h1 style="margin:0;font-size:20px;">"Воронка продаж WB"</h1>
+                <div class="d406-head">
+                    <h1 class="d406-title">"Воронка продаж"</h1>
                     <div class="d406-note">
-                        "Показы → переходы → корзина → заказы → выкупы. Показы: платные (реклама a026) + бесплатные (органика a040)."
+                        "Показы → переходы → корзина → заказы → выкупы. Фильтр «Канал» строит воронку "
+                        "всего / платного (реклама a026 + заказы по атрибуции p913) / органического трафика. "
+                        "N/A — рекламных данных за период нет (бесплатные показы органики пока N/A)."
                     </div>
                 </div>
 
@@ -174,11 +758,73 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                     </div>
                     <div class="d406-field">
                         <label>"Кабинет"</label>
-                        <input
-                            placeholder="connection_mp_ref"
+                        <select
                             prop:value=move || connection_mp_ref.get()
-                            on:input=move |ev| connection_mp_ref.set(event_target_value(&ev))
-                        />
+                            on:change=move |ev| {
+                                connection_mp_ref.set(event_target_value(&ev));
+                                load();
+                            }
+                        >
+                            <option value="">"Все кабинеты"</option>
+                            <For
+                                each=move || cabinets.get()
+                                key=|(id, _)| id.clone()
+                                children=move |(id, label)| {
+                                    view! { <option value=id.clone()>{label}</option> }
+                                }
+                            />
+                        </select>
+                    </div>
+                    <div class="d406-field">
+                        <label>"Маркетплейс"</label>
+                        <select
+                            prop:value=move || marketplace_filter.get()
+                            on:change=move |ev| marketplace_filter.set(event_target_value(&ev))
+                        >
+                            <option value="">"Все"</option>
+                            <For
+                                each=move || {
+                                    let mut list: Vec<String> = data
+                                        .get()
+                                        .map(|r| {
+                                            let mut set: Vec<String> = r
+                                                .rows
+                                                .iter()
+                                                .filter_map(|row| row.marketplace.clone())
+                                                .collect();
+                                            set.sort();
+                                            set.dedup();
+                                            set
+                                        })
+                                        .unwrap_or_default();
+                                    list.sort();
+                                    list
+                                }
+                                key=|name| name.clone()
+                                children=move |name| {
+                                    let label = name.clone();
+                                    view! { <option value=name>{label}</option> }
+                                }
+                            />
+                        </select>
+                    </div>
+                    <div class="d406-field">
+                        <label title="Канал трафика: вся воронка, только платный (реклама) или органический">
+                            "Канал"
+                        </label>
+                        <select
+                            on:change=move |ev| {
+                                channel.set(match event_target_value(&ev).as_str() {
+                                    "paid" => FunnelChannel::Paid,
+                                    "free" => FunnelChannel::Free,
+                                    _ => FunnelChannel::All,
+                                });
+                            }
+                        >
+                            <option value="all">"Все"</option>
+                            <option value="paid">"Платные"</option>
+                            <option value="free">"Бесплатные"</option>
+                        </select>
                     </div>
                     <div class="d406-field">
                         <label>"nm_id"</label>
@@ -202,72 +848,191 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                             <option value="event">"Событие (дата транзакции)"</option>
                         </select>
                     </div>
-                    <button class="d406-btn" on:click=move |_| load() disabled=move || loading.get()>
-                        {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
-                    </button>
+                    <div class="d406-actions">
+                        <button class="d406-btn d406-btn--primary" on:click=move |_| load() disabled=move || loading.get()>
+                            {move || if loading.get() { "Загрузка..." } else { "Обновить" }}
+                        </button>
+                        <button class="d406-btn" on:click=do_export title="Выгрузить текущий срез в CSV (Excel)">
+                            "Экспорт CSV"
+                        </button>
+                    </div>
                 </div>
 
-                <div class="d406-note">
-                    "Когортная ось: выкупы/возвраты a012 привязываются к дате заказа (a015 по srid); если заказ не найден — фолбэк на дату продажи. Показы: N/A означает «источник недоступен» (нет «Джем»/рекламы), а не ноль."
+                <div class="d406-tabbar">
+                    <TabList selected_value=active_tab>
+                        <Tab value="table".to_string()>"Таблица"</Tab>
+                        <Tab value="chart".to_string()>"Диаграмма"</Tab>
+                    </TabList>
                 </div>
 
                 {move || error.get().map(|message| view! {
                     <div class="d406-state">{message}</div>
                 })}
 
-                {move || data.get().map(|response| {
-                    let rows = response.rows.clone();
-                    let totals = response.totals.clone();
-                    let totals_conv = response.totals_conversions.clone();
-                    view! {
-                        <div class="d406-table-wrap">
-                            <table class="d406-table">
-                                <thead>
-                                    <tr>
-                                        <th>"Дата"</th>
-                                        <th>"Товар"</th>
-                                        <th title="Всего показов = платные + бесплатные">"Показы"</th>
-                                        <th title="Рекламные показы (a026)">"Платн."</th>
-                                        <th title="Органические показы (a040)">"Беспл."</th>
-                                        <th>"Переходы"</th>
-                                        <th>"Корзина"</th>
-                                        <th title="Фактические заказы (a015)">"Заказы"</th>
-                                        <th>"Выкупы"</th>
-                                        <th>"Отмены"</th>
-                                        <th>"Возвраты"</th>
-                                        <th>"Сумма заказов"</th>
-                                        <th title="Корзина / переходы">"→корзина"</th>
-                                        <th title="Заказы / корзина">"→заказ"</th>
-                                        <th title="Выкупы / заказы">"→выкуп"</th>
-                                        <th title="Отмены / заказы">"отмены"</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <MetricRow
-                                        label="Итого за период".to_string()
-                                        metrics=totals
-                                        conversions=totals_conv
-                                        is_total=true
-                                    />
-                                    {if rows.is_empty() {
-                                        view! {
-                                            <tr><td class="d406-state" colspan="16">"Нет данных за выбранный период."</td></tr>
-                                        }.into_any()
-                                    } else {
-                                        rows.into_iter().map(|row| {
-                                            let label = product_label(&row);
+                {move || {
+                    let Some(response) = data.get() else {
+                        return view! { <div class="d406-state">"Загрузка данных..."</div> }.into_any();
+                    };
+                    let mp = marketplace_filter.get();
+                    let sf = sort_field.get();
+                    let asc = sort_asc.get();
+                    let rows = view_rows(&response, &mp, &sf, asc);
+                    let ch = channel.get();
+                    let totals_raw = compute_totals(&rows);
+                    // Проекция итогов на выбранный канал (Все/Платные/Бесплатные).
+                    let (totals, totals_avail) = channel_metrics(&totals_raw, ch);
+                    let totals_conv = WbSalesFunnelConversions::from_metrics(
+                        totals.open_count, totals.cart_count, totals.order_count,
+                        totals.buyout_count, totals.cancel_count,
+                    );
+
+                    if active_tab.get().as_str() == "chart" {
+                        let period = format!("{} — {}", date_from.get_untracked(), date_to.get_untracked());
+                        let mp_label = if mp.is_empty() { "все маркетплейсы".to_string() } else { mp.clone() };
+                        let ch_label = match ch {
+                            FunnelChannel::All => "весь трафик",
+                            FunnelChannel::Paid => "платный трафик",
+                            FunnelChannel::Free => "органический трафик",
+                        };
+                        view! {
+                            <div class="d406-chart-wrap">
+                                <div class="d406-chart-head">
+                                    <h2 class="d406-chart-title">"Воронка за период"</h2>
+                                    <span class="d406-chart-sub">{format!("{period} · {mp_label} · {ch_label}")}</span>
+                                </div>
+                                {render_funnel(&totals)}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="d406-table-wrap">
+                                <table class="d406-table">
+                                    <thead>
+                                        <tr>
+                                            {sort_th("Дата", "date", true, "Дата выбранной оси", sort_field, sort_asc)}
+                                            {sort_th("Маркетплейс", "marketplace", true, "Маркетплейс кабинета", sort_field, sort_asc)}
+                                            {sort_th("Артикул", "article", true, "Артикул товара (наименование — в подсказке)", sort_field, sort_asc)}
+                                            {sort_th("Показы", "show_total", false, "Показы выбранного канала: Все — всего; Платные — реклама (a026); Бесплатные — органика (a040, N/A)", sort_field, sort_asc)}
+                                            {sort_th("Переходы", "open", false, "Переходы в карточку (канал: платные — a026 clicks; бесплатные — всего − платные)", sort_field, sort_asc)}
+                                            {sort_th("Корзина", "cart", false, "Добавления в корзину (канал: платные — a026 atbs; бесплатные — всего − платные)", sort_field, sort_asc)}
+                                            {sort_th("Заказы", "order", false, "Заказы канала (платные — srid ∈ рекламы p913). Клик — список заказов.", sort_field, sort_asc)}
+                                            {sort_th("Выкупы", "buyout", false, "Выкупы товара (a012), канал — по заказу", sort_field, sort_asc)}
+                                            {sort_th("Отмены", "cancel", false, "Отмены заказов (a015), шт.", sort_field, sort_asc)}
+                                            {sort_th("Возвраты", "return", false, "Возвраты покупателя (a012), шт.", sort_field, sort_asc)}
+                                            {sort_th("Сумма заказов", "order_sum", false, "Сумма заказов, ₽", sort_field, sort_asc)}
+                                            {sort_th("Переход→корзина", "conv_open_cart", false, "Корзина / переходы", sort_field, sort_asc)}
+                                            {sort_th("Корзина→заказ", "conv_cart_order", false, "Заказы / корзина", sort_field, sort_asc)}
+                                            {sort_th("Заказ→выкуп", "conv_order_buyout", false, "Выкупы / заказы", sort_field, sort_asc)}
+                                            {sort_th("Доля отмен", "conv_cancel", false, "Отмены / заказы", sort_field, sort_asc)}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="d406-row d406-row--total">
+                                            <td class="d406-date">"Итого за период"</td>
+                                            <td></td>
+                                            <td></td>
+                                            {metric_cells(&totals, &totals_conv, totals_avail, None)}
+                                        </tr>
+                                        {if rows.is_empty() {
                                             view! {
-                                                <MetricRow
-                                                    label=label
-                                                    metrics=row.metrics
-                                                    conversions=row.conversions
-                                                    date=row.date
-                                                />
-                                            }
-                                        }).collect_view().into_any()
+                                                <tr><td class="d406-state" colspan="15">"Нет данных за выбранный период."</td></tr>
+                                            }.into_any()
+                                        } else {
+                                            rows.into_iter().map(|row| {
+                                                let article = article_label(&row);
+                                                let name = row.product_name.clone().unwrap_or_default();
+                                                // Проекция строки на выбранный канал.
+                                                let (dm, avail) = channel_metrics(&row.metrics, ch);
+                                                let dc = WbSalesFunnelConversions::from_metrics(
+                                                    dm.open_count, dm.cart_count, dm.order_count,
+                                                    dm.buyout_count, dm.cancel_count,
+                                                );
+                                                // Drilldown доступен только при известном nm_id.
+                                                let drill = row.nm_id.map(|nm| {
+                                                    (drilldown, DrillCtx {
+                                                        connection_mp_ref: row.connection_mp_ref.clone(),
+                                                        nm_id: nm,
+                                                        date: row.date.clone(),
+                                                        article: article.clone(),
+                                                    })
+                                                });
+                                                view! {
+                                                    <tr class="d406-row">
+                                                        <td class="d406-date">{row.date.clone()}</td>
+                                                        <td>{marketplace_badge(&row)}</td>
+                                                        <td class="d406-name" title=name>{article}</td>
+                                                        {metric_cells(&dm, &dc, avail, drill)}
+                                                    </tr>
+                                                }
+                                            }).collect_view().into_any()
+                                        }}
+                                    </tbody>
+                                </table>
+                            </div>
+                        }.into_any()
+                    }
+                }}
+
+                {move || drilldown.get().map(|ctx| {
+                    let head = format!("Заказы · {} · {}", ctx.article, ctx.date);
+                    view! {
+                        <div class="d406-modal-overlay" on:click=move |_| drilldown.set(None)>
+                            <div class="d406-modal" on:click=move |ev| ev.stop_propagation()>
+                                <div class="d406-modal-head">
+                                    <h3 class="d406-modal-title">{head}</h3>
+                                    <button class="d406-btn" on:click=move |_| drilldown.set(None)>"✕"</button>
+                                </div>
+                                <div class="d406-modal-body">
+                                    {move || {
+                                        if drill_loading.get() {
+                                            return view! { <div class="d406-state">"Загрузка..."</div> }.into_any();
+                                        }
+                                        if let Some(message) = drill_error.get() {
+                                            return view! { <div class="d406-state">{message}</div> }.into_any();
+                                        }
+                                        let Some(resp) = drill_data.get() else {
+                                            return view! { <div class="d406-state">"—"</div> }.into_any();
+                                        };
+                                        let summary = format!(
+                                            "Платные: {} · Бесплатные: {} · Всего: {}",
+                                            resp.paid_count, resp.free_count, resp.paid_count + resp.free_count,
+                                        );
+                                        view! {
+                                            <div class="d406-drill-summary">{summary}</div>
+                                            <table class="d406-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th class="d406-th--left">"srid"</th>
+                                                        <th class="d406-th--left">"Дата"</th>
+                                                        <th>"Сумма"</th>
+                                                        <th class="d406-th--left">"Канал"</th>
+                                                        <th class="d406-th--left">"Кампания"</th>
+                                                        <th>"Отмена"</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {resp.items.into_iter().map(|it| {
+                                                        let channel = if it.is_paid { "Платный" } else { "Бесплатный" };
+                                                        let ch_cls = if it.is_paid { "d406-badge d406-badge--mp-wb" } else { "d406-badge d406-badge--muted" };
+                                                        let campaign = it.advert_campaign.clone().unwrap_or_default();
+                                                        let cancel = if it.is_cancel { "да" } else { "" };
+                                                        view! {
+                                                            <tr class="d406-row">
+                                                                <td class="d406-name">{it.srid}</td>
+                                                                <td class="d406-date">{it.order_date}</td>
+                                                                <td class="d406-money">{fmt_money(it.amount)}</td>
+                                                                <td><span class=ch_cls>{channel}</span></td>
+                                                                <td class="d406-name">{campaign}</td>
+                                                                <td class="d406-n">{cancel}</td>
+                                                            </tr>
+                                                        }
+                                                    }).collect_view()}
+                                                </tbody>
+                                            </table>
+                                        }.into_any()
                                     }}
-                                </tbody>
-                            </table>
+                                </div>
+                            </div>
                         </div>
                     }
                 })}

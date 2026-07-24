@@ -637,6 +637,56 @@ pub async fn list_ids_by_date_range(
     Ok(models.into_iter().map(|m| m.id).collect())
 }
 
+/// srid'ы (`document_no`) не удалённых заказов за период `document_date` в
+/// `[date_from, date_to + 'T23:59:59.999']`, с опциональным фильтром по кабинету
+/// (`header_json.$.connection_id`). Используется в пересборе воронки p916, чтобы отобрать
+/// продажи a012 «по периоду заказов». Возвращает distinct-список.
+pub async fn list_order_srids_by_date_range(
+    date_from: &str,
+    date_to: &str,
+    connection_mp_refs: &[String],
+) -> Result<Vec<String>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let to_str = format!("{}T23:59:59.999", date_to);
+
+    let mut sql = String::from(
+        "SELECT DISTINCT document_no FROM a015_wb_orders \
+         WHERE is_deleted = 0 \
+           AND document_no IS NOT NULL \
+           AND document_no <> '' \
+           AND document_date >= ? \
+           AND document_date <= ?",
+    );
+    let mut params: Vec<sea_orm::Value> = vec![date_from.into(), to_str.into()];
+
+    let filtered_refs: Vec<&str> = connection_mp_refs
+        .iter()
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .collect();
+    if !filtered_refs.is_empty() {
+        let placeholders = std::iter::repeat("?")
+            .take(filtered_refs.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        sql.push_str(&format!(
+            " AND json_extract(header_json, '$.connection_id') IN ({placeholders})"
+        ));
+        for connection_mp_ref in filtered_refs {
+            params.push(connection_mp_ref.into());
+        }
+    }
+
+    let stmt = Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
+    let rows = db.query_all(stmt).await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| row.try_get::<String>("", "document_no").ok())
+        .collect())
+}
+
 #[derive(sea_orm::FromQueryResult)]
 struct IdOnly {
     id: String,

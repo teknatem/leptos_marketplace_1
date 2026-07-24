@@ -134,4 +134,20 @@ mod tests {
             assert_eq!(manager.metadata().task_type, task_type);
         }
     }
+
+    #[tokio::test]
+    async fn every_registered_task_declares_write_tables() {
+        initialize_scheduled_tasks()
+            .await
+            .expect("registry init failed");
+        let registry = super::super::registry::get_global_registry().expect("no global registry");
+
+        for metadata in registry.list_metadata() {
+            assert!(
+                !metadata.write_tables.is_empty(),
+                "task type '{}' must declare its business write tables",
+                metadata.task_type
+            );
+        }
+    }
 }

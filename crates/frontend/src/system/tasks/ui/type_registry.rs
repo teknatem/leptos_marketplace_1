@@ -55,10 +55,12 @@ fn TaskTypeCard(meta: TaskMetadataDto) -> impl IntoView {
     let description = meta.description.clone();
     let apis = meta.external_apis.clone();
     let constraints = meta.constraints.clone();
+    let write_tables = meta.write_tables.clone();
     let fields = meta.config_fields.clone();
 
     let has_apis = !apis.is_empty();
     let has_constraints = !constraints.is_empty();
+    let has_write_tables = !write_tables.is_empty();
     let has_fields = !fields.is_empty();
 
     view! {
@@ -127,9 +129,11 @@ fn TaskTypeCard(meta: TaskMetadataDto) -> impl IntoView {
                 let description2   = description.clone();
                 let apis2          = apis.clone();
                 let constraints2   = constraints.clone();
+                let write_tables2  = write_tables.clone();
                 let fields2        = fields.clone();
                 let has_apis2      = has_apis;
                 let has_constraints2 = has_constraints;
+                let has_write_tables2 = has_write_tables;
                 let has_fields2    = has_fields;
 
                 view! {
@@ -147,6 +151,27 @@ fn TaskTypeCard(meta: TaskMetadataDto) -> impl IntoView {
                                 {description2}
                             </div>
                         </div>
+
+                        // write tables
+                        {if has_write_tables2 {
+                            let tables = write_tables2.clone();
+                            view! {
+                                <div>
+                                    <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">
+                                        "Таблицы записи"
+                                    </div>
+                                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                        {tables.into_iter().map(|table| view! {
+                                            <code style="font-size:12px;padding:3px 8px;border-radius:6px;background:var(--colorNeutralBackground3);color:var(--color-text);">
+                                                {table}
+                                            </code>
+                                        }).collect_view()}
+                                    </div>
+                                </div>
+                            }.into_any()
+                        } else {
+                            view! { <></> }.into_any()
+                        }}
 
                         // constraints
                         {if has_constraints2 {

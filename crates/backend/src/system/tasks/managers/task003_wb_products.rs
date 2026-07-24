@@ -29,6 +29,7 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task003_wb_products",
+    write_tables: &["a007_marketplace_product"],
     display_name: "WB Товары (каталог)",
     description: "Синхронизирует полный каталог товаров из кабинета Wildberries через \
         Content API. Загружает все карточки с пагинацией по cursor, обновляет агрегат \

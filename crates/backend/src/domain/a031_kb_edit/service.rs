@@ -80,14 +80,17 @@ pub async fn create_with_chat(
         .await?
         .ok_or_else(|| anyhow::anyhow!("KbAdmin agent not found: {}", agent_id.as_string()))?;
 
-    let chat_uuid = a018_llm_chat::service::create(a018_llm_chat::service::LlmChatDto {
-        id: None,
-        code: None,
-        description: format!("KB: {}", title),
-        comment: Some("Диалог по редактированию базы знаний".to_string()),
-        agent_id: agent_id.as_string(),
-        model_name: Some(agent.model_name.clone()),
-    }, None)
+    let chat_uuid = a018_llm_chat::service::create(
+        a018_llm_chat::service::LlmChatDto {
+            id: None,
+            code: None,
+            description: format!("KB: {}", title),
+            comment: Some("Диалог по редактированию базы знаний".to_string()),
+            agent_id: agent_id.as_string(),
+            model_name: Some(agent.model_name.clone()),
+        },
+        None,
+    )
     .await?;
     let chat_id = LlmChatId::new(chat_uuid);
 

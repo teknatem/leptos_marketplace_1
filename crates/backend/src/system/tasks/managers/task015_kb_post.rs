@@ -12,6 +12,7 @@ use crate::system::tasks::manager::{TaskManager, TaskRunOutcome};
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task015_kb_post",
+    write_tables: &["a031_kb_edit", "a018_llm_chat", "a018_llm_chat_message", "sys_tool_trace"],
     display_name: "KB — публикация правок",
     description: "Администратор базы знаний обрабатывает утверждённые a031_kb_edit: \
         читает целевые бизнес-статьи, готовит финальные редакции и записывает markdown в Obsidian-каталог KB.",
@@ -73,14 +74,17 @@ impl TaskManager for Task015KbPostManager {
             )
             .await?;
 
-            let chat_id = a018_llm_chat::service::create(a018_llm_chat::service::LlmChatDto {
-                id: None,
-                code: Some(format!("KB-POST-{}-{}", session_id, &edit_id[..8])),
-                description: format!("KB публикация: {}", edit.title),
-                comment: Some(format!("Служебный чат task015_kb_post для {}", edit_id)),
-                agent_id: agent.base.id.as_string(),
-                model_name: Some(agent.model_name.clone()),
-            }, None)
+            let chat_id = a018_llm_chat::service::create(
+                a018_llm_chat::service::LlmChatDto {
+                    id: None,
+                    code: Some(format!("KB-POST-{}-{}", session_id, &edit_id[..8])),
+                    description: format!("KB публикация: {}", edit.title),
+                    comment: Some(format!("Служебный чат task015_kb_post для {}", edit_id)),
+                    agent_id: agent.base.id.as_string(),
+                    model_name: Some(agent.model_name.clone()),
+                },
+                None,
+            )
             .await?;
 
             let trigger = format!(

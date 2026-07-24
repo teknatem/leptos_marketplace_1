@@ -289,14 +289,15 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
             wasm_bindgen_futures::spawn_local(async move {
                 // 1. POST → immediately get job_id (server returns 202)
                 let model_choice = Some(selected_model.get_untracked());
-                let job_id = match send_message(&chat_id, &content, attachment_ids, model_choice).await {
-                    Ok(id) => id,
-                    Err(e) => {
-                        vm.error.set(Some(format!("Ошибка отправки: {}", e)));
-                        vm.is_sending.set(false);
-                        return;
-                    }
-                };
+                let job_id =
+                    match send_message(&chat_id, &content, attachment_ids, model_choice).await {
+                        Ok(id) => id,
+                        Err(e) => {
+                            vm.error.set(Some(format!("Ошибка отправки: {}", e)));
+                            vm.is_sending.set(false);
+                            return;
+                        }
+                    };
                 current_job_id.set(Some(job_id.clone()));
 
                 // 2. Опрос статуса каждые 500мс: progress.partial_text несёт частичный

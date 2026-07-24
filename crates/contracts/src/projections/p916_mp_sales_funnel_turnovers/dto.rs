@@ -60,7 +60,8 @@ pub struct MpFunnelTurnoverDto {
     pub registrator_ref: String,
 
     // стадия 1 (маркетинговая воронка):
-    /// Бесплатные/органические показы (поисковая аналитика a040), nullable.
+    /// Бесплатные/органические показы, nullable. Источник пока не подключён (a040 отдаёт
+    /// только visibility %, а не счётчик), поэтому фактически всегда NULL/N/A.
     pub show_free_count: Option<i64>,
     /// Платные показы (реклама a026, views), nullable.
     pub show_paid_count: Option<i64>,
@@ -94,17 +95,27 @@ pub struct MpFunnelAggRow {
     pub nomenclature_ref: Option<String>,
     pub nm_id: Option<i64>,
 
-    /// Бесплатные/органические показы (a040).
+    /// Бесплатные/органические показы (источник пока не подключён → обычно 0/N/A).
     pub show_free_count: i64,
     /// Платные показы (реклама a026).
     pub show_paid_count: i64,
-    /// Есть ли данные органических показов (a040/«Джем») в срезе. `false` → показывать `N/A`,
-    /// а не `0` (источник недоступен, напр. нет подписки/403), см. §6/§21 ТЗ воронки.
+    /// Платные переходы (реклама a026, clicks).
+    #[serde(default)]
+    pub paid_open_count: i64,
+    /// Платная корзина (реклама a026, atbs).
+    #[serde(default)]
+    pub paid_cart_count: i64,
+    /// Есть ли данные органических показов в срезе. `false` → показывать `N/A`,
+    /// а не `0` (источник недоступен), см. §6/§21 ТЗ воронки.
     #[serde(default)]
     pub show_free_available: bool,
     /// Есть ли данные платных показов (реклама a026) в срезе. `false` → `N/A`.
     #[serde(default)]
     pub show_paid_available: bool,
+    /// Есть ли рекламные данные (a026/p913) в срезе — для N/A платной/бесплатной стороны
+    /// на стадиях переходы/корзина/заказы/выкупы/отмены/возвраты.
+    #[serde(default)]
+    pub advert_available: bool,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,
@@ -113,12 +124,29 @@ pub struct MpFunnelAggRow {
 
     pub order_count: i64,
     pub order_sum: f64,
+    /// Платные заказы: srid ∈ атрибуции рекламы p913.
+    #[serde(default)]
+    pub paid_order_count: i64,
+    #[serde(default)]
+    pub paid_order_sum: f64,
     pub cancel_count: i64,
     pub cancel_sum: f64,
+    #[serde(default)]
+    pub paid_cancel_count: i64,
+    #[serde(default)]
+    pub paid_cancel_sum: f64,
     pub buyout_count: i64,
     pub buyout_sum: f64,
+    #[serde(default)]
+    pub paid_buyout_count: i64,
+    #[serde(default)]
+    pub paid_buyout_sum: f64,
     pub return_count: i64,
     pub return_sum: f64,
+    #[serde(default)]
+    pub paid_return_count: i64,
+    #[serde(default)]
+    pub paid_return_sum: f64,
 }
 
 impl MpFunnelAggRow {
@@ -185,7 +213,8 @@ pub struct FunnelPeriodSummary {
     // Верх воронки (стадия marketing):
     pub show_free_count: i64,
     pub show_paid_count: i64,
-    /// Доступность органических показов (a040) в периоде: `false` → `N/A`, а не `0`.
+    /// Доступность органических показов в периоде: `false` → `N/A`, а не `0`
+    /// (источник не подключён).
     #[serde(default)]
     pub show_free_available: bool,
     /// Доступность платных показов (a026) в периоде: `false` → `N/A`, а не `0`.

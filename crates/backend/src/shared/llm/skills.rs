@@ -29,8 +29,7 @@ const PROMPT_TABLE: &str =
 const PROMPT_SYS_ADMIN: &str =
     include_str!("../../domain/a018_llm_chat/prompts/system_admin_agent.md");
 const PROMPT_KB: &str = include_str!("../../domain/a018_llm_chat/prompts/kb_admin_analyze.md");
-const PROMPT_MAILBOX: &str =
-    include_str!("../../domain/a018_llm_chat/prompts/skill_mailbox.md");
+const PROMPT_MAILBOX: &str = include_str!("../../domain/a018_llm_chat/prompts/skill_mailbox.md");
 
 // ─── Core: всегда активные инструменты ───────────────────────────────────────
 
@@ -445,7 +444,10 @@ pub fn tools_catalog() -> Value {
         ("chart", super::chart_tools::chart_tool_definitions()),
         ("table", super::table_tools::table_tool_definitions()),
         ("mail", super::mail_tools::mail_tool_definitions()),
-        ("schedule", super::schedule_tools::schedule_tool_definitions()),
+        (
+            "schedule",
+            super::schedule_tools::schedule_tool_definitions(),
+        ),
         ("meta", meta_tool_definitions()),
     ];
 

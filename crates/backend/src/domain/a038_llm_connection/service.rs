@@ -150,9 +150,7 @@ pub async fn get_primary() -> anyhow::Result<Option<LlmConnection>> {
 }
 
 /// Первое подключение указанного типа агента.
-pub async fn find_by_agent_type(
-    agent_type: &AgentType,
-) -> anyhow::Result<Option<LlmConnection>> {
+pub async fn find_by_agent_type(agent_type: &AgentType) -> anyhow::Result<Option<LlmConnection>> {
     repository::find_by_agent_type(agent_type.as_str()).await
 }
 

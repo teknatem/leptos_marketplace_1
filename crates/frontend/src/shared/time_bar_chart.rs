@@ -328,7 +328,8 @@ pub fn ScaleSelector(
 #[component]
 pub fn PeriodNav(date_from: RwSignal<String>, scale: RwSignal<ChartScale>) -> impl IntoView {
     let move_period = move |direction: i32| {
-        let next = shift_date_for_scale(&date_from.get_untracked(), scale.get_untracked(), direction);
+        let next =
+            shift_date_for_scale(&date_from.get_untracked(), scale.get_untracked(), direction);
         date_from.set(next);
     };
 

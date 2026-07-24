@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "manifest": {
+    "code": "PLG-YM-CASH-PAYMENTS",
+    "title": "Фактические выплаты Яндекс Маркета",
+    "runtime": "hybrid",
+    "api_version": "2",
+    "description": "Когортный отчёт по заказам выбранного месяца: текущее состояние, реализации, возвраты и накопленные фактические выплаты Яндекс Маркета с распределением общих удержаний.",
+    "capabilities": [
+      "db:read:p907_ym_payment_report",
+      "db:read:a006_connection_mp",
+      "db:read:a013_ym_order",
+      "db:read:p915_mp_order_events",
+      "network:none"
+    ]
+  },
+  "params": [],
+  "data": {},
+  "view_spec": {}
+}

@@ -41,6 +41,9 @@ use contracts::domain::a036_wb_sales_funnel_daily::{
 use contracts::domain::a037_wb_product_snapshot::{
     ENTITY_METADATA as A037_META, FIELDS as A037_FIELDS,
 };
+use contracts::domain::a040_wb_search_analytics_daily::{
+    ENTITY_METADATA as A040_META, FIELDS as A040_FIELDS,
+};
 use contracts::general_ledger::{ENTITY_METADATA as GL_META, FIELDS as GL_FIELDS};
 use contracts::projections::p909_mp_order_line_turnovers::{
     ENTITY_METADATA as P909_META, FIELDS as P909_FIELDS,
@@ -50,6 +53,9 @@ use contracts::projections::p910_mp_unlinked_turnovers::{
 };
 use contracts::projections::p914_mp_finance_turnovers::{
     ENTITY_METADATA as P914_META, FIELDS as P914_FIELDS,
+};
+use contracts::projections::p916_mp_sales_funnel_turnovers::metadata_gen::{
+    ENTITY_METADATA as P916_META, FIELDS as P916_FIELDS,
 };
 
 // ─── Структуры ──────────────────────────────────────────────────────────────
@@ -135,6 +141,11 @@ impl MetadataRegistry {
                     tags: &["wb", "analytics", "stocks"],
                 },
                 RegistryEntry {
+                    meta: &A040_META,
+                    fields: A040_FIELDS,
+                    tags: &["wb", "analytics", "search"],
+                },
+                RegistryEntry {
                     meta: &A027_META,
                     fields: A027_FIELDS,
                     tags: &["wb", "accounting"],
@@ -198,6 +209,11 @@ impl MetadataRegistry {
                     meta: &P914_META,
                     fields: P914_FIELDS,
                     tags: &["wb", "ym", "bi", "projection", "fina"],
+                },
+                RegistryEntry {
+                    meta: &P916_META,
+                    fields: P916_FIELDS,
+                    tags: &["wb", "bi", "projection", "funnel", "воронка"],
                 },
                 RegistryEntry {
                     meta: &GL_META,
@@ -523,8 +539,8 @@ mod tests {
     /// слепой к колонкам таблицы при raw SQL.
     const EXPECTED_INDICES: &[&str] = &[
         "a001", "a002", "a004", "a005", "a006", "a012", "a013", "a015", "a017", "a018", "a019",
-        "a020", "a024", "a025", "a026", "a027", "a032", "a034", "a035", "a036", "a037", "p909",
-        "p910", "p914", "gl",
+        "a020", "a024", "a025", "a026", "a027", "a032", "a034", "a035", "a036", "a037", "a040",
+        "p909", "p910", "p914", "p916", "gl",
     ];
 
     #[test]

@@ -152,7 +152,11 @@ impl WbSalesDetailsVm {
                         .as_array()
                         .map(|a| a.len())
                         .unwrap_or(0);
-                    p900_len + p904_len + p913_len
+                    let p916_len = p["p916_mp_sales_funnel_turnovers"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    p900_len + p904_len + p913_len + p916_len
                 })
                 .unwrap_or(0)
         })

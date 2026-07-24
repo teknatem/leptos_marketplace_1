@@ -47,6 +47,24 @@ pub async fn validate(bundle: &PluginBundle) -> PluginValidateReport {
         }
     }
 
+    // SQL-ресурсы: тот же гард, что и при исполнении (`inspect_read_query`), — ловим
+    // запрещённые конструкции (комментарии `--`/`/* */`, несколько стейтментов, не-SELECT,
+    // `SELECT *` / `alias.*` при обращении к a006) ДО сохранения, а не при первом вызове
+    // метода в рантайме. Гард идентичен исполнению, поэтому не отвергает рабочие запросы.
+    let mut sql_names: Vec<&String> = bundle.sql_resources.keys().collect();
+    sql_names.sort();
+    for name in sql_names {
+        let sql = &bundle.sql_resources[name];
+        if let Err(message) =
+            crate::shared::data_access::sql_guard::inspect_read_query(sql.trim())
+        {
+            report
+                .errors
+                .push(PluginError::new("sql", format!("SQL-ресурс '{name}': {message}")));
+            report.ok = false;
+        }
+    }
+
     report
 }
 

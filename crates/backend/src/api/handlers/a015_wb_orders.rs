@@ -344,3 +344,43 @@ pub async fn unpost_order(
         serde_json::json!({"success": true, "message": "Document unposted"}),
     ))
 }
+
+/// Движения проекций, которые документ a015 порождает при проведении: p909 (обороты
+/// строк заказа) и p916 (воронка: строка «заказ» + при отмене строка «отмена»).
+/// Отдаёт JSON, соответствующий записанным данным (закладка «Проекции»).
+///
+/// Внимание: registrator_ref РАЗНЫЙ у двух проекций — p909 использует префиксный
+/// `a015:{id}`, p916 — «сырой» `{id}` (см. `a015::posting::post_document`).
+pub async fn get_projections(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+    let raw_ref = uuid.to_string();
+    let prefixed_ref = format!("a015:{raw_ref}");
+
+    let p909_items =
+        crate::projections::p909_mp_order_line_turnovers::repository::list_by_registrator_ref(
+            &prefixed_ref,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p909 projections for {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let p916_items =
+        crate::projections::p916_mp_sales_funnel_turnovers::repository::list_by_registrator(
+            "a015_wb_orders",
+            &raw_ref,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get p916 projections for {}: {}", id, e);
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({
+        "p909_mp_order_line_turnovers": p909_items,
+        "p916_mp_sales_funnel_turnovers": p916_items
+    })))
+}

@@ -35,6 +35,15 @@ struct Config {
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "u502_import_ozon",
+    write_tables: &[
+        "a007_marketplace_product",
+        "a008_marketplace_sales",
+        "a009_ozon_returns",
+        "a010_ozon_fbs_posting",
+        "a011_ozon_fbo_posting",
+        "a014_ozon_transactions",
+        "p902_ozon_finance_realization",
+    ],
     display_name: "Импорт из OZON",
     description: "Регулярный импорт всех агрегатов из кабинета OZON через Seller API: \
         товары (a007), продажи (a008), возвраты (a009), FBS-отправления (a010), \

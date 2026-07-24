@@ -255,11 +255,7 @@ async fn ensure_a015_dealer_price_ut_column(pool: &SqlitePool) -> anyhow::Result
 }
 
 /// Проверяет, ссылается ли FK `<table>.agent_id` на указанную родительскую таблицу.
-async fn agent_fk_references(
-    pool: &SqlitePool,
-    table: &str,
-    parent: &str,
-) -> anyhow::Result<bool> {
+async fn agent_fk_references(pool: &SqlitePool, table: &str, parent: &str) -> anyhow::Result<bool> {
     // PRAGMA не принимает bind-параметры — имя таблицы из кода, не из ввода.
     let rows = sqlx::query(&format!("PRAGMA foreign_key_list({table})"))
         .fetch_all(pool)

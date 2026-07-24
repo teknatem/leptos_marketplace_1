@@ -23,6 +23,7 @@ use crate::system::tasks::manager::{TaskManager, TaskRunOutcome};
 
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task022_mail_reply",
+    write_tables: &["a039_mail_message"],
     display_name: "Почта — отправка ответов",
     description: "Проверяет подготовленные ответы и отказы в журнале писем, проверяет сроки и \
         отправляет письма-ответы пользователям (в треде исходного письма).",
@@ -86,7 +87,10 @@ impl TaskManager for Task022MailReplyManager {
         let max_replies = config.max_replies.clamp(1, 50);
 
         if !crate::shared::config::get_mail_config().enabled {
-            logger.write_log(session_id, "Почта отключена ([mail].enabled=false) — пропуск.")?;
+            logger.write_log(
+                session_id,
+                "Почта отключена ([mail].enabled=false) — пропуск.",
+            )?;
             return Ok(TaskRunOutcome::completed());
         }
 
@@ -102,13 +106,19 @@ impl TaskManager for Task022MailReplyManager {
             if is_overdue(&rec) {
                 logger.write_log(
                     session_id,
-                    &format!("Запись {} просрочена (due_at={:?})", rec.base.code, rec.due_at),
+                    &format!(
+                        "Запись {} просрочена (due_at={:?})",
+                        rec.base.code, rec.due_at
+                    ),
                 )?;
             }
 
             // Rate-limit отправки — если исчерпан, оставляем на следующий тик.
             if let Err(e) = mail::check_and_record_send() {
-                logger.write_log(session_id, &format!("Rate-limit отправки: {e} — стоп до след. тика"))?;
+                logger.write_log(
+                    session_id,
+                    &format!("Rate-limit отправки: {e} — стоп до след. тика"),
+                )?;
                 break;
             }
 
@@ -116,12 +126,18 @@ impl TaskManager for Task022MailReplyManager {
                 Ok(true) => sent += 1,
                 Ok(false) => {}
                 Err(e) => {
-                    logger.write_log(session_id, &format!("{}: ошибка отправки: {e}", rec.base.code))?;
+                    logger.write_log(
+                        session_id,
+                        &format!("{}: ошибка отправки: {e}", rec.base.code),
+                    )?;
                 }
             }
         }
 
-        logger.write_log(session_id, &format!("Mail reply завершён: отправлено {sent}"))?;
+        logger.write_log(
+            session_id,
+            &format!("Mail reply завершён: отправлено {sent}"),
+        )?;
         Ok(TaskRunOutcome::completed())
     }
 
@@ -141,7 +157,10 @@ impl Task022MailReplyManager {
         let to = if rec.from_addr.trim().is_empty() {
             // На случай отсутствия from — используем связанный адрес пользователя нельзя,
             // тогда отменяем отправку.
-            logger.write_log(session_id, &format!("{}: нет адреса получателя — пропуск", rec.base.code))?;
+            logger.write_log(
+                session_id,
+                &format!("{}: нет адреса получателя — пропуск", rec.base.code),
+            )?;
             return Ok(false);
         } else {
             mail::extract_addr(&rec.from_addr)
@@ -165,7 +184,10 @@ impl Task022MailReplyManager {
         rec.status = status::REPLIED.to_string();
         a039_mail_message::service::save(rec).await?;
 
-        logger.write_log(session_id, &format!("{}: ответ отправлен на {to}", rec.base.code))?;
+        logger.write_log(
+            session_id,
+            &format!("{}: ответ отправлен на {to}", rec.base.code),
+        )?;
         Ok(true)
     }
 
@@ -194,10 +216,17 @@ impl Task022MailReplyManager {
         let mut body = format!("Здравствуйте!\n\n{answer}");
 
         // Ссылка на чат/артефакт, если задан base_url.
-        let base = crate::shared::config::get_mail_config().base_url.trim().to_string();
+        let base = crate::shared::config::get_mail_config()
+            .base_url
+            .trim()
+            .to_string();
         if !base.is_empty() {
             if let Some(chat) = &rec.chat_ref {
-                let link = format!("{}/#/a018_llm_chat_details/{}", base.trim_end_matches('/'), chat);
+                let link = format!(
+                    "{}/#/a018_llm_chat_details/{}",
+                    base.trim_end_matches('/'),
+                    chat
+                );
                 if rec.artifact_ref.is_some() {
                     body.push_str(&format!("\n\nПолный результат и артефакт: {link}"));
                 } else {
@@ -225,7 +254,12 @@ impl Task022MailReplyManager {
         Ok(messages
             .iter()
             .rev()
-            .find(|m| matches!(m.role, contracts::domain::a018_llm_chat::aggregate::ChatRole::Assistant))
+            .find(|m| {
+                matches!(
+                    m.role,
+                    contracts::domain::a018_llm_chat::aggregate::ChatRole::Assistant
+                )
+            })
             .map(|m| m.content.clone())
             .unwrap_or_default())
     }
