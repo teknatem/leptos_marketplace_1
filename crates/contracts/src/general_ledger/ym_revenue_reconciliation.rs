@@ -34,6 +34,18 @@ pub struct YmRevenueReconRow {
     pub period: String,
     pub connection_mp_ref: Option<String>,
     pub connection_name: Option<String>,
+    /// Модель фасилитации (FBS/FBY/…): fina — из `p907.model` по заказу, ybuh — из
+    /// `placement_type` документа a034. Ключ сопоставления сторон по моделям.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// campaignId кампании YM (со стороны ybuh/a034). Для строк только-fina пусто.
+    #[serde(default)]
+    pub campaign_id: Option<String>,
+    /// id документа a034 (ybuh-сторона) для перехода из строки в карточку
+    /// реализации. В режиме «по дням» строка = один документ a034 (кабинет ×
+    /// кампания × день); в режиме «по месяцам» может агрегировать несколько → пусто.
+    #[serde(default)]
+    pub ybuh_doc_id: Option<String>,
     /// Нетто-выручка слоя fina (p907).
     pub fina_net: f64,
     /// Нетто-выручка слоя ybuh (a034 отчёт о реализации).

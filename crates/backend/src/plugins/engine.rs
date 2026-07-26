@@ -335,6 +335,66 @@ pub async fn invoke_server_method(
         .map_err(|error| anyhow::Error::new(relabel_timeout(deadline, error)))
 }
 
+/// Execute an in-memory ES module with the same limits and host surface as a
+/// server plugin, without persisting a PluginDefinition. Skill packages use
+/// this path for fast, reloadable computational tasks.
+pub async fn invoke_ephemeral_server_script(
+    script: String,
+    method: String,
+    args: serde_json::Value,
+    capabilities: Vec<String>,
+) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
+    use chrono::Utc;
+    use contracts::plugins::{
+        DataBinding, PluginBundle, PluginDataMode, PluginManifest, PluginRunContext, PluginRuntime,
+        PluginStatus, ViewSpec,
+    };
+    let now = Utc::now();
+    let definition = PluginDefinition {
+        id: "ephemeral-skill-task".to_string(),
+        bundle: PluginBundle {
+            manifest: PluginManifest {
+                code: "ephemeral-skill-task".to_string(),
+                title: "Ephemeral skill task".to_string(),
+                runtime: PluginRuntime::Server,
+                api_version: "2".to_string(),
+                description: None,
+                capabilities,
+                built_for_migration: None,
+            },
+            params: Vec::new(),
+            data: DataBinding::default(),
+            client_script: None,
+            server_script: Some(script),
+            view_spec: ViewSpec::default(),
+            styles: None,
+            sql_resources: Default::default(),
+            assets: Default::default(),
+        },
+        status: PluginStatus::Draft,
+        is_enabled: false,
+        owner_user_id: None,
+        created_by_agent_id: None,
+        version: 0,
+        created_at: now,
+        updated_at: now,
+        rating: None,
+        snapshot: None,
+        s3_published_version: None,
+        s3_published_at: None,
+    };
+    invoke_server_method(
+        definition,
+        PluginInvokeRequest {
+            method,
+            args,
+            context: PluginRunContext::default(),
+            data_mode: PluginDataMode::Live,
+        },
+    )
+    .await
+}
+
 /// Скомпилировать ES-модуль и перечислить его экспорты **без вызова** функций.
 ///
 /// `stage_prefix` подставляется в `stage` ошибок (пусто для серверного модуля,
@@ -647,6 +707,26 @@ export function unmount() {}
             report.errors.first().map(|e| e.stage.as_str()),
             Some("client_module_eval")
         );
+    }
+
+    #[tokio::test]
+    async fn ephemeral_skill_script_uses_limited_quickjs_runtime() {
+        let (result, logs) = invoke_ephemeral_server_script(
+            r#"
+export async function run(args, host) {
+  host.log.info("skill-task", args.value);
+  return { doubled: args.value * 2 };
+}
+"#
+            .to_string(),
+            "run".to_string(),
+            serde_json::json!({ "value": 21 }),
+            vec!["network:none".to_string()],
+        )
+        .await
+        .expect("ephemeral script");
+        assert_eq!(result["doubled"], 42);
+        assert_eq!(logs, vec!["skill-task 21"]);
     }
 
     #[test]

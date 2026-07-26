@@ -34,10 +34,6 @@ pub struct LlmConnectionDetailsVm {
     pub model_name: RwSignal<String>,
     pub temperature: RwSignal<String>,
     pub max_tokens: RwSignal<String>,
-    pub system_prompt: RwSignal<String>,
-
-    /// Тип/роль (персона) — определяет набор навыков/инструментов.
-    pub agent_type: RwSignal<String>,
 
     /// Курируемый короткий список разрешённых моделей (id). Именно из него
     /// можно выбирать модель в чате. Подмножество available_models.
@@ -94,8 +90,6 @@ impl LlmConnectionDetailsVm {
             model_name: RwSignal::new("openai/gpt-4o".to_string()),
             temperature: RwSignal::new("0.7".to_string()),
             max_tokens: RwSignal::new("4096".to_string()),
-            system_prompt: RwSignal::new(String::new()),
-            agent_type: RwSignal::new("business_analyst".to_string()),
             allowed_models: RwSignal::new(Vec::new()),
             model_filter: RwSignal::new(String::new()),
             provider_filter: RwSignal::new(String::new()),
@@ -282,9 +276,7 @@ impl LlmConnectionDetailsVm {
             "model_name": self.model_name.get(),
             "temperature": self.get_temperature(),
             "max_tokens": self.get_max_tokens(),
-            "system_prompt": if self.system_prompt.get().is_empty() { None } else { Some(self.system_prompt.get()) },
             "is_primary": self.is_primary.get(),
-            "agent_type": self.agent_type.get(),
             "allowed_models": allowed_json,
         })
     }

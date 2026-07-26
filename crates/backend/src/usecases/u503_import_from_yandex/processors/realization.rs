@@ -105,7 +105,9 @@ fn clamp_to_month(day: Option<String>, month_first: &str, month_last: &str) -> S
     }
 }
 
-/// Разбирает все CSV-файлы отчёта о реализации в документы a034 (день×кабинет).
+/// Разбирает все CSV-файлы отчёта о реализации в документы a034 (день × кабинет ×
+/// кампания). Отчёт YM запрашивается на кампанию, поэтому все строки одного вызова
+/// относятся к переданным `campaign_id` / `placement_type` (модель FBS/FBY/…).
 /// `month_first`/`month_last` — границы месяца отчёта (YYYY-MM-DD) для clamp дат.
 pub fn parse_realization_files(
     connection: &ConnectionMP,
@@ -113,6 +115,8 @@ pub fn parse_realization_files(
     files: &[(String, String)],
     month_first: &str,
     month_last: &str,
+    campaign_id: Option<&str>,
+    placement_type: Option<&str>,
 ) -> Result<ParsedRealization> {
     let connection_id = connection.base.id.as_string();
     let marketplace_id = connection.marketplace_id.clone();
@@ -143,12 +147,24 @@ pub fn parse_realization_files(
 
     let mut documents = Vec::with_capacity(by_day.len());
     for (day, lines) in by_day {
+        // document_no несёт кампанию, чтобы документы разных моделей (FBS/FBY)
+        // одного дня не сталкивались по номеру. Без кампании — legacy-формат.
+        let document_no = match campaign_id {
+            Some(cid) if !cid.is_empty() => format!("YMREAL-{}-{}-{}", connection_id, cid, day),
+            _ => format!("YMREAL-{}-{}", connection_id, day),
+        };
         let header = YmRealizationHeader {
-            document_no: format!("YMREAL-{}-{}", connection_id, day),
+            document_no,
             document_date: day,
             connection_id: connection_id.clone(),
             organization_id: organization_id.to_string(),
             marketplace_id: marketplace_id.clone(),
+            campaign_id: campaign_id
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string()),
+            placement_type: placement_type
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string()),
         };
         let mut document = YmRealization::new_for_insert(
             header,

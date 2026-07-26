@@ -30,6 +30,11 @@ pub struct Model {
     pub is_primary: bool,
     pub available_models: Option<String>,
     pub agent_type: String,
+    pub connection_id: Option<String>,
+    pub avatar: Option<String>,
+    pub email: Option<String>,
+    pub schedule_cron: Option<String>,
+    pub is_active: bool,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -73,6 +78,11 @@ impl From<Model> for LlmAgent {
             is_primary: m.is_primary,
             available_models: m.available_models,
             agent_type: AgentType::from_str(&m.agent_type),
+            connection_id: m.connection_id,
+            avatar: m.avatar,
+            email: m.email,
+            schedule_cron: m.schedule_cron,
+            is_active: m.is_active,
         }
     }
 }
@@ -185,6 +195,17 @@ pub async fn find_primary() -> anyhow::Result<Option<LlmAgent>> {
     Ok(model.map(Into::into))
 }
 
+/// Первый АКТИВНЫЙ сотрудник указанной специализации (для маршрутизации почтового конвейера).
+pub async fn find_active_by_agent_type(agent_type: &str) -> anyhow::Result<Option<LlmAgent>> {
+    let model = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::IsActive.eq(true))
+        .filter(Column::AgentType.eq(agent_type))
+        .one(conn())
+        .await?;
+    Ok(model.map(Into::into))
+}
+
 pub async fn insert(agent: &LlmAgent) -> anyhow::Result<()> {
     let now = Utc::now();
     let active = ActiveModel {
@@ -202,6 +223,11 @@ pub async fn insert(agent: &LlmAgent) -> anyhow::Result<()> {
         is_primary: Set(agent.is_primary),
         available_models: Set(agent.available_models.clone()),
         agent_type: Set(agent.agent_type.as_str().to_string()),
+        connection_id: Set(agent.connection_id.clone()),
+        avatar: Set(agent.avatar.clone()),
+        email: Set(agent.email.clone()),
+        schedule_cron: Set(agent.schedule_cron.clone()),
+        is_active: Set(agent.is_active),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(now)),
@@ -230,6 +256,11 @@ pub async fn update(agent: &LlmAgent) -> anyhow::Result<()> {
         is_primary: Set(agent.is_primary),
         available_models: Set(agent.available_models.clone()),
         agent_type: Set(agent.agent_type.as_str().to_string()),
+        connection_id: Set(agent.connection_id.clone()),
+        avatar: Set(agent.avatar.clone()),
+        email: Set(agent.email.clone()),
+        schedule_cron: Set(agent.schedule_cron.clone()),
+        is_active: Set(agent.is_active),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(agent.base.metadata.created_at)),

@@ -73,6 +73,7 @@ mod message {
         pub artifact_id: Option<String>,
         pub artifact_action: Option<String>,
         pub tool_trace_json: Option<String>,
+        pub skill_trace_json: Option<String>,
         pub intent: Option<String>,
     }
 
@@ -235,6 +236,7 @@ impl From<message::Model> for LlmChatMessage {
             artifact_id,
             artifact_action,
             tool_trace: m.tool_trace_json,
+            skill_trace: m.skill_trace_json,
             intent: m.intent,
             attachments: Vec::new(), // Загружаются отдельно при необходимости
         }
@@ -390,7 +392,7 @@ pub async fn list_with_stats(
             COUNT(m.id) as message_count,
             MAX(m.created_at) as last_message_at
         FROM a018_llm_chat c
-        LEFT JOIN a038_llm_connection a ON c.agent_id = a.id
+        LEFT JOIN a017_llm_agent a ON c.agent_id = a.id
         LEFT JOIN a018_llm_chat_message m ON c.id = m.chat_id
         WHERE c.is_deleted = 0{access_filter}
         GROUP BY c.id, c.code, c.description, c.agent_id, a.description, a.agent_type, c.model_name, c.created_at, c.rating, c.owner_user_id, c.is_shared
@@ -539,6 +541,7 @@ pub async fn insert_message(
             .as_ref()
             .map(|a| a.as_str().to_string())),
         tool_trace_json: Set(message.tool_trace.clone()),
+        skill_trace_json: Set(message.skill_trace.clone()),
         intent: Set(message.intent.clone()),
     };
 

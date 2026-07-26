@@ -316,6 +316,12 @@ pub async fn get_ym_revenue_reconciliation(
         YmRevenueReconGroup::Month => "SUBSTR(gl.entry_date, 1, 7)",
     };
 
+    // Разбивка по модели (FBS/FBY/…) без изменения GL:
+    //   • fina — модель заказа из p907 (`model`) по (кабинет, order_id);
+    //   • ybuh — `placement_type` документа a034 (по registrator_ref = id документа),
+    //     оттуда же campaignId.
+    // Обе стороны привязываются к GL по уже существующим ключам, поэтому цифры
+    // разбивки 1:1 сходятся с итогами сверки.
     let mut sql = format!(
         r#"
         SELECT
@@ -323,10 +329,27 @@ pub async fn get_ym_revenue_reconciliation(
             gl.connection_mp_ref AS connection_mp_ref,
             COALESCE(c.description, gl.connection_mp_ref) AS connection_name,
             gl.layer AS layer,
+            CASE gl.layer WHEN 'fina' THEN pm.pm_model WHEN 'ybuh' THEN am.am_model END AS model,
+            MAX(CASE gl.layer WHEN 'ybuh' THEN am.am_campaign_id END) AS campaign_id,
+            MAX(CASE gl.layer WHEN 'ybuh' THEN gl.registrator_ref END) AS ybuh_doc_id,
             COALESCE(SUM(gl.amount), 0.0) AS net,
             COALESCE(SUM(gl.qty), 0.0) AS net_qty
         FROM sys_general_ledger gl
         LEFT JOIN a006_connection_mp c ON c.id = gl.connection_mp_ref
+        LEFT JOIN (
+            SELECT connection_mp_ref AS pm_conn, order_id AS pm_order, MIN(model) AS pm_model
+            FROM p907_ym_payment_report
+            WHERE order_id IS NOT NULL AND model IS NOT NULL
+            GROUP BY connection_mp_ref, order_id
+        ) pm ON gl.layer = 'fina'
+            AND pm.pm_conn = gl.connection_mp_ref
+            AND CAST(pm.pm_order AS TEXT) = gl.order_id
+        LEFT JOIN (
+            SELECT id AS am_id,
+                   json_extract(header_json, '$.placement_type') AS am_model,
+                   json_extract(header_json, '$.campaign_id') AS am_campaign_id
+            FROM a034_ym_realization
+        ) am ON gl.layer = 'ybuh' AND am.am_id = gl.registrator_ref
         WHERE gl.turnover_code IN ('customer_revenue', 'customer_revenue_storno')
           -- Строго YM-сверка: ybuh (a034) — это YM по определению; на слое fina
           -- ограничиваемся субъектом ym, иначе сюда попадёт и WB-выручка (p903 fina).
@@ -350,34 +373,51 @@ pub async fn get_ym_revenue_reconciliation(
         params.push(string_value(cab.clone()));
     }
 
-    sql.push_str(" GROUP BY period, gl.connection_mp_ref, gl.layer ORDER BY period ASC");
+    sql.push_str(" GROUP BY period, gl.connection_mp_ref, gl.layer, model ORDER BY period ASC");
 
     let stmt = Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
     let rows = conn().query_all(stmt).await?;
 
-    // Пивот: (period, connection) → суммы и количества по слоям.
+    // Пивот: (period, connection, model) → суммы и количества по слоям. Модель
+    // объединяет обе стороны (fina/ybuh) одной модели в одну строку сверки.
     #[derive(Default)]
     struct Acc {
         connection_name: Option<String>,
+        campaign_id: Option<String>,
+        ybuh_doc_id: Option<String>,
         fina_net: f64,
         ybuh_net: f64,
         fina_qty: f64,
         ybuh_qty: f64,
     }
-    let mut acc: BTreeMap<(String, String), Acc> = BTreeMap::new();
+    // Ключ модели: пустая строка для None, чтобы строки без модели схлопывались вместе.
+    let mut acc: BTreeMap<(String, String, String), Acc> = BTreeMap::new();
 
     for row in rows {
         let period: String = row.try_get("", "period").unwrap_or_default();
         let connection_mp_ref: Option<String> = row.try_get("", "connection_mp_ref").ok();
         let connection_name: Option<String> = row.try_get("", "connection_name").ok();
         let layer: String = row.try_get("", "layer").unwrap_or_default();
+        let model: Option<String> = row.try_get::<Option<String>>("", "model").unwrap_or(None);
+        let campaign_id: Option<String> =
+            row.try_get::<Option<String>>("", "campaign_id").unwrap_or(None);
+        let ybuh_doc_id: Option<String> =
+            row.try_get::<Option<String>>("", "ybuh_doc_id").unwrap_or(None);
         let net: f64 = row.try_get("", "net").unwrap_or(0.0);
         let net_qty: f64 = row.try_get("", "net_qty").unwrap_or(0.0);
 
         let conn_key = connection_mp_ref.clone().unwrap_or_default();
-        let entry = acc.entry((period, conn_key)).or_default();
+        let model_key = model.clone().unwrap_or_default();
+        let entry = acc.entry((period, conn_key, model_key)).or_default();
         if entry.connection_name.is_none() {
             entry.connection_name = connection_name;
+        }
+        // campaignId и id документа a034 несёт сторона ybuh; берём первый непустой.
+        if entry.campaign_id.is_none() {
+            entry.campaign_id = campaign_id;
+        }
+        if entry.ybuh_doc_id.is_none() {
+            entry.ybuh_doc_id = ybuh_doc_id;
         }
         match layer.as_str() {
             "fina" => {
@@ -397,7 +437,7 @@ pub async fn get_ym_revenue_reconciliation(
     let mut total_ybuh_net = 0.0;
     let mut total_fina_qty = 0.0;
     let mut total_ybuh_qty = 0.0;
-    for ((period, conn_key), data) in acc {
+    for ((period, conn_key, model_key), data) in acc {
         total_fina_net += data.fina_net;
         total_ybuh_net += data.ybuh_net;
         total_fina_qty += data.fina_qty;
@@ -410,6 +450,13 @@ pub async fn get_ym_revenue_reconciliation(
                 Some(conn_key)
             },
             connection_name: data.connection_name,
+            model: if model_key.is_empty() {
+                None
+            } else {
+                Some(model_key)
+            },
+            campaign_id: data.campaign_id,
+            ybuh_doc_id: data.ybuh_doc_id,
             fina_net: data.fina_net,
             ybuh_net: data.ybuh_net,
             delta: data.fina_net - data.ybuh_net,

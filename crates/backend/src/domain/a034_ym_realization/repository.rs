@@ -69,6 +69,8 @@ impl From<Model> for YmRealization {
                 connection_id: m.connection_id.clone(),
                 organization_id: m.organization_id.clone(),
                 marketplace_id: m.marketplace_id.clone(),
+                campaign_id: None,
+                placement_type: None,
             });
         let totals = serde_json::from_str(&m.totals_json).unwrap_or(YmRealizationTotals {
             sales_revenue: m.total_sales_revenue,
@@ -170,6 +172,14 @@ pub async fn replace_for_period(
             id,
         )
         .await?;
+        // Также чистим события таймлайна (p915): при смене идентичности документа
+        // (теперь по кампании) старые id иначе оставили бы осиротевшие события.
+        crate::projections::p915_mp_order_events::repository::delete_by_registrator_with_conn(
+            &txn,
+            REGISTRATOR_TYPE,
+            id,
+        )
+        .await?;
     }
 
     Entity::delete_many()
@@ -187,6 +197,73 @@ pub async fn replace_for_period(
 
     txn.commit().await?;
     Ok(documents.len())
+}
+
+/// Заменяет документы за период по кабинету И КОНКРЕТНОЙ КАМПАНИИ. В отличие от
+/// `replace_for_period`, трогает только документы этой кампании (по совпадению
+/// `header.campaign_id`), поэтому сбой отчёта одной кампании не задевает данные
+/// других (при импорте отчёт тянется покампанийно и независимо). Документы разных
+/// кампаний одного дня различаются идентичностью (см. `stable_for_header`).
+pub async fn replace_for_period_campaign(
+    connection_id: &str,
+    campaign_id: &str,
+    date_from: &str,
+    date_to: &str,
+    documents: &[YmRealization],
+) -> Result<usize> {
+    let db = get_connection();
+    let txn = db.begin().await?;
+
+    // Документы кабинета за период → отбираем принадлежащие этой кампании по
+    // header_json (`campaign_id`). Так же корректно снесём legacy-документы без
+    // кампании, когда campaign_id пуст.
+    let existing = Entity::find()
+        .filter(Column::ConnectionId.eq(connection_id))
+        .filter(Column::DocumentDate.gte(date_from))
+        .filter(Column::DocumentDate.lte(date_to))
+        .all(&txn)
+        .await?;
+    let target_ids: Vec<String> = existing
+        .into_iter()
+        .filter(|item| doc_campaign_id(&item.header_json).as_deref() == Some(campaign_id))
+        .map(|item| item.id)
+        .collect();
+
+    for id in &target_ids {
+        crate::projections::general_ledger::repository::delete_by_registrator_with_conn(
+            &txn,
+            REGISTRATOR_TYPE,
+            id,
+        )
+        .await?;
+        crate::projections::p915_mp_order_events::repository::delete_by_registrator_with_conn(
+            &txn,
+            REGISTRATOR_TYPE,
+            id,
+        )
+        .await?;
+        Entity::delete_by_id(id.clone()).exec(&txn).await?;
+    }
+
+    for document in documents {
+        Entity::insert(to_active_model(document, Some(Utc::now()))?)
+            .exec(&txn)
+            .await?;
+    }
+
+    txn.commit().await?;
+    Ok(documents.len())
+}
+
+/// Извлекает `campaign_id` из header_json документа (для покампанийной замены).
+fn doc_campaign_id(header_json: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(header_json)
+        .ok()
+        .and_then(|v| {
+            v.get("campaign_id")
+                .and_then(|c| c.as_str())
+                .map(|s| s.to_string())
+        })
 }
 
 pub async fn upsert_document(document: &YmRealization) -> Result<()> {
@@ -272,6 +349,10 @@ pub struct YmRealizationListRow {
     pub organization_name: Option<String>,
     pub fetched_at: String,
     pub is_posted: bool,
+    /// Модель фасилитации кампании (FBS/FBY/…) из header_json.
+    pub placement_type: Option<String>,
+    /// campaignId кампании из header_json.
+    pub campaign_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -355,7 +436,9 @@ pub async fn list_sql(query: YmRealizationListQuery) -> Result<YmRealizationList
             c.description as connection_name,
             o.description as organization_name,
             d.fetched_at,
-            d.is_posted
+            d.is_posted,
+            json_extract(d.header_json, '$.placement_type') as placement_type,
+            json_extract(d.header_json, '$.campaign_id') as campaign_id
          FROM a034_ym_realization d
          LEFT JOIN a006_connection_mp c ON c.id = d.connection_id
          LEFT JOIN a002_organization o ON o.id = d.organization_id
@@ -397,6 +480,12 @@ pub async fn list_sql(query: YmRealizationListQuery) -> Result<YmRealizationList
             organization_name: row.try_get("", "organization_name").ok(),
             fetched_at: row.try_get("", "fetched_at").unwrap_or_default(),
             is_posted: row.try_get::<bool>("", "is_posted").unwrap_or(false),
+            placement_type: row
+                .try_get::<Option<String>>("", "placement_type")
+                .unwrap_or(None),
+            campaign_id: row
+                .try_get::<Option<String>>("", "campaign_id")
+                .unwrap_or(None),
         })
         .collect();
 

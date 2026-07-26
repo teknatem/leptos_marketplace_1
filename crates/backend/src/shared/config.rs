@@ -247,12 +247,22 @@ pub struct LlmConfig {
     /// Путь к директории с MD-файлами базы знаний (Obsidian-формат).
     /// Относительный путь разрешается от директории бинарника.
     pub knowledge_base_path: String,
+    /// Путь к директории с внешним каталогом навыков (`*.md` с frontmatter).
+    /// Эти файлы дополняют/переопределяют встроенный набор навыков по `id`.
+    /// Относительный путь разрешается от директории бинарника.
+    #[serde(default = "default_skills_path")]
+    pub skills_path: String,
+}
+
+fn default_skills_path() -> String {
+    "skills".to_string()
 }
 
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
             knowledge_base_path: "data/knowledge".to_string(),
+            skills_path: default_skills_path(),
         }
     }
 }
@@ -379,7 +389,17 @@ pub fn get_database_path(config: &Config) -> anyhow::Result<PathBuf> {
 /// Get the knowledge base directory path from configuration.
 /// Resolves relative paths relative to the executable directory.
 pub fn get_knowledge_base_path(config: &Config) -> PathBuf {
-    let raw = &config.llm.knowledge_base_path;
+    resolve_relative_to_exe(&config.llm.knowledge_base_path)
+}
+
+/// Get the external skills catalog directory path from configuration.
+/// Resolves relative paths relative to the executable directory (mirrors KB path).
+pub fn get_skills_path(config: &Config) -> PathBuf {
+    resolve_relative_to_exe(&config.llm.skills_path)
+}
+
+/// Абсолютный путь — как есть; относительный — от директории бинарника.
+fn resolve_relative_to_exe(raw: &str) -> PathBuf {
     let p = Path::new(raw);
     if p.is_absolute() {
         return p.to_path_buf();

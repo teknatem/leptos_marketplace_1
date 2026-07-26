@@ -35,6 +35,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Runtime downloads and extracted marketplace reports
+/downloads/
+
 # Node.js / Tailwind tooling
 node_modules/
 pnpm-debug.log*

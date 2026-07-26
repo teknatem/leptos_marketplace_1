@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["marketplace", "metrics"],
+  "properties": {
+    "marketplace": { "enum": ["ozon", "wildberries", "yandex-market"] },
+    "metrics": { "type": "object", "required": ["orders"] }
+  },
+  "additionalProperties": false
+}

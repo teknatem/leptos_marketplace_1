@@ -13,16 +13,20 @@ use contracts::domain::a017_llm_agent::aggregate::AgentType;
 
 /// Известные интенты уровня сообщения (см. план, §1).
 pub const KNOWN_INTENTS: &[&str] = &[
-    "func_help",      // вопрос по функционалу приложения
-    "data_query",     // аналитика по данным (SQL/drilldown/индикаторы)
-    "bi_authoring",   // создание индикатора/дашборда
-    "chart_build",    // построить график/диаграмму по данным
-    "table_build",    // построить таблицу данных (плагин-таблица)
-    "plugin_dev",     // создание/доработка плагина
-    "sys_admin",      // системная диагностика
-    "kb_curation",    // работа с базой знаний
-    "mailbox",        // чтение/отправка почты
-    "meta_smalltalk", // приветствие/уточнение/«что ты умеешь»
+    "func_help",                   // вопрос по функционалу приложения
+    "data_query",                  // аналитика по данным (SQL/drilldown/индикаторы)
+    "sales_query",                 // продажи/выручка/заказы/маржа (аналитик продаж)
+    "marketing_query",             // реклама/воронка/поисковая аналитика/промо (маркетолог)
+    "marketplace_funnel_analysis", // сквозная воронка маркетплейса и сравнение этапов
+    "finance_query",               // главная книга/сверка выручки/взаиморасчёты (финансист)
+    "bi_authoring",                // создание индикатора/дашборда
+    "chart_build",                 // построить график/диаграмму по данным
+    "table_build",                 // построить таблицу данных (плагин-таблица)
+    "plugin_dev",                  // создание/доработка плагина
+    "sys_admin",                   // системная диагностика
+    "kb_curation",                 // работа с базой знаний
+    "mailbox",                     // чтение/отправка почты
+    "meta_smalltalk",              // приветствие/уточнение/«что ты умеешь»
 ];
 
 /// Результат классификации.
@@ -53,7 +57,11 @@ fn classifier_system_prompt() -> String {
          (Wildberries, OZON, Яндекс.Маркет). Определи ЕДИНСТВЕННЫЙ интент сообщения.\n\n\
          Возможные интенты:\n\
          - func_help: как пользоваться приложением, где найти функцию, что делает фича.\n\
-         - data_query: аналитика по данным — продажи, выручка, остатки, отчёты, SQL, drilldown, индикаторы.\n\
+         - data_query: общая аналитика по данным — остатки, отчёты, SQL, drilldown, индикаторы (без явной темы продаж/маркетинга/финансов).\n\
+         - sales_query: продажи, выручка, заказы, средний чек, маржа/прибыль, динамика продаж.\n\
+         - marketing_query: реклама, ДРР, CTR, ставки, воронка продаж, конверсии, выкуп, поисковая аналитика, промо/акции.\n\
+         - marketplace_funnel_analysis: рассчитать, проверить или сравнить этапы воронки маркетплейса по данным OZON, Wildberries или Яндекс.Маркета.\n\
+         - finance_query: главная книга, обороты по счетам, сверка выручки (fina/ybuh), взаиморасчёты, комиссии.\n\
          - bi_authoring: просьба СОЗДАТЬ индикатор/дашборд/KPI.\n\
          - chart_build: построить ГРАФИК/диаграмму/визуализацию по данным (линия, столбцы, доли).\n\
          - table_build: построить ТАБЛИЦУ данных по данным (колонки/строки, фильтры, сортировка, итоги).\n\
@@ -132,23 +140,33 @@ pub fn intent_to_agent_type(intent: &str) -> AgentType {
         "kb_curation" => AgentType::KbAdmin,
         "plugin_dev" => AgentType::PluginAdmin,
         "sys_admin" => AgentType::SystemAdmin,
+        "sales_query" => AgentType::SalesAnalyst,
+        "marketing_query" => AgentType::Marketer,
+        "marketplace_funnel_analysis" => AgentType::Marketer,
+        "finance_query" => AgentType::Financier,
         // data_query | chart_build | table_build | bi_authoring | func_help — аналитик.
         "data_query" | "chart_build" | "table_build" | "bi_authoring" | "func_help" => {
             AgentType::BusinessAnalyst
         }
         // meta_smalltalk и всё прочее — общий агент.
-        _ => AgentType::General,
+        _ => AgentType::CoordinatorAdmin,
     }
 }
 
 /// Быстрая (rule-based, без LLM) классификация интента для синхронной предактивации
 /// навыков перед основным циклом. Полный LLM-роутер по-прежнему идёт конкурентно.
 pub fn quick_intent(message: &str, seed_agent_type: &AgentType) -> String {
+    quick_intent_result(message, seed_agent_type).intent
+}
+
+/// Быстрый результат вместе с confidence — chat selector использует низкую
+/// уверенность как признак follow-up, не меняющего текущую специализацию задачи.
+pub fn quick_intent_result(message: &str, seed_agent_type: &AgentType) -> IntentResult {
     let trimmed = message.trim();
     if trimmed.chars().count() < 3 {
-        return "meta_smalltalk".to_string();
+        return IntentResult::new("meta_smalltalk", 0.5, "rules");
     }
-    rule_based(trimmed, seed_agent_type).intent
+    rule_based(trimmed, seed_agent_type)
 }
 
 /// Распарсить `{ "intent": "...", "confidence": ... }` из ответа модели,
@@ -224,19 +242,74 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
     ]) {
         return IntentResult::new("mailbox", 0.45, "rules");
     }
+    // Маркетинг раньше продаж: «реклама/воронка/промо» — маркетолог, не общий data_query.
+    if any(&[
+        "воронка маркетплейс",
+        "воронку маркетплейс",
+        "funnel marketplace",
+        "ozon funnel",
+        "wildberries funnel",
+        "яндекс маркет funnel",
+    ]) || (any(&["воронк", "funnel"])
+        && any(&[
+            "ozon",
+            "озон",
+            "wildberries",
+            "вайлдберриз",
+            "яндекс маркет",
+            "маркетплейс",
+        ]))
+    {
+        return IntentResult::new("marketplace_funnel_analysis", 0.55, "rules");
+    }
+    if any(&[
+        "реклам",
+        "дрр",
+        "ctr",
+        "воронк",
+        "конверс",
+        "выкуп",
+        "ставк",
+        "промо",
+        "акци",
+        "поисков",
+        "джем",
+    ]) {
+        return IntentResult::new("marketing_query", 0.45, "rules");
+    }
+    if any(&[
+        "главная книга",
+        "главную книгу",
+        "сверк",
+        "взаиморасч",
+        "комисс",
+        "оборот",
+        "дебет",
+        "кредит",
+        "проводк",
+        "реализац",
+    ]) {
+        return IntentResult::new("finance_query", 0.45, "rules");
+    }
     if any(&[
         "выручк",
         "продаж",
         "заказ",
+        "маржинальн",
+        "маржа",
+        "прибыл",
+        "средний чек",
+    ]) {
+        return IntentResult::new("sales_query", 0.45, "rules");
+    }
+    if any(&[
         "отчёт",
         "отчет",
         "остат",
         "sql",
         "сколько",
         "сумм",
-        "маржинальн",
         "возврат",
-        "реклам",
     ]) {
         return IntentResult::new("data_query", 0.45, "rules");
     }
@@ -256,7 +329,23 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
         AgentType::SystemAdmin => "sys_admin",
         AgentType::KbAdmin => "kb_curation",
         AgentType::PluginAdmin => "plugin_dev",
+        AgentType::SalesAnalyst => "sales_query",
+        AgentType::Marketer => "marketing_query",
+        AgentType::Financier => "finance_query",
         _ => "data_query",
     };
     IntentResult::new(seeded, 0.25, "rules")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marketplace_funnel_rule_precedes_generic_marketing() {
+        let result =
+            quick_intent_result("Сравни воронку OZON за два периода", &AgentType::Marketer);
+        assert_eq!(result.intent, "marketplace_funnel_analysis");
+        assert!(result.confidence > 0.5);
+    }
 }

@@ -77,6 +77,7 @@ fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
     let intent = msg.intent.clone();
     let artifact_id = msg.artifact_id.as_ref().map(|id| id.as_string());
     let tool_trace = msg.tool_trace.clone();
+    let skill_trace = msg.skill_trace.clone();
     let message_id = msg.id.to_string();
     let content = msg.content.clone();
     let time = format_utc_local(&msg.created_at, "%d.%m %H:%M:%S");
@@ -101,6 +102,29 @@ fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
                         view! { <KbLinkedText text=content /> }.into_any()
                     } else {
                         view! { <Markdown text=content /> }.into_any()
+                    }}
+                    {move || {
+                        let inefficient: Vec<String> = skill_trace
+                            .as_deref()
+                            .and_then(|raw| {
+                                serde_json::from_str::<Vec<
+                                    contracts::domain::a018_llm_chat::aggregate::SkillTraceEntry,
+                                >>(raw)
+                                .ok()
+                            })
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|item| item.inefficient)
+                            .map(|item| item.skill_id)
+                            .collect();
+                        (!inefficient.is_empty()).then(|| view! {
+                            <div style="margin-top:8px;padding:7px 10px;border:1px solid #fcd34d;border-radius:6px;background:#fffbeb;color:#92400e;font-size:12px;">
+                                {format!(
+                                    "Использован расширенный навык {} — задача выходит за основную специализацию сотрудника.",
+                                    inefficient.join(", ")
+                                )}
+                            </div>
+                        })
                     }}
                     {move || {
                         let mut meta_parts = Vec::new();

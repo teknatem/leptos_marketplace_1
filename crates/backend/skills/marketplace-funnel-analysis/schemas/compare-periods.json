@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["marketplace", "current", "previous"],
+  "properties": {
+    "marketplace": { "enum": ["ozon", "wildberries", "yandex-market"] },
+    "current": {
+      "type": "object",
+      "required": ["label", "metrics"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "metrics": { "type": "object", "required": ["orders"] }
+      }
+    },
+    "previous": {
+      "type": "object",
+      "required": ["label", "metrics"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "metrics": { "type": "object", "required": ["orders"] }
+      }
+    }
+  },
+  "additionalProperties": false
+}

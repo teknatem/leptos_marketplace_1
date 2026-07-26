@@ -489,6 +489,24 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/llm-skills",
+        scope_id: Some("a017_llm_agent"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/llm-skills/access-matrix",
+        scope_id: Some("a017_llm_agent"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/llm-skills/reload",
+        scope_id: Some("a017_llm_agent"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/a038-llm-connection",
         scope_id: Some("a038_llm_connection"),
         mode: PolicyMode::Auto,

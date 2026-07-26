@@ -5,10 +5,11 @@
    so it effectively applies only on the login screen. Don't put general /
    reusable rules here — those belong in themes/core/components.css.
 
-   The login screen has a self-contained dark "grid + glow" identity in ALL
-   themes (dark void + 64px grid + dual radial glow, dark glass card), so there
-   are no per-theme (`body[data-theme=…]`) overrides. Tokens: see
-   themes/core/variables.css (--login-*).
+   Identity: a "grid + glow" backdrop (dark void + 64px grid + dual radial
+   glow) with NO frame — the form sits directly on the grid. The light theme
+   gets an analogous light backdrop (light grid + soft tinted glow) via the
+   body[data-theme="light"] overrides at the bottom of this file.
+   Tokens: themes/core/variables.css (--login-*).
    ============================================================ */
 
 .login {
@@ -21,7 +22,7 @@
   overflow: hidden;
 }
 
-/* Dark void + subtle grid + two soft radial glows */
+/* Backdrop: base fill + two soft radial glows + a subtle 64px grid */
 .login__background {
   position: absolute;
   inset: 0;
@@ -39,7 +40,7 @@
   animation: loginGlowDrift 24s ease-in-out infinite;
 }
 
-/* Very slow, subtle glow drift — calm, not flashy */
+/* Very slow, subtle glow drift (grid layers stay fixed) — calm, not flashy */
 @keyframes loginGlowDrift {
   0%, 100% { background-position: 0% 0%, 100% 100%, 0 0, 0 0; }
   50%      { background-position: 6% 4%, 94% 96%, 0 0, 0 0; }
@@ -52,27 +53,71 @@
   z-index: var(--z-header);
 }
 
+/* No rectangular frame — the login is a dim glowing CIRCLE enclosing the form
+   (only the thin ring is visible). Being the form's container, it reacts to the
+   mouse across the whole disc — border-radius makes the hit-test circular, and
+   the inputs inside keep it "hovered" while you type. */
 .login__card {
   position: relative;
   z-index: var(--z-base);
-  width: 100%;
-  max-width: 420px;
-  background: var(--login-card-bg);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--login-card-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--login-card-shadow);
-  padding: var(--spacing-3xl);
+  width: var(--login-ring-size);
+  height: var(--login-ring-size);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  /* extra bottom padding lifts the optically bottom-heavy stack up to the
+     circle's optical centre (the counterpart of the old ring offset) */
+  padding-bottom: calc(var(--login-ring-offset-y) * 2);
+  border: 1px solid var(--login-ring-border);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 48%, var(--login-ring-fill) 0%, transparent 68%);
+  box-shadow:
+    0 0 90px 6px var(--login-ring-glow),
+    inset 0 0 60px var(--login-ring-fill);
+  transition: border-color 0.25s ease, box-shadow 0.3s ease, background 0.3s ease;
   animation: loginCardFadeIn 0.6s ease-out;
 }
 
+/* Mouse inside the circle — the ring wakes up: brighter edge, deeper glow */
+.login__card:hover {
+  border-color: var(--login-ring-border-hover);
+  background: radial-gradient(circle at 50% 48%, var(--login-ring-fill-hover) 0%, transparent 70%);
+  box-shadow:
+    0 0 120px 12px var(--login-ring-glow-hover),
+    inset 0 0 74px var(--login-ring-fill-hover);
+}
+
+/* Gentle tactile "press" while clicking anywhere within the circle */
+.login__card:active {
+  box-shadow:
+    0 0 90px 6px var(--login-ring-glow-hover),
+    inset 0 0 96px var(--login-ring-fill-hover);
+}
+
+/* Inner content column — kept to the inputs' width, centred in the disc */
+.login__header,
+.login__form,
+.login__error {
+  width: 100%;
+  max-width: 360px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 @keyframes loginCardFadeIn {
-  from { opacity: 0; transform: translateY(20px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login__card { animation: none; transition: none; }
 }
 
 .login__header {
   text-align: center;
+  /* Matches the button gap below the fields (~40px) so the field pair is framed
+     symmetrically top and bottom. */
   margin-bottom: var(--spacing-2xl);
 }
 
@@ -129,8 +174,8 @@
   color: var(--login-card-fg-muted);
 }
 
-/* Inputs are pinned to the dark glass card regardless of the active app theme,
-   so the shared themed --form-input-* tokens don't wash them out in light mode. */
+/* Inputs are pinned to a dark-glass look on the dark backdrop regardless of the
+   active app theme; the light theme re-styles them at the bottom of this file. */
 .login .form__input {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -146,15 +191,16 @@
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.20);
 }
 
+/* Compact button, sized to roughly match the "Integrator" title word */
 .login__button {
-  width: 100%;
+  width: var(--login-button-width);
 }
 
 .login__footer {
-  margin: var(--spacing-xl);
-  padding: var(--spacing-lg);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  /* Form's own 24px gap + this = ~40px: sets the action apart without a rift. */
+  margin-top: var(--spacing-md);
 }
 
 .login__footer-text {
@@ -164,13 +210,44 @@
   line-height: 1.5;
 }
 
-/* Responsive */
+/* Responsive — the circle shrinks with the viewport via --login-ring-size */
 @media (max-width: 640px) {
-  .login__card {
-    padding: var(--spacing-xl);
-  }
-
   .login__title {
     font-size: 24px;
   }
+}
+
+/* ============================================================
+   Light theme — same "grid + glow" identity, frameless, inverted to light.
+   Only overrides; everything else inherits the base rules above.
+   ============================================================ */
+body[data-theme="light"] {
+  --login-bg: #eef1f5;
+  --login-grid-line: rgba(20, 30, 45, 0.045); /* faint dark grid on light ground */
+  --login-glow-1: rgba(37, 99, 235, 0.08);    /* soft blue */
+  --login-glow-2: rgba(124, 58, 237, 0.05);   /* soft violet */
+  --login-card-fg: #1f2937;
+  --login-card-fg-muted: #6b7280;
+  --login-ring-border: rgba(20, 30, 45, 0.10); /* dim contour on light ground */
+  --login-ring-glow: rgba(37, 99, 235, 0.10);  /* soft blue halo */
+  --login-ring-fill: rgba(37, 99, 235, 0.045); /* faint central lift */
+  --login-ring-border-hover: rgba(20, 30, 45, 0.20);
+  --login-ring-glow-hover: rgba(37, 99, 235, 0.16);
+  --login-ring-fill-hover: rgba(37, 99, 235, 0.07);
+}
+
+/* Light inputs — override the dark-glass pinning from the base rules */
+body[data-theme="light"] .login .form__input {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--form-input-border);
+  color: var(--color-text-primary);
+}
+
+body[data-theme="light"] .login .form__input::placeholder {
+  color: var(--form-placeholder);
+}
+
+body[data-theme="light"] .login .form__input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }

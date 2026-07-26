@@ -340,23 +340,19 @@ pub async fn send_message(
     Ok(job_id)
 }
 
-/// Загрузить курируемый список моделей (allowed_models) подключения по его id.
-/// Пустой список — если подключение недоступно или курирование не задано.
-pub async fn fetch_connection_allowed_models(connection_id: &str) -> Result<Vec<String>, String> {
+/// GET → распарсить JSON в тип `T`.
+async fn get_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
     let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
-
-    let url = format!("{}/api/a038-llm-connection/{}", api_base(), connection_id);
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    let request = Request::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()
         .set("Accept", "application/json")
         .map_err(|e| format!("{e:?}"))?;
-
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
         .await
@@ -369,8 +365,30 @@ pub async fn fetch_connection_allowed_models(connection_id: &str) -> Result<Vec<
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let connection: contracts::domain::a038_llm_connection::aggregate::LlmConnection =
-        serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
+    serde_json::from_str::<T>(&text).map_err(|e| format!("{e}"))
+}
+
+/// Курируемый список моделей (allowed_models) для собеседника чата.
+/// `agent_id` — id AI-сотрудника (a017): резолвим его подключение (connection_id), затем
+/// его allowed_models. Fallback — трактуем id как подключение-близнец (совпадающий UUID).
+/// Пустой список — если ничего не доступно или курирование не задано.
+pub async fn fetch_connection_allowed_models(agent_id: &str) -> Result<Vec<String>, String> {
+    use contracts::domain::a017_llm_agent::aggregate::LlmAgent;
+    use contracts::domain::a038_llm_connection::aggregate::LlmConnection;
+
+    // Подключение сотрудника (или сам id как fallback-близнец).
+    let conn_id = get_json::<LlmAgent>(&format!("{}/api/a017-llm-agent/{}", api_base(), agent_id))
+        .await
+        .ok()
+        .and_then(|emp| emp.connection_id.filter(|s| !s.trim().is_empty()))
+        .unwrap_or_else(|| agent_id.to_string());
+
+    let connection = get_json::<LlmConnection>(&format!(
+        "{}/api/a038-llm-connection/{}",
+        api_base(),
+        conn_id
+    ))
+    .await?;
     Ok(connection.allowed_models_list())
 }
 

@@ -40,21 +40,31 @@ pub enum AgentType {
     BusinessAnalyst,
     /// Системный администратор: мониторинг, производительность, безопасность
     SystemAdmin,
-    /// Общий агент: доступ ко всем инструментам
-    General,
+    /// Координатор-администратор: получает новые навыки по умолчанию
+    #[serde(rename = "coordinator_admin", alias = "general")]
+    CoordinatorAdmin,
     /// Администратор базы знаний: анализирует пробелы и готовит обновления KB
     KbAdmin,
     /// Разработчик плагинов: создаёт/правит/тестирует JS-плагины из чата
     PluginAdmin,
+    /// Аналитик продаж: продажи, выручка, заказы, маржа/прибыль
+    SalesAnalyst,
+    /// Маркетолог: реклама, воронка продаж, поисковая аналитика, промо
+    Marketer,
+    /// Финансист: главная книга, сверка выручки, взаиморасчёты, комиссии
+    Financier,
 }
 
 impl AgentType {
     pub fn from_str(s: &str) -> Self {
         match s {
             "system_admin" => AgentType::SystemAdmin,
-            "general" => AgentType::General,
+            "general" | "coordinator_admin" => AgentType::CoordinatorAdmin,
             "kb_admin" => AgentType::KbAdmin,
             "plugin_admin" => AgentType::PluginAdmin,
+            "sales_analyst" => AgentType::SalesAnalyst,
+            "marketer" => AgentType::Marketer,
+            "financier" => AgentType::Financier,
             _ => AgentType::BusinessAnalyst,
         }
     }
@@ -63,9 +73,12 @@ impl AgentType {
         match self {
             AgentType::BusinessAnalyst => "business_analyst",
             AgentType::SystemAdmin => "system_admin",
-            AgentType::General => "general",
+            AgentType::CoordinatorAdmin => "coordinator_admin",
             AgentType::KbAdmin => "kb_admin",
             AgentType::PluginAdmin => "plugin_admin",
+            AgentType::SalesAnalyst => "sales_analyst",
+            AgentType::Marketer => "marketer",
+            AgentType::Financier => "financier",
         }
     }
 
@@ -73,9 +86,12 @@ impl AgentType {
         match self {
             AgentType::BusinessAnalyst => "Бизнес-аналитик",
             AgentType::SystemAdmin => "Системный администратор",
-            AgentType::General => "Общий",
+            AgentType::CoordinatorAdmin => "Координатор-администратор",
             AgentType::KbAdmin => "Администратор базы знаний",
             AgentType::PluginAdmin => "Разработчик плагинов",
+            AgentType::SalesAnalyst => "Аналитик продаж",
+            AgentType::Marketer => "Маркетолог",
+            AgentType::Financier => "Финансист",
         }
     }
 }
@@ -113,41 +129,68 @@ impl LlmProviderType {
     }
 }
 
-/// Агрегат LLM Agent
+fn default_true() -> bool {
+    true
+}
+
+/// Агрегат LLM Agent — «виртуальный сотрудник».
+///
+/// Персона (имя, аватар, почта, специализация `agent_type`, должностные обязанности
+/// `system_prompt`, расписание) поверх технического подключения a038 (`connection_id`).
+/// Техническую диспетчеризацию (провайдер/креды/тюнинг) даёт связанное подключение;
+/// поля `provider_type/api_endpoint/api_key/temperature/max_tokens` здесь вестигиальны
+/// (сохраняются для неразрушающей миграции, источник истины — подключение). `model_name`
+/// переосмыслен как ОПЦИОНАЛЬНО закреплённая сотрудником модель (пусто → дефолт подключения).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmAgent {
     #[serde(flatten)]
     pub base: BaseAggregate<LlmAgentId>,
 
-    /// Тип провайдера
+    /// Тип провайдера (вестигиально — источник истины в подключении a038)
     pub provider_type: LlmProviderType,
 
-    /// API Endpoint
+    /// API Endpoint (вестигиально — источник истины в подключении a038)
     pub api_endpoint: String,
 
-    /// API ключ (зашифрованный)
+    /// API ключ (вестигиально — источник истины в подключении a038)
     pub api_key: String,
 
-    /// Название модели
+    /// Закреплённая сотрудником модель (пусто → дефолтная модель подключения)
     pub model_name: String,
 
-    /// Temperature (0.0-2.0)
+    /// Temperature (вестигиально — источник истины в подключении a038)
     pub temperature: f64,
 
-    /// Max tokens
+    /// Max tokens (вестигиально — источник истины в подключении a038)
     pub max_tokens: i32,
 
-    /// Системный промпт
+    /// Должностные обязанности / системный промпт сотрудника
     pub system_prompt: Option<String>,
 
-    /// Флаг основного агента
+    /// Флаг основного сотрудника (по умолчанию в чате)
     pub is_primary: bool,
 
-    /// Список доступных моделей (JSON)
+    /// Список доступных моделей (JSON) — вестигиально
     pub available_models: Option<String>,
 
-    /// Тип/роль агента — определяет набор инструментов
+    /// Специализация (роль/персона) — определяет набор навыков/инструментов
     pub agent_type: AgentType,
+
+    /// Техническое подключение a038, через которое работает сотрудник (UUID).
+    pub connection_id: Option<String>,
+
+    /// Аватар: эмодзи / инициалы / URL (строка)
+    pub avatar: Option<String>,
+
+    /// Внутренний адрес почты сотрудника (задел для agent-to-agent)
+    pub email: Option<String>,
+
+    /// Расписание пробуждения (cron). Задел: исполнитель добавляется отдельной фазой.
+    pub schedule_cron: Option<String>,
+
+    /// Активность сотрудника (нанят / в отпуске)
+    #[serde(default = "default_true")]
+    pub is_active: bool,
 }
 
 impl LlmAgent {
@@ -177,6 +220,11 @@ impl LlmAgent {
             is_primary,
             available_models,
             agent_type: AgentType::default(),
+            connection_id: None,
+            avatar: None,
+            email: None,
+            schedule_cron: None,
+            is_active: true,
         }
     }
 
@@ -207,6 +255,11 @@ impl LlmAgent {
             is_primary,
             available_models,
             agent_type: AgentType::default(),
+            connection_id: None,
+            avatar: None,
+            email: None,
+            schedule_cron: None,
+            is_active: true,
         }
     }
 
@@ -220,25 +273,21 @@ impl LlmAgent {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.base.description.trim().is_empty() {
-            return Err("Описание не может быть пустым".into());
+            return Err("Имя сотрудника не может быть пустым".into());
         }
         if self.base.code.trim().is_empty() {
             return Err("Код не может быть пустым".into());
         }
-        if self.api_endpoint.trim().is_empty() {
-            return Err("API Endpoint обязателен".into());
-        }
-        if self.api_key.trim().is_empty() {
-            return Err("API ключ обязателен".into());
-        }
-        if self.model_name.trim().is_empty() {
-            return Err("Название модели обязательно".into());
-        }
-        if !(0.0..=2.0).contains(&self.temperature) {
-            return Err("Temperature должна быть в диапазоне 0.0-2.0".into());
-        }
-        if self.max_tokens < 256 || self.max_tokens > 128000 {
-            return Err("Max tokens должен быть в диапазоне 256-128000".into());
+        // Технические поля (endpoint/key/model) больше НЕ обязательны у сотрудника —
+        // источник истины перенесён в связанное подключение a038. Обязательна привязка
+        // к подключению.
+        if self
+            .connection_id
+            .as_deref()
+            .map(|s| s.trim().is_empty())
+            .unwrap_or(true)
+        {
+            return Err("Не выбрано техническое подключение (a038)".into());
         }
         Ok(())
     }
@@ -297,14 +346,31 @@ impl AggregateRoot for LlmAgent {
     }
 
     fn element_name() -> &'static str {
-        "Агент LLM"
+        "AI-сотрудник"
     }
 
     fn list_name() -> &'static str {
-        "Агенты LLM"
+        "AI-сотрудники"
     }
 
     fn origin() -> Origin {
         Origin::Self_
+    }
+}
+
+#[cfg(test)]
+mod agent_type_tests {
+    use super::AgentType;
+
+    #[test]
+    fn legacy_general_deserializes_as_coordinator_admin() {
+        assert_eq!(
+            serde_json::from_str::<AgentType>("\"general\"").unwrap(),
+            AgentType::CoordinatorAdmin
+        );
+        assert_eq!(
+            serde_json::to_string(&AgentType::CoordinatorAdmin).unwrap(),
+            "\"coordinator_admin\""
+        );
     }
 }

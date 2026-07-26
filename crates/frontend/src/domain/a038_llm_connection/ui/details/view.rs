@@ -46,10 +46,6 @@ pub fn LlmConnectionDetails(
                     vm.model_name.set(connection.model_name);
                     vm.temperature.set(connection.temperature.to_string());
                     vm.max_tokens.set(connection.max_tokens.to_string());
-                    vm.system_prompt
-                        .set(connection.system_prompt.unwrap_or_default());
-                    vm.agent_type
-                        .set(connection.agent_type.as_str().to_string());
                     vm.is_primary.set(connection.is_primary);
 
                     if let Some(models_json) = connection.available_models {
@@ -325,26 +321,6 @@ pub fn LlmConnectionDetails(
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">"Роль (персона)"</label>
-                        <select
-                            style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%; background: var(--color-surface); color: var(--color-text);"
-                            prop:value=move || vm.agent_type.get()
-                            on:change=move |ev| {
-                                vm.agent_type.set(event_target_value(&ev));
-                            }
-                        >
-                            <option value="business_analyst">"Бизнес-аналитик"</option>
-                            <option value="general">"Общий (все инструменты)"</option>
-                            <option value="plugin_admin">"Разработчик плагинов"</option>
-                            <option value="system_admin">"Системный администратор"</option>
-                            <option value="kb_admin">"Администратор базы знаний"</option>
-                        </select>
-                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                            "Определяет набор навыков/инструментов чата."
-                        </div>
-                    </div>
-
-                    <div class="form__group">
                         <label class="form__label">"API Endpoint"</label>
                         <Input value=vm.api_endpoint placeholder="https://openrouter.ai/api/v1" />
                     </div>
@@ -375,15 +351,6 @@ pub fn LlmConnectionDetails(
                     <div class="form__group">
                         <label class="form__label">"Max Tokens"</label>
                         <Input value=vm.max_tokens placeholder="4096" />
-                    </div>
-
-                    <div class="form__group">
-                        <label class="form__label">"Системный промпт"</label>
-                        <Textarea
-                            attr:style="min-height : 80px"
-                            value=vm.system_prompt
-                            placeholder="Ты аналитик данных маркетплейсов..."
-                        />
                     </div>
 
                     <div style="display: flex; align-items: center; gap: 8px;">

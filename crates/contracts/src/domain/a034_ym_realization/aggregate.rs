@@ -36,13 +36,18 @@ impl YmRealizationId {
         Self(Uuid::new_v4())
     }
 
-    /// Детерминированный id документа по (connection, date). Один и тот же
-    /// суточный отчёт о реализации всегда получает один UUID — перепроведение и
-    /// replace_for_period не плодят осиротевшие GL-проводки от случайных id.
+    /// Детерминированный id документа по (connection, campaign, date). Один и тот
+    /// же суточный отчёт о реализации кампании всегда получает один UUID —
+    /// перепроведение и replace_for_period не плодят осиротевшие GL-проводки от
+    /// случайных id. `campaign_id` в ключе разводит документы разных моделей
+    /// (FBS/FBY) одного дня: отчёт о реализации YM запрашивается на кампанию, и на
+    /// один кабинет×день приходится по документу на каждую кампанию бизнеса.
     pub fn stable_for_header(header: &YmRealizationHeader) -> Self {
         let key = format!(
-            "a034_ym_realization:{}:{}",
-            header.connection_id, header.document_date,
+            "a034_ym_realization:{}:{}:{}",
+            header.connection_id,
+            header.campaign_id.as_deref().unwrap_or(""),
+            header.document_date,
         );
         Self(Uuid::from_bytes(stable_uuid_bytes(&key)))
     }
@@ -67,11 +72,20 @@ impl AggregateId for YmRealizationId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YmRealizationHeader {
     pub document_no: String,
-    /// День реализации (YYYY-MM-DD). Один документ = один кабинет + одна дата.
+    /// День реализации (YYYY-MM-DD). Один документ = кабинет + кампания + дата.
     pub document_date: String,
     pub connection_id: String,
     pub organization_id: String,
     pub marketplace_id: String,
+    /// campaignId кампании YM (Идентификатор магазина), под которую был запрошен
+    /// отчёт о реализации. Отчёт помесячный на кампанию, поэтому документ несёт
+    /// свою кампанию. `#[serde(default)]` — старые документы без поля → None.
+    #[serde(default)]
+    pub campaign_id: Option<String>,
+    /// Модель фасилитации кампании (FBS / FBY / DBS / …) = `placementType` кампании.
+    /// Совпадает с `p907.model` — ключ сопоставления сверки выручки по моделям.
+    #[serde(default)]
+    pub placement_type: Option<String>,
 }
 
 /// Строка отчёта о реализации YM (по SKU). Поля с запасом — отчёт несёт больше
@@ -176,9 +190,10 @@ impl YmRealization {
         source_meta: YmRealizationSourceMeta,
     ) -> Self {
         let totals = YmRealizationTotals::from_parts(&sales_lines, &return_lines);
+        let model = header.placement_type.as_deref().unwrap_or("—");
         let description = format!(
-            "Реализация YM за {} (кабинет {})",
-            header.document_date, header.connection_id
+            "Реализация YM {} за {} (кабинет {})",
+            model, header.document_date, header.connection_id
         );
         let base = BaseAggregate::new(
             YmRealizationId::stable_for_header(&header),

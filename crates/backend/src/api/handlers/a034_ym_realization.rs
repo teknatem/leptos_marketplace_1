@@ -39,6 +39,10 @@ pub struct YmRealizationListItemDto {
     pub organization_name: Option<String>,
     pub fetched_at: String,
     pub is_posted: bool,
+    /// Модель фасилитации (FBS/FBY/…) документа реализации.
+    pub placement_type: Option<String>,
+    /// campaignId кампании документа реализации.
+    pub campaign_id: Option<String>,
     /// Итоговое расхождение по доставкам (отчёт − заказы a013) = «Сумма разница/Итоги»
     /// блока «Доставки» в карточке. ≈0 ⇒ доставки сходятся.
     pub delivery_discrepancy: f64,
@@ -61,6 +65,8 @@ impl From<YmRealizationListRow> for YmRealizationListItemDto {
             organization_name: row.organization_name,
             fetched_at: row.fetched_at,
             is_posted: row.is_posted,
+            placement_type: row.placement_type,
+            campaign_id: row.campaign_id,
             delivery_discrepancy: 0.0,
             returns_discrepancy: 0.0,
         }
@@ -86,6 +92,9 @@ pub struct YmRealizationDetailsDto {
     pub organization_id: String,
     pub organization_name: Option<String>,
     pub marketplace_id: String,
+    /// Модель фасилитации (FBS/FBY/…) и campaignId кампании документа.
+    pub placement_type: Option<String>,
+    pub campaign_id: Option<String>,
     pub total_sales_revenue: f64,
     pub total_return_revenue: f64,
     pub net_revenue: f64,
@@ -188,10 +197,11 @@ async fn compute_row_discrepancies(dto: &YmRealizationListItemDto) -> anyhow::Re
         return Ok((0.0, 0.0));
     };
 
-    // Доставки: заказы a013, доставленные в дату документа.
+    // Доставки: заказы a013 той же модели (кампании), доставленные в дату документа.
     let order_lines = crate::domain::a013_ym_order::repository::list_lines_by_delivery_day(
         &doc.header.connection_id,
         &doc.header.document_date,
+        doc.header.placement_type.as_deref(),
     )
     .await
     .unwrap_or_default();
@@ -265,6 +275,8 @@ async fn build_details_dto(doc: YmRealization) -> anyhow::Result<YmRealizationDe
         organization_id: doc.header.organization_id.clone(),
         organization_name,
         marketplace_id: doc.header.marketplace_id.clone(),
+        placement_type: doc.header.placement_type.clone(),
+        campaign_id: doc.header.campaign_id.clone(),
         total_sales_revenue: doc.totals.sales_revenue,
         total_return_revenue: doc.totals.return_revenue,
         net_revenue: doc.totals.net_revenue,
@@ -638,9 +650,12 @@ async fn compute_recon_sales_groups(doc: &YmRealization) -> anyhow::Result<Vec<R
 
     let (ybuh, ybuh_unres) = build_ybuh_side(&doc.sales_lines);
 
-    let order_lines =
-        crate::domain::a013_ym_order::repository::list_lines_by_delivery_day(&connection_id, &day)
-            .await?;
+    let order_lines = crate::domain::a013_ym_order::repository::list_lines_by_delivery_day(
+        &connection_id,
+        &day,
+        doc.header.placement_type.as_deref(),
+    )
+    .await?;
     let (orders, orders_unres) = build_orders_side(&order_lines);
 
     let refs: Vec<String> = ybuh
@@ -1080,13 +1095,16 @@ pub async fn get_delivery_orders(
     let day = doc.header.document_date.clone();
     let connection_id = doc.header.connection_id.clone();
 
-    let order_lines =
-        crate::domain::a013_ym_order::repository::list_lines_by_delivery_day(&connection_id, &day)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to load a013 delivered lines for a034 {}: {}", id, e);
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    let order_lines = crate::domain::a013_ym_order::repository::list_lines_by_delivery_day(
+        &connection_id,
+        &day,
+        doc.header.placement_type.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to load a013 delivered lines for a034 {}: {}", id, e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let product_names = resolve_product_names(
         order_lines

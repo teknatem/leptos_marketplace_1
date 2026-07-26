@@ -40,6 +40,10 @@ struct ListItem {
     #[allow(dead_code)]
     is_posted: bool,
     #[serde(default)]
+    placement_type: Option<String>,
+    #[serde(default)]
+    campaign_id: Option<String>,
+    #[serde(default)]
     delivery_discrepancy: f64,
     #[serde(default)]
     returns_discrepancy: f64,
@@ -57,6 +61,10 @@ struct DetailsDto {
     document_date: String,
     connection_name: Option<String>,
     organization_name: Option<String>,
+    #[serde(default)]
+    placement_type: Option<String>,
+    #[serde(default)]
+    campaign_id: Option<String>,
     total_sales_revenue: f64,
     total_return_revenue: f64,
     net_revenue: f64,
@@ -589,6 +597,7 @@ pub fn YmRealizationList() -> impl IntoView {
                                             </th>
                                             {sort_header("Дата", "document_date", true)}
                                             {sort_header("Кабинет", "connection_name", false)}
+                                            <th class="table__header-cell">"Модель"</th>
                                             {sort_header("Строк", "lines_count", true)}
                                             {sort_header("Продажи", "total_sales_revenue", true)}
                                             {sort_header("Возвраты", "total_return_revenue", true)}
@@ -634,6 +643,7 @@ pub fn YmRealizationList() -> impl IntoView {
                                                             </a>
                                                         </td>
                                                         <td class="table__cell">{item.connection_name.clone().unwrap_or(item.connection_id.clone())}</td>
+                                                        <td class="table__cell">{item.placement_type.clone().unwrap_or_else(|| "—".to_string())}</td>
                                                         <td class="table__cell table__cell--right" style="width:100px;">{item.lines_count}</td>
                                                         <td class="table__cell table__cell--right" style="width:100px;">{format_money(item.total_sales_revenue)}</td>
                                                         <td class="table__cell table__cell--right" style="width:100px;">{format_money(item.total_return_revenue)}</td>
@@ -1034,6 +1044,8 @@ fn ResultTab(doc: DetailsDto, summary: RwSignal<Option<ReconSummaryResponse>>) -
                     <tbody>
                         <tr><td>"Документ"</td><td>{doc.document_no.clone()}</td></tr>
                         <tr><td>"Кабинет"</td><td>{doc.connection_name.clone().unwrap_or_default()}</td></tr>
+                        <tr><td>"Модель"</td><td>{doc.placement_type.clone().unwrap_or_else(|| "—".to_string())}</td></tr>
+                        <tr><td>"campaignId"</td><td>{doc.campaign_id.clone().unwrap_or_else(|| "—".to_string())}</td></tr>
                         <tr><td>"Организация"</td><td>{doc.organization_name.clone().unwrap_or_default()}</td></tr>
                         <tr><td>"Источник"</td><td>{format!("{} ({})", doc.source, doc.fetched_at)}</td></tr>
                         <tr><td>"Проведён"</td><td>{if doc.is_posted { "да" } else { "нет" }}</td></tr>

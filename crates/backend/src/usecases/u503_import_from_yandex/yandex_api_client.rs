@@ -1495,9 +1495,11 @@ impl YandexApiClient {
             url, campaign_id, year, month
         ));
 
-        // YM ограничивает генерацию отчёта о реализации (1 запрос в минуту).
-        // На 420/429 (rate limit) ждём ~65с и повторяем один раз.
-        const MAX_ATTEMPTS: u32 = 2;
+        // YM ограничивает генерацию отчёта о реализации: 1 запрос в минуту НА
+        // БИЗНЕС (businessId), а не на кампанию. При fan-out по кампаниям×месяцам
+        // лимит бьётся почти на каждом вызове, поэтому ждём ~65с и повторяем
+        // несколько раз (а не один), чтобы импорт не падал на этом лимите.
+        const MAX_ATTEMPTS: u32 = 5;
         const RATE_LIMIT_WAIT_SECS: u64 = 65;
         let mut resp_body = String::new();
         for attempt in 1..=MAX_ATTEMPTS {

@@ -1,4 +1,5 @@
 use crate::general_ledger::api::fetch_ym_revenue_reconciliation;
+use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
 use crate::shared::components::date_range_picker::DateRangePicker;
 use crate::shared::components::table::format_money;
@@ -74,14 +75,39 @@ fn delta_style(delta: f64) -> &'static str {
     }
 }
 
+/// Шеврон-стрелка сворачивания: поворачивается вниз при раскрытии (общие классы
+/// filter-panel__chevron из layout.css).
+fn collapse_chevron(expanded: RwSignal<bool>) -> impl IntoView {
+    view! {
+        <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class=move || if expanded.get() {
+                "filter-panel__chevron filter-panel__chevron--expanded"
+            } else {
+                "filter-panel__chevron"
+            }
+        >
+            <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+    }
+}
+
 #[component]
 pub fn YmRevenueReconciliationPage() -> impl IntoView {
+    let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let (default_from, default_to) = default_month_range();
 
     let date_from = RwSignal::new(default_from);
     let date_to = RwSignal::new(default_to);
     let cabinet_sig = RwSignal::new(String::new());
     let group_sig = RwSignal::new("day".to_string());
+    // Группировка, с которой загружены текущие данные: ссылка на карточку a034 из
+    // колонки «Период» активна только в режиме «по дням» (строка = один документ).
+    let loaded_group = RwSignal::new("day".to_string());
+    // Сворачивание фильтров и блока-пояснения (независимо друг от друга).
+    let filters_expanded = RwSignal::new(true);
+    let info_expanded = RwSignal::new(true);
 
     let rows = RwSignal::new(Vec::<YmRevenueReconRow>::new());
     let total_fina = RwSignal::new(0.0_f64);
@@ -105,7 +131,8 @@ pub fn YmRevenueReconciliationPage() -> impl IntoView {
         let df = date_from.get_untracked();
         let dt = date_to.get_untracked();
         let cab = cabinet_sig.get_untracked();
-        let group = if group_sig.get_untracked() == "month" {
+        let group_str = group_sig.get_untracked();
+        let group = if group_str == "month" {
             YmRevenueReconGroup::Month
         } else {
             YmRevenueReconGroup::Day
@@ -133,6 +160,7 @@ pub fn YmRevenueReconciliationPage() -> impl IntoView {
                     total_fina_qty.set(resp.total_fina_qty);
                     total_ybuh_qty.set(resp.total_ybuh_qty);
                     total_qty_delta.set(resp.total_qty_delta);
+                    loaded_group.set(group_str.clone());
                     loaded.set(true);
                 }
                 Err(err) => error_msg.set(Some(err)),
@@ -152,10 +180,35 @@ pub fn YmRevenueReconciliationPage() -> impl IntoView {
                 </div>
             </div>
 
+            <div style="margin: 0 var(--spacing-md) var(--spacing-sm); max-width: 1100px;">
+                <div
+                    on:click=move |_| info_expanded.update(|e| *e = !*e)
+                    style="cursor:pointer; display:flex; align-items:center; gap:6px; color: var(--color-text-secondary); font-size: 0.82em; user-select:none;"
+                >
+                    {collapse_chevron(info_expanded)}
+                    <span>"О сверке: что и с чем сверяется"</span>
+                </div>
+                {move || info_expanded.get().then(|| view! {
+                    <p style="margin: var(--spacing-xs) 0 0; color: var(--color-text-secondary); font-size: 0.82em; line-height: 1.5;">
+                        "Сверяются два независимых источника выручки Yandex Market за период (по дням/месяцам, кабинетам и модели FBS/FBY). "
+                        "«fina» — оперативные взаиморасчёты из отчёта «united-netting» (p907): строки «Платёж покупателя» за вычетом «Возврат платежа покупателя», выручка признаётся по дате доставки. "
+                        "«ybuh» — официальный «Отчёт о реализации» (a034): доставлено (delivered) за вычетом возвратов (returned), отчёт помесячный на кампанию. "
+                        "Дельта = fina − ybuh. Небольшие расхождения по дням нормальны (разные даты признания и границы месяца отчёта); устойчивое одностороннее расхождение указывает на пропуск данных — например, не загружена кампания (FBS/FBY) или заказ отсутствует в одном из источников."
+                    </p>
+                })}
+            </div>
+
             <div class="page__content">
                 <div class="filter-panel">
                     <div class="filter-panel-header">
-                        <div class="filter-panel-header__left">"Фильтры"</div>
+                        <div
+                            class="filter-panel-header__left"
+                            on:click=move |_| filters_expanded.update(|e| *e = !*e)
+                            style="cursor:pointer;"
+                        >
+                            {collapse_chevron(filters_expanded)}
+                            <span class="filter-panel__title">"Фильтры"</span>
+                        </div>
                         <div class="filter-panel-header__right">
                             <Button
                                 appearance=ButtonAppearance::Primary
@@ -167,6 +220,7 @@ pub fn YmRevenueReconciliationPage() -> impl IntoView {
                         </div>
                     </div>
 
+                    {move || filters_expanded.get().then(|| view! {
                     <div class="filter-panel-content">
                         <Flex gap=FlexGap::Small align=FlexAlign::End>
                             <div style="min-width: 420px;">
@@ -202,6 +256,7 @@ pub fn YmRevenueReconciliationPage() -> impl IntoView {
                             </div>
                         </Flex>
                     </div>
+                    })}
                 </div>
 
                 {move || error_msg.get().map(|err| view! { <div class="alert alert--error">{err}</div> })}
@@ -219,51 +274,81 @@ pub fn YmRevenueReconciliationPage() -> impl IntoView {
                                 <table class="table" style="width:100%;">
                                     <thead>
                                         <tr class="table__header-row">
+                                            <th class="table__header-cell" colspan="4"></th>
+                                            <th class="table__header-cell" colspan="3" style="text-align:center; border-left:1px solid var(--color-border);">"Проверка суммы, ₽"</th>
+                                            <th class="table__header-cell" colspan="3" style="text-align:center; border-left:1px solid var(--color-border);">"Проверка количества, шт"</th>
+                                        </tr>
+                                        <tr class="table__header-row">
                                             <th class="table__header-cell">"Период"</th>
                                             <th class="table__header-cell">"Кабинет"</th>
-                                            <th class="table__header-cell table__header-cell--right">"fina ₽"</th>
-                                            <th class="table__header-cell table__header-cell--right">"ybuh ₽"</th>
-                                            <th class="table__header-cell table__header-cell--right">"Дельта ₽"</th>
-                                            <th class="table__header-cell table__header-cell--right">"fina шт"</th>
-                                            <th class="table__header-cell table__header-cell--right">"ybuh шт"</th>
-                                            <th class="table__header-cell table__header-cell--right">"Дельта шт"</th>
+                                            <th class="table__header-cell">"Модель"</th>
+                                            <th class="table__header-cell">"campaignId"</th>
+                                            <th class="table__header-cell table__header-cell--right" style="border-left:1px solid var(--color-border);">"fina"</th>
+                                            <th class="table__header-cell table__header-cell--right">"ybuh"</th>
+                                            <th class="table__header-cell table__header-cell--right">"Дельта"</th>
+                                            <th class="table__header-cell table__header-cell--right" style="border-left:1px solid var(--color-border);">"fina"</th>
+                                            <th class="table__header-cell table__header-cell--right">"ybuh"</th>
+                                            <th class="table__header-cell table__header-cell--right">"Дельта"</th>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {move || rows.get().into_iter().map(|row| {
-                                            view! {
-                                                <tr class="table__row">
-                                                    <td class="table__cell">{row.period.clone()}</td>
-                                                    <td class="table__cell">
-                                                        {row.connection_name.clone()
-                                                            .or_else(|| row.connection_mp_ref.clone())
-                                                            .unwrap_or_default()}
-                                                    </td>
-                                                    <td class="table__cell table__cell--right">{format_money(row.fina_net)}</td>
-                                                    <td class="table__cell table__cell--right">{format_money(row.ybuh_net)}</td>
-                                                    <td class="table__cell">
-                                                        <span style=delta_style(row.delta)>{format_money(row.delta)}</span>
-                                                    </td>
-                                                    <td class="table__cell table__cell--right">{format!("{:.0}", row.fina_qty)}</td>
-                                                    <td class="table__cell table__cell--right">{format!("{:.0}", row.ybuh_qty)}</td>
-                                                    <td class="table__cell">
-                                                        <span style=delta_style(row.qty_delta)>{format!("{:.0}", row.qty_delta)}</span>
-                                                    </td>
-                                                </tr>
-                                            }
-                                        }).collect_view()}
-                                    </tbody>
-                                    <tfoot>
                                         <tr class="table__totals-row">
-                                            <td class="table__cell" colspan="2"><strong>"ИТОГО"</strong></td>
-                                            <td class="table__cell table__cell--right"><strong>{move || format_money(total_fina.get())}</strong></td>
+                                            <td class="table__cell" colspan="4"><strong>"ИТОГО"</strong></td>
+                                            <td class="table__cell table__cell--right" style="border-left:1px solid var(--color-border);"><strong>{move || format_money(total_fina.get())}</strong></td>
                                             <td class="table__cell table__cell--right"><strong>{move || format_money(total_ybuh.get())}</strong></td>
                                             <td class="table__cell table__cell--right"><strong>{move || format_money(total_delta.get())}</strong></td>
-                                            <td class="table__cell table__cell--right"><strong>{move || format!("{:.0}", total_fina_qty.get())}</strong></td>
+                                            <td class="table__cell table__cell--right" style="border-left:1px solid var(--color-border);"><strong>{move || format!("{:.0}", total_fina_qty.get())}</strong></td>
                                             <td class="table__cell table__cell--right"><strong>{move || format!("{:.0}", total_ybuh_qty.get())}</strong></td>
                                             <td class="table__cell table__cell--right"><strong>{move || format!("{:.0}", total_qty_delta.get())}</strong></td>
                                         </tr>
-                                    </tfoot>
+                                    </thead>
+                                    <tbody>
+                                        {move || {
+                                            let tabs_store = tabs_store.clone();
+                                            let day_mode = loaded_group.get() == "day";
+                                            rows.get().into_iter().map(move |row| {
+                                                let tabs_store = tabs_store.clone();
+                                                let period_cell = match (day_mode, row.ybuh_doc_id.clone()) {
+                                                    (true, Some(doc_id)) => {
+                                                        let title = format!("Реализация YM {}", row.period);
+                                                        let label = row.period.clone();
+                                                        view! {
+                                                            <a href="#" class="table__link"
+                                                                on:click=move |ev| {
+                                                                    ev.prevent_default();
+                                                                    tabs_store.open_tab(
+                                                                        &format!("a034_ym_realization_details_{}", doc_id),
+                                                                        &title,
+                                                                    );
+                                                                }
+                                                            >{label}</a>
+                                                        }.into_any()
+                                                    }
+                                                    _ => row.period.clone().into_any(),
+                                                };
+                                                view! {
+                                                    <tr class="table__row">
+                                                        <td class="table__cell">{period_cell}</td>
+                                                        <td class="table__cell">
+                                                            {row.connection_name.clone()
+                                                                .or_else(|| row.connection_mp_ref.clone())
+                                                                .unwrap_or_default()}
+                                                        </td>
+                                                        <td class="table__cell">{row.model.clone().unwrap_or_else(|| "—".to_string())}</td>
+                                                        <td class="table__cell">{row.campaign_id.clone().unwrap_or_else(|| "—".to_string())}</td>
+                                                        <td class="table__cell table__cell--right" style="border-left:1px solid var(--color-border);">{format_money(row.fina_net)}</td>
+                                                        <td class="table__cell table__cell--right">{format_money(row.ybuh_net)}</td>
+                                                        <td class="table__cell">
+                                                            <span style=delta_style(row.delta)>{format_money(row.delta)}</span>
+                                                        </td>
+                                                        <td class="table__cell table__cell--right" style="border-left:1px solid var(--color-border);">{format!("{:.0}", row.fina_qty)}</td>
+                                                        <td class="table__cell table__cell--right">{format!("{:.0}", row.ybuh_qty)}</td>
+                                                        <td class="table__cell">
+                                                            <span style=delta_style(row.qty_delta)>{format!("{:.0}", row.qty_delta)}</span>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }).collect_view()
+                                        }}
+                                    </tbody>
                                 </table>
                             </div>
                         }.into_any()

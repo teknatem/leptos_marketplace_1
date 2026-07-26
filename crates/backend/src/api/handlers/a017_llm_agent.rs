@@ -103,6 +103,18 @@ pub async fn get_primary() -> Result<Json<LlmAgent>, axum::http::StatusCode> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct SkillsQuery {
+    pub agent_type: Option<String>,
+}
+
+/// Навыки (core/extended) для указанной специализации — read-only блок карточки сотрудника.
+pub async fn skills(Query(q): Query<SkillsQuery>) -> Json<serde_json::Value> {
+    use contracts::domain::a017_llm_agent::aggregate::AgentType;
+    let at = AgentType::from_str(&q.agent_type.unwrap_or_default());
+    Json(crate::shared::llm::skills::employee_skills(&at).await)
+}
+
 pub async fn test_connection(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {

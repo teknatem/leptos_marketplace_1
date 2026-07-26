@@ -1,0 +1,13 @@
+{
+  "marketplace": "yandex-market",
+  "label": "2026-07",
+  "metrics": {
+    "impressions": 87000,
+    "clicks": 6300,
+    "product_views": 5900,
+    "cart_adds": 1200,
+    "orders": 670,
+    "deliveries": 601,
+    "revenue": 1730000
+  }
+}

@@ -44,17 +44,79 @@ pub async fn tool_test(Query(params): Query<ToolTestParams>) -> impl IntoRespons
     );
 
     // Для debug-эндпоинта активируем все навыки General, чтобы любой инструмент проходил guard.
-    let active_skills = crate::shared::llm::skills::allowed_skills_for(
-        &contracts::domain::a017_llm_agent::aggregate::AgentType::General,
-    );
-    let active_tools = crate::shared::llm::skills::active_tool_names(&active_skills);
+    let specialization = contracts::domain::a017_llm_agent::aggregate::AgentType::CoordinatorAdmin;
+    let skill_snapshot = crate::shared::llm::skills::snapshot();
+    let skill_access = match crate::shared::llm::skill_policy::accesses_for_snapshot(
+        &specialization,
+        &skill_snapshot,
+    )
+    .await
+    {
+        Ok(access) => access,
+        Err(error) => {
+            tracing::error!("[debug/tool-test] failed to load skill policy: {error:#}");
+            return Json(serde_json::json!({
+                "tool": params.tool,
+                "error": "failed to load effective skill policy",
+                "ok": false,
+            }));
+        }
+    };
+    let active_skills = skill_access
+        .iter()
+        .into_iter()
+        .filter_map(|(skill_id, level)| {
+            (*level != crate::shared::llm::skill_policy::SkillAccessLevel::Denied)
+                .then_some(skill_id.clone())
+        })
+        .collect::<Vec<_>>();
+    let active_tools =
+        crate::shared::llm::skills::active_tool_names_in(&skill_snapshot, &active_skills);
+    let active_skill_ids = active_skills
+        .iter()
+        .cloned()
+        .collect::<std::collections::HashSet<_>>();
+    let artifact_publish_allowed = match crate::shared::llm::skill_policy::capability_allowed(
+        &specialization,
+        crate::shared::llm::skill_policy::ARTIFACT_PUBLISH,
+    )
+    .await
+    {
+        Ok(allowed) => allowed,
+        Err(error) => {
+            tracing::error!("[debug/tool-test] failed to load capability policy: {error:#}");
+            return Json(serde_json::json!({
+                "tool": params.tool,
+                "error": "failed to load effective capability policy",
+                "ok": false,
+            }));
+        }
+    };
+    let skill_script_execute_allowed = crate::shared::llm::skill_policy::capability_allowed(
+        &specialization,
+        crate::shared::llm::skill_policy::SKILL_SCRIPT_EXECUTE,
+    )
+    .await
+    .unwrap_or(false);
+    let skill_script_develop_allowed = crate::shared::llm::skill_policy::capability_allowed(
+        &specialization,
+        crate::shared::llm::skill_policy::SKILL_SCRIPT_DEVELOP,
+    )
+    .await
+    .unwrap_or(false);
 
     let raw_result = crate::shared::llm::execute_tool_call(
         &call,
         "debug-chat-id",
         "debug-agent-id",
-        &contracts::domain::a017_llm_agent::aggregate::AgentType::General,
+        &specialization,
         &active_tools,
+        &active_skill_ids,
+        &skill_snapshot,
+        &skill_access,
+        artifact_publish_allowed,
+        skill_script_execute_allowed,
+        skill_script_develop_allowed,
     )
     .await;
 

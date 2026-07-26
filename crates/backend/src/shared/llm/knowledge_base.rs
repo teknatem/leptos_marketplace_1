@@ -8,6 +8,7 @@
 //! - `search_knowledge(tags)` — поиск по тегам, возвращает список (id, title)
 //! - `get_knowledge(id)` — полный текст документа без frontmatter
 
+use super::frontmatter::{parse_list, parse_scalar, split_frontmatter};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
@@ -137,6 +138,11 @@ const EMBEDDED_LLM_DOCS: &[EmbeddedKnowledgeSource] = &[
         raw: include_str!("../../general_ledger/llm.md"),
     },
     EmbeddedKnowledgeSource {
+        id: "domain-a034_ym_realization",
+        source_path: "crates/backend/src/domain/a034_ym_realization/llm.md",
+        raw: include_str!("../../domain/a034_ym_realization/llm.md"),
+    },
+    EmbeddedKnowledgeSource {
         id: "domain-a024_bi_indicator",
         source_path: "crates/backend/src/domain/a024_bi_indicator/llm.md",
         raw: include_str!("../../domain/a024_bi_indicator/llm.md"),
@@ -170,6 +176,21 @@ const EMBEDDED_LLM_DOCS: &[EmbeddedKnowledgeSource] = &[
         id: "app-raw-storage",
         source_path: "crates/backend/src/shared/llm/docs/raw_storage.md",
         raw: include_str!("docs/raw_storage.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "app-marketing-metrics",
+        source_path: "crates/backend/src/shared/llm/docs/marketing_metrics.md",
+        raw: include_str!("docs/marketing_metrics.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "app-sales-metrics",
+        source_path: "crates/backend/src/shared/llm/docs/sales_metrics.md",
+        raw: include_str!("docs/sales_metrics.md"),
+    },
+    EmbeddedKnowledgeSource {
+        id: "app-finance-metrics",
+        source_path: "crates/backend/src/shared/llm/docs/finance_metrics.md",
+        raw: include_str!("docs/finance_metrics.md"),
     },
 ];
 
@@ -393,102 +414,6 @@ fn insert_doc(
         }
     }
     docs.insert(id, doc);
-}
-
-/// Разделить файл на frontmatter (между первыми `---`) и тело.
-fn split_frontmatter(raw: &str) -> (Option<String>, String) {
-    // Frontmatter должен начинаться с первой строки
-    if !raw.starts_with("---") {
-        return (None, raw.to_string());
-    }
-
-    // Ищем закрывающий `---` начиная со второй строки
-    let after_open = match raw.find('\n') {
-        Some(pos) => &raw[pos + 1..],
-        None => return (None, raw.to_string()),
-    };
-
-    // Ищем `---` в начале строки
-    let close_marker = "\n---";
-    if let Some(close_pos) = after_open.find(close_marker) {
-        let fm = after_open[..close_pos].to_string();
-        let body_start = close_pos + close_marker.len();
-        let body = after_open[body_start..].to_string();
-        (Some(fm), body)
-    } else {
-        (None, raw.to_string())
-    }
-}
-
-/// Извлечь скалярное значение: `key: value`
-fn parse_scalar(frontmatter: &str, key: &str) -> Option<String> {
-    let prefix = format!("{}:", key);
-    for line in frontmatter.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix(&prefix) {
-            let value = rest.trim().trim_matches('"').trim_matches('\'').to_string();
-            if !value.is_empty() {
-                return Some(value);
-            }
-        }
-    }
-    None
-}
-
-/// Извлечь список значений из inline-формата `key: [val1, val2]`
-/// или multiline-формата:
-/// ```yaml
-/// key:
-///   - val1
-///   - val2
-/// ```
-fn parse_list(frontmatter: &str, key: &str) -> Option<Vec<String>> {
-    let lines: Vec<&str> = frontmatter.lines().collect();
-    let prefix = format!("{}:", key);
-
-    for (i, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix(&prefix) {
-            let rest = rest.trim();
-
-            // Inline: `tags: [a020, wildberries]`
-            if rest.starts_with('[') && rest.ends_with(']') {
-                let inner = &rest[1..rest.len() - 1];
-                let items = inner
-                    .split(',')
-                    .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect::<Vec<_>>();
-                return Some(items);
-            }
-
-            // Inline одно значение без скобок
-            if !rest.is_empty() {
-                return Some(vec![rest.to_string()]);
-            }
-
-            // Multiline: следующие строки начинаются с `  - `
-            let mut items = Vec::new();
-            for subsequent in &lines[i + 1..] {
-                let s = subsequent.trim();
-                if s.starts_with("- ") {
-                    items.push(
-                        s[2..]
-                            .trim()
-                            .trim_matches('"')
-                            .trim_matches('\'')
-                            .to_string(),
-                    );
-                } else if !s.is_empty() && !s.starts_with('#') {
-                    break;
-                }
-            }
-            if !items.is_empty() {
-                return Some(items);
-            }
-        }
-    }
-    None
 }
 
 // ─── Тесты ───────────────────────────────────────────────────────────────────

@@ -722,15 +722,23 @@ pub struct DeliveredOrderLine {
 /// Все строки заказов кабинета `connection_id` с датой доставки = `day`
 /// ("YYYY-MM-DD"). Позиции хранятся как JSON в `lines_json`, разворачиваем через
 /// `json_each`. Включаются заказы независимо от статуса (статус — в `status_norm`).
+///
+/// `fulfillment_type` (модель FBS/FBY/…) — необязательный фильтр: когда документ
+/// реализации a034 относится к конкретной кампании, сверка должна брать только
+/// заказы той же модели, иначе один документ (напр. FBS) сравнивается со ВСЕМИ
+/// заказами дня (FBS + FBY) и даёт ложное расхождение. `None` — без фильтра
+/// (legacy-документы без кампании).
 pub async fn list_lines_by_delivery_day(
     connection_id: &str,
     day: &str,
+    fulfillment_type: Option<&str>,
 ) -> Result<Vec<DeliveredOrderLine>> {
-    use sea_orm::{ConnectionTrait, Statement};
+    use sea_orm::{ConnectionTrait, Statement, Value};
 
     let db = conn();
 
-    let sql = "
+    let mut sql = String::from(
+        "
         SELECT
             d.document_no                                       AS order_no,
             d.status_norm                                       AS status_norm,
@@ -743,14 +751,20 @@ pub async fn list_lines_by_delivery_day(
         FROM a013_ym_order d, json_each(d.lines_json) li
         WHERE d.is_deleted = 0
           AND d.connection_id = ?
-          AND d.delivery_date LIKE ?
-        ORDER BY d.document_no ASC";
+          AND d.delivery_date LIKE ?",
+    );
+    let mut values: Vec<Value> = vec![connection_id.into(), format!("{}%", day).into()];
+    if let Some(ft) = fulfillment_type.map(str::trim).filter(|v| !v.is_empty()) {
+        sql.push_str(" AND d.fulfillment_type = ?");
+        values.push(ft.into());
+    }
+    sql.push_str("\n        ORDER BY d.document_no ASC");
 
     let rows = db
         .query_all(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
-            sql,
-            [connection_id.into(), format!("{}%", day).into()],
+            &sql,
+            values,
         ))
         .await?;
 

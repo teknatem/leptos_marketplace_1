@@ -305,9 +305,13 @@ struct ExecuteQueryArgs {
 
 fn access_profile(agent_type: &AgentType) -> Result<SqlAccessProfile, String> {
     match agent_type {
-        AgentType::BusinessAnalyst | AgentType::PluginAdmin => Ok(SqlAccessProfile::Analytics),
+        AgentType::BusinessAnalyst
+        | AgentType::PluginAdmin
+        | AgentType::SalesAnalyst
+        | AgentType::Marketer
+        | AgentType::Financier => Ok(SqlAccessProfile::Analytics),
         AgentType::KbAdmin => Ok(SqlAccessProfile::KnowledgeBase),
-        AgentType::General => Ok(SqlAccessProfile::General),
+        AgentType::CoordinatorAdmin => Ok(SqlAccessProfile::General),
         AgentType::SystemAdmin => Err("execute_query is not available to SystemAdmin".to_string()),
     }
 }

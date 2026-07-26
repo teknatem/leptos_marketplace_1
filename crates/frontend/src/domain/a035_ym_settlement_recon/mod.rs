@@ -78,6 +78,24 @@ struct DetailsDto {
     updated_at: String,
     #[serde(default)]
     lines: Vec<ReconLine>,
+    #[serde(default)]
+    orders: Vec<OrderItem>,
+}
+
+/// Заказ, попавший в банковский ордер: дата заказа, статус и сумма перечисления.
+#[derive(Debug, Clone, Deserialize)]
+struct OrderItem {
+    order_id: i64,
+    /// UUID агрегата a013 для гиперссылки (пусто, если заказ не загружен).
+    #[serde(default)]
+    ym_order_id: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    order_date: String,
+    amount: f64,
+    #[serde(default)]
+    rows_count: i64,
 }
 
 /// Кабинеты МП (id, подпись) для фильтра.
@@ -661,6 +679,7 @@ fn block_hint(text: &'static str) -> AnyView {
 /// теоретической суммы против факта YM (bank_sum).
 #[component]
 fn ReconResultView(doc: DetailsDto) -> impl IntoView {
+    let tabs_store = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let period = if doc.period_from.is_empty() && doc.period_to.is_empty() {
         String::new()
     } else {
@@ -686,6 +705,11 @@ fn ReconResultView(doc: DetailsDto) -> impl IntoView {
     let total_ops: i32 = lines.iter().map(|l| l.rows_count).sum();
     let turnovers_count = lines.len();
     let theoretical = doc.theoretical_sum;
+
+    // Заказы ордера: перечень с датой заказа и суммой перечисления (Σ строк p907).
+    let orders = doc.orders.clone();
+    let orders_count = orders.len();
+    let orders_total: f64 = orders.iter().map(|o| o.amount).sum();
 
     // Расхождение в процентах от факта (если факт ненулевой).
     let dev_pct = if doc.bank_sum.abs() > 0.005 {
@@ -798,6 +822,71 @@ fn ReconResultView(doc: DetailsDto) -> impl IntoView {
                         </tr>
                     </tfoot>
                 </table>
+            </CardAnimated>
+
+            <CardAnimated delay_ms=120 nav_id="a035_recon_orders">
+                <h4 class="details-section__title">
+                    "Заказы в ордере"
+                    <span style="margin-left: var(--spacing-sm); color: var(--color-text-secondary); font-weight:400;">
+                        {format!("({})", orders_count)}
+                    </span>
+                </h4>
+                {block_hint("Заказы, попавшие в этот банковский ордер: строки p907 с непустым order_id, сгруппированные по заказу. Номер заказа ведёт в карточку заказа (a013). «Статус» — текущий статус заказа; «Дата заказа» — order_creation_date; «Сумма перечисления» — Σ transaction_sum строк заказа в ордере (нетто с учётом возвратов). Часть суммы ордера (услуги, премии) не привязана к заказу и здесь не отражена.")}
+                {if orders.is_empty() {
+                    view! { <div class="page__placeholder">"Нет заказов с привязкой к этому ордеру."</div> }.into_any()
+                } else {
+                    let tabs_store = tabs_store.clone();
+                    view! {
+                        <table class="table" style="width:100%;">
+                            <thead>
+                                <tr class="table__header-row">
+                                    <th class="table__header-cell">"Заказ"</th>
+                                    <th class="table__header-cell">"Статус"</th>
+                                    <th class="table__header-cell">"Дата заказа"</th>
+                                    <th class="table__header-cell table__header-cell--right">"Строк"</th>
+                                    <th class="table__header-cell table__header-cell--right">"Сумма перечисления"</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {orders.into_iter().map(|o: OrderItem| {
+                                    let tabs_store = tabs_store.clone();
+                                    let order_no = o.order_id.to_string();
+                                    let order_cell = match o.ym_order_id.clone() {
+                                        Some(uuid) if !uuid.is_empty() => {
+                                            let order_no_cb = order_no.clone();
+                                            let open = move |ev: leptos::ev::MouseEvent| {
+                                                ev.prevent_default();
+                                                tabs_store.open_tab(
+                                                    &format!("a013_ym_order_details_{}", uuid),
+                                                    &format!("YM Order {}", order_no_cb),
+                                                );
+                                            };
+                                            view! {
+                                                <a href="#" class="table__link" on:click=open>{order_no.clone()}</a>
+                                            }.into_any()
+                                        }
+                                        _ => order_no.clone().into_any(),
+                                    };
+                                    view! {
+                                        <tr class="table__row">
+                                            <td class="table__cell">{order_cell}</td>
+                                            <td class="table__cell">{o.status.unwrap_or_default()}</td>
+                                            <td class="table__cell">{o.order_date}</td>
+                                            <td class="table__cell table__cell--right">{o.rows_count.to_string()}</td>
+                                            <td class="table__cell table__cell--right">{format_money(o.amount)}</td>
+                                        </tr>
+                                    }
+                                }).collect_view()}
+                            </tbody>
+                            <tfoot>
+                                <tr class="table__row" style="border-top:2px solid var(--color-border); font-weight:600;">
+                                    <td class="table__cell" colspan="4">{format!("Итого по {} заказам", orders_count)}</td>
+                                    <td class="table__cell table__cell--right">{format_money(orders_total)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    }.into_any()
+                }}
             </CardAnimated>
         </div>
     }

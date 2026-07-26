@@ -18,7 +18,7 @@ use contracts::system::tasks::progress::TaskProgress;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::domain::{a018_llm_chat, a038_llm_connection, a039_mail_message};
+use crate::domain::{a017_llm_agent, a018_llm_chat, a039_mail_message};
 use crate::shared::mail;
 use crate::system::tasks::logger::TaskLogger;
 use crate::system::tasks::manager::{TaskManager, TaskRunOutcome};
@@ -27,7 +27,7 @@ static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task021_mail_intake",
     write_tables: &[
         "a039_mail_message",
-        "a038_llm_connection",
+        "a017_llm_agent",
         "a018_llm_chat",
         "a018_llm_chat_message",
         "sys_tool_trace",
@@ -239,17 +239,17 @@ impl Task021MailIntakeManager {
             return Ok(());
         }
 
-        // Выбор подключения нужного типа + прогон агента.
-        let connection =
-            a038_llm_connection::service::ensure_connection_for(agent_type.clone()).await?;
+        // Выбор сотрудника нужной специализации (a017) + прогон через чат. Техническое
+        // подключение и модель резолвятся внутри чата по связанному a038.
+        let employee = a017_llm_agent::service::ensure_employee_for(agent_type.clone()).await?;
         let chat_id = a018_llm_chat::service::create(
             a018_llm_chat::service::LlmChatDto {
                 id: None,
                 code: Some(format!("MAIL-{uid}")),
                 description: a039_subject(&email.subject),
                 comment: Some(format!("Почтовый запрос от {}", user.username)),
-                agent_id: connection.to_string_id(),
-                model_name: Some(connection.model_name.clone()),
+                agent_id: employee.to_string_id(),
+                model_name: None,
             },
             Some(user.id.clone()),
         )
@@ -262,7 +262,7 @@ impl Task021MailIntakeManager {
             &chat_id.to_string(),
             a018_llm_chat::service::SendMessageRequest {
                 content: email.body.clone(),
-                model_name: Some(connection.model_name.clone()),
+                model_name: None,
                 attachment_ids: Vec::new(),
                 request_id: email.message_id.clone(),
             },

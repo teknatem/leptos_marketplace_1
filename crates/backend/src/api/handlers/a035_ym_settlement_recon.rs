@@ -90,6 +90,20 @@ pub struct ReconDetailsDto {
     pub created_at: String,
     pub updated_at: String,
     pub lines: Vec<ReconLine>,
+    /// Перечень заказов, попавших в ордер: дата заказа и сумма перечисления.
+    pub orders: Vec<ReconOrderDto>,
+}
+
+/// Заказ в составе банковского ордера (для карточки сверки).
+#[derive(Debug, Clone, Serialize)]
+pub struct ReconOrderDto {
+    pub order_id: i64,
+    /// UUID агрегата a013 для гиперссылки (пусто, если заказ не загружен).
+    pub ym_order_id: Option<String>,
+    pub status: Option<String>,
+    pub order_date: String,
+    pub amount: f64,
+    pub rows_count: i64,
 }
 
 pub async fn list_paginated(
@@ -169,6 +183,22 @@ async fn build_details_dto(doc: YmSettlementRecon) -> anyhow::Result<ReconDetail
     )
     .await
     .unwrap_or_default();
+    let orders = a035_ym_settlement_recon::repository::order_breakdown(
+        &doc.header.connection_id,
+        doc.header.bank_order_id,
+    )
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|o| ReconOrderDto {
+        order_id: o.order_id,
+        ym_order_id: o.ym_order_id,
+        status: o.status,
+        order_date: o.order_date,
+        amount: o.amount,
+        rows_count: o.rows_count,
+    })
+    .collect();
 
     Ok(ReconDetailsDto {
         id: doc.base.id.as_string(),
@@ -189,6 +219,7 @@ async fn build_details_dto(doc: YmSettlementRecon) -> anyhow::Result<ReconDetail
         created_at: doc.base.metadata.created_at.to_rfc3339(),
         updated_at: doc.base.metadata.updated_at.to_rfc3339(),
         lines: doc.lines,
+        orders,
     })
 }
 

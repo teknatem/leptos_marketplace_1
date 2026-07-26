@@ -7,21 +7,22 @@
   "collection_name": "llm_agent",
   "table_name": "a017_llm_agent",
   "ui": {
-    "element_name": "Агент LLM",
-    "element_name_en": "LLM Agent",
-    "list_name": "Агенты LLM",
-    "list_name_en": "LLM Agents",
+    "element_name": "AI-сотрудник",
+    "element_name_en": "AI Employee",
+    "list_name": "AI-сотрудники",
+    "list_name_en": "AI Employees",
     "icon": "robot"
   },
   "ai": {
-    "description": "Настройки подключения к провайдерам LLM (OpenAI, OpenRouter, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_tokens) и системный промпт. Используется для создания чатов и выполнения запросов к языковым моделям.",
+    "description": "Виртуальный сотрудник (AI-агент): имя, аватар, почта, специализация (agent_type — определяет навыки), должностные обязанности (system_prompt) и расписание. Работает через привязанное техническое подключение a038 (connection_id), из которого берёт провайдера/креды/тюнинг. Может быть несколько сотрудников с одной специализацией. Пользователь выбирает сотрудника в чате как коллегу.",
     "questions": [
-      "Какие LLM агенты настроены?",
-      "Как добавить OpenAI агента?",
-      "Какие параметры можно настроить для агента?",
-      "Как изменить температуру модели?"
+      "Какие AI-сотрудники настроены?",
+      "Как добавить сотрудника-аналитика?",
+      "Какая специализация у сотрудника?",
+      "К какому подключению привязан сотрудник?"
     ],
     "related": [
+      "a038_llm_connection",
       "a018_llm_chat",
       "a019_llm_artifact"
     ]
@@ -67,10 +68,10 @@
       "field_type": "primitive",
       "source": "base",
       "ui": {
-        "label": "Наименование",
-        "label_en": "Name",
-        "placeholder": "GPT-4o основной агент",
-        "hint": "Описательное название агента",
+        "label": "Имя сотрудника",
+        "label_en": "Employee Name",
+        "placeholder": "Анна — аналитик продаж",
+        "hint": "Имя виртуального сотрудника",
         "visible_in_list": true,
         "visible_in_form": true,
         "column_width": 250
@@ -108,16 +109,16 @@
       "ui": {
         "label": "Провайдер",
         "label_en": "Provider",
-        "hint": "Тип провайдера LLM",
-        "visible_in_list": true,
-        "visible_in_form": true,
+        "hint": "Вестигиально: источник истины — подключение a038",
+        "visible_in_list": false,
+        "visible_in_form": false,
         "widget": "select",
         "column_width": 120
       },
       "validation": {
-        "required": true
+        "required": false
       },
-      "ai_hint": "Поддерживаемые провайдеры: OpenAI (GPT-4, GPT-4o), OpenRouter (OpenAI-compatible routing), Anthropic (Claude), Ollama (локальные модели)"
+      "ai_hint": "Вестигиальное поле. Провайдер берётся из связанного подключения a038 (connection_id)."
     },
     {
       "name": "api_endpoint",
@@ -128,18 +129,16 @@
         "label": "API Endpoint",
         "label_en": "API Endpoint",
         "placeholder": "https://api.openai.com/v1",
-        "hint": "URL эндпоинта API провайдера",
+        "hint": "Вестигиально: источник истины — подключение a038",
         "visible_in_list": false,
-        "visible_in_form": true,
+        "visible_in_form": false,
         "column_width": 300
       },
       "validation": {
-        "required": true,
-        "max_length": 500,
-        "pattern": "^https?://.+",
-        "custom_error": "URL должен начинаться с http:// или https://"
+        "required": false,
+        "max_length": 500
       },
-      "ai_hint": "OpenAI: https://api.openai.com/v1, OpenRouter: https://openrouter.ai/api/v1, Anthropic: https://api.anthropic.com, Ollama: http://localhost:11434"
+      "ai_hint": "Вестигиальное поле. Endpoint берётся из связанного подключения a038 (connection_id)."
     },
     {
       "name": "api_key",
@@ -150,16 +149,16 @@
         "label": "API Ключ",
         "label_en": "API Key",
         "placeholder": "sk-...",
-        "hint": "API ключ для аутентификации",
+        "hint": "Вестигиально: источник истины — подключение a038",
         "visible_in_list": false,
-        "visible_in_form": true,
+        "visible_in_form": false,
         "widget": "password"
       },
       "validation": {
-        "required": true,
+        "required": false,
         "max_length": 500
       },
-      "ai_hint": "Хранится в зашифрованном виде. Для OpenAI формат: sk-..."
+      "ai_hint": "Вестигиальное поле. Ключ берётся из связанного подключения a038 (connection_id)."
     },
     {
       "name": "model_name",
@@ -167,19 +166,19 @@
       "field_type": "primitive",
       "source": "specific",
       "ui": {
-        "label": "Модель",
-        "label_en": "Model",
-        "placeholder": "gpt-4o",
-        "hint": "Название модели",
+        "label": "Модель (закреплённая)",
+        "label_en": "Pinned Model",
+        "placeholder": "пусто → дефолт подключения",
+        "hint": "Опционально: закрепить модель из allowed_models подключения; пусто → дефолт подключения",
         "visible_in_list": true,
         "visible_in_form": true,
         "column_width": 150
       },
       "validation": {
-        "required": true,
+        "required": false,
         "max_length": 100
       },
-      "ai_hint": "OpenAI: gpt-4o, gpt-4-turbo, gpt-3.5-turbo. OpenRouter: openai/gpt-4o, anthropic/claude-3.5-sonnet. Anthropic: claude-3-5-sonnet-20241022. Ollama: llama3.2, mistral"
+      "ai_hint": "Опциональная закреплённая модель сотрудника. Должна входить в allowed_models связанного подключения. Пусто → используется дефолтная модель подключения."
     },
     {
       "name": "available_models",
@@ -208,16 +207,16 @@
         "label": "Temperature",
         "label_en": "Temperature",
         "placeholder": "0.7",
-        "hint": "Креативность ответов (0.0-2.0)",
+        "hint": "Вестигиально: источник истины — подключение a038",
         "visible_in_list": false,
-        "visible_in_form": true
+        "visible_in_form": false
       },
       "validation": {
-        "required": true,
+        "required": false,
         "min": 0.0,
         "max": 2.0
       },
-      "ai_hint": "0.0 - детерминированные ответы, 1.0 - сбалансированно, 2.0 - максимально креативно"
+      "ai_hint": "Вестигиальное поле. Temperature берётся из связанного подключения a038 (connection_id)."
     },
     {
       "name": "max_tokens",
@@ -228,16 +227,16 @@
         "label": "Max Tokens",
         "label_en": "Max Tokens",
         "placeholder": "4096",
-        "hint": "Максимальная длина ответа",
+        "hint": "Вестигиально: источник истины — подключение a038",
         "visible_in_list": false,
-        "visible_in_form": true
+        "visible_in_form": false
       },
       "validation": {
-        "required": true,
+        "required": false,
         "min": 256,
         "max": 128000
       },
-      "ai_hint": "GPT-4o поддерживает до 128k токенов, GPT-3.5 - до 16k"
+      "ai_hint": "Вестигиальное поле. Max tokens берётся из связанного подключения a038 (connection_id)."
     },
     {
       "name": "system_prompt",
@@ -245,10 +244,10 @@
       "field_type": "primitive",
       "source": "specific",
       "ui": {
-        "label": "Системный промпт",
-        "label_en": "System Prompt",
-        "placeholder": "Ты аналитик данных маркетплейсов...",
-        "hint": "Базовая инструкция для агента",
+        "label": "Должностные обязанности",
+        "label_en": "Job Duties",
+        "placeholder": "Ты — аналитик продаж. Отвечаешь за...",
+        "hint": "Промпт: роль, зона ответственности, поведение сотрудника",
         "visible_in_list": false,
         "visible_in_form": true,
         "widget": "textarea"
@@ -257,7 +256,130 @@
         "required": false,
         "max_length": 5000
       },
-      "ai_hint": "Определяет роль и поведение агента. Например: 'Ты эксперт по SQL и аналитике маркетплейсов. Отвечай кратко и точно.'"
+      "ai_hint": "Определяет роль и поведение сотрудника. Если пусто — используется role-agnostic core-промпт из skills."
+    },
+    {
+      "name": "agent_type",
+      "rust_type": "AgentType",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Специализация",
+        "label_en": "Specialization",
+        "hint": "Роль/персона — определяет набор навыков и инструментов",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "select",
+        "column_width": 160
+      },
+      "validation": {
+        "required": false
+      },
+      "enum_values": [
+        "business_analyst",
+        "sales_analyst",
+        "marketer",
+        "financier",
+        "system_admin",
+        "kb_admin",
+        "plugin_admin",
+        "coordinator_admin"
+      ],
+      "ai_hint": "Специализация задаёт доступные навыки (skills) и default-навык. Может быть несколько сотрудников с одной специализацией."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Подключение",
+        "label_en": "Connection",
+        "hint": "Техническое подключение a038, через которое работает сотрудник",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "select"
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a038_llm_connection",
+      "ai_hint": "UUID подключения a038. Из него сотрудник берёт провайдера, креды и тюнинг."
+    },
+    {
+      "name": "avatar",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Аватар",
+        "label_en": "Avatar",
+        "placeholder": "🧑‍💼",
+        "hint": "Эмодзи, инициалы или URL",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 80
+      },
+      "validation": {
+        "required": false,
+        "max_length": 500
+      }
+    },
+    {
+      "name": "email",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Почта",
+        "label_en": "Email",
+        "placeholder": "anna@ai.local",
+        "hint": "Внутренний адрес сотрудника (задел для взаимодействия агентов)",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 200
+      },
+      "validation": {
+        "required": false,
+        "max_length": 255
+      }
+    },
+    {
+      "name": "schedule_cron",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Расписание (cron)",
+        "label_en": "Schedule (cron)",
+        "placeholder": "0 */2 * * * *",
+        "hint": "Cron пробуждения сотрудника (задел; исполнитель — отдельной фазой)",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": false,
+        "max_length": 100
+      }
+    },
+    {
+      "name": "is_active",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Активен",
+        "label_en": "Active",
+        "hint": "Нанят / в отпуске",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "checkbox",
+        "column_width": 90
+      },
+      "validation": {
+        "required": false
+      }
     },
     {
       "name": "is_primary",
@@ -267,7 +389,7 @@
       "ui": {
         "label": "Основной",
         "label_en": "Primary",
-        "hint": "Использовать по умолчанию",
+        "hint": "Использовать по умолчанию в чате",
         "visible_in_list": true,
         "visible_in_form": true,
         "widget": "checkbox",
@@ -276,7 +398,7 @@
       "validation": {
         "required": false
       },
-      "ai_hint": "Только один агент может быть основным. При установке флага автоматически снимается с других агентов."
+      "ai_hint": "Только один сотрудник может быть основным (дефолт в чате). При установке флага снимается с других."
     }
   ],
 

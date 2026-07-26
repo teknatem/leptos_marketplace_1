@@ -1047,6 +1047,19 @@ impl ImportExecutor {
         };
         let connection_id = connection.base.id.as_string();
 
+        // Кампании бизнеса (fan-out): отчёт о реализации YM помесячный НА КАМПАНИЮ.
+        // Раньше тянули только `supplier_id` (одна модель, обычно FBS) — из-за чего
+        // ybuh не покрывал FBY и сверка выручки давала стабильный односторонний
+        // перекос. Перебираем все магазины бизнеса, как orders/returns.
+        let campaigns = self
+            .resolve_campaigns(session_id, aggregate_index, connection)
+            .await;
+        if campaigns.is_empty() {
+            anyhow::bail!(
+                "Не задан магазин: у подключения нет supplier_id и GET /campaigns не вернул кампаний"
+            );
+        }
+
         // Месяцы, попадающие в период [date_from, date_to].
         let months = months_in_range(date_from, date_to);
         let total_months = months.len() as i32;
@@ -1068,164 +1081,112 @@ impl ImportExecutor {
                     .and_then(|d| d.pred_opt())
                     .ok_or_else(|| anyhow::anyhow!("Invalid month end {}-{}", year, month))?
             };
-
-            // Phase 1: generate (год/месяц)
-            self.progress_tracker.set_current_item(
-                session_id,
-                aggregate_index,
-                Some(format!(
-                    "Генерация отчёта за {}-{:02} ({}/{})...",
-                    year,
-                    month,
-                    month_idx + 1,
-                    total_months
-                )),
-            );
-            let report_id = self
-                .api_client
-                .generate_realization_report(connection, year, month)
-                .await
-                .map_err(|e| {
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        format!("Ошибка генерации отчёта за {}-{:02}: {}", year, month, e),
-                        None,
-                    );
-                    e
-                })?;
-
-            // Phase 2: poll until DONE
-            const MAX_POLL_ATTEMPTS: u32 = 60;
-            const POLL_INTERVAL_SECS: u64 = 5;
-            let mut download_url: Option<String> = None;
-            for attempt in 1..=MAX_POLL_ATTEMPTS {
-                self.progress_tracker.set_current_item(
-                    session_id,
-                    aggregate_index,
-                    Some(format!(
-                        "Ожидание отчёта за {}-{:02}... ({}/{})",
-                        year, month, attempt, MAX_POLL_ATTEMPTS
-                    )),
-                );
-                tokio::time::sleep(tokio::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
-                let (status, file_url) = self
-                    .api_client
-                    .poll_report_status(connection, &report_id)
-                    .await
-                    .map_err(|e| {
-                        self.progress_tracker.add_error(
-                            session_id,
-                            Some(aggregate_index.to_string()),
-                            format!("Ошибка статуса отчёта за {}-{:02}: {}", year, month, e),
-                            None,
-                        );
-                        e
-                    })?;
-                match status.as_str() {
-                    "DONE" => {
-                        download_url = file_url;
-                        break;
-                    }
-                    "FAILED" => {
-                        anyhow::bail!(
-                            "Генерация отчёта за {}-{:02} завершилась ошибкой на стороне YM",
-                            year,
-                            month
-                        );
-                    }
-                    _ => {}
-                }
-                if attempt == MAX_POLL_ATTEMPTS {
-                    anyhow::bail!("Превышено время ожидания отчёта за {}-{:02}", year, month);
-                }
-            }
-            let url = download_url
-                .ok_or_else(|| anyhow::anyhow!("Отчёт DONE, но URL файла не получен"))?;
-
-            // Phase 3: download + extract ВСЕ CSV (delivered/returned/…)
-            let csvs = self
-                .api_client
-                .download_report_csvs(&url, "a034_ym_realization")
-                .await
-                .map_err(|e| {
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        format!("Ошибка загрузки ZIP за {}-{:02}: {}", year, month, e),
-                        None,
-                    );
-                    e
-                })?;
-
-            // Phase 4: parse (delivered − returned, даты привязаны к месяцу отчёта)
             let month_first = first_day.format("%Y-%m-%d").to_string();
             let month_last = last_day.format("%Y-%m-%d").to_string();
-            let parsed = realization::parse_realization_files(
-                connection,
-                &organization_id,
-                &csvs,
-                &month_first,
-                &month_last,
-            )
-            .map_err(|e| {
-                self.progress_tracker.add_error(
-                    session_id,
-                    Some(aggregate_index.to_string()),
-                    format!("Ошибка разбора CSV за {}-{:02}: {}", year, month, e),
-                    None,
-                );
-                e
-            })?;
-            let documents = parsed.documents;
 
-            // Phase 5: replace_for_period (кабинет × месяц) — идемпотентно.
-            crate::domain::a034_ym_realization::service::replace_for_period(
-                &connection_id,
-                &first_day.format("%Y-%m-%d").to_string(),
-                &last_day.format("%Y-%m-%d").to_string(),
-                &documents,
-            )
-            .await
-            .map_err(|e| {
-                self.progress_tracker.add_error(
-                    session_id,
-                    Some(aggregate_index.to_string()),
-                    format!(
-                        "Ошибка сохранения документов за {}-{:02}: {}",
-                        year, month, e
-                    ),
-                    None,
-                );
-                e
-            })?;
+            // Каждая кампания месяца импортируется НЕЗАВИСИМО: fetch → покампанийная
+            // замена (`replace_for_period_campaign` трогает только свои документы) →
+            // проведение. Сбой одной кампании (сеть/лимит/FAILED/отсутствие отчёта у
+            // модели типа DBS) не роняет ни другие кампании, ни другие месяцы — он
+            // только логируется и попадает в ошибки импорта.
+            for (campaign_id, placement_type) in &campaigns {
+                let model = placement_type.as_deref().unwrap_or("?");
 
-            // Phase 6: провести каждый документ в GL (слой ybuh).
-            for document in &documents {
-                doc_total += 1;
-                let id = Uuid::parse_str(&document.base.id.as_string())
-                    .map_err(|e| anyhow::anyhow!("Invalid document id: {}", e))?;
-                match crate::domain::a034_ym_realization::posting::post_document(id).await {
-                    Ok(_) => posted_total += 1,
+                let docs = match self
+                    .fetch_realization_for_campaign(
+                        session_id,
+                        aggregate_index,
+                        connection,
+                        &organization_id,
+                        campaign_id,
+                        placement_type.as_deref(),
+                        year,
+                        month,
+                        month_idx + 1,
+                        total_months,
+                        &month_first,
+                        &month_last,
+                    )
+                    .await
+                {
+                    Ok(docs) => docs,
                     Err(e) => {
-                        tracing::error!("Failed to post realization document {}: {}", id, e);
+                        tracing::error!(
+                            "Realization {} за {}-{:02} не загружен: {}",
+                            model,
+                            year,
+                            month,
+                            e
+                        );
                         self.progress_tracker.add_error(
                             session_id,
                             Some(aggregate_index.to_string()),
-                            format!("Ошибка проведения документа {}", id),
-                            Some(e.to_string()),
+                            format!("Отчёт {} за {}-{:02} не загружен: {}", model, year, month, e),
+                            None,
                         );
+                        continue;
+                    }
+                };
+
+                // Phase 5: покампанийная замена документов месяца (идемпотентно).
+                if let Err(e) =
+                    crate::domain::a034_ym_realization::service::replace_for_period_campaign(
+                        &connection_id,
+                        campaign_id,
+                        &month_first,
+                        &month_last,
+                        &docs,
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        "Ошибка сохранения a034 {} за {}-{:02}: {}",
+                        model,
+                        year,
+                        month,
+                        e
+                    );
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        format!("Ошибка сохранения {} за {}-{:02}: {}", model, year, month, e),
+                        None,
+                    );
+                    continue;
+                }
+
+                // Phase 6: провести каждый документ кампании в GL (слой ybuh).
+                for document in &docs {
+                    doc_total += 1;
+                    let id = match Uuid::parse_str(&document.base.id.as_string()) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::error!("Invalid a034 document id: {}", e);
+                            continue;
+                        }
+                    };
+                    match crate::domain::a034_ym_realization::posting::post_document(id).await {
+                        Ok(_) => posted_total += 1,
+                        Err(e) => {
+                            tracing::error!("Failed to post realization document {}: {}", id, e);
+                            self.progress_tracker.add_error(
+                                session_id,
+                                Some(aggregate_index.to_string()),
+                                format!("Ошибка проведения документа {}", id),
+                                Some(e.to_string()),
+                            );
+                        }
                     }
                 }
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    doc_total,
+                    Some(doc_total),
+                    doc_total,
+                    posted_total,
+                );
             }
-            self.progress_tracker.update_aggregate(
-                session_id,
-                aggregate_index,
-                doc_total,
-                Some(doc_total),
-                doc_total,
-                posted_total,
-            );
         }
 
         self.progress_tracker
@@ -1239,6 +1200,124 @@ impl ImportExecutor {
             posted_total
         );
         Ok(())
+    }
+
+    /// Загрузка отчёта о реализации ОДНОЙ кампании за месяц: generate → poll →
+    /// download → parse. Ошибки возвращаются вызывающему (изолируются на уровне
+    /// месяца), поэтому сбой одной кампании не роняет весь импорт.
+    ///
+    /// Поллинг статуса терпит временные сетевые ошибки: единичный таймаут к YM не
+    /// прерывает импорт — попытка просто повторяется на следующем интервале. Валит
+    /// кампанию только явный `FAILED` от YM или исчерпание всех попыток.
+    #[allow(clippy::too_many_arguments)]
+    async fn fetch_realization_for_campaign(
+        &self,
+        session_id: &str,
+        aggregate_index: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        organization_id: &str,
+        campaign_id: &str,
+        placement_type: Option<&str>,
+        year: i32,
+        month: u32,
+        month_pos: usize,
+        total_months: i32,
+        month_first: &str,
+        month_last: &str,
+    ) -> Result<Vec<contracts::domain::a034_ym_realization::aggregate::YmRealization>> {
+        let model = placement_type.unwrap_or("?");
+
+        // Соединение с supplier_id = campaignId: generate_realization_report берёт
+        // campaignId именно из supplier_id (как orders/returns).
+        let mut conn = connection.clone();
+        conn.supplier_id = Some(campaign_id.to_string());
+
+        // Phase 1: generate (год/месяц). Лимит goods-realization — 1/мин на бизнес;
+        // ретраи с ожиданием живут в самом generate_realization_report.
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!(
+                "Генерация отчёта {} за {}-{:02} ({}/{})...",
+                model, year, month, month_pos, total_months
+            )),
+        );
+        let report_id = self
+            .api_client
+            .generate_realization_report(&conn, year, month)
+            .await
+            .map_err(|e| anyhow::anyhow!("генерация: {}", e))?;
+
+        // Phase 2: poll until DONE (терпим временные ошибки статуса).
+        const MAX_POLL_ATTEMPTS: u32 = 60;
+        const POLL_INTERVAL_SECS: u64 = 5;
+        let mut download_url: Option<String> = None;
+        let mut poll_errors = 0u32;
+        for attempt in 1..=MAX_POLL_ATTEMPTS {
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!(
+                    "Ожидание отчёта {} за {}-{:02}... ({}/{})",
+                    model, year, month, attempt, MAX_POLL_ATTEMPTS
+                )),
+            );
+            tokio::time::sleep(tokio::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
+            match self.api_client.poll_report_status(connection, &report_id).await {
+                Ok((status, file_url)) => match status.as_str() {
+                    "DONE" => {
+                        download_url = file_url;
+                        break;
+                    }
+                    "FAILED" => {
+                        anyhow::bail!("YM вернул FAILED при генерации отчёта");
+                    }
+                    _ => {}
+                },
+                Err(e) => {
+                    // Временная ошибка (сеть/таймаут) — не роняем, повторяем поллинг.
+                    poll_errors += 1;
+                    tracing::warn!(
+                        "poll {} {}-{:02} attempt {}/{}: {} (повтор)",
+                        model,
+                        year,
+                        month,
+                        attempt,
+                        MAX_POLL_ATTEMPTS,
+                        e
+                    );
+                }
+            }
+            if attempt == MAX_POLL_ATTEMPTS {
+                anyhow::bail!(
+                    "превышено время ожидания отчёта (сетевых ошибок статуса: {})",
+                    poll_errors
+                );
+            }
+        }
+        let url =
+            download_url.ok_or_else(|| anyhow::anyhow!("отчёт DONE, но URL файла не получен"))?;
+
+        // Phase 3: download + extract ВСЕ CSV (delivered/returned/…).
+        let csvs = self
+            .api_client
+            .download_report_csvs(&url, "a034_ym_realization")
+            .await
+            .map_err(|e| anyhow::anyhow!("загрузка ZIP: {}", e))?;
+
+        // Phase 4: parse (delivered − returned; строки тегируются кампанией/моделью).
+        let parsed = realization::parse_realization_files(
+            connection,
+            organization_id,
+            &csvs,
+            month_first,
+            month_last,
+            Some(campaign_id),
+            placement_type,
+        )
+        .map_err(|e| anyhow::anyhow!("разбор CSV: {}", e))?;
+
+        Ok(parsed.documents)
     }
 }
 

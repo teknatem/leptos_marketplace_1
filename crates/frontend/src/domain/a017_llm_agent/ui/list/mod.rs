@@ -63,14 +63,14 @@ pub fn LlmAgentList() -> impl IntoView {
     view! {
         <PageFrame page_id="a017_llm_agent--list" category="list">
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
-                <h1 style="font-size: 24px; font-weight: bold;">{"Агенты LLM"}</h1>
+                <h1 style="font-size: 24px; font-weight: bold;">{"AI-сотрудники"}</h1>
                 <Space>
                     <Button
                         appearance=ButtonAppearance::Primary
                         on_click=move |_| handle_create_new()
                     >
                         {icon("plus")}
-                        " Новый агент"
+                        " Новый сотрудник"
                     </Button>
                     <Button
                         appearance=ButtonAppearance::Secondary
@@ -93,9 +93,10 @@ pub fn LlmAgentList() -> impl IntoView {
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHeaderCell resizable=true min_width=200.0>"Наименование"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=120.0>"Провайдер"</TableHeaderCell>
-                        <TableHeaderCell resizable=true min_width=150.0>"Модель"</TableHeaderCell>
+                        <TableHeaderCell min_width=48.0>""</TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=200.0>"Имя"</TableHeaderCell>
+                        <TableHeaderCell resizable=true min_width=150.0>"Специализация"</TableHeaderCell>
+                        <TableHeaderCell min_width=80.0>"Активен"</TableHeaderCell>
                         <TableHeaderCell min_width=80.0>"Основной"</TableHeaderCell>
                         <TableHeaderCell min_width=100.0>"Действия"</TableHeaderCell>
                     </TableRow>
@@ -105,8 +106,15 @@ pub fn LlmAgentList() -> impl IntoView {
                         let id = agent.to_string_id();
                         let id_for_link = id.clone();
                         let id_for_delete = id.clone();
+                        let avatar = agent.avatar.clone().unwrap_or_default();
+                        let spec = agent.agent_type.display_name();
                         view! {
                             <TableRow>
+                                <TableCell>
+                                    <TableCellLayout>
+                                        {avatar}
+                                    </TableCellLayout>
+                                </TableCell>
                                 <TableCell>
                                     <TableCellLayout>
                                         <a
@@ -123,12 +131,12 @@ pub fn LlmAgentList() -> impl IntoView {
                                 </TableCell>
                                 <TableCell>
                                     <TableCellLayout>
-                                        {agent.provider_type.as_str()}
+                                        {spec}
                                     </TableCellLayout>
                                 </TableCell>
                                 <TableCell>
                                     <TableCellLayout>
-                                        {agent.model_name}
+                                        {if agent.is_active { "Да" } else { "" }}
                                     </TableCellLayout>
                                 </TableCell>
                                 <TableCell>

@@ -357,6 +357,71 @@ pub async fn order_models(connection_id: &str, bank_order_id: i64) -> Result<Str
         .unwrap_or_default())
 }
 
+/// Заказ, попавший в банковский ордер: агрегат строк p907 по `order_id`.
+/// Используется в карточке a035 для перечня оплаченных заказов.
+#[derive(Debug, Clone)]
+pub struct OrderBreakdownRow {
+    pub order_id: i64,
+    /// UUID агрегата a013 (`document_no = order_id`) — для гиперссылки. `None`,
+    /// если заказ ещё не загружен в a013.
+    pub ym_order_id: Option<String>,
+    /// Нормализованный статус заказа (`a013.status_norm`).
+    pub status: Option<String>,
+    /// Дата заказа (`order_creation_date`, YYYY-MM-DD).
+    pub order_date: String,
+    /// Σ `transaction_sum` всех строк заказа в этом ордере (сумма перечисления).
+    pub amount: f64,
+    /// Число строк p907 заказа в этом ордере.
+    pub rows_count: i64,
+}
+
+/// Заказы, попавшие в банковский ордер: все строки p907 с непустым `order_id`,
+/// сгруппированные по заказу, с датой заказа, статусом и суммой перечисления.
+/// LEFT JOIN к a013 (по `document_no`) даёт UUID для ссылки и статус заказа.
+pub async fn order_breakdown(
+    connection_id: &str,
+    bank_order_id: i64,
+) -> Result<Vec<OrderBreakdownRow>> {
+    let db = get_connection();
+    let sql = "SELECT p.order_id AS order_id,
+                      MAX(a.id) AS ym_order_id,
+                      MAX(a.status_norm) AS status,
+                      substr(MIN(p.order_creation_date), 1, 10) AS order_date,
+                      SUM(p.transaction_sum) AS amount,
+                      COUNT(*) AS cnt
+               FROM p907_ym_payment_report p
+               LEFT JOIN a013_ym_order a ON a.document_no = CAST(p.order_id AS TEXT)
+               WHERE p.connection_mp_ref = ? AND p.bank_order_id = ?
+                 AND p.order_id IS NOT NULL
+               GROUP BY p.order_id
+               ORDER BY order_date DESC, p.order_id DESC";
+    let stmt = Statement::from_sql_and_values(
+        db.get_database_backend(),
+        sql,
+        vec![
+            Value::String(Some(Box::new(connection_id.to_string()))),
+            Value::BigInt(Some(bank_order_id)),
+        ],
+    );
+    let rows = db.query_all(stmt).await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let order_id: i64 = row.try_get("", "order_id").unwrap_or_default();
+        if order_id == 0 {
+            continue;
+        }
+        out.push(OrderBreakdownRow {
+            order_id,
+            ym_order_id: row.try_get::<Option<String>>("", "ym_order_id").unwrap_or(None),
+            status: row.try_get::<Option<String>>("", "status").unwrap_or(None),
+            order_date: row.try_get("", "order_date").unwrap_or_default(),
+            amount: row.try_get("", "amount").unwrap_or(0.0),
+            rows_count: row.try_get("", "cnt").unwrap_or(0),
+        });
+    }
+    Ok(out)
+}
+
 /// Один расчёт по заказу в рамках банковского ордера: оплата поставщику или
 /// удержание (возврат) ранее перечисленной оплаты при возврате товара.
 #[derive(Debug, Clone)]

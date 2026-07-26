@@ -1,9 +1,10 @@
-//! LLM Agent Details - View Component
+//! AI-сотрудник (a017) — карточка.
 //!
-//! Main form component for creating/editing LLM agents
+//! Персона (имя, аватар, почта, специализация, обязанности, расписание) поверх
+//! технического подключения a038. Техника берётся из подключения, здесь не редактируется.
 
-use super::model::{fetch_agent, fetch_models_from_api, save_agent, test_agent_connection};
-use super::view_model::LlmAgentDetailsVm;
+use super::model::{fetch_agent, fetch_connections, fetch_employee_skills, save_agent};
+use super::view_model::{ConnOption, LlmAgentDetailsVm, SkillItem};
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 use thaw::*;
@@ -17,7 +18,25 @@ pub fn LlmAgentDetails(
 ) -> impl IntoView {
     let vm = LlmAgentDetailsVm::new();
 
-    // Load agent data when editing
+    // Загрузить список технических подключений (для селекта «Подключение»).
+    Effect::new(move |_| {
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(list) = fetch_connections().await {
+                let opts = list
+                    .into_iter()
+                    .map(|c| ConnOption {
+                        id: c.base.id.value().to_string(),
+                        name: c.base.description.clone(),
+                        allowed_models: c.allowed_models_list(),
+                        default_model: c.model_name.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                vm.connections.set(opts);
+            }
+        });
+    });
+
+    // Загрузить сотрудника при редактировании.
     Effect::new(move |_| {
         if let Some(agent_id) = id.get() {
             wasm_bindgen_futures::spawn_local(async move {
@@ -26,26 +45,18 @@ pub fn LlmAgentDetails(
                         vm.code.set(agent.base.code);
                         vm.description.set(agent.base.description);
                         vm.comment.set(agent.base.comment.unwrap_or_default());
-                        vm.provider_type
-                            .set(agent.provider_type.as_str().to_string());
-                        vm.api_endpoint.set(agent.api_endpoint);
-                        vm.api_key.set(agent.api_key);
-                        vm.model_name.set(agent.model_name);
-                        vm.temperature.set(agent.temperature.to_string());
-                        vm.max_tokens.set(agent.max_tokens.to_string());
+                        vm.agent_type.set(agent.agent_type.as_str().to_string());
                         vm.system_prompt
                             .set(agent.system_prompt.unwrap_or_default());
-                        vm.agent_type.set(agent.agent_type.as_str().to_string());
+                        vm.connection_id
+                            .set(agent.connection_id.unwrap_or_default());
+                        vm.model_name.set(agent.model_name);
+                        vm.avatar.set(agent.avatar.unwrap_or_default());
+                        vm.email.set(agent.email.unwrap_or_default());
+                        vm.schedule_cron
+                            .set(agent.schedule_cron.unwrap_or_default());
+                        vm.is_active.set(agent.is_active);
                         vm.is_primary.set(agent.is_primary);
-
-                        // Load available models if present
-                        if let Some(models_json) = agent.available_models {
-                            if let Ok(models) =
-                                serde_json::from_str::<Vec<serde_json::Value>>(&models_json)
-                            {
-                                vm.set_available_models.set(models);
-                            }
-                        }
                     }
                     Err(e) => vm.set_error.set(Some(e)),
                 }
@@ -53,89 +64,34 @@ pub fn LlmAgentDetails(
         }
     });
 
-    // Save handler
+    // Перезагружать навыки при смене специализации.
+    Effect::new(move |_| {
+        let at = vm.agent_type.get();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(resp) = fetch_employee_skills(&at).await {
+                let map = |v: Vec<super::model::SkillDto>| {
+                    v.into_iter()
+                        .map(|s| SkillItem {
+                            id: s.id,
+                            title: s.title,
+                            description: s.description,
+                        })
+                        .collect::<Vec<_>>()
+                };
+                vm.skills_core.set(map(resp.core));
+                vm.skills_extended.set(map(resp.extended));
+            }
+        });
+    });
+
+    // Сохранение.
     let handle_save = move |_| {
         let id_value = id.get();
         let dto = vm.build_save_dto(id_value);
-
         wasm_bindgen_futures::spawn_local(async move {
             match save_agent(dto).await {
                 Ok(_) => on_saved.run(()),
                 Err(e) => vm.set_error.set(Some(e)),
-            }
-        });
-    };
-
-    // Test connection handler
-    let handle_test = move |_| {
-        let id_value = match id.get() {
-            Some(v) => v,
-            None => {
-                vm.set_test_result.set(Some((
-                    false,
-                    "Сохраните агента перед тестированием".to_string(),
-                )));
-                return;
-            }
-        };
-
-        vm.set_is_testing.set(true);
-        vm.set_test_result.set(None);
-
-        wasm_bindgen_futures::spawn_local(async move {
-            match test_agent_connection(&id_value).await {
-                Ok(result) => {
-                    vm.set_test_result
-                        .set(Some((result.success, result.message)));
-                    vm.set_is_testing.set(false);
-                }
-                Err(e) => {
-                    vm.set_test_result
-                        .set(Some((false, format!("Ошибка: {}", e))));
-                    vm.set_is_testing.set(false);
-                }
-            }
-        });
-    };
-
-    // Fetch models handler
-    let handle_fetch_models = move |_| {
-        let id_value = match id.get() {
-            Some(v) => v,
-            None => {
-                vm.set_fetch_models_result.set(Some((
-                    false,
-                    "Сохраните агента перед загрузкой моделей".to_string(),
-                )));
-                return;
-            }
-        };
-
-        vm.set_is_fetching_models.set(true);
-        vm.set_fetch_models_result.set(None);
-
-        wasm_bindgen_futures::spawn_local(async move {
-            match fetch_models_from_api(&id_value).await {
-                Ok(response) => {
-                    if response.success {
-                        vm.set_available_models.set(response.models);
-                        vm.set_fetch_models_result.set(Some((
-                            true,
-                            format!("Загружено {} моделей", response.count),
-                        )));
-                        // Automatically open dropdown after successful fetch
-                        vm.is_models_dropdown_open.set(true);
-                    } else {
-                        vm.set_fetch_models_result
-                            .set(Some((false, response.message)));
-                    }
-                    vm.set_is_fetching_models.set(false);
-                }
-                Err(e) => {
-                    vm.set_fetch_models_result
-                        .set(Some((false, format!("Ошибка: {}", e))));
-                    vm.set_is_fetching_models.set(false);
-                }
             }
         });
     };
@@ -146,23 +102,13 @@ pub fn LlmAgentDetails(
         <div class="details-form" style="padding: 20px;">
             <Flex justify=FlexJustify::SpaceBetween align=FlexAlign::Center style="margin-bottom: 20px;">
                 <h2 style="font-size: 20px; font-weight: bold;">
-                    {move || if is_edit_mode.get() { "Редактирование агента LLM" } else { "Новый агент LLM" }}
+                    {move || if is_edit_mode.get() { "Редактирование сотрудника" } else { "Новый AI-сотрудник" }}
                 </h2>
                 <Space>
                     <Button appearance=ButtonAppearance::Primary on_click=handle_save>
                         {icon("save")}
                         " Сохранить"
                     </Button>
-                    <Show when=move || is_edit_mode.get()>
-                        <Button
-                            appearance=ButtonAppearance::Secondary
-                            on_click=handle_test
-                            disabled=vm.is_testing
-                        >
-                            {icon("link")}
-                            {move || if vm.is_testing.get() { " Тестирование..." } else { " Тест подключения" }}
-                        </Button>
-                    </Show>
                     <Button appearance=ButtonAppearance::Secondary on_click=move |_| on_cancel.run(())>
                         {icon("close")}
                         " Отмена"
@@ -182,115 +128,23 @@ pub fn LlmAgentDetails(
                     })
             }}
 
-            {move || {
-                vm.test_result
-                    .get()
-                    .map(|(success, message)| {
-                        let bg = if success {
-                            "var(--color-success-50)"
-                        } else {
-                            "var(--color-error-50)"
-                        };
-                        let border = if success {
-                            "var(--color-success-100)"
-                        } else {
-                            "var(--color-error-100)"
-                        };
-                        let color = if success { "var(--color-success)" } else { "var(--color-error)" };
-                        view! {
-                            <div style=format!(
-                                "padding: 12px; margin-bottom: 16px; background: {}; border: 1px solid {}; border-radius: 8px;",
-                                bg,
-                                border,
-                            )>
-                                <span style=format!("color: {};", color)>{message}</span>
-                            </div>
-                        }
-                    })
-            }}
-
-            {move || {
-                vm.fetch_models_result
-                    .get()
-                    .map(|(success, message)| {
-                        let bg = if success {
-                            "var(--color-success-50)"
-                        } else {
-                            "var(--color-error-50)"
-                        };
-                        let border = if success {
-                            "var(--color-success-100)"
-                        } else {
-                            "var(--color-error-100)"
-                        };
-                        let color = if success { "var(--color-success)" } else { "var(--color-error)" };
-                        view! {
-                            <div style=format!(
-                                "padding: 12px; margin-bottom: 16px; background: {}; border: 1px solid {}; border-radius: 8px;",
-                                bg,
-                                border,
-                            )>
-                                <span style=format!("color: {};", color)>{message}</span>
-                            </div>
-                        }
-                    })
-            }}
-
             <div style="display: grid; grid-template-columns: 500px 500px; gap: var(--spacing-md); max-width: 1050px; align-items: start; align-content: start;">
                 <Card>
                     <div class="form__group">
-                        <label class="form__label">"Код"</label>
-                        <Input value=vm.code placeholder="GPT4O-MAIN" />
+                        <label class="form__label">"Аватар"</label>
+                        <Input value=vm.avatar placeholder="🧑‍💼 или инициалы/URL" />
                     </div>
 
                     <div class="form__group">
                         <label class="form__label">
-                            "Наименование"
+                            "Имя сотрудника"
                             <span style="color: red;">"*"</span>
                         </label>
-                        <Input value=vm.description placeholder="GPT-4o основной агент" />
+                        <Input value=vm.description placeholder="Анна — аналитик продаж" />
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">"Провайдер"</label>
-                        <select
-                            style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%; background: var(--color-surface); color: var(--color-text);"
-                            prop:value=move || vm.provider_type.get()
-                            on:change=move |ev| {
-                                let provider = event_target_value(&ev);
-                                let previous_endpoint = vm.api_endpoint.get();
-                                let previous_model = vm.model_name.get();
-                                vm.provider_type.set(provider.clone());
-
-                                if provider == "OpenRouter" {
-                                    vm.api_endpoint.set("https://openrouter.ai/api/v1".to_string());
-                                    if previous_model.trim().is_empty() || previous_model == "gpt-4o" {
-                                        vm.model_name.set("openai/gpt-4o".to_string());
-                                    }
-                                } else if provider == "OpenAI" {
-                                    if previous_endpoint.trim().is_empty()
-                                        || previous_endpoint == "https://openrouter.ai/api/v1"
-                                    {
-                                        vm.api_endpoint.set("https://api.openai.com/v1".to_string());
-                                    }
-                                    if previous_model.trim().is_empty() || previous_model == "openai/gpt-4o" {
-                                        vm.model_name.set("gpt-4o".to_string());
-                                    }
-                                }
-                            }
-                        >
-                            <option value="OpenAI">"OpenAI"</option>
-                            <option value="OpenRouter">"OpenRouter"</option>
-                            <option value="Anthropic">"Anthropic"</option>
-                            <option value="Ollama">"Ollama"</option>
-                        </select>
-                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                            "OpenAI, OpenRouter, Anthropic, Ollama"
-                        </div>
-                    </div>
-
-                    <div class="form__group">
-                        <label class="form__label">"Роль агента"</label>
+                        <label class="form__label">"Специализация"</label>
                         <select
                             style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%; background: var(--color-surface); color: var(--color-text);"
                             prop:value=move || vm.agent_type.get()
@@ -299,178 +153,167 @@ pub fn LlmAgentDetails(
                             }
                         >
                             <option value="business_analyst">"Бизнес-аналитик"</option>
-                            <option value="general">"Общий (все инструменты)"</option>
+                            <option value="sales_analyst">"Аналитик продаж"</option>
+                            <option value="marketer">"Маркетолог"</option>
+                            <option value="financier">"Финансист"</option>
+                            <option value="coordinator_admin">"Координатор-администратор"</option>
                             <option value="plugin_admin">"Разработчик плагинов"</option>
                             <option value="system_admin">"Системный администратор"</option>
                             <option value="kb_admin">"Администратор базы знаний"</option>
                         </select>
                         <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                            "Определяет набор инструментов. Для создания плагинов выбери «Разработчик плагинов» или «Общий»."
+                            "Определяет набор навыков и инструментов сотрудника."
                         </div>
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">"API Endpoint"</label>
-                        <Input value=vm.api_endpoint placeholder="https://api.openai.com/v1" />
+                        <label class="form__label">"Почта"</label>
+                        <Input value=vm.email placeholder="anna@ai.local" />
+                    </div>
+
+                    <div class="form__group">
+                        <label class="form__label">"Код"</label>
+                        <Input value=vm.code placeholder="EMP-SALES-1" />
                     </div>
 
                     <div class="form__group">
                         <label class="form__label">"Комментарий"</label>
-                        <Textarea
-                            value=vm.comment
-                            placeholder="Используется для анализа продаж"
-                        />
+                        <Textarea value=vm.comment placeholder="Заметка о сотруднике" />
                     </div>
 
+                    <div style="display: flex; align-items: center; gap: 16px; margin-top: 8px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || vm.is_active.get()
+                                on:change=move |ev| vm.is_active.set(event_target_checked(&ev))
+                            />
+                            <span>"Активен"</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || vm.is_primary.get()
+                                on:change=move |ev| vm.is_primary.set(event_target_checked(&ev))
+                            />
+                            <span>"Основной (по умолчанию в чате)"</span>
+                        </label>
+                    </div>
                 </Card>
+
                 <Card>
                     <div class="form__group">
                         <label class="form__label">
-                            "API Ключ"
+                            "Подключение"
                             <span style="color: red;">"*"</span>
                         </label>
-                        <Input value=vm.api_key placeholder="sk-..." />
-                    </div>
-
-                    <div class="form__group">
-                        <label class="form__label">"Модель"</label>
-                        <div style="position: relative;">
-                            <Input
-                                value=vm.model_name
-                                placeholder="gpt-4o"
-                                attr:style="width: 100%; padding-right: 0px;"
-                            >
-                                <InputSuffix slot>
-                                    <div style="display: flex; gap: 0px;">
-                                        <Show when=move || is_edit_mode.get()>
-                                            <Button
-                                                appearance=ButtonAppearance::Subtle
-                                                shape=ButtonShape::Square
-                                                size=ButtonSize::Small
-                                                on_click=handle_fetch_models
-                                                disabled=vm.is_fetching_models
-                                                attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
-                                                attr:title="Загрузить модели из API"
-                                            >
-                                                {move || if vm.is_fetching_models.get() { "⏳" } else { "⬇" }}
-                                            </Button>
-                                            <Show when=move || !vm.available_models.get().is_empty()>
-                                                <Button
-                                                    appearance=ButtonAppearance::Subtle
-                                                    shape=ButtonShape::Square
-                                                    size=ButtonSize::Small
-                                                    on_click=move |_| {
-                                                        let is_open_val = vm.is_models_dropdown_open.get();
-                                                        vm.is_models_dropdown_open.set(!is_open_val);
-                                                    }
-
-                                                    attr:style="width: 28px; height: 28px; min-width: 28px; padding: 0; display: flex; align-items: center; justify-content: center;"
-                                                    attr:title="Выбрать из списка"
-                                                >
-                                                    "▼"
-                                                </Button>
-                                            </Show>
-                                        </Show>
-                                    </div>
-                                </InputSuffix>
-                            </Input>
-
-                            {move || {
-                                if !vm.is_models_dropdown_open.get()
-                                    || vm.available_models.get().is_empty()
-                                {
-                                    return view! { <></> }.into_any();
+                        <select
+                            style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%; background: var(--color-surface); color: var(--color-text);"
+                            prop:value=move || vm.connection_id.get()
+                            on:change=move |ev| {
+                                vm.connection_id.set(event_target_value(&ev));
+                                // Сброс закреплённой модели — она относилась к прежнему подключению.
+                                vm.model_name.set(String::new());
+                            }
+                        >
+                            <option value="">"— выберите подключение —"</option>
+                            <For
+                                each=move || vm.connections.get()
+                                key=|c| c.id.clone()
+                                children=move |c| {
+                                    view! { <option value=c.id.clone()>{c.name.clone()}</option> }
                                 }
-                                let current = vm.model_name.get().to_lowercase();
-                                let opts = vm
-                                    .available_models
-                                    .get()
-                                    .into_iter()
-                                    .filter_map(|m| {
-                                        m.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
-                                    })
-                                    .filter(|model_id| {
-                                        if current.trim().is_empty() {
-                                            true
-                                        } else {
-                                            model_id.to_lowercase().contains(&current)
-                                        }
-                                    })
-                                    .take(50)
-                                    .collect::<Vec<_>>();
-                                view! {
-                                    <div style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); z-index: 1000;">
-                                        {if opts.is_empty() {
-                                            view! {
-                                                <div style="padding: 8px 12px; color: var(--color-text-tertiary);">
-                                                    "Нет совпадений"
-                                                </div>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            opts.into_iter()
-                                                .map(|opt| {
-                                                    let opt2 = opt.clone();
-                                                    view! {
-                                                        <div
-                                                            style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--color-border-light);"
-                                                            on:mousedown=move |_| {
-                                                                vm.model_name.set(opt2.clone());
-                                                                vm.is_models_dropdown_open.set(false);
-                                                            }
-                                                        >
-
-                                                            {opt}
-                                                        </div>
-                                                    }
-                                                })
-                                                .collect_view()
-                                                .into_any()
-                                        }}
-
-                                    </div>
-                                }
-                                    .into_any()
-                            }}
-
+                            />
+                        </select>
+                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                            "Техническое подключение a038: провайдер, ключ, тюнинг."
                         </div>
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">"Temperature (0.0-2.0)"</label>
-                        <Input value=vm.temperature placeholder="0.7" />
+                        <label class="form__label">"Модель (закреплённая)"</label>
+                        <select
+                            style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%; background: var(--color-surface); color: var(--color-text);"
+                            prop:value=move || vm.model_name.get()
+                            on:change=move |ev| vm.model_name.set(event_target_value(&ev))
+                        >
+                            <option value="">"— дефолт подключения —"</option>
+                            <For
+                                each=move || vm.models_for_selected_connection()
+                                key=|m| m.clone()
+                                children=move |m| {
+                                    view! { <option value=m.clone()>{m.clone()}</option> }
+                                }
+                            />
+                        </select>
+                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                            "Пусто → используется модель по умолчанию подключения."
+                        </div>
                     </div>
 
                     <div class="form__group">
-                        <label class="form__label">"Max Tokens"</label>
-                        <Input value=vm.max_tokens placeholder="4096" />
-                    </div>
-
-                    <div class="form__group">
-                        <label class="form__label">"Системный промпт"</label>
+                        <label class="form__label">"Должностные обязанности"</label>
                         <Textarea
-                            attr:style="min-height : 80px"
+                            attr:style="min-height : 120px"
                             value=vm.system_prompt
-                            placeholder="Ты аналитик данных маркетплейсов..."
+                            placeholder="Ты — аналитик продаж. Отвечаешь за..."
                         />
                     </div>
 
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <input
-                            type="checkbox"
-                            prop:checked=move || vm.is_primary.get()
-                            on:change=move |ev| {
-                                let checked = event_target_checked(&ev);
-                                vm.is_primary.set(checked);
+                    <div class="form__group">
+                        <label class="form__label">"Расписание (cron)"</label>
+                        <Input value=vm.schedule_cron placeholder="0 */2 * * * * (задел)" />
+                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                            "Задел: исполнитель пробуждения добавится отдельной фазой."
+                        </div>
+                    </div>
+                </Card>
+            </div>
+
+            // Read-only блок навыков специализации.
+            <Card>
+                <div style="font-weight: 600; margin-bottom: 8px;">"Навыки специализации"</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
+                    <div>
+                        <div style="font-size: 13px; color: var(--colorNeutralForeground3); margin-bottom: 4px;">
+                            "Основные (активны по умолчанию)"
+                        </div>
+                        <For
+                            each=move || vm.skills_core.get()
+                            key=|s| s.id.clone()
+                            children=move |s| {
+                                view! {
+                                    <div style="padding: 6px 0; border-bottom: 1px solid var(--color-border-light);">
+                                        <span style="font-weight: 500;">{s.title.clone()}</span>
+                                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                                            {s.description.clone()}
+                                        </div>
+                                    </div>
+                                }
                             }
                         />
-
-                        <span>"Использовать как основной агент"</span>
                     </div>
-
-                </Card>
-
-            </div>
+                    <div>
+                        <div style="font-size: 13px; color: var(--colorNeutralForeground3); margin-bottom: 4px;">
+                            "Расширенные (по запросу — use_skill)"
+                        </div>
+                        <For
+                            each=move || vm.skills_extended.get()
+                            key=|s| s.id.clone()
+                            children=move |s| {
+                                view! {
+                                    <div style="padding: 6px 0; border-bottom: 1px solid var(--color-border-light);">
+                                        <span style="font-weight: 500;">{s.title.clone()}</span>
+                                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                                            {s.description.clone()}
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        />
+                    </div>
+                </div>
+            </Card>
         </div>
     }
 }

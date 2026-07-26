@@ -258,6 +258,23 @@ impl ArtifactAction {
     }
 }
 
+/// Structured activation record persisted inside `LlmChatMessage::skill_trace`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillTraceEntry {
+    #[serde(default)]
+    pub skill_id: String,
+    #[serde(default)]
+    pub skill_digest: String,
+    #[serde(default)]
+    pub registry_generation: u64,
+    #[serde(default)]
+    pub access_level: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub inefficient: bool,
+}
+
 /// Сообщение чата
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmChatMessage {
@@ -278,6 +295,10 @@ pub struct LlmChatMessage {
     // Трассировка вызовов инструментов (JSON-массив [{tool, ok, ms, summary}])
     #[serde(default)]
     pub tool_trace: Option<String>,
+
+    /// Активации skills для ответа (JSON-массив SkillTraceItem).
+    #[serde(default)]
+    pub skill_trace: Option<String>,
 
     // Интент, определённый роутером для запроса пользователя
     // (func_help | data_query | plugin_dev | sys_admin | kb_curation | bi_authoring | meta_smalltalk)
@@ -305,6 +326,7 @@ impl LlmChatMessage {
             artifact_id: None,
             artifact_action: None,
             tool_trace: None,
+            skill_trace: None,
             intent: None,
             attachments: Vec::new(),
         }
@@ -333,6 +355,7 @@ impl LlmChatMessage {
             artifact_id: None,
             artifact_action: None,
             tool_trace: None,
+            skill_trace: None,
             intent: None,
             attachments: Vec::new(),
         }
@@ -358,6 +381,7 @@ impl LlmChatMessage {
             artifact_id: None,
             artifact_action: None,
             tool_trace: None,
+            skill_trace: None,
             intent: None,
             attachments: Vec::new(),
         }

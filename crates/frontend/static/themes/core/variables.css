@@ -34,19 +34,29 @@
    --stat-warning-gradient: linear-gradient(135deg, var(--color-warning), color-mix(in srgb, var(--color-warning) 55%, white));
    --stat-error-gradient: linear-gradient(135deg, var(--color-error), color-mix(in srgb, var(--color-error) 55%, white));
 
-   /* Login page — self-contained dark "grid + glow" identity (same in all themes).
-      Inspired by the hero background of the Miras landing (dark void + 64px grid +
-      dual radial glow). Consumed by static/pages/login.css. */
+   /* Login page — self-contained "grid + glow" identity (dark by default, light
+      variant under body[data-theme="light"] in login.css). No frame: the form
+      sits directly on the grid backdrop. Consumed by static/pages/login.css. */
    --login-bg: #0a0a0f;
    --login-grid-line: rgba(255, 255, 255, 0.02);
    --login-grid-size: 64px;
    --login-glow-1: rgba(128, 104, 255, 0.12); /* purple */
    --login-glow-2: rgba(138, 255, 188, 0.07); /* mint */
-   --login-card-bg: rgba(20, 20, 26, 0.72);
-   --login-card-border: rgba(255, 255, 255, 0.08);
    --login-card-fg: #fafafa;
    --login-card-fg-muted: rgba(250, 250, 250, 0.60);
-   --login-card-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+   /* Dim, glowing circular region enclosing the form (only the thin ring shows) */
+   --login-ring-size: min(580px, 90vmin, 88vw);
+   --login-ring-border: rgba(255, 255, 255, 0.08);
+   --login-ring-glow: rgba(128, 104, 255, 0.12);  /* soft purple halo, matches glow-1 */
+   --login-ring-fill: rgba(128, 104, 255, 0.05);  /* faint central lift inside the ring */
+   /* Hover state — the ring wakes up when the mouse is inside the circle */
+   --login-ring-border-hover: rgba(255, 255, 255, 0.16);
+   --login-ring-glow-hover: rgba(128, 104, 255, 0.20);
+   --login-ring-fill-hover: rgba(128, 104, 255, 0.08);
+   /* Lift the (optically bottom-heavy) form up so it sits centred in the circle */
+   --login-ring-offset-y: 28px;
+   /* Submit button width — tuned to match the "Integrator" title word */
+   --login-button-width: 140px;
 
    /* List header + pagination (used in core/layout.css) */
 

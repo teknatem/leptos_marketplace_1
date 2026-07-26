@@ -17,7 +17,11 @@ use std::collections::HashSet;
 pub fn allowed_agent_types_for_user(user: &User) -> HashSet<AgentType> {
     let mut set = HashSet::new();
     set.insert(AgentType::BusinessAnalyst);
-    set.insert(AgentType::General);
+    set.insert(AgentType::CoordinatorAdmin);
+    // Бизнес-персоны (read-only, Фаза 1): продажи/маркетинг/финансы — как аналитик.
+    set.insert(AgentType::SalesAnalyst);
+    set.insert(AgentType::Marketer);
+    set.insert(AgentType::Financier);
 
     if user.is_admin {
         set.insert(AgentType::KbAdmin);

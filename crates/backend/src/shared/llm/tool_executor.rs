@@ -282,6 +282,12 @@ pub async fn execute_tool_call(
     agent_id: &str,
     agent_type: &AgentType,
     active_tools: &HashSet<String>,
+    active_skill_ids: &HashSet<String>,
+    skill_snapshot: &super::skills::SkillRegistrySnapshot,
+    skill_access: &HashMap<String, super::skill_policy::SkillAccessLevel>,
+    artifact_publish_allowed: bool,
+    skill_script_execute_allowed: bool,
+    skill_script_develop_allowed: bool,
 ) -> String {
     // Авторизация: исполняем только инструменты активного набора (core ∪ активные навыки).
     // Единый источник истины вместо разрозненных проверок по роли агента.
@@ -295,6 +301,52 @@ pub async fn execute_tool_call(
             "_tool": call.name,
             "_ok": false,
         });
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    if super::skill_policy::is_artifact_mutation(&call.name) && !artifact_publish_allowed {
+        return serde_json::to_string_pretty(&serde_json::json!({
+            "error": "Специализация агента не имеет права artifact_publish.",
+            "_tool": call.name,
+            "_ok": false,
+        }))
+        .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    if matches!(
+        call.name.as_str(),
+        "list_skill_resources" | "read_skill_resource" | "run_skill_task"
+    ) {
+        let mut result = match call.name.as_str() {
+            "list_skill_resources" => super::skill_runtime::list_resources(
+                &call.arguments,
+                active_skill_ids,
+                skill_snapshot,
+            ),
+            "read_skill_resource" => super::skill_runtime::read_resource(
+                &call.arguments,
+                active_skill_ids,
+                skill_snapshot,
+            ),
+            "run_skill_task" => {
+                super::skill_runtime::run_task(
+                    &call.arguments,
+                    active_skill_ids,
+                    skill_snapshot,
+                    skill_script_execute_allowed,
+                    skill_script_develop_allowed,
+                )
+                .await
+            }
+            _ => unreachable!(),
+        };
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+        }
         return serde_json::to_string_pretty(&result)
             .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
     }
@@ -515,9 +567,11 @@ pub async fn execute_tool_call(
             METADATA_REGISTRY.list_entities(category.as_deref())
         }
 
-        "list_skills" => super::skills::list_skills_result(agent_type),
+        "list_skills" => super::skills::list_skills_result_from(skill_snapshot, skill_access),
 
-        "use_skill" => super::skills::use_skill_result(&call.arguments, agent_type),
+        "use_skill" => {
+            super::skills::use_skill_result_from(&call.arguments, skill_snapshot, skill_access)
+        }
 
         "get_entity_schema" => {
             let index = parse_string_arg(&call.arguments, "entity_index").unwrap_or_default();

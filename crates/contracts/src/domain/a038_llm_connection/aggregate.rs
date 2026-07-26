@@ -4,8 +4,10 @@ use crate::domain::common::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// Переиспользуем enum'ы провайдера и типа/роли из a017 — семантика та же, дублировать не нужно.
-// TODO(a017-retire): когда a017 будет удалён, перенести эти enum'ы сюда (в a038).
+// Провайдер-enum переиспользуем из a017 (владелец). Персона (AgentType) больше НЕ живёт
+// на подключении: a038 — чисто техническая сущность (провайдер+креды+модели). Роль/персона
+// перенесена на «виртуального сотрудника» a017. `AgentType` всё ещё ре-экспортируется здесь
+// для обратной совместимости импортов.
 pub use crate::domain::a017_llm_agent::aggregate::{AgentType, LlmProviderType};
 
 /// ID типа для агрегата LLM Connection
@@ -37,8 +39,9 @@ impl AggregateId for LlmConnectionId {
 
 /// Агрегат LLM Connection — «Подключение LLM».
 ///
-/// Первоклассная сущность «провайдер + креды + модели + персона». Отличается от a017 наличием
-/// `allowed_models` — курируемого короткого списка технически совместимых/целесообразных моделей,
+/// Чисто техническая сущность «провайдер + креды + модели». Персона (роль, промпт) вынесена
+/// на «виртуального сотрудника» a017, который ссылается на подключение. Отличается от старого
+/// a017 наличием `allowed_models` — курируемого короткого списка технически совместимых моделей,
 /// из которых можно выбирать в рамках чата.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConnection {
@@ -63,9 +66,6 @@ pub struct LlmConnection {
     /// Max tokens
     pub max_tokens: i32,
 
-    /// Системный промпт
-    pub system_prompt: Option<String>,
-
     /// Флаг основного подключения
     pub is_primary: bool,
 
@@ -75,9 +75,6 @@ pub struct LlmConnection {
     /// Курируемое подмножество разрешённых моделей (JSON-массив model_id).
     /// Именно из него можно выбирать модель в чате. Подмножество `available_models`.
     pub allowed_models: Option<String>,
-
-    /// Тип/роль (персона) — определяет набор навыков/инструментов
-    pub agent_type: AgentType,
 }
 
 impl LlmConnection {
@@ -91,7 +88,6 @@ impl LlmConnection {
         model_name: String,
         temperature: f64,
         max_tokens: i32,
-        system_prompt: Option<String>,
         is_primary: bool,
         available_models: Option<String>,
         allowed_models: Option<String>,
@@ -105,11 +101,9 @@ impl LlmConnection {
             model_name,
             temperature,
             max_tokens,
-            system_prompt,
             is_primary,
             available_models,
             allowed_models,
-            agent_type: AgentType::default(),
         }
     }
 
@@ -124,7 +118,6 @@ impl LlmConnection {
         model_name: String,
         temperature: f64,
         max_tokens: i32,
-        system_prompt: Option<String>,
         is_primary: bool,
         available_models: Option<String>,
         allowed_models: Option<String>,
@@ -138,11 +131,9 @@ impl LlmConnection {
             model_name,
             temperature,
             max_tokens,
-            system_prompt,
             is_primary,
             available_models,
             allowed_models,
-            agent_type: AgentType::default(),
         }
     }
 

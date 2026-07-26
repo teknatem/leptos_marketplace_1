@@ -1,0 +1,13 @@
+{
+  "marketplace": "ozon",
+  "label": "2026-07",
+  "metrics": {
+    "impressions": 125000,
+    "clicks": 9200,
+    "product_views": 8100,
+    "cart_adds": 1700,
+    "orders": 940,
+    "deliveries": 810,
+    "revenue": 2485000
+  }
+}

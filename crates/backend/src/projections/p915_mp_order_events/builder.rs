@@ -288,6 +288,8 @@ mod tests {
             connection_id: "conn-1".to_string(),
             organization_id: "org-1".to_string(),
             marketplace_id: "mp-1".to_string(),
+            campaign_id: None,
+            placement_type: None,
         };
         YmRealization::new_for_insert(
             header,

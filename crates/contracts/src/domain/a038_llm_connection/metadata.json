@@ -14,7 +14,7 @@
     "icon": "plug-connected"
   },
   "ai": {
-    "description": "Подключение к провайдеру LLM (OpenAI, OpenRouter). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tokens), системный промпт и курируемый список разрешённых моделей (allowed_models). Чат работает через одно подключение и переключает модель в пределах allowed_models.",
+    "description": "Техническое подключение к провайдеру LLM (OpenAI, OpenRouter, DeepSeek). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tokens) и курируемый список разрешённых моделей (allowed_models). Персона (роль, промпт) вынесена на «виртуального сотрудника» a017, который ссылается на это подключение. Чат работает через сотрудника и переключает модель в пределах allowed_models.",
     "questions": [
       "Какие LLM подключения настроены?",
       "Как добавить подключение OpenRouter?",
@@ -256,26 +256,6 @@
         "max": 128000
       },
       "ai_hint": "GPT-4o поддерживает до 128k токенов"
-    },
-    {
-      "name": "system_prompt",
-      "rust_type": "String",
-      "field_type": "primitive",
-      "source": "specific",
-      "ui": {
-        "label": "Системный промпт",
-        "label_en": "System Prompt",
-        "placeholder": "Ты аналитик данных маркетплейсов...",
-        "hint": "Базовая инструкция (персона)",
-        "visible_in_list": false,
-        "visible_in_form": true,
-        "widget": "textarea"
-      },
-      "validation": {
-        "required": false,
-        "max_length": 5000
-      },
-      "ai_hint": "Определяет роль и поведение. Если пусто — используется role-agnostic core-промпт из skills."
     },
     {
       "name": "is_primary",

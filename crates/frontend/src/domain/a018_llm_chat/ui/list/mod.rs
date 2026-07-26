@@ -5,6 +5,7 @@ use crate::shared::icons::icon;
 use crate::shared::speech::{DictationButton, DictationDiagnostics};
 use crate::shared::table_utils::init_column_resize;
 use crate::system::auth::context::use_auth;
+use contracts::domain::a017_llm_agent::aggregate::LlmAgent;
 use contracts::domain::a018_llm_chat::aggregate::LlmChatListItem;
 use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
 use leptos::prelude::*;
@@ -45,7 +46,9 @@ pub fn LlmChatList() -> impl IntoView {
 
     // Состояние быстрого создания чата (один вопрос — остальное опционально).
     let question = RwSignal::new(String::new());
-    let (agents, set_agents) = signal::<Vec<LlmConnection>>(Vec::new());
+    // Собеседники — AI-сотрудники (a017); подключения (a038) нужны для списка моделей.
+    let (agents, set_agents) = signal::<Vec<LlmAgent>>(Vec::new());
+    let (connections, set_connections) = signal::<Vec<LlmConnection>>(Vec::new());
     let (selected_agent_id, set_selected_agent_id) = signal(String::new());
     let model = RwSignal::new(String::new());
     let advanced_open = RwSignal::new(false);
@@ -78,16 +81,23 @@ pub fn LlmChatList() -> impl IntoView {
         });
     };
 
-    // Загрузить агентов и выбрать агента по умолчанию (основной, иначе первый).
+    // Загрузить сотрудников + подключения; выбрать сотрудника по умолчанию
+    // (основной, иначе первый активный/первый) и его эффективную модель.
     Effect::new(move |_| {
         wasm_bindgen_futures::spawn_local(async move {
+            let conns = fetch_connections().await.unwrap_or_default();
+            set_connections.set(conns.clone());
             match fetch_agents().await {
                 Ok(v) => {
                     if selected_agent_id.get_untracked().is_empty() {
-                        if let Some(default) = v.iter().find(|a| a.is_primary).or_else(|| v.first())
+                        if let Some(default) = v
+                            .iter()
+                            .find(|a| a.is_primary && a.is_active)
+                            .or_else(|| v.iter().find(|a| a.is_active))
+                            .or_else(|| v.first())
                         {
                             set_selected_agent_id.set(default.to_string_id());
-                            model.set(default.model_name.clone());
+                            model.set(effective_model_for(default, &conns));
                         }
                     }
                     set_agents.set(v);
@@ -222,24 +232,27 @@ pub fn LlmChatList() -> impl IntoView {
 
                 <Show when=move || advanced_open.get()>
                     <Flex attr:style="margin-top: 12px; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
-                        <div style="display: flex; flex-direction: column; gap: 4px; width: 240px;">
-                            <label class="form__label" style="font-size: 12px; margin: 0;">"Подключение"</label>
+                        <div style="display: flex; flex-direction: column; gap: 4px; width: 260px;">
+                            <label class="form__label" style="font-size: 12px; margin: 0;">"Собеседник"</label>
                             <select
                                 style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%;"
                                 prop:value=move || selected_agent_id.get()
                                 on:change=move |ev| {
                                     let selected_id = event_target_value(&ev);
                                     set_selected_agent_id.set(selected_id.clone());
-                                    if let Some(conn) = agents.get().iter().find(|a| a.to_string_id() == selected_id) {
-                                        model.set(conn.model_name.clone());
+                                    let conns = connections.get();
+                                    if let Some(emp) = agents.get().iter().find(|a| a.to_string_id() == selected_id) {
+                                        model.set(effective_model_for(emp, &conns));
                                     }
                                 }
                             >
-                                <For each=move || agents.get() key=|conn| conn.to_string_id() let:conn>
+                                <For each=move || agents.get() key=|emp| emp.to_string_id() let:emp>
                                     {{
-                                        let id = conn.to_string_id();
-                                        let type_label = agent_type_short_label(&conn.agent_type);
-                                        let desc = format!("{} · {}", conn.base.description.clone(), type_label);
+                                        let id = emp.to_string_id();
+                                        let avatar = emp.avatar.clone().unwrap_or_default();
+                                        let type_label = agent_type_short_label(&emp.agent_type);
+                                        let prefix = if avatar.trim().is_empty() { String::new() } else { format!("{} ", avatar) };
+                                        let desc = format!("{}{} · {}", prefix, emp.base.description.clone(), type_label);
                                         view! { <option value=id>{desc}</option> }
                                     }}
                                 </For>
@@ -247,7 +260,7 @@ pub fn LlmChatList() -> impl IntoView {
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 4px; width: 240px;">
                             <label class="form__label" style="font-size: 12px; margin: 0;">"Модель"</label>
-                            // Список моделей ограничен allowed_models выбранного подключения.
+                            // Список моделей ограничен allowed_models подключения выбранного сотрудника.
                             <select
                                 style="height: 32px; padding: 4px 8px; border: 1px solid var(--colorNeutralStroke2); border-radius: 6px; width: 100%;"
                                 prop:value=move || model.get()
@@ -255,11 +268,12 @@ pub fn LlmChatList() -> impl IntoView {
                             >
                                 {move || {
                                     let sel = selected_agent_id.get();
+                                    let conns = connections.get();
                                     let mut list = agents
                                         .get()
                                         .iter()
-                                        .find(|c| c.to_string_id() == sel)
-                                        .map(|c| c.allowed_models_list())
+                                        .find(|a| a.to_string_id() == sel)
+                                        .map(|emp| conn_models_for(emp, &conns).0)
                                         .unwrap_or_default();
                                     let current = model.get();
                                     if !current.is_empty() && !list.contains(&current) {
@@ -434,9 +448,12 @@ fn agent_type_color(agent_type: &AgentType) -> &'static str {
     match agent_type {
         AgentType::BusinessAnalyst => "var(--colorBrandBackground)",
         AgentType::SystemAdmin => "#8b5cf6",
-        AgentType::General => "#059669",
+        AgentType::CoordinatorAdmin => "#059669",
         AgentType::KbAdmin => "#0f766e",
         AgentType::PluginAdmin => "#d97706",
+        AgentType::SalesAnalyst => "#2563eb",
+        AgentType::Marketer => "#db2777",
+        AgentType::Financier => "#0d9488",
     }
 }
 
@@ -445,9 +462,12 @@ fn agent_type_short_label(agent_type: &AgentType) -> &'static str {
     match agent_type {
         AgentType::BusinessAnalyst => "Аналитик",
         AgentType::SystemAdmin => "Система",
-        AgentType::General => "Общий",
+        AgentType::CoordinatorAdmin => "Координатор",
         AgentType::KbAdmin => "База знаний",
         AgentType::PluginAdmin => "Плагины",
+        AgentType::SalesAnalyst => "Продажи",
+        AgentType::Marketer => "Маркетолог",
+        AgentType::Financier => "Финансист",
     }
 }
 
@@ -525,21 +545,37 @@ async fn fetch_chats_with_stats() -> Result<Vec<LlmChatListItem>, String> {
     Ok(data)
 }
 
-async fn fetch_agents() -> Result<Vec<LlmConnection>, String> {
+/// allowed_models и дефолтная модель подключения, к которому привязан сотрудник.
+fn conn_models_for(emp: &LlmAgent, connections: &[LlmConnection]) -> (Vec<String>, String) {
+    let cid = emp.connection_id.clone().unwrap_or_default();
+    connections
+        .iter()
+        .find(|c| c.base.id.value().to_string() == cid)
+        .map(|c| (c.allowed_models_list(), c.model_name.clone()))
+        .unwrap_or_default()
+}
+
+/// Эффективная модель сотрудника: закреплённая → дефолт подключения.
+fn effective_model_for(emp: &LlmAgent, connections: &[LlmConnection]) -> String {
+    if !emp.model_name.trim().is_empty() {
+        return emp.model_name.clone();
+    }
+    conn_models_for(emp, connections).1
+}
+
+/// GET → распарсить JSON в тип `T`.
+async fn get_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, String> {
     use wasm_bindgen::JsCast;
     use web_sys::{Request, RequestInit, RequestMode, Response};
 
     let opts = RequestInit::new();
     opts.set_method("GET");
     opts.set_mode(RequestMode::Cors);
-
-    let url = format!("{}/api/a038-llm-connection", api_base());
-    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    let request = Request::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
     request
         .headers()
         .set("Accept", "application/json")
         .map_err(|e| format!("{e:?}"))?;
-
     let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
     let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
         .await
@@ -552,8 +588,17 @@ async fn fetch_agents() -> Result<Vec<LlmConnection>, String> {
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
-    let data: Vec<LlmConnection> = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
-    Ok(data)
+    serde_json::from_str::<T>(&text).map_err(|e| format!("{e}"))
+}
+
+/// Список AI-сотрудников (a017) — собеседники чата.
+async fn fetch_agents() -> Result<Vec<LlmAgent>, String> {
+    get_json::<Vec<LlmAgent>>(&format!("{}/api/a017-llm-agent", api_base())).await
+}
+
+/// Список технических подключений (a038) — для перечня моделей сотрудника.
+async fn fetch_connections() -> Result<Vec<LlmConnection>, String> {
+    get_json::<Vec<LlmConnection>>(&format!("{}/api/a038-llm-connection", api_base())).await
 }
 
 async fn create_chat(

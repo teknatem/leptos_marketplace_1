@@ -736,6 +736,10 @@ fn a017_routes() -> Router {
             get(handlers::a017_llm_agent::get_primary),
         )
         .route(
+            "/api/a017-llm-agent/skills",
+            get(handlers::a017_llm_agent::skills),
+        )
+        .route(
             "/api/a017-llm-agent/:id",
             get(handlers::a017_llm_agent::get_by_id).delete(handlers::a017_llm_agent::delete),
         )
@@ -810,9 +814,20 @@ fn a039_routes() -> Router {
         ))
 }
 
-/// Каталог LLM-навыков (read-only обзор реестра для UI).
+/// Каталог и матрица доступа LLM-навыков.
 fn llm_skills_routes() -> Router {
-    Router::new().route("/api/llm-skills", get(handlers::llm_skills::list))
+    Router::new()
+        .route("/api/llm-skills", get(handlers::llm_skills::list))
+        .route("/api/llm-skills/reload", post(handlers::llm_skills::reload))
+        .route(
+            "/api/llm-skills/access-matrix",
+            get(handlers::llm_skills::access_matrix).put(handlers::llm_skills::save_access_matrix),
+        )
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("a017_llm_agent", req, next).await
+            },
+        ))
 }
 
 /// Каталог LLM-инструментов (read-only обзор реестра для UI).

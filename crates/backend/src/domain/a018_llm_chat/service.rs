@@ -1,8 +1,10 @@
 use super::job_store;
 use super::repository;
-// Чат работает через «Подключение LLM» (a038). Связь хранится как UUID (chat.agent_id);
-// после миграции a017→a038 (те же id) существующие чаты резолвятся против a038.
-use crate::domain::a038_llm_connection::repository as agent_repository;
+// Чат работает через «виртуального сотрудника» a017 (персона: специализация + обязанности),
+// который ссылается на техническое подключение a038 (провайдер/креды/тюнинг). Связь хранится
+// как UUID (chat.agent_id) → сотрудник a017. Существующие чаты валидны: у a017 и a038 совпадают id.
+use crate::domain::a017_llm_agent::repository as employee_repository;
+use crate::domain::a038_llm_connection::repository as connection_repository;
 use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole};
 use crate::shared::llm::{create_provider, execute_tool_call};
 use axum::extract::Multipart;
@@ -12,6 +14,7 @@ use contracts::domain::a018_llm_chat::aggregate::{
 };
 use contracts::domain::a018_llm_chat::context::ContextPackageSummary;
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
+use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
 use contracts::domain::common::AggregateId;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -103,6 +106,71 @@ pub struct SendMessageRequest {
     pub request_id: Option<String>,
 }
 
+/// «Эффективный агент» чата: персона (специализация + обязанности) из сотрудника a017 +
+/// техническое подключение a038, из которого берётся провайдер/креды/дефолт-модель.
+pub struct EffectiveAgent {
+    /// Техническое подключение — для `create_provider` и дефолтной модели.
+    pub connection: LlmConnection,
+    /// Специализация сотрудника (определяет навыки/инструменты).
+    pub agent_type: AgentType,
+    /// Должностные обязанности / системный промпт сотрудника.
+    pub system_prompt: Option<String>,
+    /// Отображаемое имя (сотрудник; для legacy — подключение).
+    pub display_name: String,
+    /// Закреплённая сотрудником модель (пусто → None).
+    pub pinned_model: Option<String>,
+}
+
+/// Разрешить техническое подключение сотрудника: явная привязка → близнец с тем же UUID
+/// (миграция 0165) → основное подключение.
+async fn resolve_connection(
+    conn_id: Option<&str>,
+    fallback_id: &str,
+) -> anyhow::Result<LlmConnection> {
+    if let Some(cid) = conn_id.filter(|s| !s.trim().is_empty()) {
+        if let Some(c) = connection_repository::find_by_id(cid).await? {
+            return Ok(c);
+        }
+    }
+    if let Some(c) = connection_repository::find_by_id(fallback_id).await? {
+        return Ok(c);
+    }
+    if let Some(c) = connection_repository::find_primary().await? {
+        return Ok(c);
+    }
+    Err(anyhow::anyhow!(
+        "У сотрудника нет доступного технического подключения LLM (a038)"
+    ))
+}
+
+/// Собрать «эффективного агента» по `chat.agent_id`: сначала как сотрудника a017 (персона),
+/// с техникой из его подключения a038. Fallback — legacy-чаты, указывающие прямо на a038
+/// без a017-близнеца (напр. авто-подключения старого почтового конвейера): персона дефолтная.
+async fn resolve_effective_agent(agent_id: &str) -> anyhow::Result<EffectiveAgent> {
+    if let Some(emp) = employee_repository::find_by_id(agent_id).await? {
+        let connection = resolve_connection(emp.connection_id.as_deref(), agent_id).await?;
+        let pinned_model = Some(emp.model_name.trim().to_string()).filter(|s| !s.is_empty());
+        return Ok(EffectiveAgent {
+            connection,
+            agent_type: emp.agent_type,
+            system_prompt: emp.system_prompt,
+            display_name: emp.base.description,
+            pinned_model,
+        });
+    }
+    if let Some(connection) = connection_repository::find_by_id(agent_id).await? {
+        let display_name = connection.base.description.clone();
+        return Ok(EffectiveAgent {
+            connection,
+            agent_type: AgentType::default(),
+            system_prompt: None,
+            display_name,
+            pinned_model: None,
+        });
+    }
+    Err(anyhow::anyhow!("Agent not found: {}", agent_id))
+}
+
 /// Создание нового чата. `owner_user_id` — текущий пользователь (владелец чата);
 /// `None` для системных чатов (планировщик/автоматика), которые не привязаны к пользователю.
 pub async fn create(dto: LlmChatDto, owner_user_id: Option<String>) -> anyhow::Result<Uuid> {
@@ -115,15 +183,17 @@ pub async fn create(dto: LlmChatDto, owner_user_id: Option<String>) -> anyhow::R
         Uuid::parse_str(&dto.agent_id).map_err(|e| anyhow::anyhow!("Invalid agent_id: {}", e))?;
     let agent_id = LlmAgentId::new(agent_uuid);
 
-    // Проверяем что агент существует и получаем его для model_name
-    let agent = agent_repository::find_by_id(&agent_id.as_string())
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", dto.agent_id))?;
+    // Проверяем что сотрудник существует и резолвим его подключение для дефолт-модели.
+    let effective = resolve_effective_agent(&agent_id.as_string()).await?;
 
     let db = crate::shared::data::db::get_connection();
 
-    // Используем модель из DTO или дефолтную из агента
-    let model_name = dto.model_name.unwrap_or_else(|| agent.model_name.clone());
+    // Модель: из DTO → закреплённая у сотрудника → дефолтная у подключения.
+    let model_name = dto
+        .model_name
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| effective.pinned_model.clone())
+        .unwrap_or_else(|| effective.connection.model_name.clone());
 
     let mut aggregate =
         LlmChat::new_for_insert(code, dto.description, agent_id, model_name, owner_user_id);
@@ -236,11 +306,10 @@ pub async fn get_by_id(id: &str) -> anyhow::Result<Option<LlmChatDetail>> {
         None => return Ok(None),
     };
 
-    let agent_name = agent_repository::find_by_id(&chat.agent_id.as_string())
+    let agent_name = resolve_effective_agent(&chat.agent_id.as_string())
         .await
         .ok()
-        .flatten()
-        .map(|a| a.base.description.clone());
+        .map(|e| e.display_name);
 
     Ok(Some(LlmChatDetail { chat, agent_name }))
 }
@@ -414,6 +483,16 @@ fn trace_output(value: Option<&serde_json::Value>) -> serde_json::Value {
         "status",
         "data_modes",
         "presentation",
+        "_activate_skill",
+        "_skill_access_level",
+        "_skill_inefficiency",
+        "_skill_digest",
+        "_registry_generation",
+        "task_id",
+        "mode",
+        "digest",
+        "registry_generation",
+        "activated",
     ] {
         if let Some(item) = value.get(key) {
             out.insert(key.to_string(), item.clone());
@@ -434,6 +513,14 @@ fn trace_output(value: Option<&serde_json::Value>) -> serde_json::Value {
             })
             .collect::<Vec<_>>();
         out.insert("sources".to_string(), serde_json::Value::Array(compact));
+    }
+    if value.get("task_id").is_some() {
+        if let Some(result) = value.get("result") {
+            out.insert(
+                "result".to_string(),
+                bounded_trace_value(result.clone(), 3_000),
+            );
+        }
     }
     if out.is_empty() {
         out.insert("result".to_string(), value.clone());
@@ -467,20 +554,21 @@ pub async fn send_message(
         .await?
         .ok_or_else(|| anyhow::anyhow!("Chat not found"))?;
 
-    // 2. Получить агента
-    let agent = agent_repository::find_by_id(&chat.agent_id.as_string())
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+    // 2. Резолвим «эффективного агента»: персона (a017) + техническое подключение (a038).
+    let effective = resolve_effective_agent(&chat.agent_id.as_string()).await?;
 
-    // Выбор модели: из запроса -> из чата -> из агента
+    // Выбор модели: из запроса -> из чата -> закреплённая у сотрудника -> дефолт подключения.
     let model_to_use = request
         .model_name
-        .as_ref()
-        .map(|s| s.clone())
-        .unwrap_or_else(|| chat.model_name.clone());
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| Some(chat.model_name.clone()).filter(|s| !s.trim().is_empty()))
+        .or_else(|| effective.pinned_model.clone())
+        .unwrap_or_else(|| effective.connection.model_name.clone());
 
     // Провайдер создаётся сразу: нужен и для компакции истории (ниже), и для цикла.
-    let provider = create_provider(&agent, Some(&model_to_use))
+    // Технику берём из подключения a038.
+    let provider = create_provider(&effective.connection, Some(&model_to_use))
         .map_err(|e| anyhow::anyhow!("LLM provider error: {}", e))?;
 
     // 3. Обработать вложения если есть
@@ -651,60 +739,58 @@ pub async fn send_message(
 
     // Системный промпт и набор инструментов собираются из АКТИВНЫХ навыков (skills).
     use crate::shared::llm::skills;
-    let allowed = skills::allowed_skills_for(&agent.agent_type);
-    // Прогрессивное раскрытие: стартуем с ТОНКОЙ базы (только core-инструменты). Домен-навык
-    // модель активирует сама первым шагом через use_skill, увидев каталог ниже. Это экономит
-    // токены (полные схемы инструментов не висят каждый ход) и не «роняет» навык на follow-up.
-    // quick_intent оставляем как МЯГКИЙ fallback: если модель за первый ход навык не выбрала —
-    // подстрахуем его в цикле ниже.
-    let quick = crate::shared::llm::router::quick_intent(
+    let mut skill_session =
+        crate::shared::llm::skill_session::SkillSession::load(effective.agent_type.clone()).await?;
+    // Детерминированный селектор предактивирует один подходящий skill. Матрица определяет,
+    // является ли активация штатной или расширенной; denied никогда не раскрывается модели.
+    let quick_result = crate::shared::llm::router::quick_intent_result(
         utf8_truncate(&content_with_attachments, 2000),
-        &agent.agent_type,
+        &effective.agent_type,
     );
-    let fallback_skill: Option<&'static skills::Skill> = match skills::skill_for_intent(&quick) {
-        Some(s) if allowed.contains(&s.id) => Some(s),
-        _ => skills::default_skills_for(&agent.agent_type)
-            .into_iter()
-            .find(|id| allowed.contains(id))
-            .and_then(skills::skill_by_id),
-    };
-    let mut active_skills: Vec<&'static str> = fallback_skill
-        .filter(|skill| matches!(skill.id, "chart-builder" | "table-builder"))
-        .map(|skill| vec![skill.id])
-        .unwrap_or_default();
+    let quick = quick_result.intent.clone();
+    let previous_skill_id = history
+        .iter()
+        .rev()
+        .filter(|message| message.role == ChatRole::Assistant)
+        .filter_map(|message| message.skill_trace.as_deref())
+        .filter_map(|raw| serde_json::from_str::<Vec<serde_json::Value>>(raw).ok())
+        .flat_map(|items| items.into_iter().rev())
+        .filter_map(|item| {
+            item.get("skill_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .next();
+    let selected_skill = skill_session.select_initial(
+        &quick,
+        quick_result.confidence,
+        previous_skill_id.as_deref(),
+    );
+    let initial_skill_trace = selected_skill.as_ref().map(|(skill, trace)| {
+        crate::shared::llm::skill_session::activation_tool_trace(trace, &skill.title)
+    });
 
     // Базовый промпт: кастомный из агента, иначе role-agnostic core.
     // ВАЖНО для кэша префикса у провайдеров (OpenAI/DeepSeek кэшируют префикс
     // автоматически): системный промпт держим байт-стабильным — без даты и прочих
     // меняющихся значений. Дата добавляется ОТДЕЛЬНЫМ system-сообщением после истории.
-    let mut system_text = agent
+    let mut system_text = effective
         .system_prompt
         .clone()
         .unwrap_or_else(|| skills::core_prompt().to_string());
-    // Краткий каталог доступных навыков (id + описание) — чтобы модель выбрала и активировала
-    // нужный через use_skill БЕЗ отдельного round-trip на list_skills. Полные инструменты и
-    // инструкции навыка подгружаются только после активации.
-    if active_skills.is_empty() && !allowed.is_empty() {
-        system_text.push_str(
-            "\n\n---\nДоступные навыки (активируй ОДИН подходящий первым шагом — use_skill(\"<id>\")):\n",
-        );
-        for &id in &allowed {
-            if let Some(sk) = skills::skill_by_id(id) {
-                system_text.push_str(&format!("- {} — {}\n", sk.id, sk.description));
-            }
-        }
-    }
-    for id in &active_skills {
-        if let Some(skill) = skills::skill_by_id(id) {
-            system_text.push_str("\n\n---\n");
-            system_text.push_str(skill.prompt);
-        }
-    }
+    // Основной каталог доступен сразу, но полные prompts/tools остаются ленивыми.
+    system_text.push_str(&skill_session.immediate_catalog_prompt());
+    system_text.push_str(&skill_session.active_prompts());
     tracing::info!(
-        "[skills] chat_id='{}' quick_intent='{}' fallback={:?} (thin base)",
+        "[skills] chat_id='{}' quick_intent='{}' selected={:?} artifact_publish={}",
         chat_id,
         quick,
-        fallback_skill.map(|s| s.id)
+        selected_skill.as_ref().map(|(skill, trace)| (
+            skill.id.as_str(),
+            trace.access_level.as_str(),
+            trace.source.as_str()
+        )),
+        skill_session.artifact_publish_allowed()
     );
     llm_messages.push(ChatMessage::system(system_text));
 
@@ -807,21 +893,20 @@ pub async fn send_message(
         provider.as_ref(),
         router_input,
         "",
-        &agent.agent_type,
+        &effective.agent_type,
     );
 
     // 9. Tool calling цикл: набор инструментов = core ∪ активные навыки.
     // tool_defs/active_tools/active_skills мутабельны — модель может активировать навыки
     // через use_skill (progressive disclosure), и набор пересобирается на лету.
-    let chart_workflow = active_skills.as_slice() == ["chart-builder"];
-    let table_workflow = active_skills.as_slice() == ["table-builder"];
-    let builder_workflow = chart_workflow || table_workflow;
-    let mut builder_next_tool = builder_workflow.then_some("find_data_sources");
-    let mut tool_defs = skills::assemble_tools(&active_skills);
-    if let Some(next) = builder_next_tool {
-        tool_defs.retain(|tool| tool.name == next);
-    }
-    let mut active_tools = skills::active_tool_names(&active_skills);
+    let mut builder_workflow =
+        crate::shared::llm::builder_workflow::BuilderWorkflow::from_active_skills(
+            skill_session.active_skill_ids(),
+            skill_session.artifact_publish_allowed(),
+        );
+    let mut tool_defs =
+        skill_session.advertised_tools(builder_workflow.as_ref().and_then(|flow| flow.next_tool()));
+    let mut active_tools = skill_session.executable_tools();
     let start = std::time::Instant::now();
 
     tracing::info!(
@@ -839,7 +924,7 @@ pub async fn send_message(
     let loop_fut = async {
         let mut final_response: Option<crate::shared::llm::types::LlmResponse> = None;
         let mut artifact_to_attach: Option<LlmArtifactId> = None;
-        let mut tool_trace: Vec<serde_json::Value> = Vec::new();
+        let mut tool_trace: Vec<serde_json::Value> = initial_skill_trace.into_iter().collect();
         let mut total_tokens_used: i64 = 0;
         let mut tool_failures = 0usize;
 
@@ -903,7 +988,7 @@ pub async fn send_message(
 
             // Навыки, активированные на этой итерации (применяем после всех tool-результатов,
             // чтобы не разрывать пару assistant(tool_calls) → tool_result).
-            let mut newly_activated: Vec<&'static skills::Skill> = Vec::new();
+            let mut newly_activated: Vec<skills::Skill> = Vec::new();
 
             // Выполнить каждый tool call и добавить результаты
             let tool_count = response.tool_calls.len();
@@ -932,12 +1017,19 @@ pub async fn send_message(
                     tool_call.name,
                     utf8_truncate(&tool_call.arguments, 200)
                 );
+                let active_skill_ids = skill_session.active_skill_set();
                 let result = execute_tool_call(
                     tool_call,
                     chat_id,
                     &agent_id_str,
-                    &agent.agent_type,
+                    &effective.agent_type,
                     &active_tools,
+                    &active_skill_ids,
+                    skill_session.snapshot(),
+                    skill_session.access(),
+                    skill_session.artifact_publish_allowed(),
+                    skill_session.script_execute_allowed(),
+                    skill_session.script_develop_allowed(),
                 )
                 .await;
                 let call_ms = call_start.elapsed().as_millis() as u64;
@@ -964,28 +1056,8 @@ pub async fn send_message(
                 // Детерминированная передача управления для builder-workflow. Модель выбирает
                 // конкретный source/spec, но не может бесконечно возвращаться к discovery после
                 // успешного preview или пропустить publish.
-                if builder_workflow {
-                    builder_next_tool = match tool_call.name.as_str() {
-                        "find_data_sources" if is_ok => Some("preview_data"),
-                        "find_data_sources" => Some("find_data_sources"),
-                        "preview_data"
-                            if is_ok
-                                && (!chart_workflow
-                                    || parsed.as_ref().and_then(|v| {
-                                        v.get("build_ready").and_then(|ready| ready.as_bool())
-                                    }) == Some(true)) =>
-                        {
-                            Some(if chart_workflow {
-                                "build_chart"
-                            } else {
-                                "build_table"
-                            })
-                        }
-                        "preview_data" => Some("preview_data"),
-                        "build_chart" | "build_table" if is_ok => None,
-                        "build_chart" | "build_table" => Some("preview_data"),
-                        _ => builder_next_tool,
-                    };
+                if let Some(flow) = builder_workflow.as_mut() {
+                    flow.observe(&tool_call.name, is_ok, parsed.as_ref());
                 }
 
                 // Если tool call создал артефакт — запомнить его ID
@@ -1001,10 +1073,11 @@ pub async fn send_message(
                 // Активация навыка через use_skill (_activate_skill) — progressive disclosure.
                 if let Some(ref v) = parsed {
                     if let Some(sid) = v.get("_activate_skill").and_then(|x| x.as_str()) {
-                        if let Some(sk) = skills::skill_by_id(sid) {
-                            if allowed.contains(&sk.id) && !active_skills.contains(&sk.id) {
-                                active_skills.push(sk.id);
-                                newly_activated.push(sk);
+                        let was_active =
+                            skill_session.active_skill_ids().iter().any(|id| id == sid);
+                        if !was_active && skill_session.activate(sid, "model").is_some() {
+                            if let Some(skill) = skill_session.skill(sid) {
+                                newly_activated.push(skill);
                             }
                         }
                     }
@@ -1061,43 +1134,36 @@ pub async fn send_message(
                 llm_messages.push(ChatMessage::tool_result(tool_call.id.clone(), result));
             }
 
-            // Мягкий fallback: модель за этот ход не активировала навык и ни один ещё не активен —
-            // подстрахуем по quick_intent, чтобы появились доменные инструменты (а не только core).
-            // Срабатывает один раз (после активации active_skills уже непустой).
-            if active_skills.is_empty() && newly_activated.is_empty() {
-                if let Some(sk) = fallback_skill {
-                    active_skills.push(sk.id);
-                    newly_activated.push(sk);
-                    tracing::info!(
-                        "[skill] fallback-activated '{}' (quick_intent, chat='{}')",
-                        sk.id,
-                        chat_id
-                    );
-                }
-            }
-
             // Применить активированные навыки: пересобрать инструменты и дописать
             // их инструкции (после всех tool-результатов — пара assistant/tool не разорвана).
             if !newly_activated.is_empty() {
-                tool_defs = skills::assemble_tools(&active_skills);
-                active_tools = skills::active_tool_names(&active_skills);
+                if builder_workflow.is_none() {
+                    builder_workflow =
+                        crate::shared::llm::builder_workflow::BuilderWorkflow::from_active_skills(
+                            skill_session.active_skill_ids(),
+                            skill_session.artifact_publish_allowed(),
+                        );
+                }
+                tool_defs = skill_session
+                    .advertised_tools(builder_workflow.as_ref().and_then(|flow| flow.next_tool()));
+                active_tools = skill_session.executable_tools();
                 for sk in newly_activated {
                     tracing::info!("[skill] activated '{}' (chat='{}')", sk.id, chat_id);
                     llm_messages.push(ChatMessage::system(format!(
                         "Активирован навык «{}». Его инструменты и инструкции:\n\n{}",
-                        sk.title, sk.prompt
+                        sk.title,
+                        skills::activation_prompt(&sk)
                     )));
                 }
             }
 
-            if let Some(next) = builder_next_tool {
-                tool_defs = skills::assemble_tools(&active_skills);
-                tool_defs.retain(|tool| tool.name == next);
+            if let Some(next) = builder_workflow.as_ref().and_then(|flow| flow.next_tool()) {
+                tool_defs = skill_session.advertised_tools(Some(next));
             }
 
             // Публикация является терминальным выходом builder-workflow. После получения
             // artifact_id больше не даём модели запускать discovery/preview повторно.
-            if builder_workflow && artifact_to_attach.is_some() {
+            if builder_workflow.is_some() && artifact_to_attach.is_some() {
                 break;
             }
 
@@ -1115,7 +1181,10 @@ pub async fn send_message(
             }
         }
 
-        if builder_workflow && artifact_to_attach.is_none() {
+        if let Some(flow) = builder_workflow
+            .as_ref()
+            .filter(|_| artifact_to_attach.is_none())
+        {
             tool_trace.push(serde_json::json!({
                 "iteration": MAX_TOOL_ITERATIONS + 1,
                 "call": 0,
@@ -1123,12 +1192,12 @@ pub async fn send_message(
                 "tool": "workflow",
                 "ok": false,
                 "ms": 0,
-                "summary": if chart_workflow { "График не создан" } else { "Таблица не создана" },
-                "input": { "expected": if chart_workflow { "build_chart" } else { "build_table" } },
+                "summary": flow.completion_label(false),
+                "input": { "expected": flow.next_tool().unwrap_or("publish") },
                 "output": {
                     "error_code": "workflow_incomplete",
                     "error": "Builder workflow завершился без artifact_id",
-                    "next_step": builder_next_tool,
+                    "next_step": flow.next_tool(),
                 },
             }));
         }
@@ -1225,13 +1294,8 @@ pub async fn send_message(
 
     let duration_ms = start.elapsed().as_millis() as i64;
 
-    if builder_workflow {
-        let stage = match (chart_workflow, artifact_to_attach.is_some()) {
-            (true, true) => "График создан",
-            (true, false) => "График не создан",
-            (false, true) => "Таблица создана",
-            (false, false) => "Таблица не создана",
-        };
+    if let Some(flow) = &builder_workflow {
+        let stage = flow.completion_label(artifact_to_attach.is_some());
         report_progress(job_id, MAX_TOOL_ITERATIONS as u32 + 1, stage).await;
     }
 
@@ -1275,6 +1339,47 @@ pub async fn send_message(
             })
             .collect();
         assistant_msg.tool_trace = serde_json::to_string(&pills).ok();
+    }
+
+    let skill_trace: Vec<contracts::domain::a018_llm_chat::aggregate::SkillTraceEntry> = tool_trace
+        .iter()
+        .filter_map(|entry| {
+            let output = entry.get("output")?;
+            let skill_id = output.get("_activate_skill")?.as_str()?;
+            let access_level = output
+                .get("_skill_access_level")
+                .and_then(|v| v.as_str())
+                .unwrap_or("immediate");
+            let inefficient = output
+                .get("_skill_inefficiency")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let source = output
+                .get("source")
+                .and_then(|v| v.as_str())
+                .unwrap_or("model");
+            let skill_digest = output
+                .get("_skill_digest")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let registry_generation = output
+                .get("_registry_generation")
+                .and_then(|v| v.as_u64())
+                .unwrap_or_default();
+            Some(
+                contracts::domain::a018_llm_chat::aggregate::SkillTraceEntry {
+                    skill_id: skill_id.to_string(),
+                    skill_digest: skill_digest.to_string(),
+                    registry_generation,
+                    access_level: access_level.to_string(),
+                    source: source.to_string(),
+                    inefficient,
+                },
+            )
+        })
+        .collect();
+    if !skill_trace.is_empty() {
+        assistant_msg.skill_trace = serde_json::to_string(&skill_trace).ok();
     }
 
     // Метка интента от роутера (Фаза 0): для аналитики и UI-бейджа.

@@ -1,6 +1,6 @@
 use chrono::Utc;
 use contracts::domain::a038_llm_connection::aggregate::{
-    AgentType, LlmConnection, LlmConnectionId, LlmProviderType,
+    LlmConnection, LlmConnectionId, LlmProviderType,
 };
 use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use serde::{Deserialize, Serialize};
@@ -26,11 +26,9 @@ pub struct Model {
     pub model_name: String,
     pub temperature: f64,
     pub max_tokens: i32,
-    pub system_prompt: Option<String>,
     pub is_primary: bool,
     pub available_models: Option<String>,
     pub allowed_models: Option<String>,
-    pub agent_type: String,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -70,11 +68,9 @@ impl From<Model> for LlmConnection {
             model_name: m.model_name,
             temperature: m.temperature,
             max_tokens: m.max_tokens,
-            system_prompt: m.system_prompt,
             is_primary: m.is_primary,
             available_models: m.available_models,
             allowed_models: m.allowed_models,
-            agent_type: AgentType::from_str(&m.agent_type),
         }
     }
 }
@@ -173,16 +169,6 @@ pub async fn find_by_id(id: &str) -> anyhow::Result<Option<LlmConnection>> {
     Ok(model.map(Into::into))
 }
 
-/// Первое подключение с указанным типом агента (для маршрутизации почтового конвейера).
-pub async fn find_by_agent_type(agent_type: &str) -> anyhow::Result<Option<LlmConnection>> {
-    let model = Entity::find()
-        .filter(Column::IsDeleted.eq(false))
-        .filter(Column::AgentType.eq(agent_type))
-        .one(conn())
-        .await?;
-    Ok(model.map(Into::into))
-}
-
 pub async fn find_primary() -> anyhow::Result<Option<LlmConnection>> {
     let model = Entity::find()
         .filter(Column::IsDeleted.eq(false))
@@ -206,11 +192,9 @@ pub async fn insert(item: &LlmConnection) -> anyhow::Result<()> {
         model_name: Set(item.model_name.clone()),
         temperature: Set(item.temperature),
         max_tokens: Set(item.max_tokens),
-        system_prompt: Set(item.system_prompt.clone()),
         is_primary: Set(item.is_primary),
         available_models: Set(item.available_models.clone()),
         allowed_models: Set(item.allowed_models.clone()),
-        agent_type: Set(item.agent_type.as_str().to_string()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(now)),
@@ -235,11 +219,9 @@ pub async fn update(item: &LlmConnection) -> anyhow::Result<()> {
         model_name: Set(item.model_name.clone()),
         temperature: Set(item.temperature),
         max_tokens: Set(item.max_tokens),
-        system_prompt: Set(item.system_prompt.clone()),
         is_primary: Set(item.is_primary),
         available_models: Set(item.available_models.clone()),
         allowed_models: Set(item.allowed_models.clone()),
-        agent_type: Set(item.agent_type.as_str().to_string()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(item.base.metadata.created_at)),

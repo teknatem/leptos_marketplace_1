@@ -15,6 +15,19 @@ pub async fn replace_for_period(
     repository::replace_for_period(connection_id, date_from, date_to, documents).await
 }
 
+/// Замена документов периода по кабинету и одной кампании (независимо от других
+/// кампаний). См. `repository::replace_for_period_campaign`.
+pub async fn replace_for_period_campaign(
+    connection_id: &str,
+    campaign_id: &str,
+    date_from: &str,
+    date_to: &str,
+    documents: &[YmRealization],
+) -> Result<usize> {
+    repository::replace_for_period_campaign(connection_id, campaign_id, date_from, date_to, documents)
+        .await
+}
+
 pub async fn upsert_document(document: &YmRealization) -> Result<()> {
     repository::upsert_document(document).await
 }
