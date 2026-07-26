@@ -1,0 +1,121 @@
+/* Страница «Матрица прав» (sys_roles_matrix).
+   Структурная база (border-collapse, min-width:max-content, компактные
+   ячейки, залипающие шапка/колонки, пилюли) — в общем слое `.data-matrix*`
+   (themes/core/components.css). Здесь только page-специфика: ширины двух
+   залипающих колонок, колонки ролей, строка-заголовок категории, теги ролей.
+   Классы глобальные (не заскоуплены под id), т.к. базой служит .data-matrix. */
+
+.roles-matrix {
+  font-size: 0.9em;
+}
+
+/* ── Быстрый фильтр строк ──────────────────────────────────────── */
+.roles-matrix__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.roles-matrix__search {
+  width: 340px;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+/* ── Шапка: обычный шрифт (как в general_ledger_matrix), без uppercase ── */
+.roles-matrix__head {
+  border-bottom: 2px solid var(--color-border);
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  vertical-align: bottom;
+}
+
+.roles-matrix__role-col {
+  min-width: 110px;
+  text-align: center;
+}
+
+.roles-matrix__role-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.roles-matrix__role-code {
+  font-size: 0.8em;
+  font-family: var(--font-family-mono);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+/* ── Две залипающие колонки. Значения left и min-width связаны:
+      left второй колонки = ширине первой. Меняешь одну — меняй обе. ── */
+.roles-matrix__name {
+  left: 0;
+  min-width: 200px;
+  text-align: left;
+  font-weight: 500;
+}
+
+.roles-matrix__scope {
+  left: 200px;
+  min-width: 210px;
+  text-align: left;
+  border-left: 1px solid var(--color-border);
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+  color: var(--color-text-secondary);
+}
+
+/* Шапка второй колонки: обычный (не моно) шрифт, как остальные заголовки. */
+.roles-matrix__head.roles-matrix__scope {
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* ── Строка-заголовок категории ────────────────────────────────── */
+.roles-matrix__cat {
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+  background: var(--color-primary-50);
+  border-top: 2px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+}
+
+.roles-matrix__cat-count {
+  font-weight: 400;
+  margin-left: 8px;
+  text-transform: none;
+  color: var(--color-text-secondary);
+}
+
+/* ── Ячейки ролей ──────────────────────────────────────────────── */
+.roles-matrix__cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.roles-matrix__cell--editable {
+  cursor: pointer;
+}
+
+.roles-matrix__cell--pending {
+  outline: 2px solid var(--color-warning-500);
+  outline-offset: -2px;
+}
+
+/* Пилюля системной роли — приглушена (не редактируется). */
+.roles-matrix__pill--dim {
+  opacity: 0.55;
+}
+
+.roles-matrix__hint {
+  margin-top: 8px;
+  font-size: 0.82em;
+  color: var(--color-text-secondary);
+}

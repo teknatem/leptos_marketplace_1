@@ -218,8 +218,8 @@ pub fn GeneralLedgerLayerTurnoverMatrixPage() -> impl IntoView {
                     "теоретически (0 проводок). Клик по подзаголовку — сортировка."
                 </div>
 
-                <div class="table-wrapper gl-matrix__wrapper">
-                    <table class="table gl-matrix__table">
+                <div class="table-wrapper">
+                    <table class="table data-matrix">
                         <thead>
                             {move || {
                                 let active = sort.get();

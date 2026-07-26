@@ -82,3 +82,148 @@
 .llm-skills-list .llm-skills__tools {
   color: var(--colorNeutralForeground2);
 }
+
+/* ── Матрица доступа (вкладка «Матрица доступа») ─────────────────────
+   Структурная база — общий слой `.data-matrix*` (themes/core/components.css).
+   Здесь только page-специфика: ширины колонок, строки прав, мелкие id. */
+
+.llm-skills-list .skills-matrix {
+  font-size: 13px;
+  width: 100%;
+}
+
+/* Заголовки колонок — 12px. */
+.llm-skills-list .skills-matrix th {
+  font-size: 12px;
+}
+
+/* Узкие колонки → сокращаем горизонтальные отступы ячеек. */
+.llm-skills-list .skills-matrix th,
+.llm-skills-list .skills-matrix td {
+  padding: 3px 6px;
+}
+
+/* Строка «Каталог: generation …». */
+.llm-skills-list .skills-matrix__meta {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Диагностика каталога — свёрнута по умолчанию, сообщения по строкам. */
+.llm-skills-list .skills-matrix__diag {
+  margin-bottom: 10px;
+}
+
+.llm-skills-list .skills-matrix__diag-summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.llm-skills-list .skills-matrix__diag-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ── Тулбар фильтра ─────────────────────────────────────────────── */
+.llm-skills-list .skills-matrix__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.llm-skills-list .skills-matrix__search {
+  width: 280px;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+.llm-skills-list .skills-matrix__legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* Первая (залипающая) колонка навыка — фикс. ширина, шрифт как в gl. */
+.llm-skills-list .skills-matrix__skill {
+  width: 200px;
+  min-width: 200px;
+  max-width: 200px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.llm-skills-list .skills-matrix__skill strong {
+  font-weight: 500;
+}
+
+.llm-skills-list .skills-matrix__skill-id {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+/* Колонка «Вся строка» — узкая, заголовок переносится. */
+.llm-skills-list .skills-matrix__bulk-head,
+.llm-skills-list .skills-matrix__bulk {
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.llm-skills-list .skills-matrix__bulk-select {
+  height: 26px;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+/* Колонки специализаций — фикс. ширина (в 2 раза уже), заголовки переносятся,
+   надписи мельче. */
+.llm-skills-list .skills-matrix__spec-col {
+  width: 93px;
+  min-width: 93px;
+  max-width: 93px;
+  vertical-align: bottom;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.llm-skills-list .skills-matrix__spec-id {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.llm-skills-list .skills-matrix__center {
+  text-align: center;
+}
+
+/* Строки функциональных прав — подсвечены; залипающая ячейка имени
+   переопределяет фон .data-matrix__rowhead, чтобы совпасть с подсветкой. */
+.llm-skills-list .skills-matrix__cap-row {
+  background: var(--color-primary-50);
+}
+
+.llm-skills-list .skills-matrix__cap-name {
+  background: var(--color-primary-50);
+  font-weight: 600;
+}
+
+.llm-skills-list .skills-matrix__cap-id {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}

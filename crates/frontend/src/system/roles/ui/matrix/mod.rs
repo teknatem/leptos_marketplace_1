@@ -50,24 +50,29 @@ fn mode_badge(mode: &str) -> &'static str {
     }
 }
 
-/// Style for the <td> itself — always neutral, badge inside carries the color.
-fn cell_td_style(is_system: bool) -> &'static str {
+/// CSS class for the role cell <td>. Padding/borders come from `.data-matrix td`;
+/// this adds centering and (for custom roles) the edit affordance.
+fn cell_td_class(is_system: bool) -> &'static str {
     if is_system {
-        "padding:5px 8px;border-bottom:1px solid var(--color-border);text-align:center;vertical-align:middle;"
+        "roles-matrix__cell"
     } else {
-        "padding:5px 8px;border-bottom:1px solid var(--color-border);text-align:center;vertical-align:middle;cursor:pointer;"
+        "roles-matrix__cell roles-matrix__cell--editable"
     }
 }
 
-/// Style for the pill badge rendered inside a cell.
-fn mode_pill_style(mode: &str, is_system: bool) -> &'static str {
-    match (mode, is_system) {
-        ("all", false)  => "display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.82em;font-weight:700;letter-spacing:0.02em;background:#16a34a;color:#fff;",
-        ("all", true)   => "display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.82em;font-weight:700;letter-spacing:0.02em;background:#16a34a;color:#fff;opacity:0.6;",
-        ("read", false) => "display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.82em;font-weight:600;background:#0369a1;color:#fff;",
-        ("read", true)  => "display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.82em;font-weight:600;background:#0369a1;color:#fff;opacity:0.6;",
-        _               => "display:inline-block;padding:3px 10px;border-radius:12px;font-size:0.82em;color:var(--color-text-disabled,#9ca3af);",
+/// CSS class for the pill badge rendered inside a cell — standard `.badge .badge--*`.
+/// System roles are dimmed.
+fn mode_pill_class(mode: &str, is_system: bool) -> String {
+    let variant = match mode {
+        "all" => "badge--success",
+        "read" => "badge--primary",
+        _ => "badge--neutral",
+    };
+    let mut class = format!("badge {variant}");
+    if is_system {
+        class.push_str(" roles-matrix__pill--dim");
     }
+    class
 }
 
 fn category_label(cat: &str) -> &'static str {
@@ -196,6 +201,8 @@ fn RoleMatrix() -> impl IntoView {
     let (save_error, set_save_error) = signal::<Option<String>>(None);
     let (loading, set_loading) = signal(true);
     let (saving, set_saving) = signal(false);
+    // Быстрый фильтр строк (по названию, scope_id, описанию).
+    let search = RwSignal::new(String::new());
 
     let load_data = move || {
         set_loading.set(true);
@@ -393,10 +400,24 @@ fn RoleMatrix() -> impl IntoView {
                 } else {
                     let roles_snap = roles.get();
                     let scopes_snap = scopes.get();
+                    let total = scopes_snap.len();
 
-                    // Group scopes by category
+                    // Быстрый фильтр строк по названию / scope_id / описанию.
+                    let needle = search.get().trim().to_lowercase();
+                    let filtered: Vec<ScopeDescriptorDto> = scopes_snap
+                        .into_iter()
+                        .filter(|s| {
+                            needle.is_empty()
+                                || format!("{} {} {}", s.label, s.scope_id, s.description)
+                                    .to_lowercase()
+                                    .contains(&needle)
+                        })
+                        .collect();
+                    let shown = filtered.len();
+
+                    // Group filtered scopes by category (пустые категории не появляются).
                     let mut grouped: Vec<(String, Vec<ScopeDescriptorDto>)> = Vec::new();
-                    for scope in scopes_snap.into_iter() {
+                    for scope in filtered.into_iter() {
                         let cat = scope.category.clone();
                         if let Some(last) = grouped.last_mut() {
                             if last.0 == cat {
@@ -407,36 +428,33 @@ fn RoleMatrix() -> impl IntoView {
                         grouped.push((cat, vec![scope]));
                     }
 
-                    // Header columns: 2 sticky (Название + Scope ID) + role columns
-                    let th_sticky_base = "padding:8px 12px;border-bottom:2px solid var(--color-border);background:var(--color-surface);position:sticky;z-index:2;white-space:nowrap;font-size:0.8em;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--color-text-secondary);";
-
                     view! {
-                        <div class="table-wrapper" style="overflow-x:auto;">
-                            <table class="roles-matrix" style="border-collapse:collapse;font-size:0.9em;min-width:max-content;width:100%;">
+                        <div class="roles-matrix__toolbar">
+                            <input
+                                class="form__input roles-matrix__search"
+                                placeholder="Поиск: название, scope, описание…"
+                                prop:value=move || search.get()
+                                on:input=move |ev| search.set(event_target_value(&ev))
+                            />
+                            <span class="badge badge--neutral">{format!("{shown} из {total}")}</span>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="data-matrix roles-matrix">
                                 <thead>
                                     <tr>
-                                        // Col 1: Название — sticky left:0
-                                        <th style=format!("{}text-align:left;min-width:200px;left:0;", th_sticky_base)>
+                                        <th class="data-matrix__corner roles-matrix__head roles-matrix__name">
                                             "Название"
                                         </th>
-                                        // Col 2: Scope ID — sticky after col 1 (left: 200px)
-                                        <th style=format!("{}text-align:left;min-width:210px;left:200px;border-left:1px solid var(--color-border);", th_sticky_base)>
+                                        <th class="data-matrix__corner roles-matrix__head roles-matrix__scope">
                                             "Scope ID"
                                         </th>
-                                        // Role columns
                                         {roles_snap.iter().map(|role| {
-                                            let is_system = role.is_system;
                                             let name = role.name.clone();
                                             let code = role.code.clone();
                                             view! {
-                                                <th style="padding:8px 10px;border-bottom:2px solid var(--color-border);text-align:center;min-width:110px;">
-                                                    <div style="font-weight:700;font-size:0.95em;">{name}</div>
-                                                    <div style="font-size:0.8em;font-family:monospace;color:var(--color-text-secondary);margin-top:1px;">{code}</div>
-                                                    {if is_system {
-                                                        view! { <span style="display:inline-block;margin-top:3px;padding:1px 7px;border-radius:8px;font-size:0.72em;background:var(--color-info-100,#e0f2fe);color:var(--color-info-700,#0369a1);font-weight:600;">"системная"</span> }.into_any()
-                                                    } else {
-                                                        view! { <span style="display:inline-block;margin-top:3px;padding:1px 7px;border-radius:8px;font-size:0.72em;background:#dcfce7;color:#15803d;font-weight:600;">"custom"</span> }.into_any()
-                                                    }}
+                                                <th class="data-matrix__sticky-head roles-matrix__head roles-matrix__role-col">
+                                                    <div class="roles-matrix__role-name">{name}</div>
+                                                    <code class="roles-matrix__role-code">{code}</code>
                                                 </th>
                                             }
                                         }).collect::<Vec<_>>()}
@@ -449,19 +467,17 @@ fn RoleMatrix() -> impl IntoView {
                                         // +2 for the two sticky columns
                                         let col_count = roles_inner.len() + 2;
                                         view! {
-                                            // Category header row — accent divider style
+                                            // Category header row — accent divider
                                             <tr>
-                                                <td colspan=col_count
-                                                    style="padding:9px 12px 7px 10px;font-size:0.8em;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--color-text-primary);background:var(--color-primary-50);border-top:2px solid var(--color-border);border-bottom:1px solid var(--color-border);border-left:4px solid var(--color-primary);">
+                                                <td colspan=col_count class="roles-matrix__cat">
                                                     {cat_label}
-                                                    <span style="font-weight:400;margin-left:8px;text-transform:none;color:var(--color-text-secondary);">
+                                                    <span class="roles-matrix__cat-count">
                                                         {format!("({} scope)", cat_scopes.len())}
                                                     </span>
                                                 </td>
                                             </tr>
                                             // Scope rows
-                                            {cat_scopes.into_iter().enumerate().map(|(i, scope)| {
-                                                let row_bg = if i % 2 == 0 { "" } else { "background:var(--color-surface-alt);" };
+                                            {cat_scopes.into_iter().map(|scope| {
                                                 let scope_id = scope.scope_id.clone();
                                                 let label = scope.label.clone();
                                                 let description = scope.description.clone();
@@ -470,13 +486,11 @@ fn RoleMatrix() -> impl IntoView {
                                                 let roles_row = roles_inner.clone();
 
                                                 view! {
-                                                    <tr style=row_bg title=description.clone()>
-                                                        // Col 1: Название — sticky left:0
-                                                        <td style=format!("padding:7px 12px;border-bottom:1px solid var(--color-border);position:sticky;left:0;z-index:1;font-weight:500;{}", row_bg)>
+                                                    <tr title=description.clone()>
+                                                        <td class="data-matrix__rowhead roles-matrix__name">
                                                             {label.clone()}
                                                         </td>
-                                                        // Col 2: Scope ID — sticky left:200px
-                                                        <td style=format!("padding:7px 12px;border-bottom:1px solid var(--color-border);border-left:1px solid var(--color-border);position:sticky;left:200px;z-index:1;font-family:monospace;font-size:0.82em;color:var(--color-text-secondary);{}", row_bg)>
+                                                        <td class="data-matrix__rowhead roles-matrix__scope">
                                                             {scope_id.clone()}
                                                         </td>
                                                         // Role cells
@@ -526,17 +540,16 @@ fn RoleMatrix() -> impl IntoView {
 
                                                             view! {
                                                                 <td
-                                                                    style=move || {
-                                                                        let base = cell_td_style(is_system);
+                                                                    class=move || {
+                                                                        let mut c = cell_td_class(is_system).to_string();
                                                                         let has_pending_change = {
                                                                             let p = pending.get();
                                                                             p.contains_key(&(role_id_style.clone(), scope_id2_style.clone()))
                                                                         };
                                                                         if has_pending_change {
-                                                                            format!("{}outline:2px solid #f59e0b;outline-offset:-2px;", base)
-                                                                        } else {
-                                                                            base.to_string()
+                                                                            c.push_str(" roles-matrix__cell--pending");
                                                                         }
+                                                                        c
                                                                     }
                                                                     title=move || {
                                                                         let m = eff_mode.get();
@@ -548,7 +561,7 @@ fn RoleMatrix() -> impl IntoView {
                                                                     }
                                                                     on:click=on_click
                                                                 >
-                                                                    <span style=move || mode_pill_style(&eff_mode.get(), is_system)>
+                                                                    <span class=move || mode_pill_class(&eff_mode.get(), is_system)>
                                                                         {move || { let m = eff_mode.get(); mode_badge(&m) }}
                                                                     </span>
                                                                 </td>
@@ -562,7 +575,7 @@ fn RoleMatrix() -> impl IntoView {
                                 </tbody>
                             </table>
                         </div>
-                        <div style="margin-top:8px;font-size:0.82em;color:var(--color-text-secondary);">
+                        <div class="roles-matrix__hint">
                             "Кликните по ячейке custom-роли для изменения: — → чтение → ВСЕ → —. Нажмите «Сохранить» для применения."
                         </div>
                     }.into_any()

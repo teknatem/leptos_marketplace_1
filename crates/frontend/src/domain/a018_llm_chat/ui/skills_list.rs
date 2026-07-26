@@ -151,19 +151,22 @@ fn next_level(level: &str) -> &'static str {
     }
 }
 
+/// Короткая подпись пилюли уровня (в матрице колонки узкие).
 fn level_label(level: &str) -> &'static str {
     match level {
-        "immediate" => "Сразу",
-        "extended" => "Расширенный",
-        _ => "Нет доступа",
+        "immediate" => "Осн",
+        "extended" => "Доп",
+        _ => "Нет",
     }
 }
 
-fn level_style(level: &str) -> &'static str {
+/// CSS class for the level pill/toggle — standard `.badge .badge--*`.
+/// immediate=success, extended=warning, denied=neutral.
+fn level_class(level: &str) -> &'static str {
     match level {
-        "immediate" => "background:#dcfce7;color:#166534;border-color:#86efac;",
-        "extended" => "background:#fef3c7;color:#92400e;border-color:#fcd34d;",
-        _ => "background:#f3f4f6;color:#6b7280;border-color:#d1d5db;",
+        "immediate" => "badge badge--success",
+        "extended" => "badge badge--warning",
+        _ => "badge badge--neutral",
     }
 }
 
@@ -329,14 +332,14 @@ pub fn LlmSkillList() -> impl IntoView {
                 </div>
 
                 <div style=move || if active_tab.get() == "matrix" { "" } else { "display:none;" }>
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                    <div class="skills-matrix__toolbar">
                         <input
-                            class="input"
+                            class="form__input skills-matrix__search"
                             placeholder="Фильтр навыков"
                             prop:value=move || filter.get()
                             on:input=move |ev| filter.set(event_target_value(&ev))
                         />
-                        <span class="badge">
+                        <span class="badge badge--neutral">
                             {move || format!("Изменений: {}", pending.get().len() + capability_pending.get().len())}
                         </span>
                         <button
@@ -347,10 +350,10 @@ pub fn LlmSkillList() -> impl IntoView {
                             {move || if saving.get() { "Сохранение…" } else { "Сохранить" }}
                         </button>
                     </div>
-                    <div style="display:flex;gap:8px;margin-bottom:12px;font-size:12px;">
-                        <span style="padding:3px 8px;border:1px solid #86efac;background:#dcfce7;color:#166534;border-radius:10px;">"Сразу"</span>
-                        <span style="padding:3px 8px;border:1px solid #fcd34d;background:#fef3c7;color:#92400e;border-radius:10px;">"Расширенный — отмечается как неэффективность"</span>
-                        <span style="padding:3px 8px;border:1px solid #d1d5db;background:#f3f4f6;color:#6b7280;border-radius:10px;">"Нет доступа"</span>
+                    <div class="skills-matrix__legend">
+                        <span class="badge badge--success">"Осн"</span><span>"— сразу"</span>
+                        <span class="badge badge--warning">"Доп"</span><span>"— расширенный (неэффективность)"</span>
+                        <span class="badge badge--neutral">"Нет"</span><span>"— нет доступа"</span>
                     </div>
                     {move || matrix.get().map(|snapshot| {
                         render_matrix(snapshot, filter.get(), pending, capability_pending)
@@ -503,34 +506,43 @@ fn render_matrix(
         .collect();
 
     view! {
-        <div style="margin-bottom:8px;font-size:12px;color:var(--color-text-secondary);">
+        <div class="skills-matrix__meta">
             {format!("Каталог: generation {generation}, digest {digest}")}
         </div>
-        {(!diagnostics.is_empty()).then(|| view! {
-            <div class="warning-box" style="margin-bottom:10px;">
-                {diagnostics.join("; ")}
-            </div>
+        {(!diagnostics.is_empty()).then(|| {
+            let count = diagnostics.len();
+            view! {
+                // Свёрнуто по умолчанию; каждое сообщение — отдельной строкой.
+                <details class="skills-matrix__diag warning-box">
+                    <summary class="skills-matrix__diag-summary">
+                        {format!("Диагностика каталога ({count})")}
+                    </summary>
+                    <ul class="skills-matrix__diag-list">
+                        {diagnostics.iter().map(|d| view! { <li>{d.clone()}</li> }).collect_view()}
+                    </ul>
+                </details>
+            }
         })}
-        <div style="overflow:auto;max-height:70vh;border:1px solid var(--color-border);border-radius:8px;">
-            <table style="border-collapse:collapse;min-width:max-content;width:100%;font-size:13px;">
+        <div class="data-matrix-wrapper">
+            <table class="data-matrix skills-matrix">
                 <thead>
                     <tr>
-                        <th style="position:sticky;left:0;top:0;z-index:3;background:var(--color-surface);padding:9px;text-align:left;min-width:240px;border-bottom:1px solid var(--color-border);">"Skill"</th>
-                        <th style="position:sticky;top:0;z-index:2;background:var(--color-surface);padding:9px;border-bottom:1px solid var(--color-border);">"Вся строка"</th>
+                        <th class="data-matrix__corner skills-matrix__skill">"Skill"</th>
+                        <th class="data-matrix__sticky-head skills-matrix__bulk-head">"Вся строка"</th>
                         {specializations.iter().map(|spec| view! {
-                            <th style="position:sticky;top:0;z-index:2;background:var(--color-surface);padding:9px;min-width:125px;border-bottom:1px solid var(--color-border);">
+                            <th class="data-matrix__sticky-head skills-matrix__spec-col">
                                 <div>{spec.title.clone()}</div>
-                                <code style="font-size:10px;color:var(--color-text-secondary);">{spec.id.clone()}</code>
+                                <code class="skills-matrix__spec-id">{spec.id.clone()}</code>
                             </th>
                         }).collect_view()}
                     </tr>
                 </thead>
                 <tbody>
-                    <tr style="background:var(--color-primary-50);">
-                        <td style="position:sticky;left:0;background:var(--color-primary-50);padding:9px;font-weight:700;border-bottom:1px solid var(--color-border);">
+                    <tr class="skills-matrix__cap-row">
+                        <td class="data-matrix__rowhead skills-matrix__cap-name">
                             "Функциональное право: публикация артефактов"
                         </td>
-                        <td style="border-bottom:1px solid var(--color-border);"></td>
+                        <td></td>
                         {specializations.iter().map(|spec| {
                             let spec_id = spec.id.clone();
                             let key = capability_key(&spec_id, "artifact_publish");
@@ -539,7 +551,7 @@ fn render_matrix(
                                 .map(|c| c.is_allowed)
                                 .unwrap_or(false);
                             view! {
-                                <td style="text-align:center;padding:7px;border-bottom:1px solid var(--color-border);">
+                                <td class="skills-matrix__center">
                                     <input
                                         type="checkbox"
                                         prop:checked=move || capability_pending.get().get(&key).copied().unwrap_or(base)
@@ -565,15 +577,15 @@ fn render_matrix(
                             let row_specs = specializations.clone();
                             let row_capabilities = capabilities.clone();
                             view! {
-                                <tr style="background:var(--color-primary-50);">
+                                <tr class="skills-matrix__cap-row">
                                     <td
                                         title=cap_description
-                                        style="position:sticky;left:0;background:var(--color-primary-50);padding:9px;font-weight:700;border-bottom:1px solid var(--color-border);"
+                                        class="data-matrix__rowhead skills-matrix__cap-name"
                                     >
                                         {cap_title}
-                                        <div><code style="font-size:10px;">{cap_id.clone()}</code></div>
+                                        <div><code class="skills-matrix__cap-id">{cap_id.clone()}</code></div>
                                     </td>
-                                    <td style="border-bottom:1px solid var(--color-border);"></td>
+                                    <td></td>
                                     {row_specs.into_iter().map(|spec| {
                                         let key = capability_key(&spec.id, &cap_id);
                                         let base = row_capabilities.iter()
@@ -582,7 +594,7 @@ fn render_matrix(
                                             .unwrap_or(false);
                                         let key_checked = key.clone();
                                         view! {
-                                            <td style="text-align:center;padding:7px;border-bottom:1px solid var(--color-border);">
+                                            <td class="skills-matrix__center">
                                                 <input
                                                     type="checkbox"
                                                     prop:checked=move || capability_pending.get().get(&key_checked).copied().unwrap_or(base)
@@ -606,12 +618,12 @@ fn render_matrix(
                         let skill_id_bulk = skill_id.clone();
                         view! {
                             <tr>
-                                <td title=skill.description.clone() style="position:sticky;left:0;background:var(--color-surface);padding:8px;border-bottom:1px solid var(--color-border);">
+                                <td title=skill.description.clone() class="data-matrix__rowhead skills-matrix__skill">
                                     <strong>{skill.title}</strong>
-                                    <div><code style="font-size:11px;color:var(--color-text-secondary);">{skill_id.clone()}</code></div>
+                                    <div><code class="skills-matrix__skill-id">{skill_id.clone()}</code></div>
                                 </td>
-                                <td style="padding:6px;border-bottom:1px solid var(--color-border);">
-                                    <select on:change={
+                                <td class="skills-matrix__bulk">
+                                    <select class="form__select skills-matrix__bulk-select" on:change={
                                         let specs = specializations.clone();
                                         move |ev| {
                                             let value = event_target_value(&ev);
@@ -641,11 +653,11 @@ fn render_matrix(
                                     let base_style = base.clone();
                                     let base_label = base.clone();
                                     view! {
-                                        <td style="text-align:center;padding:6px;border-bottom:1px solid var(--color-border);">
+                                        <td class="skills-matrix__center">
                                             <button
-                                                style=move || {
+                                                class=move || {
                                                     let level = pending.get().get(&key_style).cloned().unwrap_or_else(|| base_style.clone());
-                                                    format!("border:1px solid;padding:4px 9px;border-radius:12px;cursor:pointer;{}", level_style(&level))
+                                                    level_class(&level)
                                                 }
                                                 on:click=move |_| {
                                                     let current = pending.get_untracked().get(&key_click).cloned().unwrap_or_else(|| base.clone());

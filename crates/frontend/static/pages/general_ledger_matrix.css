@@ -1,26 +1,14 @@
 /* Страница «Матрица Слой / Оборот».
-   Стили скоупятся под корневой id страницы (PageFrame page_id). */
+   Стили скоупятся под корневой id страницы (PageFrame page_id).
+   Структурная база матрицы (border-collapse, min-width:max-content,
+   компактные отступы, обёртка со скроллом) вынесена в общий слой
+   `.data-matrix*` (themes/core/components.css) — здесь только
+   page-специфика: группы слоёв, ширины подколонок, кнопка и popover. */
 
 #general_ledger_matrix--grid .gl-matrix__hint {
   font-size: 12px;
   color: var(--color-text-secondary);
   margin: 4px 0 10px;
-}
-
-#general_ledger_matrix--grid .gl-matrix__wrapper {
-  overflow-x: auto;
-}
-
-#general_ledger_matrix--grid .gl-matrix__table {
-  border-collapse: separate;
-  border-spacing: 0;
-  min-width: 640px;
-}
-
-/* Компактные строки: уменьшенные вертикальные отступы ячеек. */
-#general_ledger_matrix--grid .gl-matrix__table .table__cell {
-  padding-top: 3px;
-  padding-bottom: 3px;
 }
 
 /* Кликабельные заголовки сортировки. */

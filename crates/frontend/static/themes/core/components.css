@@ -924,6 +924,85 @@
   align-items: center;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Data matrix — общий слой для 2D-матриц
+   (general_ledger_matrix, sys_roles_matrix, llm_skills).
+
+   Принцип «влезать по горизонтали, без лишнего места в колонках»:
+   таблица использует min-width:max-content БЕЗ width:100%, поэтому
+   колонки ужимаются по содержимому, а горизонтальный скролл берёт
+   на себя обёртка. Страницы добавляют свои модификаторы (ширины
+   колонок, семантику пилюль) поверх этих базовых классов.
+   ───────────────────────────────────────────────────────────── */
+
+.data-matrix {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: max-content;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Обёртка со скроллом — для страниц, не использующих .table-wrapper. */
+.data-matrix-wrapper {
+  overflow: auto;
+}
+
+.data-matrix-wrapper--framed {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.data-matrix-wrapper--tall {
+  max-height: 70vh;
+}
+
+/* Компактные ячейки. */
+.data-matrix th,
+.data-matrix td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Залипающая шапка (top). z-index ниже углового стыка. */
+.data-matrix__sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-surface);
+}
+
+/* Залипающая колонка-заголовок строки (left). */
+.data-matrix__rowhead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-bg-primary);
+  border-right: 1px solid var(--color-border);
+}
+
+/* Угловой стык шапки и первой колонки — залипает по обеим осям. */
+.data-matrix__corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  background: var(--color-surface);
+}
+
+/* Числовая ячейка. */
+.data-matrix__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Матричные пилюли — это стандартные бейджи `.badge .badge--*`.
+   Когда бейдж является кликабельным <button> (переключатель уровня/режима),
+   нормализуем курсор и шрифт. */
+button.badge {
+  cursor: pointer;
+  font-family: inherit;
+}
+
 /* Стили для иконок сортировки в Thaw таблицах */
 .sort-icon {
   display: inline-block;
