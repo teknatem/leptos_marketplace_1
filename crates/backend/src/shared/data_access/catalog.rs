@@ -83,14 +83,20 @@ pub fn list_sources(kind: Option<DataSourceKind>) -> Vec<DataSourceCatalogItem> 
             };
         let key = (DataSourceKind::Base, info.id.clone());
         source_tables.insert(key, HashSet::from([info.table_name.clone()]));
+        let description = schema_registry
+            .get_ai_description(&info.id)
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                format!(
+                    "Безопасная декларативная схема для ad-hoc срезов таблицы {}",
+                    info.table_name
+                )
+            });
         items.push(DataSourceCatalogItem {
             kind: DataSourceKind::Base,
             id: info.id,
             name: info.name,
-            description: format!(
-                "Безопасная декларативная схема для ad-hoc срезов таблицы {}",
-                info.table_name
-            ),
+            description,
             table: Some(info.table_name),
             capabilities: SourceCapabilities {
                 dimensions: fields(|field| field.can_group),

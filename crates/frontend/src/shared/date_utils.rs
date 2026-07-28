@@ -7,7 +7,7 @@
 ///   displayed as dates only.
 /// - `format_datetime(&str)` is a legacy string reshaper: it does not perform
 ///   timezone conversion and must not be used for typed `DateTime<Utc>` values.
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDateTime, Utc};
 
 /// Смещение часового пояса для отображения времени в UI (МСК = UTC+3).
 /// Дублирует значение `[ui].timezone_offset_hours` из `config.toml`.
@@ -28,6 +28,16 @@ pub fn format_datetime_utc_local(datetime_str: &str, fmt: &str) -> String {
     DateTime::parse_from_rfc3339(datetime_str)
         .map(|dt| format_utc_local(&dt.with_timezone(&Utc), fmt))
         .unwrap_or_else(|_| format_datetime(datetime_str))
+}
+
+/// Форматирует наивную UTC-строку вида `"YYYY-MM-DD HH:MM:SS"` (без часового пояса,
+/// как хранится `plugin_run.started_at`), применяя локальное смещение (+3).
+/// Пример: `"2025-07-28 12:00:00"` → `"2025-07-28 15:00"`.
+/// Возвращает исходную строку, если формат не распознан.
+pub fn format_space_naive_utc_local(datetime_str: &str, fmt: &str) -> String {
+    NaiveDateTime::parse_from_str(datetime_str.trim(), "%Y-%m-%d %H:%M:%S")
+        .map(|naive| format_utc_local(&naive.and_utc(), fmt))
+        .unwrap_or_else(|_| datetime_str.to_string())
 }
 
 /// Format ISO datetime string to DD.MM.YYYY HH:MM:SS format
@@ -154,6 +164,22 @@ mod tests {
         assert_eq!(format_datetime("invalid"), "invalid");
         assert_eq!(format_datetime_space("invalid"), "invalid");
         assert_eq!(format_date("invalid"), "invalid");
+    }
+
+    #[test]
+    fn test_format_space_naive_utc_local() {
+        // 12:00 UTC → 15:00 МСК (+3).
+        assert_eq!(
+            format_space_naive_utc_local("2025-07-28 12:00:00", "%Y-%m-%d %H:%M"),
+            "2025-07-28 15:00"
+        );
+        // Переход через полночь: 23:30 UTC → 02:30 следующего дня МСК.
+        assert_eq!(
+            format_space_naive_utc_local("2025-07-28 23:30:00", "%Y-%m-%d %H:%M"),
+            "2025-07-29 02:30"
+        );
+        // Нераспознанный формат возвращается как есть.
+        assert_eq!(format_space_naive_utc_local("invalid", "%H:%M"), "invalid");
     }
 }
 

@@ -207,16 +207,6 @@ impl WbSalesFunnelDailyDetailsVm {
 
     // ── Navigation ──────────────────────────────────────────────────────────────
 
-    pub fn open_nomenclature(&self, nom_ref: String) {
-        if nom_ref.is_empty() {
-            return;
-        }
-        self.tabs.open_tab(
-            &format!("a004_nomenclature_details_{}", nom_ref),
-            "Номенклатура",
-        );
-    }
-
     pub fn open_product(&self, product_ref: String) {
         if product_ref.is_empty() {
             return;

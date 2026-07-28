@@ -76,6 +76,16 @@ pub fn create_provider<'a>(
             true,  // DeepSeek ждёт поле `max_tokens`, а не `max_completion_tokens`
             false, // logprobs выключены — как в проверенной OpenRouter-совместимой конфигурации
         ))),
+        LlmProviderType::Kimi => Ok(Box::new(OpenAiProvider::new_compatible(
+            "Kimi",
+            kimi_endpoint(s.api_endpoint),
+            s.api_key.to_string(),
+            model,
+            s.temperature,
+            s.max_tokens,
+            true,  // Moonshot ждёт поле `max_tokens`, а не `max_completion_tokens`
+            false, // logprobs выключены — как в OpenRouter/DeepSeek-совместимой конфигурации
+        ))),
         other => Err(LlmError::UnsupportedProvider(other.as_str().to_string())),
     }
 }
@@ -109,7 +119,12 @@ pub async fn list_models<'a>(
             // DeepSeek /models возвращает {id, object, owned_by} без поля `created`,
             // на котором типизированный клиент async-openai падает при десериализации.
             // Поэтому тянем список сырым запросом с толерантными к отсутствию полями.
-            deepseek_list_models(&deepseek_endpoint(s.api_endpoint), s.api_key).await
+            compat_list_models("DeepSeek", &deepseek_endpoint(s.api_endpoint), s.api_key).await
+        }
+        LlmProviderType::Kimi => {
+            // Moonshot `/models` — стандартный OpenAI-совместимый ответ; тянем тем же
+            // толерантным сырым запросом, что и DeepSeek, на случай отсутствия полей.
+            compat_list_models("Kimi", &kimi_endpoint(s.api_endpoint), s.api_key).await
         }
         other => Err(LlmError::UnsupportedProvider(other.as_str().to_string())),
     }
@@ -133,20 +148,32 @@ fn deepseek_endpoint(api_endpoint: &str) -> String {
     }
 }
 
-/// Список моделей DeepSeek: сырой GET `{endpoint}/models` с толерантным разбором
-/// (в ответе нет `created`, на котором падает типизированный клиент async-openai).
-async fn deepseek_list_models(
+const KIMI_DEFAULT_ENDPOINT: &str = "https://api.moonshot.ai/v1";
+
+fn kimi_endpoint(api_endpoint: &str) -> String {
+    if api_endpoint.trim().is_empty() {
+        KIMI_DEFAULT_ENDPOINT.to_string()
+    } else {
+        api_endpoint.to_string()
+    }
+}
+
+/// Список моделей OpenAI-совместимого провайдера (DeepSeek, Kimi/Moonshot):
+/// сырой GET `{endpoint}/models` с толерантным разбором (в ответе может не быть
+/// `created`, на котором падает типизированный клиент async-openai).
+async fn compat_list_models(
+    provider: &str,
     endpoint: &str,
     api_key: &str,
 ) -> Result<Vec<serde_json::Value>, LlmError> {
     use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 
     #[derive(serde::Deserialize)]
-    struct DeepSeekModelsResponse {
-        data: Vec<DeepSeekModel>,
+    struct CompatModelsResponse {
+        data: Vec<CompatModel>,
     }
     #[derive(serde::Deserialize)]
-    struct DeepSeekModel {
+    struct CompatModel {
         id: String,
         #[serde(default)]
         owned_by: Option<String>,
@@ -171,13 +198,13 @@ async fn deepseek_list_models(
             return Err(LlmError::RateLimitExceeded);
         }
         return Err(LlmError::ApiError(format!(
-            "DeepSeek models request failed: HTTP {} {}",
-            status, body
+            "{} models request failed: HTTP {} {}",
+            provider, status, body
         )));
     }
 
     let payload = response
-        .json::<DeepSeekModelsResponse>()
+        .json::<CompatModelsResponse>()
         .await
         .map_err(|e| LlmError::ApiError(e.to_string()))?;
 

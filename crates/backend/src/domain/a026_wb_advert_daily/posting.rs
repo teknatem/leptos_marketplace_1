@@ -784,7 +784,6 @@ mod tests {
 
 #[cfg(test)]
 mod stable_id_tests {
-    use super::*;
     use contracts::domain::a026_wb_advert_daily::aggregate::{
         WbAdvertDailyHeader, WbAdvertDailyId,
     };

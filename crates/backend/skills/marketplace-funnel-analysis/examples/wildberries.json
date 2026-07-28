@@ -1,11 +1,20 @@
 {
   "marketplace": "wildberries",
   "label": "2026-07",
+  "note": "Реальные поля p916. show_free_count=null (органических показов нет — a040 не питает воронку). paid_* — из рекламы a026/p913.",
   "metrics": {
-    "product_views": 43800,
-    "cart_adds": 5100,
-    "orders": 2310,
-    "deliveries": 1960,
-    "revenue": 3970000
+    "show_free_count": null,
+    "show_paid_count": 88000,
+    "open_count": 43800,
+    "cart_count": 5100,
+    "order_count": 2310,
+    "cancel_count": 180,
+    "buyout_count": 1960,
+    "return_count": 95,
+    "order_sum": 3970000,
+    "paid_open_count": 9200,
+    "paid_cart_count": 1400,
+    "paid_order_count": 620,
+    "paid_buyout_count": 510
   }
 }

@@ -10,6 +10,8 @@ pub enum S3FileCategory {
     Backups,
     #[serde(rename = "conference_audio")]
     ConferenceAudio,
+    #[serde(rename = "llm_chat_images")]
+    LlmChatImages,
     #[serde(rename = "other")]
     Other,
 }
@@ -27,6 +29,7 @@ impl S3FileCategory {
             Self::Plugins => "plugins",
             Self::Backups => "backups",
             Self::ConferenceAudio => "conference_audio",
+            Self::LlmChatImages => "llm_chat_images",
             Self::Other => "other",
         }
     }
@@ -37,6 +40,7 @@ impl S3FileCategory {
             Self::Plugins => "Плагины",
             Self::Backups => "Архивы БД",
             Self::ConferenceAudio => "Аудио конференций",
+            Self::LlmChatImages => "Изображения LLM-чата",
             Self::Other => "Другое",
         }
     }
@@ -47,6 +51,7 @@ impl S3FileCategory {
             Self::Plugins,
             Self::Backups,
             Self::ConferenceAudio,
+            Self::LlmChatImages,
             Self::Other,
         ]
     }
@@ -59,6 +64,7 @@ impl From<&str> for S3FileCategory {
             "plugins" => Self::Plugins,
             "backups" => Self::Backups,
             "conference_audio" => Self::ConferenceAudio,
+            "llm_chat_images" => Self::LlmChatImages,
             "other" => Self::Other,
             _ => Self::Other,
         }

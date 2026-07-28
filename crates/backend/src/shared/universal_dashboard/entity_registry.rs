@@ -176,6 +176,14 @@ impl SchemaRegistry {
         None
     }
 
+    /// Business context used to describe and search auto-generated schemas.
+    pub fn get_ai_description(&self, schema_id: &str) -> Option<&'static str> {
+        let schema_id = Self::canonical_schema_id(schema_id);
+        self.auto_schemas
+            .get(schema_id)
+            .map(|entry| entry.entity.ai.description)
+    }
+
     /// Check if schema exists
     pub fn has_schema(&self, id: &str) -> bool {
         let id = Self::canonical_schema_id(id);

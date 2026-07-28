@@ -88,7 +88,6 @@ pub struct LineDto {
     pub subject_name: String,
     #[serde(default)]
     pub marketplace_product_ref: Option<String>,
-    pub nomenclature_ref: Option<String>,
     pub nomenclature_article: Option<String>,
     #[serde(default)]
     #[allow(dead_code)]

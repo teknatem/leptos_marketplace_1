@@ -1,6 +1,6 @@
 ---
-title: a040 — поисковая аналитика WB (показы, позиции, запросы)
-tags: [marketplaces, wildberries, search, показы, impressions, a040, seo, funnel, воронка, джем]
+title: a040 — поисковая аналитика WB (видимость, позиции, запросы)
+tags: [marketplaces, wildberries, search, видимость, visibility, показы, impressions, a040, seo, funnel, воронка, джем]
 related: [a036_wb_sales_funnel_daily, a037_wb_product_snapshot, p916_mp_sales_funnel_turnovers, task024_wb_search_analytics_daily]
 updated: 2026-07-21
 ---
@@ -9,18 +9,21 @@ updated: 2026-07-21
 
 Ежедневные снимки поисковой аналитики WB в разрезе номенклатуры (источник — **search-report
 API**, «Товары по контенту» / «Аналитика поисковых запросов», подписка **«Джем»**). Даёт
-**органические показы** в поиске — то, чего нет в воронке a036 (там только переходы `openCard`).
+**поисковую видимость** (`visibility`, % товара в выдаче), позиции и топ-запросы. Счётчика
+**органических показов** WB здесь НЕ отдаёт — поле `impressions` всегда `0` (см. ниже). То есть
+«показы» в a040 = **видимость в %**, а не штуки; за реальными органическими показами источника пока нет.
 
 Грань — `nm_id × дата`, один документ = один кабинет WB × одна дата. **Forward-only** (WB отдаёт
 только недавнее окно). Импортирует задача `task024_wb_search_analytics_daily` (по кабинету, раз в
 день); при отсутствии «Джем»/доступа (403) задача логирует и завершается без ошибки.
 
 ## Что хранит (на товар, `lines_json`)
-- `metrics`: **impressions** (показы), **open_card** (переходы из поиска), `ctr`, `add_to_cart`,
-  `orders`, **avg_position** (средняя позиция в выдаче), `visibility`.
+- `metrics`: **visibility** (видимость, % товара в выдаче — **основной сигнал**), **open_card**
+  (переходы из поиска), `ctr`, `add_to_cart`, `orders`, **avg_position** (средняя позиция в выдаче),
+  **impressions** (счётчик показов — **всегда `0`**, WB его не отдаёт).
 - `top_queries[]`: топ поисковых запросов на товар — `text`, `frequency` (частотность),
-  `impressions`, `clicks`, `orders`, `avg_position` (для SEO/семантики карточки).
-- Итоги-колонки: `total_impressions`, `total_open_card`, `total_orders`.
+  `clicks`, `orders`, `avg_position` (для SEO/семантики карточки); `impressions` тоже `0`.
+- Итоги-колонки: `total_open_card`, `total_orders`; `total_impressions` всегда `0` (не показатель).
 
 ## Связь с воронкой p916
 a040 **НЕ питает** воронку p916. Живой WB-эндпоинт `/table/details` отдаёт только `visibility`

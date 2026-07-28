@@ -75,6 +75,10 @@ pub struct LlmConnection {
     /// Курируемое подмножество разрешённых моделей (JSON-массив model_id).
     /// Именно из него можно выбирать модель в чате. Подмножество `available_models`.
     pub allowed_models: Option<String>,
+
+    /// JSON array: curated subset of allowed_models that accepts image input.
+    #[serde(default)]
+    pub image_input_models: Option<String>,
 }
 
 impl LlmConnection {
@@ -91,6 +95,7 @@ impl LlmConnection {
         is_primary: bool,
         available_models: Option<String>,
         allowed_models: Option<String>,
+        image_input_models: Option<String>,
     ) -> Self {
         let base = BaseAggregate::new(LlmConnectionId::new_v4(), code, description);
         Self {
@@ -104,6 +109,7 @@ impl LlmConnection {
             is_primary,
             available_models,
             allowed_models,
+            image_input_models,
         }
     }
 
@@ -121,6 +127,7 @@ impl LlmConnection {
         is_primary: bool,
         available_models: Option<String>,
         allowed_models: Option<String>,
+        image_input_models: Option<String>,
     ) -> Self {
         let base = BaseAggregate::new(id, code, description);
         Self {
@@ -134,6 +141,7 @@ impl LlmConnection {
             is_primary,
             available_models,
             allowed_models,
+            image_input_models,
         }
     }
 
@@ -191,6 +199,19 @@ impl LlmConnection {
             .filter(|s| !s.trim().is_empty())
             .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
             .unwrap_or_default()
+    }
+
+    pub fn image_input_models_list(&self) -> Vec<String> {
+        self.image_input_models
+            .as_deref()
+            .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn supports_image_input(&self, model: &str) -> bool {
+        self.image_input_models_list()
+            .iter()
+            .any(|item| item == model)
     }
 }
 

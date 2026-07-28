@@ -310,6 +310,32 @@ mod tests {
         )
         .await;
         assert_eq!(segments["result"]["ranking_by_orders"][0], "A");
+
+        let wb = run_funnel(
+            "wb-funnel",
+            json!({
+                "marketplace": "wildberries",
+                "label": "2026-06",
+                "metrics": {
+                    "show_free_count": 600,
+                    "show_paid_count": 400,
+                    "open_count": 200,
+                    "cart_count": 80,
+                    "order_count": 40,
+                    "cancel_count": 5,
+                    "buyout_count": 30,
+                    "return_count": 2,
+                    "paid_open_count": 90,
+                    "paid_cart_count": 35,
+                    "paid_order_count": 18,
+                    "paid_buyout_count": 14
+                }
+            }),
+        )
+        .await;
+        assert_eq!(wb["_ok"], true);
+        assert_eq!(wb["result"]["shows"]["total"], 1000);
+        assert_eq!(wb["result"]["conversions"]["order_to_buyout"], 0.75);
     }
 
     #[test]

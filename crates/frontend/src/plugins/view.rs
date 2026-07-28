@@ -7,6 +7,7 @@
 
 use crate::plugins::api;
 use crate::plugins::frame::PluginFrame;
+use crate::shared::date_utils::format_utc_local;
 use crate::system::favorites::ui::FavoriteButton;
 use contracts::plugins::{PluginDataMode, PluginDefinition, PluginRunContext};
 use leptos::prelude::*;
@@ -18,6 +19,9 @@ pub fn PluginView(plugin_id: String) -> impl IntoView {
     let fav_target_id = plugin_id.clone();
     let fav_tab_key = format!("plugin__{}", plugin_id);
     let plugin_id_for_rating = plugin_id.clone();
+    // Изменение оценки — управляющее действие (эндпоинт admin-only). Обычный
+    // пользователь видит звёзды только для чтения.
+    let user_is_admin = crate::system::auth::context::is_admin();
     let (def, set_def) = signal(None::<PluginDefinition>);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
@@ -110,9 +114,9 @@ pub fn PluginView(plugin_id: String) -> impl IntoView {
                 <span class="plugin-host__code">
                     {move || def.get().map(|p| p.bundle.manifest.code).unwrap_or_default()}
                 </span>
-                // Оценка плагина: 5 звёзд. Клик по текущей звезде снимает оценку.
+                // Оценка плагина: 5 звёзд. Клик по текущей звезде снимает оценку (только админ).
                 <div
-                    title="Оценить плагин"
+                    title=if user_is_admin { "Оценить плагин" } else { "Оценка плагина" }
                     style="display: inline-flex; gap: 2px; font-size: 16px; line-height: 1;"
                 >
                     {move || {
@@ -122,6 +126,16 @@ pub fn PluginView(plugin_id: String) -> impl IntoView {
                             .map(|n| {
                                 let pid = pid.clone();
                                 let filled = n <= current;
+                                let color = if filled { "#f5a623" } else { "var(--color-text-secondary, #9ca3af)" };
+                                let glyph = if filled { "★" } else { "☆" };
+                                if !user_is_admin {
+                                    // Пользователь — только просмотр, без обработчика клика.
+                                    return view! {
+                                        <span style=format!("padding:0 1px;line-height:1;color:{color};")>
+                                            {glyph}
+                                        </span>
+                                    }.into_any();
+                                }
                                 view! {
                                     <button
                                         type="button"
@@ -145,7 +159,7 @@ pub fn PluginView(plugin_id: String) -> impl IntoView {
                                     >
                                         {if filled { "★" } else { "☆" }}
                                     </button>
-                                }
+                                }.into_any()
                             })
                             .collect_view()
                     }}
@@ -165,14 +179,14 @@ pub fn PluginView(plugin_id: String) -> impl IntoView {
                         disabled=move || def.get().and_then(|plugin| plugin.snapshot).is_none()
                         on:click=select_snapshot
                         title=move || def.get().and_then(|plugin| plugin.snapshot).map(|snapshot| {
-                            format!("Снимок: {} · {} строк · {} KiB", snapshot.created_at.format("%d.%m.%Y %H:%M"), snapshot.row_count, snapshot.size_bytes / 1024)
+                            format!("Снимок: {} · {} строк · {} KiB", format_utc_local(&snapshot.created_at, "%d.%m.%Y %H:%M"), snapshot.row_count, snapshot.size_bytes / 1024)
                         }).unwrap_or_else(|| "Сохраненный снимок отсутствует".to_string())
                     >
                         <span class="plugin-data-mode__dot plugin-data-mode__dot--snapshot"></span>
                         {move || {
                             if data_mode.get() == PluginDataMode::Snapshot {
                                 def.get().and_then(|plugin| plugin.snapshot).map(|snapshot| {
-                                    format!("Снимок · {} · {} стр.", snapshot.created_at.format("%d.%m %H:%M"), snapshot.row_count)
+                                    format!("Снимок · {} · {} стр.", format_utc_local(&snapshot.created_at, "%d.%m %H:%M"), snapshot.row_count)
                                 }).unwrap_or_else(|| "Снимок".to_string())
                             } else {
                                 "Сохраненные данные".to_string()

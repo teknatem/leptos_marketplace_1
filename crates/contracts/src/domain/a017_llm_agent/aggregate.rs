@@ -102,6 +102,7 @@ pub enum LlmProviderType {
     OpenAI,
     OpenRouter,
     DeepSeek,
+    Kimi,
     Anthropic,
     Ollama,
 }
@@ -112,6 +113,7 @@ impl LlmProviderType {
             "OpenAI" => Ok(LlmProviderType::OpenAI),
             "OpenRouter" => Ok(LlmProviderType::OpenRouter),
             "DeepSeek" => Ok(LlmProviderType::DeepSeek),
+            "Kimi" => Ok(LlmProviderType::Kimi),
             "Anthropic" => Ok(LlmProviderType::Anthropic),
             "Ollama" => Ok(LlmProviderType::Ollama),
             _ => Err(format!("Unknown provider type: {}", s)),
@@ -123,6 +125,7 @@ impl LlmProviderType {
             LlmProviderType::OpenAI => "OpenAI",
             LlmProviderType::OpenRouter => "OpenRouter",
             LlmProviderType::DeepSeek => "DeepSeek",
+            LlmProviderType::Kimi => "Kimi",
             LlmProviderType::Anthropic => "Anthropic",
             LlmProviderType::Ollama => "Ollama",
         }

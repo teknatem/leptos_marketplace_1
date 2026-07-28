@@ -372,6 +372,16 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         all_label: "Управление артефактами",
     },
     ScopeDescriptor {
+        scope_id: "a038_llm_connection",
+        scope_type: ScopeType::Aggregate,
+        label: "Подключения LLM",
+        description: "Настройки подключений к провайдерам языковых моделей",
+        icon: "plug",
+        category: "ai",
+        read_label: "Просмотр подключений LLM",
+        all_label: "Создание и редактирование подключений LLM",
+    },
+    ScopeDescriptor {
         scope_id: "a039_mail_message",
         scope_type: ScopeType::Aggregate,
         label: "Письма (журнал)",

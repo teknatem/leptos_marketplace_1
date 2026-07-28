@@ -104,7 +104,12 @@ pub async fn upload(
         updated_at: now,
     };
 
-    repository::insert(&dto).await?;
+    if let Err(error) = repository::insert(&dto).await {
+        // S3 and SQLite cannot share a transaction. Compensate a failed metadata
+        // insert so an unreachable object is not left in the bucket.
+        let _ = client::delete_object(&cfg, &dto.object_key).await;
+        return Err(error);
+    }
     Ok(dto)
 }
 

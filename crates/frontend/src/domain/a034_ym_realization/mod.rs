@@ -42,8 +42,6 @@ struct ListItem {
     #[serde(default)]
     placement_type: Option<String>,
     #[serde(default)]
-    campaign_id: Option<String>,
-    #[serde(default)]
     delivery_discrepancy: f64,
     #[serde(default)]
     returns_discrepancy: f64,

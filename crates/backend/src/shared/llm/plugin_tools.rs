@@ -419,6 +419,7 @@ pub(crate) async fn upsert_bundle_with_snapshot(
         prepared_snapshot,
         Some(service::PluginArtifactOrigin { chat_id, agent_id }),
         Some(report.clone()),
+        None,
     )
     .await;
     if saved_result.is_err() && retry_dto.id.is_none() {
@@ -433,6 +434,7 @@ pub(crate) async fn upsert_bundle_with_snapshot(
                 retry_snapshot,
                 Some(service::PluginArtifactOrigin { chat_id, agent_id }),
                 Some(report.clone()),
+                None,
             )
             .await;
         }

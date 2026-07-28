@@ -7,9 +7,9 @@ use super::{
     },
     progress_tracker::ProgressTracker,
     wildberries_api_client::{
-        WbAdvertFullStat, WbAdvertFullStatApp, WbAdvertFullStatDay, WbAdvertFullStatNm,
-        WbProductSnapshotRow, WbSalesFunnelHistoryDay, WbSalesFunnelHistoryItem, WbSearchQueryRow,
-        WbSearchReportRow, WildberriesApiClient,
+        parse_sales_funnel_detail_zip, WbAdvertFullStat, WbAdvertFullStatApp, WbAdvertFullStatDay,
+        WbAdvertFullStatNm, WbProductSnapshotRow, WbSalesFunnelDetailRow, WbSalesFunnelHistoryDay,
+        WbSalesFunnelHistoryItem, WbSearchQueryRow, WbSearchReportRow, WildberriesApiClient,
     },
 };
 use crate::shared::marketplaces::wildberries::datetime::{wb_day_end_utc, wb_day_start_utc};
@@ -78,6 +78,8 @@ const WB_SALES_FUNNEL_PAGE_LIMIT: usize = 1000;
 /// Сколько раз повторить чанк при транзиентной ошибке (обрыв TLS-хэндшейка и т.п.)
 /// перед тем как считать его проваленным. Rate limit (429) не ретраится.
 const WB_SALES_FUNNEL_MAX_ATTEMPTS: usize = 3;
+const WB_DETAIL_HISTORY_POLL_INTERVAL_SECS: u64 = 21;
+const WB_DETAIL_HISTORY_MAX_POLLS: usize = 120;
 
 fn is_wb_advert_fullstats_rate_limit(error: &str) -> bool {
     error.contains(WB_ADVERT_RATE_LIMIT_MARKER) || error.contains("429 Too Many Requests")
@@ -251,6 +253,75 @@ fn finalize_funnel_totals(totals: &mut WbSalesFunnelDailyMetrics) {
     };
 }
 
+fn wb_product_enrichment_score(
+    product: &contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
+) -> usize {
+    usize::from(product.nomenclature_ref.is_some()) * 8
+        + usize::from(!product.base.description.trim().is_empty()) * 4
+        + usize::from(!product.article.trim().is_empty()) * 4
+        + usize::from(
+            product
+                .brand
+                .as_deref()
+                .is_some_and(|v| !v.trim().is_empty()),
+        ) * 2
+        + usize::from(
+            product
+                .category_id
+                .as_deref()
+                .is_some_and(|v| !v.trim().is_empty()),
+        )
+        + usize::from(
+            product
+                .category_name
+                .as_deref()
+                .is_some_and(|v| !v.trim().is_empty()),
+        )
+        + usize::from(!product.base.code.starts_with("WB-AUTO-")) * 2
+}
+
+/// Выбирает наиболее полную запись a007. Если дубли ссылаются на разные
+/// номенклатуры 1С, атрибуты товара использовать можно, но ссылку оставляем
+/// пустой, чтобы не провести факты по неоднозначной номенклатуре.
+fn select_wb_product_enrichment(
+    mut candidates: Vec<contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct>,
+) -> (
+    contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct,
+    bool,
+) {
+    debug_assert!(!candidates.is_empty());
+    candidates.sort_by(|left, right| {
+        wb_product_enrichment_score(right)
+            .cmp(&wb_product_enrichment_score(left))
+            .then_with(|| {
+                right
+                    .base
+                    .metadata
+                    .updated_at
+                    .cmp(&left.base.metadata.updated_at)
+            })
+            .then_with(|| left.to_string_id().cmp(&right.to_string_id()))
+    });
+
+    let nomenclature_refs: BTreeSet<String> = candidates
+        .iter()
+        .filter_map(|product| product.nomenclature_ref.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect();
+    let has_conflicting_nomenclature = nomenclature_refs.len() > 1;
+    let resolved_nomenclature = if has_conflicting_nomenclature {
+        None
+    } else {
+        nomenclature_refs.into_iter().next()
+    };
+
+    let mut selected = candidates.remove(0);
+    selected.nomenclature_ref = resolved_nomenclature;
+    (selected, has_conflicting_nomenclature)
+}
+
 /// Executor для UseCase импорта из Wildberries
 pub struct ImportExecutor {
     api_client: Arc<WildberriesApiClient>,
@@ -304,6 +375,7 @@ impl ImportExecutor {
                 "wb_advert_stats" | "wb_advert_stats_csv" => "Статистика рекламных кампаний WB",
                 "a032_wb_returns_claims" => "Заявки на возврат WB",
                 "a036_wb_sales_funnel_daily" => "Воронка продаж WB",
+                "a036_wb_sales_funnel_daily_history" => "История воронки продаж WB (CSV)",
                 "a037_wb_product_snapshot" => "Данные по товарам WB",
                 _ => "Unknown",
             };
@@ -371,6 +443,7 @@ impl ImportExecutor {
             "a015_wb_orders_supply_link" => "Связь заказов с поставками",
             "a032_wb_returns_claims" => "Заявки на возврат WB",
             "a036_wb_sales_funnel_daily" => "Воронка продаж WB",
+            "a036_wb_sales_funnel_daily_history" => "История воронки продаж WB (CSV)",
             "a037_wb_product_snapshot" => "Данные по товарам WB",
             _ => "Unknown",
         }
@@ -568,6 +641,15 @@ impl ImportExecutor {
                 }
                 "a036_wb_sales_funnel_daily" => {
                     self.import_wb_sales_funnel(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a036_wb_sales_funnel_daily_history" => {
+                    self.import_wb_sales_funnel_history_report(
                         session_id,
                         connection,
                         request.date_from,
@@ -3629,6 +3711,384 @@ impl ImportExecutor {
         Ok(())
     }
 
+    /// Историческая загрузка воронки WB через асинхронный CSV-отчёт
+    /// `DETAIL_HISTORY_REPORT`. Это отдельная цель u504; оперативная загрузка
+    /// `a036_wb_sales_funnel_daily` через `/products/history` не изменяется.
+    async fn import_wb_sales_funnel_history_report(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        let aggregate_index = "a036_wb_sales_funnel_daily_history";
+        if date_from > date_to {
+            anyhow::bail!(
+                "Invalid WB DETAIL_HISTORY_REPORT period: {} is after {}",
+                date_from,
+                date_to
+            );
+        }
+        if (date_to - date_from).num_days() >= 365 {
+            anyhow::bail!(
+                "WB DETAIL_HISTORY_REPORT period must not exceed 365 days: {}..{}",
+                date_from,
+                date_to
+            );
+        }
+
+        let begin_date = date_from.format("%Y-%m-%d").to_string();
+        let end_date = date_to.format("%Y-%m-%d").to_string();
+        let download_id = Uuid::new_v4();
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!(
+                "Создание DETAIL_HISTORY_REPORT {}..{}",
+                begin_date, end_date
+            )),
+        );
+
+        self.api_client
+            .create_sales_funnel_detail_report(connection, download_id, &begin_date, &end_date)
+            .await?;
+
+        let report_status = {
+            let mut ready = None;
+            for poll in 1..=WB_DETAIL_HISTORY_MAX_POLLS {
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    WB_DETAIL_HISTORY_POLL_INTERVAL_SECS,
+                ))
+                .await;
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!(
+                        "Ожидание DETAIL_HISTORY_REPORT, проверка {}/{}",
+                        poll, WB_DETAIL_HISTORY_MAX_POLLS
+                    )),
+                );
+                let report = self
+                    .api_client
+                    .get_sales_funnel_detail_report_status(connection, download_id)
+                    .await?;
+                match report.status.trim().to_ascii_uppercase().as_str() {
+                    "SUCCESS" => {
+                        ready = Some(report);
+                        break;
+                    }
+                    "FAILED" => {
+                        anyhow::bail!(
+                            "WB DETAIL_HISTORY_REPORT generation failed: download_id={}",
+                            download_id
+                        );
+                    }
+                    _ => {
+                        tracing::info!(
+                            "WB DETAIL_HISTORY_REPORT waiting: download_id={}, status={}, poll={}",
+                            download_id,
+                            report.status,
+                            poll
+                        );
+                    }
+                }
+            }
+            ready.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "WB DETAIL_HISTORY_REPORT did not become ready after {} checks: download_id={}",
+                    WB_DETAIL_HISTORY_MAX_POLLS,
+                    download_id
+                )
+            })?
+        };
+
+        if !report_status.start_date.is_empty()
+            && normalize_day_date(&report_status.start_date) != begin_date
+        {
+            anyhow::bail!(
+                "WB DETAIL_HISTORY_REPORT start date mismatch: requested={}, report={}",
+                begin_date,
+                report_status.start_date
+            );
+        }
+        if !report_status.end_date.is_empty()
+            && normalize_day_date(&report_status.end_date) != end_date
+        {
+            anyhow::bail!(
+                "WB DETAIL_HISTORY_REPORT end date mismatch: requested={}, report={}",
+                end_date,
+                report_status.end_date
+            );
+        }
+
+        self.progress_tracker.set_current_item(
+            session_id,
+            aggregate_index,
+            Some(format!("Скачивание DETAIL_HISTORY_REPORT {}", download_id)),
+        );
+        let zip_bytes = self
+            .api_client
+            .download_sales_funnel_detail_report(connection, download_id)
+            .await?;
+        let rows = tokio::task::spawn_blocking(move || parse_sales_funnel_detail_zip(&zip_bytes))
+            .await
+            .context("WB DETAIL_HISTORY_REPORT parser task failed")??;
+
+        let documents = self
+            .build_wb_sales_funnel_history_documents(connection, &rows, &begin_date, &end_date)
+            .await?;
+
+        let documents_count =
+            crate::domain::a036_wb_sales_funnel_daily::service::replace_for_period(
+                &connection.to_string_id(),
+                &begin_date,
+                &end_date,
+                &documents,
+            )
+            .await?;
+
+        self.progress_tracker.update_aggregate(
+            session_id,
+            aggregate_index,
+            rows.len() as i32,
+            Some(rows.len() as i32),
+            documents_count as i32,
+            0,
+        );
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "WB DETAIL_HISTORY_REPORT completed: connection={}, download_id={}, report_size={}, rows={}, documents={}",
+            connection.to_string_id(),
+            download_id,
+            report_status.size,
+            rows.len(),
+            documents_count
+        );
+        Ok(())
+    }
+
+    async fn build_wb_sales_funnel_history_documents(
+        &self,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        rows: &[WbSalesFunnelDetailRow],
+        date_from: &str,
+        date_to: &str,
+    ) -> Result<Vec<WbSalesFunnelDaily>> {
+        let products = crate::domain::a007_marketplace_product::repository::list_by_connection(
+            &connection.to_string_id(),
+        )
+        .await?;
+        let mut candidates_by_nm_id: HashMap<i64, Vec<_>> = HashMap::new();
+        for product in products {
+            let Ok(nm_id) = product.marketplace_sku.trim().parse::<i64>() else {
+                continue;
+            };
+            candidates_by_nm_id.entry(nm_id).or_default().push(product);
+        }
+        let mut products_by_nm_id = HashMap::new();
+        let mut duplicate_nm_ids = 0usize;
+        let mut conflicting_nomenclature_nm_ids = 0usize;
+        for (nm_id, candidates) in candidates_by_nm_id {
+            let candidate_count = candidates.len();
+            let candidate_ids: Vec<String> =
+                candidates.iter().map(|item| item.to_string_id()).collect();
+            let (selected, has_conflicting_nomenclature) = select_wb_product_enrichment(candidates);
+            if candidate_count > 1 {
+                duplicate_nm_ids += 1;
+                if has_conflicting_nomenclature {
+                    conflicting_nomenclature_nm_ids += 1;
+                }
+                tracing::warn!(
+                    "WB DETAIL_HISTORY_REPORT a007 duplicate: connection={}, nmID={}, candidates={}, selected={}, conflicting_nomenclature={}, candidate_ids={:?}",
+                    connection.to_string_id(),
+                    nm_id,
+                    candidate_count,
+                    selected.to_string_id(),
+                    has_conflicting_nomenclature,
+                    candidate_ids
+                );
+            }
+            products_by_nm_id.insert(nm_id, selected);
+        }
+        tracing::info!(
+            "WB DETAIL_HISTORY_REPORT a007 enrichment: products={}, duplicate_nm_ids={}, conflicting_nomenclature_nm_ids={}",
+            products_by_nm_id.len(),
+            duplicate_nm_ids,
+            conflicting_nomenclature_nm_ids
+        );
+
+        let mut seen_keys = HashSet::new();
+        let mut by_date: BTreeMap<String, Vec<WbSalesFunnelDailyLine>> = BTreeMap::new();
+        let mut currency_by_date: HashMap<String, String> = HashMap::new();
+        let mut ignored_cancel_count = 0i64;
+        let mut ignored_cancel_sum = 0.0f64;
+
+        for row in rows {
+            let date = normalize_day_date(&row.date);
+            chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").with_context(|| {
+                format!(
+                    "Invalid dt in WB DETAIL_HISTORY_REPORT: nmID={}, dt={}",
+                    row.nm_id, row.date
+                )
+            })?;
+            if date.as_str() < date_from || date.as_str() > date_to {
+                anyhow::bail!(
+                    "WB DETAIL_HISTORY_REPORT row is outside requested period: nmID={}, dt={}, period={}..{}",
+                    row.nm_id,
+                    row.date,
+                    date_from,
+                    date_to
+                );
+            }
+            if row.nm_id <= 0 {
+                anyhow::bail!(
+                    "WB DETAIL_HISTORY_REPORT contains invalid nmID={} on {}",
+                    row.nm_id,
+                    date
+                );
+            }
+            let key = (date.clone(), row.nm_id);
+            if !seen_keys.insert(key) {
+                anyhow::bail!(
+                    "WB DETAIL_HISTORY_REPORT contains duplicate nmID={} for {}",
+                    row.nm_id,
+                    date
+                );
+            }
+            if row.open_count < 0
+                || row.cart_count < 0
+                || row.order_count < 0
+                || row.buyout_count < 0
+                || row.cancel_count < 0
+                || row.add_to_wishlist_count < 0
+                || !row.order_sum.is_finite()
+                || row.order_sum < 0.0
+                || !row.buyout_sum.is_finite()
+                || row.buyout_sum < 0.0
+                || !row.cancel_sum.is_finite()
+                || row.cancel_sum < 0.0
+                || !row.add_to_cart_conversion.is_finite()
+                || row.add_to_cart_conversion < 0.0
+                || !row.cart_to_order_conversion.is_finite()
+                || row.cart_to_order_conversion < 0.0
+                || !row.buyout_percent.is_finite()
+                || row.buyout_percent < 0.0
+            {
+                anyhow::bail!(
+                    "WB DETAIL_HISTORY_REPORT contains invalid metrics: nmID={}, dt={}",
+                    row.nm_id,
+                    date
+                );
+            }
+
+            let currency = row.currency.trim();
+            if currency.is_empty() {
+                anyhow::bail!(
+                    "WB DETAIL_HISTORY_REPORT contains empty currency: nmID={}, dt={}",
+                    row.nm_id,
+                    date
+                );
+            }
+            match currency_by_date.get(&date) {
+                Some(existing) if existing != currency => {
+                    anyhow::bail!(
+                        "WB DETAIL_HISTORY_REPORT contains mixed currencies for {}: {} and {}",
+                        date,
+                        existing,
+                        currency
+                    );
+                }
+                None => {
+                    currency_by_date.insert(date.clone(), currency.to_string());
+                }
+                _ => {}
+            }
+
+            ignored_cancel_count += row.cancel_count;
+            ignored_cancel_sum += row.cancel_sum;
+            let metrics = WbSalesFunnelDailyMetrics {
+                open_count: row.open_count,
+                cart_count: row.cart_count,
+                order_count: row.order_count,
+                order_sum: row.order_sum,
+                buyout_count: row.buyout_count,
+                buyout_sum: row.buyout_sum,
+                buyout_percent: row.buyout_percent,
+                add_to_cart_conversion: row.add_to_cart_conversion,
+                cart_to_order_conversion: row.cart_to_order_conversion,
+                add_to_wishlist_count: row.add_to_wishlist_count,
+            };
+            if funnel_metrics_is_empty(&metrics) {
+                continue;
+            }
+
+            let product = products_by_nm_id.get(&row.nm_id);
+            by_date
+                .entry(date)
+                .or_default()
+                .push(WbSalesFunnelDailyLine {
+                    nm_id: row.nm_id,
+                    title: product
+                        .map(|item| item.base.description.clone())
+                        .unwrap_or_default(),
+                    vendor_code: product.map(|item| item.article.clone()).unwrap_or_default(),
+                    brand_name: product
+                        .and_then(|item| item.brand.clone())
+                        .unwrap_or_default(),
+                    subject_id: product
+                        .and_then(|item| item.category_id.as_deref())
+                        .and_then(|value| value.parse::<i64>().ok())
+                        .unwrap_or(0),
+                    subject_name: product
+                        .and_then(|item| item.category_name.clone())
+                        .unwrap_or_default(),
+                    nomenclature_ref: product.and_then(|item| item.nomenclature_ref.clone()),
+                    metrics,
+                });
+        }
+
+        let mut documents = Vec::with_capacity(by_date.len());
+        for (document_date, mut lines) in by_date {
+            lines.sort_by(|a, b| a.nm_id.cmp(&b.nm_id));
+            let mut totals = WbSalesFunnelDailyMetrics::default();
+            for line in &lines {
+                append_funnel_totals(&mut totals, &line.metrics);
+            }
+            finalize_funnel_totals(&mut totals);
+
+            let header = WbSalesFunnelDailyHeader {
+                document_no: format!("WB-SF-{}", document_date),
+                document_date: document_date.clone(),
+                connection_id: connection.to_string_id(),
+                organization_id: connection.organization_ref.clone(),
+                marketplace_id: connection.marketplace_id.clone(),
+                currency: currency_by_date
+                    .get(&document_date)
+                    .cloned()
+                    .unwrap_or_default(),
+            };
+            let source_meta = WbSalesFunnelDailySourceMeta {
+                source: "wb_detail_history_report".to_string(),
+                fetched_at: chrono::Utc::now().to_rfc3339(),
+            };
+            let mut document =
+                WbSalesFunnelDaily::new_for_insert(header, totals, lines, source_meta);
+            document.before_write();
+            document
+                .validate()
+                .map_err(|error| anyhow::anyhow!(error))?;
+            documents.push(document);
+        }
+
+        tracing::info!(
+            "WB DETAIL_HISTORY_REPORT cancellations are diagnostic only (a015 is canonical): count={}, sum={}",
+            ignored_cancel_count,
+            ignored_cancel_sum
+        );
+        Ok(documents)
+    }
+
     /// Ежедневный снимок остатков и рейтингов товаров WB (агрегат a037).
     /// Один проход /products за скользящее окно активности (date_from..date_to)
     /// собирает все товары; документ создаётся за СЕГОДНЯ (snapshot_date), т.к.
@@ -3850,9 +4310,10 @@ impl ImportExecutor {
     }
 
     /// Импорт поисковой аналитики WB (a040): один снимок за сегодня по кабинету.
-    /// Показы/позиции/видимость из search-report + топ-запросы из search-texts. Питает
-    /// `show_free_count` воронки p916 (внутри `replace_for_period`). Требует подписки «Джем» —
-    /// при 403/пустом ответе мягко деградирует (лог + пустой прогон).
+    /// Видимость/позиции/переходы из search-report + топ-запросы из search-texts. В воронку
+    /// p916 НЕ входит: `/table/details` даёт только `visibility` (%), не счётчик показов, поэтому
+    /// `show_free_count` остаётся `N/A`. Требует подписки «Джем» — при 403/пустом ответе мягко
+    /// деградирует (лог + пустой прогон).
     async fn import_wb_search_analytics(
         &self,
         session_id: &str,
@@ -3872,7 +4333,7 @@ impl ImportExecutor {
         self.progress_tracker.set_current_item(
             session_id,
             aggregate_index,
-            Some("Сбор поисковой аналитики (показы, позиции)".to_string()),
+            Some("Сбор поисковой аналитики (видимость, позиции)".to_string()),
         );
 
         let rows = match self
@@ -4306,5 +4767,83 @@ impl Clone for ImportExecutor {
             api_client: Arc::clone(&self.api_client),
             progress_tracker: Arc::clone(&self.progress_tracker),
         }
+    }
+}
+
+#[cfg(test)]
+mod wb_funnel_enrichment_tests {
+    use super::*;
+    use contracts::domain::a007_marketplace_product::aggregate::MarketplaceProduct;
+
+    fn product(
+        code: &str,
+        description: &str,
+        article: &str,
+        brand: Option<&str>,
+        category_id: Option<&str>,
+        nomenclature_ref: Option<&str>,
+    ) -> MarketplaceProduct {
+        MarketplaceProduct::new_for_insert(
+            code.to_string(),
+            description.to_string(),
+            "wb".to_string(),
+            "connection".to_string(),
+            "372038568".to_string(),
+            None,
+            article.to_string(),
+            brand.map(str::to_string),
+            category_id.map(str::to_string),
+            None,
+            None,
+            nomenclature_ref.map(str::to_string),
+            None,
+        )
+    }
+
+    #[test]
+    fn duplicate_a007_with_same_nomenclature_uses_richer_record() {
+        let auto = product(
+            "WB-AUTO-1",
+            "SANSTAR",
+            "476.1-3.4.1.Р",
+            None,
+            None,
+            Some("nom-1"),
+        );
+        let rich = product(
+            "476.1-3.4.1.Р",
+            "Шкаф-пенал напольно-подвесной Diva",
+            "476.1-3.4.1.Р",
+            Some("SANSTAR"),
+            Some("7436"),
+            Some("nom-1"),
+        );
+
+        let (selected, conflict) = select_wb_product_enrichment(vec![auto, rich]);
+        assert!(!conflict);
+        assert_eq!(
+            selected.base.description,
+            "Шкаф-пенал напольно-подвесной Diva"
+        );
+        assert_eq!(selected.brand.as_deref(), Some("SANSTAR"));
+        assert_eq!(selected.nomenclature_ref.as_deref(), Some("nom-1"));
+    }
+
+    #[test]
+    fn duplicate_a007_with_conflicting_nomenclature_drops_mapping_only() {
+        let first = product(
+            "SKU",
+            "Товар",
+            "SKU",
+            Some("Brand"),
+            Some("1"),
+            Some("nom-1"),
+        );
+        let second = product("WB-AUTO-2", "Товар", "SKU", None, None, Some("nom-2"));
+
+        let (selected, conflict) = select_wb_product_enrichment(vec![first, second]);
+        assert!(conflict);
+        assert_eq!(selected.base.description, "Товар");
+        assert_eq!(selected.nomenclature_ref, None);
     }
 }

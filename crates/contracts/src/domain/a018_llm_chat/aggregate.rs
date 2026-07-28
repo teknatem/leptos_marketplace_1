@@ -206,9 +206,12 @@ impl AggregateRoot for LlmChat {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmChatAttachment {
     pub id: Uuid,
-    pub message_id: Uuid,
+    pub chat_id: LlmChatId,
+    pub message_id: Option<Uuid>,
     pub filename: String,
     pub filepath: String,
+    #[serde(default)]
+    pub s3_file_id: Option<String>,
     pub content_type: String,
     pub file_size: i64,
     pub created_at: DateTime<Utc>,
@@ -216,20 +219,44 @@ pub struct LlmChatAttachment {
 
 impl LlmChatAttachment {
     pub fn new(
-        message_id: Uuid,
+        chat_id: LlmChatId,
+        message_id: Option<Uuid>,
         filename: String,
         filepath: String,
+        s3_file_id: Option<String>,
         content_type: String,
         file_size: i64,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
+            chat_id,
             message_id,
             filename,
             filepath,
+            s3_file_id,
             content_type,
             file_size,
             created_at: Utc::now(),
+        }
+    }
+}
+
+/// Safe attachment metadata returned to the browser.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmChatAttachmentSummary {
+    pub id: Uuid,
+    pub filename: String,
+    pub content_type: String,
+    pub file_size: i64,
+}
+
+impl From<&LlmChatAttachment> for LlmChatAttachmentSummary {
+    fn from(value: &LlmChatAttachment) -> Self {
+        Self {
+            id: value.id,
+            filename: value.filename.clone(),
+            content_type: value.content_type.clone(),
+            file_size: value.file_size,
         }
     }
 }
@@ -307,7 +334,7 @@ pub struct LlmChatMessage {
 
     // Вложения (загружаются отдельно при необходимости)
     #[serde(default)]
-    pub attachments: Vec<LlmChatAttachment>,
+    pub attachments: Vec<LlmChatAttachmentSummary>,
 }
 
 impl LlmChatMessage {

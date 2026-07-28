@@ -173,6 +173,103 @@ pub async fn repost_all() -> Result<(usize, usize)> {
     Ok((rows, gl_entries))
 }
 
+/// Снимает pending-строки «Будет …» (прогноз выплаты), у которых уже есть проведённый
+/// двойник (тот же `order_id` / `transaction_type` / `shop_sku` / `|transaction_sum|`;
+/// статус двойника НЕ «Будет …» и НЕ «Справочно …»). Прогноз и факт — одни деньги; двойной
+/// учёт задваивает сумму в документе a013.
+///
+/// Дату в сопоставлении НЕ учитываем — прогноз может быть датирован иначе, чем фактическая
+/// выплата. Если проведённого двойника нет, строка сохраняется («невозможно
+/// идентифицировать — оставить»). Снимает строку целиком: GL (`sys_general_ledger`), p914,
+/// p915 и саму p907. Возвращает число удалённых строк.
+///
+/// **Производительность:** проверяются только заказы `candidate_order_ids` (обычно —
+/// `order_id` pending-строк текущей партии импорта), поэтому обе стороны сопоставления идут
+/// по `idx_p907_order_id`, а стоимость зависит от размера партии, а не от размера всей
+/// (очень большой) таблицы p907. Пустой список — мгновенный `Ok(0)` без запроса.
+///
+/// Вызывается фазой импорта (u503) — не даёт появляться новым дублям; ту же логику для
+/// уже накопленных строк единожды выполнила миграция `0186_p907_dedup_pending_payouts`.
+pub async fn purge_superseded_pending_payouts(candidate_order_ids: &[i64]) -> Result<usize> {
+    use crate::projections::p907_ym_payment_report::repository::{Column, Entity};
+    use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, QueryFilter, Statement};
+
+    if candidate_order_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let db = get_connection();
+
+    // `id` pending-строк «Будет …» с проведённым двойником — только среди заданных заказов.
+    // Порциями по order_id (лимит выражений SQLite), каждая порция бьёт по idx_p907_order_id.
+    let mut dead_ids: Vec<String> = Vec::new();
+    for chunk in candidate_order_ids.chunks(900) {
+        // order_id — i64 из БД, не пользовательский ввод: инлайн безопасен (нет инъекции).
+        let in_list = chunk
+            .iter()
+            .map(i64::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT p.id AS id \
+             FROM p907_ym_payment_report p \
+             WHERE p.order_id IN ({in_list}) \
+               AND p.payment_status LIKE 'Будет %' \
+               AND EXISTS ( \
+                 SELECT 1 FROM p907_ym_payment_report s \
+                 WHERE s.order_id = p.order_id \
+                   AND s.transaction_type = p.transaction_type \
+                   AND IFNULL(s.shop_sku, '') = IFNULL(p.shop_sku, '') \
+                   AND CAST(ROUND(ABS(s.transaction_sum) * 100) AS INTEGER) \
+                     = CAST(ROUND(ABS(p.transaction_sum) * 100) AS INTEGER) \
+                   AND s.payment_status NOT LIKE 'Будет %' \
+                   AND s.payment_status NOT LIKE 'Справочно%' \
+                   AND s.id <> p.id \
+               )"
+        );
+        let rows = db
+            .query_all(Statement::from_string(DatabaseBackend::Sqlite, sql))
+            .await?;
+        dead_ids.extend(rows.iter().filter_map(|row| row.try_get::<String>("", "id").ok()));
+    }
+
+    if dead_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let txn = db.begin().await?;
+    for id in &dead_ids {
+        // Те же helper'ы снятия проводок, что и в `rebuild_from_row` (GL/p914/p915).
+        crate::general_ledger::repository::delete_by_registrator_with_conn(
+            &txn,
+            "p907_ym_payment_report",
+            id,
+        )
+        .await?;
+        crate::projections::p914_mp_finance_turnovers::repository::delete_by_registrator_refs_with_conn(
+            &txn,
+            std::slice::from_ref(id),
+        )
+        .await?;
+        crate::projections::p915_mp_order_events::repository::delete_by_registrator_refs_with_conn(
+            &txn,
+            std::slice::from_ref(id),
+        )
+        .await?;
+        Entity::delete_many()
+            .filter(Column::Id.eq(id))
+            .exec(&txn)
+            .await?;
+    }
+    txn.commit().await?;
+
+    tracing::info!(
+        "p907 purge_superseded_pending_payouts: снято {} pending-строк «Будет …» с проведённым двойником",
+        dead_ids.len()
+    );
+    Ok(dead_ids.len())
+}
+
 pub async fn rebuild_record_key_from_existing(record_key: &str) -> Result<usize> {
     let Some(row) =
         crate::projections::p907_ym_payment_report::repository::get_by_record_key(record_key)

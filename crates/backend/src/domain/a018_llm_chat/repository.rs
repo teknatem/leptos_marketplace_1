@@ -92,9 +92,11 @@ mod attachment {
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: String,
-        pub message_id: String,
+        pub chat_id: Option<String>,
+        pub message_id: Option<String>,
         pub filename: String,
         pub filepath: String,
+        pub s3_file_id: Option<String>,
         pub content_type: String,
         pub file_size: i64,
         pub created_at: String,
@@ -246,16 +248,25 @@ impl From<message::Model> for LlmChatMessage {
 impl From<attachment::Model> for LlmChatAttachment {
     fn from(m: attachment::Model) -> Self {
         let id = parse_db_uuid(&m.id, "attachment.id");
-        let message_id = parse_db_uuid(&m.message_id, "attachment.message_id");
+        let chat_id = parse_db_uuid(
+            m.chat_id.as_deref().unwrap_or_default(),
+            "attachment.chat_id",
+        );
+        let message_id = m
+            .message_id
+            .as_deref()
+            .map(|value| parse_db_uuid(value, "attachment.message_id"));
         let created_at = chrono::DateTime::parse_from_rfc3339(&m.created_at)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
 
         LlmChatAttachment {
             id,
+            chat_id: LlmChatId::new(chat_id),
             message_id,
             filename: m.filename,
             filepath: m.filepath,
+            s3_file_id: m.s3_file_id,
             content_type: m.content_type,
             file_size: m.file_size,
             created_at,
@@ -652,6 +663,13 @@ pub async fn find_attachment_by_id(
     Ok(model.map(|m| m.into()))
 }
 
+pub async fn delete_attachment_by_id(db: &DatabaseConnection, id: &Uuid) -> Result<(), DbErr> {
+    attachment::Entity::delete_by_id(id.to_string())
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
 /// Привязать вложение к сообщению точечным UPDATE по id вложения.
 /// Не затрагивает другие вложения (в т.ч. незавершённые загрузки из других чатов).
 pub async fn bind_attachment_to_message(
@@ -665,6 +683,7 @@ pub async fn bind_attachment_to_message(
             Expr::value(message_id.to_string()),
         )
         .filter(attachment::Column::Id.eq(attachment_id.to_string()))
+        .filter(attachment::Column::MessageId.is_null())
         .exec(db)
         .await?;
     Ok(())
@@ -677,9 +696,11 @@ pub async fn insert_attachment(
 ) -> Result<(), DbErr> {
     let active_model = attachment::ActiveModel {
         id: Set(attachment.id.to_string()),
-        message_id: Set(attachment.message_id.to_string()),
+        chat_id: Set(Some(attachment.chat_id.as_string())),
+        message_id: Set(attachment.message_id.map(|id| id.to_string())),
         filename: Set(attachment.filename.clone()),
         filepath: Set(attachment.filepath.clone()),
+        s3_file_id: Set(attachment.s3_file_id.clone()),
         content_type: Set(attachment.content_type.clone()),
         file_size: Set(attachment.file_size),
         created_at: Set(attachment.created_at.to_rfc3339()),

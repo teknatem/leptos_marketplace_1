@@ -136,7 +136,9 @@ pub async fn install_from_catalog(code: &str) -> anyhow::Result<service::ImportO
     }
 
     let bundle = package::import_archive(&object.bytes)?;
-    let outcome = service::import_bundle_onto(None, bundle, None).await?;
+    // Свежая установка сразу получает номер версии из каталога, чтобы локальный
+    // счётчик совпадал с сервером.
+    let outcome = service::import_bundle_onto(None, bundle, None, Some(entry.version)).await?;
     super::change_token::TOKEN.bump();
     Ok(outcome)
 }
@@ -209,7 +211,9 @@ pub async fn apply_update(
     }
 
     let bundle = package::import_archive(&object.bytes)?;
-    let outcome = service::import_bundle_onto(Some(id), bundle, None).await?;
+    // Локальная версия становится номером установленной версии из каталога, а не +1.
+    let outcome =
+        service::import_bundle_onto(Some(id), bundle, None, Some(entry.version)).await?;
     super::change_token::TOKEN.bump();
     Ok(outcome)
 }

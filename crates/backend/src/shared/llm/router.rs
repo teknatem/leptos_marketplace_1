@@ -243,6 +243,23 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
         return IntentResult::new("mailbox", 0.45, "rules");
     }
     // Маркетинг раньше продаж: «реклама/воронка/промо» — маркетолог, не общий data_query.
+    // Маркетплейс-слово: включая разговорные «wb»/«вб», как пишут продажники (кабинет
+    // «WB - SANSTAR» → lowercase содержит "wb"). Латинский "wb" в русских словах не встречается.
+    let marketplace_word = any(&[
+        "ozon",
+        "озон",
+        "wildberries",
+        "вайлдберриз",
+        "вайлдберис",
+        "wb",
+        "вб",
+        "яндекс маркет",
+        "маркетплейс",
+    ]);
+    // «Воронка + маркетплейс», а также WB-вопросы по низу воронки (выкуп/отмены/возвраты/топ
+    // товаров/конверсии), которые продажник задаёт БЕЗ слова «воронка», но их авторитет — навык
+    // воронки (иначе уходят в data-analytics и теряют гардрейлы: funnel_order_count≠order_count,
+    // фильтр кабинета, лаг выкупа).
     if any(&[
         "воронка маркетплейс",
         "воронку маркетплейс",
@@ -250,15 +267,17 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
         "ozon funnel",
         "wildberries funnel",
         "яндекс маркет funnel",
-    ]) || (any(&["воронк", "funnel"])
-        && any(&[
-            "ozon",
-            "озон",
-            "wildberries",
-            "вайлдберриз",
-            "яндекс маркет",
-            "маркетплейс",
-        ]))
+    ]) || (any(&["воронк", "funnel"]) && marketplace_word)
+        || (marketplace_word
+            && any(&[
+                "выкуп",
+                "отмен",
+                "возврат",
+                "топ товаров",
+                "топ-5",
+                "топ 5",
+                "конверси",
+            ]))
     {
         return IntentResult::new("marketplace_funnel_analysis", 0.55, "rules");
     }
@@ -347,5 +366,29 @@ mod tests {
             quick_intent_result("Сравни воронку OZON за два периода", &AgentType::Marketer);
         assert_eq!(result.intent, "marketplace_funnel_analysis");
         assert!(result.confidence > 0.5);
+    }
+
+    #[test]
+    fn wb_cabinet_funnel_questions_route_to_funnel_skill() {
+        // Продажник пишет «WB», а не «Wildberries»; кабинет — «WB - SANSTAR».
+        for q in [
+            "Посчитай воронку продаж по кабинету WB - SANSTAR за июль",
+            "Какой процент выкупа по WB - SANSTAR за июль 2026?",
+            "Топ-5 товаров WB - SANSTAR по заказам за июль",
+            "Сколько отмен и возвратов по WB за июль?",
+        ] {
+            let result = quick_intent_result(q, &AgentType::BusinessAnalyst);
+            assert_eq!(
+                result.intent, "marketplace_funnel_analysis",
+                "ожидали funnel для: {q}"
+            );
+        }
+    }
+
+    #[test]
+    fn generic_buyout_without_marketplace_stays_marketing() {
+        // Без маркетплейс-слова «выкуп» остаётся маркетингом (funnel-правило не срабатывает).
+        let result = quick_intent_result("Какой у нас процент выкупа?", &AgentType::BusinessAnalyst);
+        assert_eq!(result.intent, "marketing_query");
     }
 }

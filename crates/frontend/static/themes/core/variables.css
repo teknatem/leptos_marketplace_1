@@ -45,7 +45,7 @@
    --login-card-fg: #fafafa;
    --login-card-fg-muted: rgba(250, 250, 250, 0.60);
    /* Dim, glowing circular region enclosing the form (only the thin ring shows) */
-   --login-ring-size: min(580px, 90vmin, 88vw);
+   --login-ring-size: min(520px, 90vmin, 88vw);
    --login-ring-border: rgba(255, 255, 255, 0.08);
    --login-ring-glow: rgba(128, 104, 255, 0.12);  /* soft purple halo, matches glow-1 */
    --login-ring-fill: rgba(128, 104, 255, 0.05);  /* faint central lift inside the ring */

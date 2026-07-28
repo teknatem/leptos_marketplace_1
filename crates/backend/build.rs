@@ -37,7 +37,6 @@ fn main() {
 
     fs::copy(&source_config, &dest_config)
         .unwrap_or_else(|e| panic!("Failed to copy config.toml: {}", e));
-    println!("cargo:warning=Copied config.toml to {:?}", dest_config);
 
     // Ship the repository skill catalog next to the binary. Operators can point
     // skills_path elsewhere for a fully external hot-reloadable catalog.
@@ -46,7 +45,6 @@ fn main() {
     if source_skills.is_dir() {
         copy_dir_all(&source_skills, &dest_skills)
             .unwrap_or_else(|e| panic!("Failed to copy skill catalog: {}", e));
-        println!("cargo:warning=Copied skill catalog to {:?}", dest_skills);
     }
 }
 

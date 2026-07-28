@@ -36,6 +36,8 @@ pub fn LlmConnectionDetails(
                 Ok(connection) => {
                     // Считываем allowed_models ДО перемещения полей (метод берёт &self).
                     vm.allowed_models.set(connection.allowed_models_list());
+                    vm.image_input_models
+                        .set(connection.image_input_models_list());
                     vm.code.set(connection.base.code);
                     vm.description.set(connection.base.description);
                     vm.comment.set(connection.base.comment.unwrap_or_default());
@@ -308,15 +310,25 @@ pub fn LlmConnectionDetails(
                                     {
                                         vm.model_name.set("deepseek-chat".to_string());
                                     }
+                                } else if provider == "Kimi" {
+                                    vm.api_endpoint.set("https://api.moonshot.ai/v1".to_string());
+                                    if previous_model.trim().is_empty()
+                                        || previous_model == "gpt-4o"
+                                        || previous_model == "openai/gpt-4o"
+                                        || previous_model == "deepseek-chat"
+                                    {
+                                        vm.model_name.set("kimi-k3".to_string());
+                                    }
                                 }
                             }
                         >
                             <option value="OpenAI">"OpenAI"</option>
                             <option value="OpenRouter">"OpenRouter"</option>
                             <option value="DeepSeek">"DeepSeek"</option>
+                            <option value="Kimi">"KIMI (Moonshot)"</option>
                         </select>
                         <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                            "Реально поддерживаются OpenAI, OpenRouter (OpenAI-совместимый роутинг) и DeepSeek."
+                            "Реально поддерживаются OpenAI, OpenRouter (OpenAI-совместимый роутинг), DeepSeek и KIMI (Moonshot)."
                         </div>
                     </div>
 
@@ -480,6 +492,7 @@ pub fn LlmConnectionDetails(
                                 <thead style="position: sticky; top: 0; background: var(--color-surface); z-index: 1;">
                                     <tr style="border-bottom: 1px solid var(--colorNeutralStroke2);">
                                         <th style="padding: 6px 8px; text-align: center; width: 70px;">"Разреш."</th>
+                                        <th style="padding: 6px 8px; text-align: center; width: 70px;" title="Модель принимает изображения">"Изобр."</th>
                                         <th style="padding: 6px 8px; text-align: center; width: 60px;">"Осн."</th>
                                         <th
                                             style="padding: 6px 8px; text-align: left; cursor: pointer;"
@@ -531,6 +544,9 @@ pub fn LlmConnectionDetails(
                                         };
                                         let mid_check = model_id.clone();
                                         let mid_toggle = model_id.clone();
+                                        let mid_image_check = model_id.clone();
+                                        let mid_image_allowed = model_id.clone();
+                                        let mid_image_toggle = model_id.clone();
                                         let mid_star = model_id.clone();
                                         let mid_star2 = model_id.clone();
                                         let mid_primary = model_id.clone();
@@ -541,6 +557,15 @@ pub fn LlmConnectionDetails(
                                                         type="checkbox"
                                                         prop:checked=move || vm.allowed_models.get().contains(&mid_check)
                                                         on:change=move |_| vm.toggle_allowed(&mid_toggle)
+                                                    />
+                                                </td>
+                                                <td style="padding: 6px 8px; text-align: center;">
+                                                    <input
+                                                        type="checkbox"
+                                                        title="Поддерживает изображения"
+                                                        disabled=move || !vm.allowed_models.get().contains(&mid_image_allowed)
+                                                        prop:checked=move || vm.image_input_models.get().contains(&mid_image_check)
+                                                        on:change=move |_| vm.toggle_image_input(&mid_image_toggle)
                                                     />
                                                 </td>
                                                 <td style="padding: 6px 8px; text-align: center;">

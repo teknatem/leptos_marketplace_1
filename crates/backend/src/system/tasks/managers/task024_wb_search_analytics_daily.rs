@@ -28,12 +28,13 @@ fn default_window_days() -> i64 {
 static METADATA: TaskMetadata = TaskMetadata {
     task_type: "task024_wb_search_analytics_daily",
     write_tables: &["a040_wb_search_analytics_daily"],
-    display_name: "WB Поисковая аналитика (показы)",
+    display_name: "WB Поисковая аналитика (видимость)",
     description:
-        "Загружает поисковую аналитику Wildberries (органические показы, переходы из поиска, \
-        средняя позиция в выдаче, видимость + топ поисковых запросов на товар) через \
+        "Загружает поисковую аналитику Wildberries (видимость в поиске, переходы из поиска, \
+        средняя позиция в выдаче + топ поисковых запросов на товар) через \
         search-report API и сохраняет как документы агрегата a040 — один документ на дату, \
-        строка на nm_id. Показы питают верх воронки p916 (show_free_count). Требует подписки «Джем». \
+        строка на nm_id. В воронку p916 НЕ входит: /table/details отдаёт только visibility (%), \
+        а не счётчик показов, поэтому show_free_count остаётся N/A. Требует подписки «Джем». \
         Данные forward-only — запускать регулярно.",
     external_apis: &[ExternalApiInfo {
         name: "WB Analytics API (search-report/report + product/search-texts)",

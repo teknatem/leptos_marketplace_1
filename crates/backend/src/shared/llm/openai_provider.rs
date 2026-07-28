@@ -6,10 +6,12 @@ use async_openai::{
     types::chat::{
         ChatChoice, ChatCompletionMessageToolCall, ChatCompletionMessageToolCalls,
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+        ChatCompletionRequestMessageContentPartImage, ChatCompletionRequestMessageContentPartText,
         ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs,
-        ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionTools,
-        CreateChatCompletionRequest, CreateChatCompletionRequestArgs, CreateChatCompletionResponse,
-        FunctionCall, FunctionObject,
+        ChatCompletionRequestUserMessageArgs, ChatCompletionRequestUserMessageContentPart,
+        ChatCompletionTool, ChatCompletionTools, CreateChatCompletionRequest,
+        CreateChatCompletionRequestArgs, CreateChatCompletionResponse, FunctionCall,
+        FunctionObject, ImageUrl,
     },
     Client,
 };
@@ -108,11 +110,33 @@ impl OpenAiProvider {
                     .build()
                     .map_err(|e| LlmError::InvalidRequest(e.to_string()))?
                     .into(),
-                ChatRole::User => ChatCompletionRequestUserMessageArgs::default()
-                    .content(msg.content_str())
-                    .build()
-                    .map_err(|e| LlmError::InvalidRequest(e.to_string()))?
-                    .into(),
+                ChatRole::User => {
+                    let mut builder = ChatCompletionRequestUserMessageArgs::default();
+                    if msg.image_urls.is_empty() {
+                        builder.content(msg.content_str());
+                    } else {
+                        let mut parts = Vec::new();
+                        if !msg.content_str().trim().is_empty() {
+                            parts.push(ChatCompletionRequestUserMessageContentPart::Text(
+                                ChatCompletionRequestMessageContentPartText {
+                                    text: msg.content_str().to_string(),
+                                },
+                            ));
+                        }
+                        parts.extend(msg.image_urls.iter().cloned().map(|url| {
+                            ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                                ChatCompletionRequestMessageContentPartImage {
+                                    image_url: ImageUrl { url, detail: None },
+                                },
+                            )
+                        }));
+                        builder.content(parts);
+                    }
+                    builder
+                        .build()
+                        .map_err(|e| LlmError::InvalidRequest(e.to_string()))?
+                        .into()
+                }
                 ChatRole::Assistant => {
                     let mut builder = ChatCompletionRequestAssistantMessageArgs::default();
                     if let Some(content) = &msg.content {

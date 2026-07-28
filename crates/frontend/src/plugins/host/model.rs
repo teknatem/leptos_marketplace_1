@@ -81,12 +81,13 @@ pub(super) fn build_current_bundle(
     Some(bundle)
 }
 
+/// Возвращает (подпись, модификатор общего бейджа `badge--*`) для «здоровья» плагина.
 pub(super) fn health_badge(health: PluginHealth) -> (&'static str, &'static str) {
     match health {
-        PluginHealth::Ok => ("OK", "ok"),
-        PluginHealth::Warn => ("Warning", "warn"),
-        PluginHealth::Crit => ("Critical", "crit"),
-        PluginHealth::NoData => ("No data", "nodata"),
+        PluginHealth::Ok => ("OK", "success"),
+        PluginHealth::Warn => ("Warning", "warning"),
+        PluginHealth::Crit => ("Critical", "error"),
+        PluginHealth::NoData => ("No data", "neutral"),
     }
 }
 

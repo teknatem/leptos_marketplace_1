@@ -4,6 +4,7 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::plugins::api;
 use crate::shared::change_tokens::ChangeTokenContext;
+use crate::shared::date_utils::format_utc_local;
 use crate::shared::modal_frame::ModalFrame;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_LIST;
@@ -40,6 +41,9 @@ fn rating_stars_readonly(rating: Option<i32>) -> impl IntoView {
 pub fn PluginList() -> impl IntoView {
     let ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let change_tokens = use_context::<ChangeTokenContext>().expect("ChangeTokenContext not found");
+    // Админ управляет плагинами (видит все статусы, импорт/публикацию/обновления);
+    // обычный пользователь только использует активные плагины.
+    let user_is_admin = crate::system::auth::context::is_admin();
 
     let (items, set_items) = signal(Vec::<PluginListItem>::new());
     let (loading, set_loading) = signal(true);
@@ -58,33 +62,42 @@ pub fn PluginList() -> impl IntoView {
         set_loading.set(true);
         set_error.set(None);
         spawn_local(async move {
-            match api::list_all().await {
+            // Админ видит все плагины (любой статус); пользователь — только активные включённые.
+            let result = if user_is_admin {
+                api::list_all().await
+            } else {
+                api::list_enabled().await
+            };
+            match result {
                 Ok(list) => set_items.set(list),
                 Err(e) => set_error.set(Some(e)),
             }
             set_loading.set(false);
         });
-        // Проверка обновлений в S3 подгружается параллельно; если S3 не настроен —
-        // это не критично, колонка «Обновление» просто останется пустой.
-        spawn_local(async move {
-            if let Ok(rows) = api::check_updates().await {
-                set_updates.set(
-                    rows.into_iter()
-                        .map(|row| (row.plugin_id.clone(), row))
-                        .collect(),
-                );
-            }
-        });
-        // Полный каталог S3 — для вкладки «Доступные плагины».
-        spawn_local(async move {
-            match api::get_catalog().await {
-                Ok(entries) => {
-                    set_catalog.set(entries);
-                    set_catalog_error.set(None);
+        // Сверка с S3 и полный каталог — только для админа (эндпоинты admin-only).
+        if user_is_admin {
+            // Проверка обновлений в S3 подгружается параллельно; если S3 не настроен —
+            // это не критично, колонка «Обновление» просто останется пустой.
+            spawn_local(async move {
+                if let Ok(rows) = api::check_updates().await {
+                    set_updates.set(
+                        rows.into_iter()
+                            .map(|row| (row.plugin_id.clone(), row))
+                            .collect(),
+                    );
                 }
-                Err(e) => set_catalog_error.set(Some(e)),
-            }
-        });
+            });
+            // Полный каталог S3 — для вкладки «Доступные плагины».
+            spawn_local(async move {
+                match api::get_catalog().await {
+                    Ok(entries) => {
+                        set_catalog.set(entries);
+                        set_catalog_error.set(None);
+                    }
+                    Err(e) => set_catalog_error.set(Some(e)),
+                }
+            });
+        }
     };
 
     // Первичная загрузка.
@@ -204,47 +217,54 @@ pub fn PluginList() -> impl IntoView {
                     <button class="plugins-btn plugins-btn--ghost" on:click=move |_| reload()>
                         "Обновить"
                     </button>
-                    <label class="plugins-btn plugins-btn--ghost plugins-import">
-                        "⭳ Импорт .zip"
-                        <input
-                            type="file"
-                            accept=".zip,application/zip"
-                            class="plugins-import__input"
-                            on:change=handle_import
-                        />
-                    </label>
-                    <button
-                        class="plugins-btn plugins-btn--primary"
-                        on:click=create_test
-                        disabled=Signal::derive(move || creating.get())
-                    >
-                        {move || if creating.get() {
-                            "Создание…"
-                        } else {
-                            "＋ Создать пример JS-плагина"
-                        }}
-                    </button>
+                    // Импорт и создание примеров — управление плагинами, только для админа.
+                    {user_is_admin.then(|| view! {
+                        <label class="plugins-btn plugins-btn--ghost plugins-import">
+                            "⭳ Импорт .zip"
+                            <input
+                                type="file"
+                                accept=".zip,application/zip"
+                                class="plugins-import__input"
+                                on:change=handle_import
+                            />
+                        </label>
+                        <button
+                            class="plugins-btn plugins-btn--primary"
+                            on:click=create_test
+                            disabled=Signal::derive(move || creating.get())
+                        >
+                            {move || if creating.get() {
+                                "Создание…"
+                            } else {
+                                "＋ Создать пример JS-плагина"
+                            }}
+                        </button>
+                    })}
                 </div>
             </div>
 
-            <div style="margin-bottom: 16px;">
-                <TabList selected_value=active_tab>
-                    <Tab value="installed".to_string()>"Установленные"</Tab>
-                    <Tab value="available".to_string()>
-                        {move || {
-                            let cat = catalog.get();
-                            let local_codes: std::collections::HashSet<String> =
-                                items.get().iter().map(|p| p.code.clone()).collect();
-                            let n = cat.keys().filter(|code| !local_codes.contains(*code)).count();
-                            if n > 0 {
-                                format!("Доступные ({n})")
-                            } else {
-                                "Доступные".to_string()
-                            }
-                        }}
-                    </Tab>
-                </TabList>
-            </div>
+            // Вкладка «Доступные» (каталог S3) — только для админа; пользователь видит
+            // лишь установленные активные плагины.
+            {user_is_admin.then(|| view! {
+                <div style="margin-bottom: 16px;">
+                    <TabList selected_value=active_tab>
+                        <Tab value="installed".to_string()>"Установленные"</Tab>
+                        <Tab value="available".to_string()>
+                            {move || {
+                                let cat = catalog.get();
+                                let local_codes: std::collections::HashSet<String> =
+                                    items.get().iter().map(|p| p.code.clone()).collect();
+                                let n = cat.keys().filter(|code| !local_codes.contains(*code)).count();
+                                if n > 0 {
+                                    format!("Доступные ({n})")
+                                } else {
+                                    "Доступные".to_string()
+                                }
+                            }}
+                        </Tab>
+                    </TabList>
+                </div>
+            })}
 
             <div class="plugins-page__content" style=move || if active_tab.get() == "installed" { "" } else { "display: none;" }>
                 {move || error.get().map(|e| view! {
@@ -284,7 +304,8 @@ pub fn PluginList() -> impl IntoView {
                                             <th>"Название"</th>
                                             <th>"Исполнение"</th>
                                             <th>"Статус"</th>
-                                            <th>"Обновление"</th>
+                                            <th>"Версия"</th>
+                                            <th>"На сервере"</th>
                                             <th>"Оценка"</th>
                                             <th>"Обновлён"</th>
                                             <th class="plugins-table__action-col">"Действие"</th>
@@ -295,12 +316,24 @@ pub fn PluginList() -> impl IntoView {
                                             // Название → пользовательская страница плагина (`plugin__<id>`).
                                             let view_key = format!("plugin__{}", p.id);
                                             let view_title = p.title.clone();
+                                            // Колонка «Действие» для пользователя («Открыть») —
+                                            // тоже рантайм-страница (отдельные строки, т.к. `view_*` уходят в заголовок).
+                                            let open_key = format!("plugin__{}", p.id);
+                                            let open_title = p.title.clone();
                                             // «Изменить» → страница редактирования (`plugin_dev__<id>`).
                                             let edit_key = format!("plugin_dev__{}", p.id);
                                             let edit_title = format!("{} — разработка", p.title);
-                                            let updated = p.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                                            let updated = format_utc_local(&p.updated_at, "%Y-%m-%d %H:%M");
                                             let status = p.status.clone();
-                                            let status_mod = format!("plugins-badge plugins-badge--{}", status);
+                                            let status_mod = format!(
+                                                "badge badge--{}",
+                                                match status.as_str() {
+                                                    "active" => "success",
+                                                    "draft" => "warning",
+                                                    _ => "neutral",
+                                                }
+                                            );
+                                            let local_version = p.version;
                                             let update_status = upd.get(&p.id).cloned();
                                             let title_for_dialog = p.title.clone();
                                             view! {
@@ -318,33 +351,41 @@ pub fn PluginList() -> impl IntoView {
                                                             {p.title.clone()}
                                                         </a>
                                                     </td>
-                                                    <td><span class="plugins-chip">{p.runtime.clone()}</span></td>
+                                                    <td><span class="badge badge--primary">{p.runtime.clone()}</span></td>
                                                     <td><span class=status_mod>{status}</span></td>
+                                                    <td>{format!("v{local_version}")}</td>
                                                     <td>
                                                         {match update_status.filter(|u| u.remote_version.is_some()) {
                                                             Some(u) if u.update_available => {
                                                                 let date = u.remote_uploaded_at
-                                                                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                                                                    .map(|dt| format_utc_local(&dt, "%Y-%m-%d %H:%M"))
                                                                     .unwrap_or_default();
                                                                 let title_for_click = title_for_dialog.clone();
+                                                                let remote_v = u.remote_version.unwrap_or_default();
                                                                 view! {
-                                                                    <a
-                                                                        href="#"
-                                                                        class="plugins-update plugins-update--available"
-                                                                        title="Доступно обновление — нажмите, чтобы применить"
-                                                                        on:click=move |ev| {
-                                                                            ev.prevent_default();
-                                                                            selected_update.set(Some((title_for_click.clone(), u.clone())));
-                                                                        }
-                                                                    >
-                                                                        {format!("v{} · {}", u.remote_version.unwrap_or_default(), date)}
-                                                                    </a>
+                                                                    <div class="plugins-server-cell">
+                                                                        <span
+                                                                            class="badge badge--warning"
+                                                                            title="В S3 доступна более новая версия"
+                                                                        >
+                                                                            {format!("v{remote_v} · {date}")}
+                                                                        </span>
+                                                                        <button
+                                                                            class="plugins-btn plugins-btn--primary plugins-btn--sm"
+                                                                            title="Установить версию из S3"
+                                                                            on:click=move |_| {
+                                                                                selected_update.set(Some((title_for_click.clone(), u.clone())));
+                                                                            }
+                                                                        >
+                                                                            "Установить"
+                                                                        </button>
+                                                                    </div>
                                                                 }.into_any()
                                                             }
                                                             Some(u) => {
-                                                                // Опубликовано в S3, версия не новее локальной — просто дата, без действия.
+                                                                // Опубликовано в S3, версия не новее локальной — просто версия/дата, без действия.
                                                                 let date = u.remote_uploaded_at
-                                                                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                                                                    .map(|dt| format_utc_local(&dt, "%Y-%m-%d %H:%M"))
                                                                     .unwrap_or_default();
                                                                 view! {
                                                                     <span class="plugins-table__muted" title="Актуальная версия опубликована в S3">
@@ -358,16 +399,35 @@ pub fn PluginList() -> impl IntoView {
                                                     <td>{rating_stars_readonly(p.rating)}</td>
                                                     <td class="plugins-table__muted">{updated}</td>
                                                     <td class="plugins-table__action-col">
-                                                        <a
-                                                            href="#"
-                                                            class="plugins-link"
-                                                            on:click=move |ev| {
-                                                                ev.prevent_default();
-                                                                ctx.open_tab(&edit_key, &edit_title);
-                                                            }
-                                                        >
-                                                            "Изменить"
-                                                        </a>
+                                                        {if user_is_admin {
+                                                            // Админ → страница разработки (`plugin_dev__<id>`).
+                                                            view! {
+                                                                <a
+                                                                    href="#"
+                                                                    class="plugins-link"
+                                                                    on:click=move |ev| {
+                                                                        ev.prevent_default();
+                                                                        ctx.open_tab(&edit_key, &edit_title);
+                                                                    }
+                                                                >
+                                                                    "Изменить"
+                                                                </a>
+                                                            }.into_any()
+                                                        } else {
+                                                            // Пользователь → рантайм-страница плагина (`plugin__<id>`).
+                                                            view! {
+                                                                <a
+                                                                    href="#"
+                                                                    class="plugins-link"
+                                                                    on:click=move |ev| {
+                                                                        ev.prevent_default();
+                                                                        ctx.open_tab(&open_key, &open_title);
+                                                                    }
+                                                                >
+                                                                    "Открыть"
+                                                                </a>
+                                                            }.into_any()
+                                                        }}
                                                     </td>
                                                 </tr>
                                             }
@@ -424,7 +484,7 @@ pub fn PluginList() -> impl IntoView {
                                     </thead>
                                     <tbody>
                                         {available.into_iter().map(|(code, entry)| {
-                                            let date = entry.uploaded_at.format("%Y-%m-%d %H:%M").to_string();
+                                            let date = format_utc_local(&entry.uploaded_at, "%Y-%m-%d %H:%M");
                                             let code_for_disabled = code.clone();
                                             let code_for_click = code.clone();
                                             view! {
@@ -486,8 +546,9 @@ fn PluginUpdateDialog(
         spawn_local(async move {
             match api::apply_update(&status.plugin_id, status.remote_version).await {
                 Ok(()) => {
-                    set_result.set(Some(Ok(())));
                     on_updated.run(());
+                    // Обновление применено — закрываем диалог (список перечитан через on_updated).
+                    close.run(());
                 }
                 Err(err) => set_result.set(Some(Err(err))),
             }
@@ -505,7 +566,7 @@ fn PluginUpdateDialog(
                 <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
                     {move || selected.get().map(|(title, status)| {
                         let remote_date = status.remote_uploaded_at
-                            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                            .map(|dt| format_utc_local(&dt, "%Y-%m-%d %H:%M"))
                             .unwrap_or_default();
                         view! {
                             <div>

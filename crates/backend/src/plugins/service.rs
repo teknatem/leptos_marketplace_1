@@ -80,7 +80,7 @@ pub(crate) struct PluginUpsertResult {
 }
 
 pub async fn upsert(dto: PluginUpsert) -> anyhow::Result<String> {
-    Ok(upsert_prepared(dto, None, None, None).await?.id)
+    Ok(upsert_prepared(dto, None, None, None, None).await?.id)
 }
 
 /// Transactional upsert with an optional result already resolved by a trusted
@@ -91,6 +91,9 @@ pub(crate) async fn upsert_prepared(
     prepared_snapshot: Option<serde_json::Value>,
     artifact_origin: Option<PluginArtifactOrigin<'_>>,
     prepared_validation: Option<PluginValidateReport>,
+    // Явно задать итоговый номер версии (при обновлении/установке с сервера —
+    // номер из каталога S3). `None` — обычное поведение: +1 при обновлении, 1 при вставке.
+    version_override: Option<i32>,
 ) -> anyhow::Result<PluginUpsertResult> {
     let report = match prepared_validation {
         Some(report) => report,
@@ -136,8 +139,8 @@ pub(crate) async fn upsert_prepared(
 
     let txn = db().begin().await?;
     let id = match dto.id.as_deref() {
-        Some(id) => update_existing(&txn, id.to_string(), dto, status).await,
-        None => insert_new(&txn, dto, status).await,
+        Some(id) => update_existing(&txn, id.to_string(), dto, status, version_override).await,
+        None => insert_new(&txn, dto, status, version_override).await,
     }?;
     let saved = repository::find_by_id(&txn, &id)
         .await?
@@ -242,6 +245,7 @@ async fn update_existing<C: sea_orm::ConnectionTrait>(
     id: String,
     dto: PluginUpsert,
     status: PluginStatus,
+    version_override: Option<i32>,
 ) -> anyhow::Result<String> {
     let mut existing = repository::find_by_id(conn, &id)
         .await?
@@ -267,7 +271,9 @@ async fn update_existing<C: sea_orm::ConnectionTrait>(
     if dto.created_by_agent_id.is_some() {
         existing.created_by_agent_id = dto.created_by_agent_id;
     }
-    existing.version += 1;
+    // При обновлении с сервера версия становится номером установленной версии из
+    // каталога, иначе — монотонный инкремент.
+    existing.version = version_override.unwrap_or(existing.version + 1);
     existing.updated_at = Utc::now();
 
     repository::update(conn, &existing).await?;
@@ -278,6 +284,7 @@ async fn insert_new<C: sea_orm::ConnectionTrait>(
     conn: &C,
     dto: PluginUpsert,
     status: PluginStatus,
+    version_override: Option<i32>,
 ) -> anyhow::Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
@@ -288,7 +295,8 @@ async fn insert_new<C: sea_orm::ConnectionTrait>(
         is_enabled: dto.is_enabled.unwrap_or(true),
         owner_user_id: dto.owner_user_id,
         created_by_agent_id: dto.created_by_agent_id,
-        version: 1,
+        // Свежая установка из каталога получает номер версии каталога, иначе — 1.
+        version: version_override.unwrap_or(1),
         created_at: now,
         updated_at: now,
         rating: None,
@@ -1027,7 +1035,7 @@ pub struct ImportOutcome {
 
 pub async fn import(bytes: &[u8]) -> anyhow::Result<ImportOutcome> {
     let (bundle, imported_snapshot) = super::package::import_archive_with_snapshot(bytes)?;
-    import_bundle_onto(None, bundle, imported_snapshot).await
+    import_bundle_onto(None, bundle, imported_snapshot, None).await
 }
 
 /// Общая часть импорта: валидирует бандл и апсертит его либо на конкретный
@@ -1038,6 +1046,9 @@ pub(crate) async fn import_bundle_onto(
     id_hint: Option<&str>,
     bundle: PluginBundle,
     imported_snapshot: Option<serde_json::Value>,
+    // Итоговый номер версии (для установки/обновления с сервера — номер каталога S3).
+    // `None` — обычный импорт .zip: +1 к существующей или 1 для новой записи.
+    version_override: Option<i32>,
 ) -> anyhow::Result<ImportOutcome> {
     let code = bundle.manifest.code.clone();
     let capture_snapshot = bundle.data.source.is_some();
@@ -1080,9 +1091,15 @@ pub(crate) async fn import_bundle_onto(
         },
     };
 
-    let id = upsert_prepared(dto, imported_snapshot, None, Some(report.clone()))
-        .await?
-        .id;
+    let id = upsert_prepared(
+        dto,
+        imported_snapshot,
+        None,
+        Some(report.clone()),
+        version_override,
+    )
+    .await?
+    .id;
     Ok(ImportOutcome {
         id: Some(id),
         code,

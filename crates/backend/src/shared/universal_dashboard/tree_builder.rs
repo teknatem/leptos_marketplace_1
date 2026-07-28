@@ -270,8 +270,13 @@ mod tests {
 
         let result = builder.build(rows);
 
-        assert_eq!(result.len(), 2); // Two date groups
+        assert_eq!(result.len(), 3); // Grand total plus two date groups
         assert!(result[0].is_total);
         assert!(result[1].is_total);
+        assert!(result[2].is_total);
+        assert!(matches!(
+            result[0].values.get("date"),
+            Some(CellValue::Text(label)) if label == "ИТОГО"
+        ));
     }
 }

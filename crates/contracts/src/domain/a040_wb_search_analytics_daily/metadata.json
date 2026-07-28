@@ -17,11 +17,11 @@
   },
 
   "ai": {
-    "description": "Ежедневные снимки поисковой аналитики Wildberries в разрезе номенклатуры (search-report / «Товары по контенту», подписка «Джем»): переходы в карточку из поиска, CTR, добавления в корзину, заказы, средняя позиция в выдаче, видимость (visibility, % показов в поиске), а также топ поисковых запросов на товар (текст, частотность, показы, клики, позиция). Данные снимаются только вперёд; один документ — один кабинет WB и одна дата. ВАЖНО: живой эндпоинт WB /table/details отдаёт только visibility (%), а не счётчик показов (impressions=0), поэтому a040 НЕ питает воронку p916 — связь удалена, show_free_count остаётся N/A.",
+    "description": "Ежедневные снимки поисковой аналитики Wildberries в разрезе номенклатуры (search-report / «Товары по контенту», подписка «Джем»): видимость товара в выдаче (visibility, % показов в поиске — основной сигнал), переходы в карточку из поиска, CTR, добавления в корзину, заказы, средняя позиция в выдаче, а также топ поисковых запросов на товар (текст, частотность, клики, позиция). ВАЖНО: WB /table/details НЕ отдаёт счётчик показов (impressions=0 всегда) — «показы» здесь = видимость в %, а не штуки. Поэтому a040 НЕ питает воронку p916 — связь удалена, show_free_count остаётся N/A. Данные снимаются только вперёд; один документ — один кабинет WB и одна дата.",
     "questions": [
-      "Сколько показов у товара WB по дням?",
+      "Какая видимость товара WB в поиске по дням?",
       "На какой позиции в выдаче стоит товар?",
-      "Какие поисковые запросы приносят показы товару?",
+      "По каким поисковым запросам товар виден в выдаче?",
       "Как менялась видимость карточки?",
       "CTR карточки в поиске по дням?"
     ],
@@ -123,9 +123,9 @@
       "rust_type": "i64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Показы", "visible_in_list": true, "visible_in_form": false, "column_width": 110 },
+      "ui": { "label": "Показы (нет в API WB)", "visible_in_list": true, "visible_in_form": false, "column_width": 150 },
       "validation": { "required": true },
-      "ai_hint": "Суммарные показы в поиске на дату снимка."
+      "ai_hint": "ВСЕГДА 0: WB /table/details не отдаёт счётчик показов. Не трактуй как органические показы. Реальный сигнал видимости в поиске — visibility (%) в lines_json.metrics."
     },
     {
       "name": "total_open_card",
@@ -152,7 +152,7 @@
       "source": "specific",
       "ui": { "label": "Строки JSON", "visible_in_list": false, "visible_in_form": false, "widget": "textarea" },
       "validation": { "required": true },
-      "ai_hint": "JSON-массив детализации по товарам (одна запись = один nm_id на дату снимка). Ключи строки: nm_id, title, vendor_code, brand_name, subject_name, nomenclature_ref, metrics{impressions, open_card, ctr, add_to_cart, orders, avg_position, visibility}, top_queries[]{text, frequency, impressions, clicks, orders, avg_position}. Разворачивай через json_each и json_extract(j.value,'$.metrics.impressions')."
+      "ai_hint": "JSON-массив детализации по товарам (одна запись = один nm_id на дату снимка). Ключи строки: nm_id, title, vendor_code, brand_name, subject_name, nomenclature_ref, metrics{impressions (ВСЕГДА 0 — WB не отдаёт счётчик показов), open_card, ctr, add_to_cart, orders, avg_position, visibility (видимость, % в выдаче — основной сигнал)}, top_queries[]{text, frequency, impressions (0), clicks, orders, avg_position}. Разворачивай через json_each; для видимости бери json_extract(j.value,'$.metrics.visibility'), НЕ '$.metrics.impressions'."
     },
     {
       "name": "fetched_at",

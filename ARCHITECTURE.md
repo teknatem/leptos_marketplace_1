@@ -24,7 +24,7 @@
 | `a014` | Транзакция OZON | `a014_ozon_transactions` | Финансовая транзакция OZON из раздела финансов. Содержит тип операции, суммы начислений, комиссий и доставки. Является основным источником д… | a006_connection_mp, a005_marketplace, a010_ozon_fbs_posting, a011_ozon_fbo_posting |
 | `a015` | Документ WB Заказы | `a015_wb_orders` | Заказ Wildberries (один заказ = одна строка). Содержит артикул продавца, nmId, штрихкод, категорию, цены со скидками, статус, дату заказа и… | a006_connection_mp, a005_marketplace, a007_marketplace_product, a004_nomenclature |
 | `a016` | Возврат Yandex Market | `a016_ym_returns` | Возврат товара с Yandex Market. Содержит ID возврата и заказа, тип операции (RETURN или UNREDEEMED — невыкуп), статус возврата денег, строки… | a006_connection_mp, a005_marketplace, a013_ym_order |
-| `a017` | Агент LLM | `a017_llm_agent` | Настройки подключения к провайдерам LLM (OpenAI, OpenRouter, Anthropic, Ollama). Содержит API ключи, параметры модели (temperature, max_toke… | a018_llm_chat, a019_llm_artifact |
+| `a017` | AI-сотрудник | `a017_llm_agent` | Виртуальный сотрудник (AI-агент): имя, аватар, почта, специализация (agent_type — определяет навыки), должностные обязанности (system_prompt… | a038_llm_connection, a018_llm_chat, a019_llm_artifact |
 | `a018` | Чат LLM | `a018_llm_chat` | Сессии чатов с LLM агентами. Содержит историю диалогов с языковыми моделями, включая сообщения пользователя и ответы ассистента. Каждый чат… | a017_llm_agent, a019_llm_artifact |
 | `a019` | Артефакт LLM | `a019_llm_artifact` | SQL-запросы и другие артефакты, созданные LLM агентами в процессе работы с чатами. Каждый артефакт связан с конкретным чатом и агентом, соде… | a017_llm_agent, a018_llm_chat |
 | `a020` | Акция WB | `a020_wb_promotion` | Календарные акции Wildberries. Каждая запись — одна акция из WB Calendar API с датами проведения и списком товаров (nmId). Данные загружаютс… | a006_connection_mp, a002_organization, a007_marketplace_product |
@@ -45,9 +45,9 @@
 | `a035` | Сверка перечислений YM | `a035_ym_settlement_recon` | Документ-сверка одного банковского ордера YM (bank_order_id из p907_ym_payment_report). Таблица операций ордера сгруппирована по нашим оборо… | p907_ym_payment_report, a006_connection_mp, a002_organization |
 | `a036` | Воронка продаж WB | `a036_wb_sales_funnel_daily` | Ежедневная воронка продаж Wildberries в разрезе номенклатуры. Одна запись — один кабинет WB и одна дата; JSON детализация по товарам (nm_id)… | a006_connection_mp, a002_organization, a007_marketplace_product, a026_wb_advert_daily |
 | `a037` | Данные по товарам WB | `a037_wb_product_snapshot` | Ежедневные снимки состояния товаров Wildberries в разрезе номенклатуры: остатки на складах WB и продавца, сумма остатков, рейтинг карточки и… | a006_connection_mp, a002_organization, a007_marketplace_product, a036_wb_sales_funnel_daily |
-| `a038` | Подключение LLM | `a038_llm_connection` | Подключение к провайдеру LLM (OpenAI, OpenRouter). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tokens), системный промпт… | a018_llm_chat, a019_llm_artifact |
+| `a038` | Подключение LLM | `a038_llm_connection` | Техническое подключение к провайдеру LLM (OpenAI, OpenRouter, DeepSeek). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tok… | a018_llm_chat, a019_llm_artifact |
 | `a039` | Письмо | `a039_mail_message` | Журнал входящих и исходящих писем почтового конвейера. Одна запись = одно письмо (кратко): направление, отправитель/получатель, тема, статус… | a018_llm_chat, a038_llm_connection, a019_llm_artifact |
-| `a040` | Поисковая аналитика WB | `a040_wb_search_analytics_daily` | Ежедневные снимки поисковой аналитики Wildberries в разрезе номенклатуры (search-report / «Товары по контенту», подписка «Джем»): органическ… | a006_connection_mp, a002_organization, a007_marketplace_product, a036_wb_sales_funnel_daily, a037_wb_product_snapshot |
+| `a040` | Поисковая аналитика WB | `a040_wb_search_analytics_daily` | Ежедневные снимки поисковой аналитики Wildberries в разрезе номенклатуры (search-report / «Товары по контенту», подписка «Джем»): видимость… | a006_connection_mp, a002_organization, a007_marketplace_product, a036_wb_sales_funnel_daily, a037_wb_product_snapshot |
 
 ## Projections (p9XX)
 
@@ -200,7 +200,7 @@
 | `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
 | `commission_percent` | Процент комиссии |  |  |  |
 
-## API routes (395)
+## API routes (401)
 
 ### `/a004`
 - `GET` /api/a004/nomenclature
@@ -266,6 +266,7 @@
 - `GET` /api/a015/wb-orders/:id
 - `POST` /api/a015/wb-orders/:id/delete
 - `POST` /api/a015/wb-orders/:id/post
+- `GET` /api/a015/wb-orders/:id/projections
 - `POST` /api/a015/wb-orders/:id/unpost
 - `GET` /api/a015/wb-orders/search-by-srid
 
@@ -288,6 +289,7 @@
 - `POST` /api/a017-llm-agent/:id/test
 - `GET` /api/a017-llm-agent/list
 - `GET` /api/a017-llm-agent/primary
+- `GET` /api/a017-llm-agent/skills
 
 ### `/a018-llm-chat`
 - `GET DELETE` /api/a018-llm-chat/:id
@@ -441,6 +443,8 @@
 
 ### `/a036`
 - `GET` /api/a036/wb-sales-funnel/:id
+- `POST` /api/a036/wb-sales-funnel/:id/post
+- `GET` /api/a036/wb-sales-funnel/:id/projections
 - `GET` /api/a036/wb-sales-funnel/export-lines
 - `GET` /api/a036/wb-sales-funnel/list
 - `GET` /api/a036/wb-sales-funnel/product-metrics
@@ -514,6 +518,7 @@
 - `GET` /api/dashboards/wb-advert-report
 - `GET` /api/dashboards/wb-order-flow
 - `GET` /api/dashboards/wb-sales-funnel
+- `GET` /api/dashboards/wb-sales-funnel/orders
 - `GET` /api/dashboards/ym-order-flow
 
 ### `/data-view`
@@ -579,7 +584,10 @@
 - `GET` /api/llm-knowledge/:id
 
 ### `/llm-skills`
-- `GET POST` /api/llm-skills
+- `GET POST PUT` /api/llm-skills
+
+### `/llm-tools`
+- `GET POST` /api/llm-tools
 
 ### `/marketplace`
 - `GET POST` /api/marketplace

@@ -784,6 +784,9 @@ pub struct PluginListItem {
     pub runtime: String,
     pub status: String,
     pub is_enabled: bool,
+    /// Текущая (локальная) версия плагина.
+    #[serde(default)]
+    pub version: i32,
     pub updated_at: DateTime<Utc>,
     /// Пользовательская оценка плагина (1..5; None — не оценён).
     #[serde(default)]
@@ -799,6 +802,7 @@ impl From<&PluginDefinition> for PluginListItem {
             runtime: def.bundle.manifest.runtime.as_str().to_string(),
             status: def.status.as_str().to_string(),
             is_enabled: def.is_enabled,
+            version: def.version,
             updated_at: def.updated_at,
             rating: def.rating,
         }

@@ -162,6 +162,6 @@ mod tests {
     fn test_truncate_string() {
         assert_eq!(truncate_string("hello", 10), "hello");
         assert_eq!(truncate_string("hello world", 5), "hello");
-        assert_eq!(truncate_string("РїСЂРёРІРµС‚ РјРёСЂ", 6), "РїСЂРёРІРµС‚");
+        assert_eq!(truncate_string("привет мир", 6), "привет");
     }
 }

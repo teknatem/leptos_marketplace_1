@@ -1,6 +1,8 @@
 use axum::{
+    body::Body,
     extract::{Multipart, Path, Query},
-    http::StatusCode,
+    http::{header, StatusCode},
+    response::Response,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -424,23 +426,94 @@ pub async fn add_chat_context(
 pub struct UploadResponse {
     pub id: String,
     pub filename: String,
+    pub content_type: String,
     pub file_size: i64,
 }
 
 /// POST /api/a018-llm-chat/:id/upload
 pub async fn upload_attachment(
+    CurrentUser(claims): CurrentUser,
     Path(chat_id): Path<String>,
     mut multipart: Multipart,
-) -> Result<Json<UploadResponse>, axum::http::StatusCode> {
-    match a018_llm_chat::service::upload_attachment(&chat_id, &mut multipart).await {
+) -> Result<Json<UploadResponse>, (StatusCode, Json<serde_json::Value>)> {
+    a018_llm_chat::service::ensure_chat_access(&chat_id, &claims.sub, claims.is_admin)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "Нет доступа к чату" })),
+            )
+        })?;
+    match a018_llm_chat::service::upload_attachment(&chat_id, &mut multipart, Some(claims.sub))
+        .await
+    {
         Ok(attachment) => Ok(Json(UploadResponse {
             id: attachment.id.to_string(),
             filename: attachment.filename,
+            content_type: attachment.content_type,
             file_size: attachment.file_size,
         })),
         Err(e) => {
             tracing::error!("Failed to upload attachment: {}", e);
-            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            let message = e.to_string();
+            let status = if message.contains("10 MiB")
+                || message.contains("length limit")
+                || message.contains("body limit")
+            {
+                StatusCode::PAYLOAD_TOO_LARGE
+            } else if message.contains("S3 storage is disabled")
+                || message.contains("[s3].bucket")
+                || message.contains("[s3].access_key_id")
+                || message.contains("[s3].secret_access_key")
+            {
+                StatusCode::SERVICE_UNAVAILABLE
+            } else if message.contains("multipart")
+                || message.contains("supported")
+                || message.contains("No file")
+                || message.contains("No filename")
+                || message.contains("Invalid chat ID")
+            {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            Err((status, Json(json!({ "error": message }))))
         }
     }
+}
+
+/// GET /api/a018-llm-chat/:chat_id/attachments/:attachment_id
+pub async fn get_attachment(
+    CurrentUser(claims): CurrentUser,
+    Path((chat_id, attachment_id)): Path<(String, String)>,
+) -> Result<Response, StatusCode> {
+    a018_llm_chat::service::ensure_chat_access(&chat_id, &claims.sub, claims.is_admin)
+        .await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+    let attachment = a018_llm_chat::service::get_attachment(&chat_id, &attachment_id)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let bytes = a018_llm_chat::service::load_attachment_bytes(&attachment)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, attachment.content_type)
+        .header(header::CACHE_CONTROL, "private, max-age=3600")
+        .body(Body::from(bytes))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+/// DELETE /api/a018-llm-chat/:chat_id/attachments/:attachment_id
+pub async fn delete_pending_attachment(
+    CurrentUser(claims): CurrentUser,
+    Path((chat_id, attachment_id)): Path<(String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    a018_llm_chat::service::ensure_chat_access(&chat_id, &claims.sub, claims.is_admin)
+        .await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+    a018_llm_chat::service::delete_pending_attachment(&chat_id, &attachment_id)
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    Ok(StatusCode::NO_CONTENT)
 }

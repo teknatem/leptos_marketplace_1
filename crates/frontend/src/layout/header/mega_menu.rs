@@ -316,9 +316,9 @@ pub fn MegaMenuBar() -> impl IntoView {
                 <MegaMenuCategory label="Операции" items=operations columns=1 />
             })}
             <MegaMenuCategory label="Регистры" items=registers columns=2 />
-            {user_is_admin.then(|| view! {
-                <crate::plugins::PluginsMenuCategory />
-            })}
+            // Плагины доступны всем аутентифицированным пользователям (использование);
+            // управление внутри — только админам.
+            <crate::plugins::PluginsMenuCategory />
         </nav>
     }
 }

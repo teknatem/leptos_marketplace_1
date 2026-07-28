@@ -8,6 +8,7 @@
 
 mod artifact_card;
 mod model;
+mod screenshot_editor;
 mod tool_calls_trace;
 mod view;
 mod view_model;

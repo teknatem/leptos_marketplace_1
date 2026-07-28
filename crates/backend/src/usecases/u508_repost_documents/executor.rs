@@ -268,8 +268,10 @@ impl RepostExecutor {
         self.progress_tracker.set_total(session_id, total);
         self.progress_tracker.set_chunks_total(session_id, 4);
 
-        let mut processed = 0i32;
-        let mut reposted = 0i32;
+        // Сквозные счётчики прогресса по всем 4 шагам (шаги a015/a026 — конкурентные, поэтому
+        // атомики; шаги a012/a036 — последовательные, но пишут в те же счётчики).
+        let processed = Arc::new(AtomicI32::new(0));
+        let reposted = Arc::new(AtomicI32::new(0));
 
         // === Шаг 1/4: a015 — заказы/отмены (стадия 2) ===
         self.progress_tracker.update_chunk_progress(
@@ -279,28 +281,20 @@ impl RepostExecutor {
             None,
             Some("Шаг 1/4: заказы a015 (стадия 2)".to_string()),
         );
-        for id_str in &a015_ids {
-            match Uuid::parse_str(id_str) {
-                Ok(id) => match dispatch_aggregate_repost_with_retry(A015_WB_ORDERS, id).await {
-                    Ok(()) => reposted += 1,
-                    Err(error) => self
-                        .progress_tracker
-                        .add_error(session_id, format!("a015 {}: {}", id_str, error)),
-                },
-                Err(error) => self
-                    .progress_tracker
-                    .add_error(session_id, format!("Invalid a015 id {}: {}", id_str, error)),
-            }
-            processed += 1;
-            self.progress_tracker.update_progress(
-                session_id,
-                processed,
-                reposted,
-                Some(format!("a015 {}", id_str)),
-            );
-        }
+        repost_ids_concurrent(
+            &self.progress_tracker,
+            session_id,
+            A015_WB_ORDERS,
+            a015_ids,
+            &processed,
+            &reposted,
+        )
+        .await?;
 
         // === Шаг 2/4: a012 — выкупы/возвраты (стадия 2) ===
+        // Кэш-по-дню: группируем когортный набор по дню продажи и один раз прогреваем
+        // PostingPreparationCache на весь день (как в execute_a012_chunked_repost) — иначе
+        // post_document создаёт пустой кэш на каждый документ и повторяет дорогие lookups.
         self.progress_tracker.update_chunk_progress(
             session_id,
             1,
@@ -308,26 +302,8 @@ impl RepostExecutor {
             None,
             Some("Шаг 2/4: продажи a012 (стадия 2)".to_string()),
         );
-        for id_str in &a012_ids {
-            match Uuid::parse_str(id_str) {
-                Ok(id) => match dispatch_aggregate_repost_with_retry(A012_WB_SALES, id).await {
-                    Ok(()) => reposted += 1,
-                    Err(error) => self
-                        .progress_tracker
-                        .add_error(session_id, format!("a012 {}: {}", id_str, error)),
-                },
-                Err(error) => self
-                    .progress_tracker
-                    .add_error(session_id, format!("Invalid a012 id {}: {}", id_str, error)),
-            }
-            processed += 1;
-            self.progress_tracker.update_progress(
-                session_id,
-                processed,
-                reposted,
-                Some(format!("a012 {}", id_str)),
-            );
-        }
+        self.rebuild_funnel_a012_cached(session_id, a012_ids, &processed, &reposted)
+            .await?;
 
         // === Шаг 3/4: a026 — реклама/платные показы (стадия 1) ===
         self.progress_tracker.update_chunk_progress(
@@ -337,27 +313,15 @@ impl RepostExecutor {
             None,
             Some("Шаг 3/4: реклама a026 (стадия 1)".to_string()),
         );
-        for id_str in &a026_ids {
-            match Uuid::parse_str(id_str) {
-                Ok(id) => match dispatch_aggregate_repost_with_retry(A026_WB_ADVERT_DAILY, id).await
-                {
-                    Ok(()) => reposted += 1,
-                    Err(error) => self
-                        .progress_tracker
-                        .add_error(session_id, format!("a026 {}: {}", id_str, error)),
-                },
-                Err(error) => self
-                    .progress_tracker
-                    .add_error(session_id, format!("Invalid a026 id {}: {}", id_str, error)),
-            }
-            processed += 1;
-            self.progress_tracker.update_progress(
-                session_id,
-                processed,
-                reposted,
-                Some(format!("a026 {}", id_str)),
-            );
-        }
+        repost_ids_concurrent(
+            &self.progress_tracker,
+            session_id,
+            A026_WB_ADVERT_DAILY,
+            a026_ids,
+            &processed,
+            &reposted,
+        )
+        .await?;
 
         // === Шаг 4/4: a036 — стадия 1 (маркетинг) из сохранённых документов ===
         self.progress_tracker.update_chunk_progress(
@@ -374,14 +338,17 @@ impl RepostExecutor {
         )
         .await
         {
-            Ok(_) => reposted += 1,
+            Ok(_) => {
+                reposted.fetch_add(1, Ordering::Relaxed);
+            }
             Err(error) => self
                 .progress_tracker
                 .add_error(session_id, format!("a036 стадия 1: {}", error)),
         }
-        processed += 1;
+        let processed_final = processed.fetch_add(1, Ordering::Relaxed) + 1;
+        let reposted_final = reposted.load(Ordering::Relaxed);
         self.progress_tracker
-            .update_progress(session_id, processed, reposted, None);
+            .update_progress(session_id, processed_final, reposted_final, None);
         self.progress_tracker.update_chunk_progress(
             session_id,
             4,
@@ -402,6 +369,109 @@ impl RepostExecutor {
         };
         self.progress_tracker
             .complete_session(session_id, final_status);
+
+        Ok(())
+    }
+
+    /// Шаг 2/4 воронки: пересбор a012 с кэшем-по-дню. Когортный набор `a012_ids`
+    /// (отобран по srid заказов периода) группируется по дню продажи; на каждый день
+    /// один раз прогревается `PostingPreparationCache` через
+    /// `preload_prod_cost_context_for_documents`, и все продажи дня проводятся через
+    /// `post_document_with_cache`, переиспользуя дорогие lookups (цены/номенклатуры/киты/
+    /// prod cost). Последовательно внутри дня (кэш — `&mut`, один писатель), как в
+    /// `execute_a012_chunked_repost`. Прогресс/ошибки — в сквозные счётчики воронки.
+    async fn rebuild_funnel_a012_cached(
+        &self,
+        session_id: &str,
+        a012_ids: Vec<String>,
+        processed: &Arc<AtomicI32>,
+        reposted: &Arc<AtomicI32>,
+    ) -> Result<()> {
+        if a012_ids.is_empty() {
+            return Ok(());
+        }
+
+        let id_days =
+            crate::domain::a012_wb_sales::repository::list_id_sale_days_by_ids(&a012_ids).await?;
+
+        // Группируем id по дню продажи (id_days отсортирован по дню, затем по id).
+        let mut covered: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut day_groups: Vec<(String, Vec<String>)> = Vec::new();
+        for (id, day) in id_days {
+            covered.insert(id.clone());
+            match day_groups.last_mut() {
+                Some((current_day, ids)) if *current_day == day => ids.push(id),
+                _ => day_groups.push((day, vec![id])),
+            }
+        }
+
+        for (day, day_ids) in day_groups {
+            let mut posting_cache =
+                crate::domain::a012_wb_sales::service::PostingPreparationCache::default();
+            let day_documents =
+                crate::domain::a012_wb_sales::repository::list_by_ids(&day_ids).await?;
+            crate::domain::a012_wb_sales::service::preload_prod_cost_context_for_documents(
+                &mut posting_cache,
+                &day_documents,
+            )
+            .await?;
+
+            for id_str in &day_ids {
+                let current_item = format!("a012 {} | {}", id_str, day);
+                match Uuid::parse_str(id_str) {
+                    Ok(id) => {
+                        let post_start = std::time::Instant::now();
+                        let post_result =
+                            crate::domain::a012_wb_sales::posting::post_document_with_cache(
+                                id,
+                                &mut posting_cache,
+                            )
+                            .await;
+                        let elapsed_ms = post_start.elapsed().as_millis() as i64;
+                        self.progress_tracker
+                            .record_post_timing(session_id, id_str, elapsed_ms);
+                        const SLOW_DOC_MS: i64 = 500;
+                        if elapsed_ms > SLOW_DOC_MS {
+                            tracing::warn!(
+                                "Slow {} post: {} took {} ms",
+                                A012_WB_SALES,
+                                id,
+                                elapsed_ms
+                            );
+                        }
+                        match post_result {
+                            Ok(()) => {
+                                reposted.fetch_add(1, Ordering::Relaxed);
+                            }
+                            Err(error) => self
+                                .progress_tracker
+                                .add_error(session_id, format!("a012 {}: {}", id_str, error)),
+                        }
+                    }
+                    Err(error) => self
+                        .progress_tracker
+                        .add_error(session_id, format!("Invalid a012 id {}: {}", id_str, error)),
+                }
+                let p = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                let r = reposted.load(Ordering::Relaxed);
+                self.progress_tracker
+                    .update_progress(session_id, p, r, Some(current_item));
+            }
+        }
+
+        // id, пропавшие из выборки между отбором и пересбором (soft-delete/удаление), —
+        // отмечаем ошибкой и учитываем в прогрессе, чтобы processed совпадал с числом отобранных.
+        for id_str in &a012_ids {
+            if !covered.contains(id_str) {
+                self.progress_tracker.add_error(
+                    session_id,
+                    format!("a012 {}: документ не найден при пересборе", id_str),
+                );
+                let p = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                let r = reposted.load(Ordering::Relaxed);
+                self.progress_tracker.update_progress(session_id, p, r, None);
+            }
+        }
 
         Ok(())
     }
@@ -715,68 +785,18 @@ impl RepostExecutor {
         let total = document_ids.len() as i32;
         self.progress_tracker.set_total(session_id, total);
 
-        // Параллельная обработка с ограничением параллелизма.
-        // SQLite (WAL) сериализует запись, но параллелизм ускоряет CPU-bound
-        // вычисления и перекрытие read-фазы (get_by_id, lookups) с write-фазой.
-        const CONCURRENCY: usize = 4;
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(CONCURRENCY));
         let processed = Arc::new(AtomicI32::new(0));
         let reposted = Arc::new(AtomicI32::new(0));
-        let tracker = self.progress_tracker.clone();
-        let session_id_str = session_id.to_string();
-        let aggregate_key = request.aggregate_key.clone();
 
-        let mut join_set = tokio::task::JoinSet::new();
-
-        for document_id_str in document_ids {
-            let aggregate_id = match Uuid::parse_str(&document_id_str) {
-                Ok(id) => id,
-                Err(error) => {
-                    tracker.add_error(
-                        &session_id_str,
-                        format!("Invalid aggregate id {}: {}", document_id_str, error),
-                    );
-                    processed.fetch_add(1, Ordering::Relaxed);
-                    let p = processed.load(Ordering::Relaxed);
-                    let r = reposted.load(Ordering::Relaxed);
-                    tracker.update_progress(&session_id_str, p, r, None);
-                    continue;
-                }
-            };
-
-            let permit = semaphore
-                .clone()
-                .acquire_owned()
-                .await
-                .map_err(|_| anyhow!("Semaphore closed"))?;
-
-            let tracker_task = tracker.clone();
-            let sid = session_id_str.clone();
-            let agg_key = aggregate_key.clone();
-            let processed_ref = processed.clone();
-            let reposted_ref = reposted.clone();
-
-            join_set.spawn(async move {
-                let _permit = permit;
-                let result = dispatch_aggregate_repost_with_retry(&agg_key, aggregate_id).await;
-                let proc_count = processed_ref.fetch_add(1, Ordering::Relaxed) + 1;
-                let repo_count = match result {
-                    Ok(()) => reposted_ref.fetch_add(1, Ordering::Relaxed) + 1,
-                    Err(error) => {
-                        tracker_task.add_error(
-                            &sid,
-                            format!("Failed to repost {} {}: {}", agg_key, aggregate_id, error),
-                        );
-                        reposted_ref.load(Ordering::Relaxed)
-                    }
-                };
-                tracker_task.update_progress(&sid, proc_count, repo_count, None);
-            });
-        }
-
-        while let Some(task_result) = join_set.join_next().await {
-            task_result.map_err(|e| anyhow!("Task panicked: {}", e))?;
-        }
+        repost_ids_concurrent(
+            &self.progress_tracker,
+            session_id,
+            &request.aggregate_key,
+            document_ids,
+            &processed,
+            &reposted,
+        )
+        .await?;
 
         let final_reposted = reposted.load(Ordering::Relaxed);
         self.progress_tracker
@@ -989,6 +1009,80 @@ impl RepostExecutor {
 
         Ok(())
     }
+}
+
+/// Конкурентный репост набора id одного агрегата с ограничением параллелизма.
+///
+/// Счётчики `processed`/`reposted` — общие атомики, передаются снаружи: одиночный
+/// aggregate-repost создаёт их на прогон, а пересбор воронки прокидывает сквозные
+/// счётчики через все шаги. SQLite (WAL) сериализует запись, но параллелизм ускоряет
+/// CPU-bound вычисления и перекрытие read-фазы (get_by_id, lookups) с write-фазой;
+/// `dispatch_aggregate_repost_with_retry` гасит конфликты снапшота при CONCURRENCY > 1.
+async fn repost_ids_concurrent(
+    tracker: &Arc<ProgressTracker>,
+    session_id: &str,
+    aggregate_key: &str,
+    document_ids: Vec<String>,
+    processed: &Arc<AtomicI32>,
+    reposted: &Arc<AtomicI32>,
+) -> Result<()> {
+    const CONCURRENCY: usize = 4;
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(CONCURRENCY));
+    let session_id_str = session_id.to_string();
+
+    let mut join_set = tokio::task::JoinSet::new();
+
+    for document_id_str in document_ids {
+        let aggregate_id = match Uuid::parse_str(&document_id_str) {
+            Ok(id) => id,
+            Err(error) => {
+                tracker.add_error(
+                    &session_id_str,
+                    format!("Invalid aggregate id {}: {}", document_id_str, error),
+                );
+                processed.fetch_add(1, Ordering::Relaxed);
+                let p = processed.load(Ordering::Relaxed);
+                let r = reposted.load(Ordering::Relaxed);
+                tracker.update_progress(&session_id_str, p, r, None);
+                continue;
+            }
+        };
+
+        let permit = semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| anyhow!("Semaphore closed"))?;
+
+        let tracker_task = tracker.clone();
+        let sid = session_id_str.clone();
+        let agg_key = aggregate_key.to_string();
+        let processed_ref = processed.clone();
+        let reposted_ref = reposted.clone();
+
+        join_set.spawn(async move {
+            let _permit = permit;
+            let result = dispatch_aggregate_repost_with_retry(&agg_key, aggregate_id).await;
+            let proc_count = processed_ref.fetch_add(1, Ordering::Relaxed) + 1;
+            let repo_count = match result {
+                Ok(()) => reposted_ref.fetch_add(1, Ordering::Relaxed) + 1,
+                Err(error) => {
+                    tracker_task.add_error(
+                        &sid,
+                        format!("Failed to repost {} {}: {}", agg_key, aggregate_id, error),
+                    );
+                    reposted_ref.load(Ordering::Relaxed)
+                }
+            };
+            tracker_task.update_progress(&sid, proc_count, repo_count, None);
+        });
+    }
+
+    while let Some(task_result) = join_set.join_next().await {
+        task_result.map_err(|e| anyhow!("Task panicked: {}", e))?;
+    }
+
+    Ok(())
 }
 
 async fn dispatch_repost(registrator_type: &str, registrator_id: Uuid) -> Result<()> {

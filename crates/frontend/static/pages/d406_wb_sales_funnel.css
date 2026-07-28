@@ -213,6 +213,41 @@ body[data-theme="dark"] .d406-page .d406-row--total td {
     text-align: center;
 }
 
+/* ---- pager ---- */
+.d406-page .d406-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 4px 2px;
+}
+.d406-page .d406-pager-info {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+.d406-page .d406-pager-ctrls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.d406-page .d406-pager-page {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+    min-width: 96px;
+    text-align: center;
+}
+.d406-page .d406-pager-size {
+    height: 34px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md, 8px);
+    padding: 0 8px;
+    background: var(--colorNeutralBackground1, var(--color-surface));
+    color: var(--color-text-primary);
+    font-size: 13px;
+}
+
 /* ---- marketplace badge ---- */
 .d406-page .d406-badge {
     display: inline-block;

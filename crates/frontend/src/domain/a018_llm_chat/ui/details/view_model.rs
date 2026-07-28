@@ -9,6 +9,17 @@ pub struct FileInfo {
     pub id: String,
     pub filename: String,
     pub file_size: i64,
+    #[serde(default)]
+    pub content_type: String,
+    /// Object URL exists only for the current browser draft and is never serialized.
+    #[serde(skip)]
+    pub preview_url: Option<String>,
+}
+
+impl FileInfo {
+    pub fn is_image(&self) -> bool {
+        self.content_type.starts_with("image/")
+    }
 }
 
 #[derive(Clone, Copy)]

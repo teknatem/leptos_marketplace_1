@@ -259,7 +259,13 @@ pub fn format_css(input: &str) -> String {
 
 fn push_property(out: &mut String, prop: &str) {
     out.push_str("  ");
-    out.push_str(prop);
+    if let Some((name, value)) = prop.split_once(':') {
+        out.push_str(name.trim_end());
+        out.push_str(": ");
+        out.push_str(value.trim_start());
+    } else {
+        out.push_str(prop);
+    }
     if !prop.ends_with(';') {
         out.push(';');
     }

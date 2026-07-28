@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["metrics"],
+  "properties": {
+    "marketplace": { "const": "wildberries" },
+    "label": { "type": "string" },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "show_free_count": { "type": ["number", "null"] },
+        "show_paid_count": { "type": ["number", "null"] },
+        "open_count": { "type": ["number", "null"] },
+        "cart_count": { "type": ["number", "null"] },
+        "order_count": { "type": ["number", "null"] },
+        "cancel_count": { "type": ["number", "null"] },
+        "buyout_count": { "type": ["number", "null"] },
+        "return_count": { "type": ["number", "null"] },
+        "order_sum": { "type": ["number", "null"] },
+        "paid_open_count": { "type": ["number", "null"] },
+        "paid_cart_count": { "type": ["number", "null"] },
+        "paid_order_count": { "type": ["number", "null"] },
+        "paid_buyout_count": { "type": ["number", "null"] }
+      },
+      "additionalProperties": { "type": ["number", "null"] }
+    }
+  },
+  "additionalProperties": false
+}

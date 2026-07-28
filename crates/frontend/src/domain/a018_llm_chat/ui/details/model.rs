@@ -372,7 +372,9 @@ async fn get_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, String
 /// `agent_id` — id AI-сотрудника (a017): резолвим его подключение (connection_id), затем
 /// его allowed_models. Fallback — трактуем id как подключение-близнец (совпадающий UUID).
 /// Пустой список — если ничего не доступно или курирование не задано.
-pub async fn fetch_connection_allowed_models(agent_id: &str) -> Result<Vec<String>, String> {
+pub async fn fetch_connection_model_capabilities(
+    agent_id: &str,
+) -> Result<(Vec<String>, Vec<String>), String> {
     use contracts::domain::a017_llm_agent::aggregate::LlmAgent;
     use contracts::domain::a038_llm_connection::aggregate::LlmConnection;
 
@@ -389,7 +391,10 @@ pub async fn fetch_connection_allowed_models(agent_id: &str) -> Result<Vec<Strin
         conn_id
     ))
     .await?;
-    Ok(connection.allowed_models_list())
+    Ok((
+        connection.allowed_models_list(),
+        connection.image_input_models_list(),
+    ))
 }
 
 /// Установить/снять оценку чата (1..5, либо None чтобы снять). POST /:id/rating.
@@ -457,8 +462,18 @@ pub async fn upload_file(chat_id: &str, file: web_sys::File) -> Result<FileInfo,
     use web_sys::{FormData, Request, RequestInit, RequestMode, Response};
 
     let form_data = FormData::new().map_err(|e| format!("{e:?}"))?;
+    let filename = if file.name().trim().is_empty() {
+        match file.type_().as_str() {
+            "image/jpeg" => "screenshot.jpg",
+            "image/webp" => "screenshot.webp",
+            _ => "screenshot.png",
+        }
+        .to_string()
+    } else {
+        file.name()
+    };
     form_data
-        .append_with_blob("file", &file)
+        .append_with_blob_and_filename("file", &file, &filename)
         .map_err(|e| format!("{e:?}"))?;
 
     let opts = RequestInit::new();
@@ -475,15 +490,80 @@ pub async fn upload_file(chat_id: &str, file: web_sys::File) -> Result<FileInfo,
         .map_err(|e| format!("{e:?}"))?;
     let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
 
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-
     let text = wasm_bindgen_futures::JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
         .await
         .map_err(|e| format!("{e:?}"))?;
     let text: String = text.as_string().ok_or_else(|| "bad text".to_string())?;
+    if !resp.ok() {
+        let detail = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|value| value["error"].as_str().map(str::to_string))
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(text);
+        return Err(format!("HTTP {}: {}", resp.status(), detail));
+    }
     let data: FileInfo = serde_json::from_str(&text).map_err(|e| format!("{e}"))?;
 
     Ok(data)
+}
+
+/// Delete an attachment that has not yet been bound to a sent message.
+pub async fn delete_pending_attachment(chat_id: &str, attachment_id: &str) -> Result<(), String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("DELETE");
+    opts.set_mode(RequestMode::Cors);
+    let url = format!(
+        "{}/api/a018-llm-chat/{}/attachments/{}",
+        api_base(),
+        chat_id,
+        attachment_id
+    );
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let response: Response = value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(format!("HTTP {}", response.status()))
+    }
+}
+
+/// Load a protected attachment and expose it as a short-lived browser object URL.
+pub async fn fetch_attachment_object_url(
+    chat_id: &str,
+    attachment_id: &str,
+) -> Result<String, String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Blob, Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+    let url = format!(
+        "{}/api/a018-llm-chat/{}/attachments/{}",
+        api_base(),
+        chat_id,
+        attachment_id
+    );
+    let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| format!("{e:?}"))?;
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let response: Response = value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    let blob_value =
+        wasm_bindgen_futures::JsFuture::from(response.blob().map_err(|e| format!("{e:?}"))?)
+            .await
+            .map_err(|e| format!("{e:?}"))?;
+    let blob: Blob = blob_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    web_sys::Url::create_object_url_with_blob(&blob).map_err(|e| format!("{e:?}"))
 }

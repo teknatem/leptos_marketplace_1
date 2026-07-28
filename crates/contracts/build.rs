@@ -34,9 +34,7 @@ fn main() {
 
             let output_rs = path.join("metadata_gen.rs");
             match generate_metadata(&metadata_json, &output_rs) {
-                Ok(true) => {
-                    println!("cargo:warning=Generated: {}", output_rs.display());
-                }
+                Ok(true) => {}
                 Ok(false) => {
                     // Content unchanged — skip silently
                 }

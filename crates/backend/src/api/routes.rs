@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     extract::Request,
     middleware::{self, Next},
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 
@@ -90,7 +90,7 @@ pub fn configure_business_routes() -> Router {
         .merge(kb_read_routes())
         .merge(refs_routes())
         .merge(misc_routes())
-        // Plugins subsystem (admin-only)
+        // Plugins subsystem (use: auth-only, manage: admin-only)
         .merge(plugin_routes())
         // YM maintenance (admin-only)
         .merge(ym_maintenance_routes())
@@ -114,17 +114,36 @@ fn ym_maintenance_routes() -> Router {
 }
 
 // ============================================================================
-// Plugins subsystem — надстройка над платформой (admin-only)
+// Plugins subsystem — надстройка над платформой
+// (использование — auth-only, управление — admin-only)
 // ============================================================================
 
 fn plugin_routes() -> Router {
+    plugin_use_routes().merge(plugin_admin_routes())
+}
+
+/// Использование плагинов — доступно любому аутентифицированному пользователю
+/// (просмотр списка активных плагинов и их запуск).
+fn plugin_use_routes() -> Router {
+    use crate::system::auth::middleware::require_auth;
+
+    Router::new()
+        .route("/api/plugin", get(handlers::plugins::list))
+        .route("/api/plugin/:id", get(handlers::plugins::get_by_id))
+        .route("/api/plugin/:id/invoke", post(handlers::plugins::invoke))
+        .route("/api/plugin/:id/data", post(handlers::plugins::run_data))
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move { require_auth(req, next).await },
+        ))
+}
+
+/// Управление плагинами — только администратор (создание/редактирование,
+/// импорт/экспорт, публикация в S3, обновление с сервера, отладка, статистика).
+fn plugin_admin_routes() -> Router {
     use crate::system::auth::middleware::require_admin;
 
     Router::new()
-        .route(
-            "/api/plugin",
-            get(handlers::plugins::list).post(handlers::plugins::upsert),
-        )
+        .route("/api/plugin", post(handlers::plugins::upsert))
         .route("/api/plugin/all", get(handlers::plugins::list_all))
         .route("/api/plugin/validate", post(handlers::plugins::validate))
         .route(
@@ -147,22 +166,17 @@ fn plugin_routes() -> Router {
             "/api/plugin/migration-version",
             get(handlers::plugins::migration_version),
         )
-        .route(
-            "/api/plugin/:id",
-            get(handlers::plugins::get_by_id).delete(handlers::plugins::delete),
-        )
+        .route("/api/plugin/:id", delete(handlers::plugins::delete))
         .route(
             "/api/plugin/:id/rating",
             post(handlers::plugins::set_rating),
         )
         .route("/api/plugin/:id/export", get(handlers::plugins::export))
         .route("/api/plugin/:id/stats", get(handlers::plugins::stats))
-        .route("/api/plugin/:id/data", post(handlers::plugins::run_data))
         .route(
             "/api/plugin/:id/dev-invoke",
             post(handlers::plugins::dev_invoke),
         )
-        .route("/api/plugin/:id/invoke", post(handlers::plugins::invoke))
         .route(
             "/api/plugin/:id/publish",
             post(handlers::plugins::publish_to_s3),
@@ -883,7 +897,15 @@ fn a018_routes() -> Router {
         )
         .route(
             "/api/a018-llm-chat/:id/upload",
-            post(handlers::a018_llm_chat::upload_attachment),
+            post(handlers::a018_llm_chat::upload_attachment)
+                // Multipart framing adds a small overhead beyond the 10 MiB file limit
+                // enforced by the service.
+                .layer(axum::extract::DefaultBodyLimit::max(11 * 1024 * 1024)),
+        )
+        .route(
+            "/api/a018-llm-chat/:chat_id/attachments/:attachment_id",
+            get(handlers::a018_llm_chat::get_attachment)
+                .delete(handlers::a018_llm_chat::delete_pending_attachment),
         )
         .route(
             "/api/a018-llm-chat/:id/context",

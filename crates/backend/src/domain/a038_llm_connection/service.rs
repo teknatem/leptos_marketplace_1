@@ -19,6 +19,8 @@ pub struct LlmConnectionDto {
     pub available_models: Option<String>,
     /// Курируемый короткий список разрешённых моделей (JSON-массив model_id).
     pub allowed_models: Option<String>,
+    #[serde(default)]
+    pub image_input_models: Option<String>,
 }
 
 /// Создание нового подключения LLM
@@ -43,6 +45,7 @@ pub async fn create(dto: LlmConnectionDto) -> anyhow::Result<Uuid> {
         dto.is_primary,
         dto.available_models,
         dto.allowed_models,
+        dto.image_input_models,
     );
 
     aggregate
@@ -88,6 +91,7 @@ pub async fn update(dto: LlmConnectionDto) -> anyhow::Result<()> {
     aggregate.max_tokens = dto.max_tokens;
     aggregate.is_primary = dto.is_primary;
     aggregate.allowed_models = dto.allowed_models;
+    aggregate.image_input_models = dto.image_input_models;
     // available_models не обновляется через update, только через fetch_models endpoint
 
     aggregate

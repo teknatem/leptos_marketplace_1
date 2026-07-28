@@ -1,7 +1,7 @@
 ---
 id: marketing-analytics
 title: Маркетинг-аналитика
-description: Реклама, воронка продаж, поисковая аналитика и промо (WB): ДРР, CTR, конверсии, выкуп. Источники dv002/dv008, a026/a030/a040/a020.
+description: Реклама, поисковая аналитика и промо (WB): ДРР, CTR, CPC/CPO, видимость, промо. Источники dv002, a026/a030/a040/a020. Воронка продаж — навык marketplace-funnel-analysis.
 intents: [marketing_query]
 tools: [list_entities, get_join_hint, list_data_sources, query_data_schema, run_data_view_scalar, run_data_view_drilldown, execute_query]
 allowed_for: [marketer]
@@ -26,14 +26,16 @@ default_for: [marketer]
   `advertising_expenses`), источник `p911_wb_advert_by_items`. Дневная статистика
   кампаний (показы/клики/CTR/заказы с рекламы) → агрегаты `a026_wb_advert_daily`,
   кампании — `a030_wb_advert_campaign`.
-- **Воронка продаж WB** → DataView `dv008_wb_sales_funnel` (источник
-  `a036_wb_sales_funnel_daily`). Метрики: `open_count, cart_count, order_count,
-  order_sum, buyout_count, buyout_sum, cart_conv_pct, order_conv_pct, buyout_pct`.
-  Читай через `run_data_view_drilldown(view_id="dv008_wb_sales_funnel",
-  group_by="nm_id"|"date"|"connection_mp_ref", metric_ids=[...])`. Не разбирай
-  `lines_json` в сыром SQL — разбор уже внутри dv008.
-- **Поисковая аналитика / «Джем»** (показы, позиции, запросы по карточкам) →
-  `a040_wb_search_analytics_daily`.
+- **Воронка продаж WB** — не здесь. Полная сшитая воронка (показы→переходы→корзина→заказ→
+  выкуп, отмены/возвраты, канал paid/free, оси cohort/event) живёт в проекции `p916` и в
+  навыке **`marketplace-funnel-analysis`** — он авторитет по воронке. Если вопрос про этапы
+  воронки/конверсии/диагностику отклонений — активируй `use_skill("marketplace-funnel-analysis")`.
+  Узкий маркетинговый срез a036 доступен как DataView `dv008_wb_sales_funnel`
+  (`open_count, cart_count, order_count, order_sum, buyout_count, cart_conv_pct, order_conv_pct,
+  buyout_pct`) для быстрых сводок, но полноту воронки бери из p916 через профильный навык.
+- **Поисковая аналитика / «Джем»** (видимость `visibility` %, позиции, запросы по карточкам) →
+  `a040_wb_search_analytics_daily`. Счётчика показов WB здесь нет (`impressions`=0) — a040 НЕ
+  источник органических показов и не питает воронку.
 - **Промо/акции WB** → `a020_wb_promotion`.
 - **Продажи/выручку** для расчёта отдачи бери из `dv001_revenue` (не дублируй
   определение выручки в сыром SQL).

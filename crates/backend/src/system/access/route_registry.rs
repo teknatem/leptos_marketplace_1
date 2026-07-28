@@ -155,19 +155,19 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     RoutePolicy {
         method: "*",
         path: "/api/sys/s3/files",
-        scope_id: None,
+        scope_id: Some("sys_s3_files"),
         mode: PolicyMode::AdminOnly,
     },
     RoutePolicy {
         method: "GET",
         path: "/api/sys/s3/files/:id/download",
-        scope_id: None,
+        scope_id: Some("sys_s3_files"),
         mode: PolicyMode::AdminOnly,
     },
     RoutePolicy {
         method: "DELETE",
         path: "/api/sys/s3/files/:id",
-        scope_id: None,
+        scope_id: Some("sys_s3_files"),
         mode: PolicyMode::AdminOnly,
     },
     RoutePolicy {
@@ -1509,10 +1509,17 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         mode: PolicyMode::AuthOnly,
     },
     // ========================================================================
-    // Plugins subsystem — надстройка над платформой (admin-only)
+    // Plugins subsystem — надстройка над платформой
+    // (использование — auth-only, управление — admin-only)
     // ========================================================================
     RoutePolicy {
-        method: "*",
+        method: "GET",
+        path: "/api/plugin",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "POST",
         path: "/api/plugin",
         scope_id: None,
         mode: PolicyMode::AdminOnly,
@@ -1542,7 +1549,13 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         mode: PolicyMode::AdminOnly,
     },
     RoutePolicy {
-        method: "*",
+        method: "GET",
+        path: "/api/plugin/:id",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "DELETE",
         path: "/api/plugin/:id",
         scope_id: None,
         mode: PolicyMode::AdminOnly,
@@ -1575,7 +1588,7 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         method: "POST",
         path: "/api/plugin/:id/data",
         scope_id: None,
-        mode: PolicyMode::AdminOnly,
+        mode: PolicyMode::AuthOnly,
     },
     RoutePolicy {
         method: "POST",
@@ -1587,7 +1600,7 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         method: "POST",
         path: "/api/plugin/:id/invoke",
         scope_id: None,
-        mode: PolicyMode::AdminOnly,
+        mode: PolicyMode::AuthOnly,
     },
 ];
 

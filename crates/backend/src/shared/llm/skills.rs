@@ -1613,7 +1613,7 @@ mod tests {
             .join("marketplace-funnel-analysis");
         let skill = load_package_for_test(&root);
         assert_eq!(skill.id, "marketplace-funnel-analysis");
-        assert_eq!(skill.tasks.len(), 4);
+        assert_eq!(skill.tasks.len(), 5);
         assert!(skill.tasks.iter().all(|task| task.input_schema.is_some()));
         assert!(skill
             .resources

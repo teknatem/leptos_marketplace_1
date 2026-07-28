@@ -38,6 +38,7 @@ pub struct LlmConnectionDetailsVm {
     /// Курируемый короткий список разрешённых моделей (id). Именно из него
     /// можно выбирать модель в чате. Подмножество available_models.
     pub allowed_models: RwSignal<Vec<String>>,
+    pub image_input_models: RwSignal<Vec<String>>,
 
     /// Мини-фильтр таблицы моделей (подстрока по id/name).
     pub model_filter: RwSignal<String>,
@@ -91,6 +92,7 @@ impl LlmConnectionDetailsVm {
             temperature: RwSignal::new("0.7".to_string()),
             max_tokens: RwSignal::new("4096".to_string()),
             allowed_models: RwSignal::new(Vec::new()),
+            image_input_models: RwSignal::new(Vec::new()),
             model_filter: RwSignal::new(String::new()),
             provider_filter: RwSignal::new(String::new()),
             model_sort: RwSignal::new((ModelSortCol::Id, true)),
@@ -228,6 +230,28 @@ impl LlmConnectionDetailsVm {
         if removed && self.model_name.get_untracked() == model_id {
             self.model_name.set(String::new());
         }
+        if removed {
+            self.image_input_models
+                .update(|list| list.retain(|item| item != model_id));
+        }
+    }
+
+    pub fn toggle_image_input(&self, model_id: &str) {
+        if !self
+            .allowed_models
+            .get_untracked()
+            .iter()
+            .any(|item| item == model_id)
+        {
+            return;
+        }
+        self.image_input_models.update(|list| {
+            if let Some(pos) = list.iter().position(|item| item == model_id) {
+                list.remove(pos);
+            } else {
+                list.push(model_id.to_string());
+            }
+        });
     }
 
     /// Отметить модель основной (по умолчанию). Гарантирует, что она входит в
@@ -265,6 +289,12 @@ impl LlmConnectionDetailsVm {
         } else {
             serde_json::to_string(&allowed).ok()
         };
+        let image_models = self.image_input_models.get();
+        let image_models_json = if image_models.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&image_models).ok()
+        };
         serde_json::json!({
             "id": id,
             "code": self.code.get(),
@@ -278,6 +308,7 @@ impl LlmConnectionDetailsVm {
             "max_tokens": self.get_max_tokens(),
             "is_primary": self.is_primary.get(),
             "allowed_models": allowed_json,
+            "image_input_models": image_models_json,
         })
     }
 }

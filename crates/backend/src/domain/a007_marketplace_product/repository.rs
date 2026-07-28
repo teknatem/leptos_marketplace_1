@@ -178,6 +178,21 @@ pub async fn get_by_connection_and_sku(
     Ok(result.map(Into::into))
 }
 
+/// Загружает справочник товаров одного кабинета одним запросом.
+/// Используется массовыми импортами, чтобы не выполнять N+1 запрос по каждому nmID.
+pub async fn list_by_connection(
+    connection_mp_ref: &str,
+) -> anyhow::Result<Vec<MarketplaceProduct>> {
+    Ok(Entity::find()
+        .filter(Column::ConnectionMpRef.eq(connection_mp_ref))
+        .filter(Column::IsDeleted.eq(false))
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(Into::into)
+        .collect())
+}
+
 pub async fn list_by_connection_and_article(
     connection_mp_ref: &str,
     article: &str,

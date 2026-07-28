@@ -37,13 +37,23 @@ default_for: [business_analyst, general]
 произвольный разрез одной таблицы → схема/SQL; остальное → сырой SQL. Если одна таблица доступна и как
 схема, и как DataView (напр. `p904`: ds03 гибкий, dv001 курируемый) — для официальных цифр бери DataView.
 
-Воронка продаж WB (просмотры/корзина/заказы/выкуп и конверсии между ними, `a036_wb_sales_funnel_daily`) —
-это `dv008_wb_sales_funnel`. Если пользователь прикрепил страницу плагина «Воронка продаж WB» или просит
-анализ/рекомендации по воронке — читай через `run_data_view_drilldown(view_id="dv008_wb_sales_funnel",
-group_by="nm_id"|"date"|"connection_mp_ref", metric_ids=[...])` (можно сразу несколько метрик — так
-получаешь всю таблицу воронки за один вызов) или `run_data_view_scalar` для сводной цифры. Метрики:
-`open_count, cart_count, order_count, order_sum, buyout_count, buyout_sum, cart_conv_pct, order_conv_pct,
-buyout_pct`. Не переизобретай json_each по `lines_json` в сыром SQL — этот разбор уже в dv008.
+Воронка продаж WB (показы/переходы/корзина/заказы/выкуп, конверсии, отмены/возвраты, разрезы по товарам
+и кампаниям) — авторитет **не этот навык, а `marketplace-funnel-analysis`**. Для ЛЮБОГО WB-вопроса про
+воронку, процент выкупа, отмены/возвраты или топ товаров по кабинету активируй
+`use_skill("marketplace-funnel-analysis")`: он заземлён на `p916` с корректной когортной осью, каналами
+paid/free и защитой от типичных ошибок (`funnel_order_count` ≠ `order_count`; заниженный `order→buyout`
+в незавершённом месяце из-за лага доставки). Не считай WB-воронку через сырой SQL/DataView здесь.
+
+Если всё же читаешь напрямую DataView `dv008_wb_sales_funnel` (напр. страница плагина «Воронка продаж WB»
+уже прикреплена и нужен именно её показатель):
+- **всегда** передавай `connection_mp_refs=[<uuid кабинета>]` — без фильтра DataView суммирует ВСЕ
+  WB-кабинеты (частая ошибка: товары чужого кабинета попадают в топ);
+- `order_count`/`buyout_count`/`buyout_pct` в dv008 — фактические (a015/a012), это не маркетинговый
+  счётчик воронки (`funnel_order_count`);
+- вызов: `run_data_view_drilldown(view_id="dv008_wb_sales_funnel", group_by="nm_id"|"date"|
+  "connection_mp_ref", metric_ids=[...], connection_mp_refs=[...])` или `run_data_view_scalar` для сводной
+  цифры. Метрики: `open_count, cart_count, order_count, order_sum, buyout_count, buyout_sum, cart_conv_pct,
+  order_conv_pct, buyout_pct`. Не переизобретай json_each по `lines_json` — разбор уже в dv008.
 
 ### Правила работы с SQL
 

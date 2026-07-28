@@ -209,10 +209,14 @@ mod tests {
     }
 }
 
+/// Плагины, доступные для использования обычным пользователям и в меню:
+/// включённые И со статусом `active` (только такие реально запускаются — см.
+/// гейт в `service::invoke`).
 pub async fn list_enabled(db: &DatabaseConnection) -> Result<Vec<PluginDefinition>, DbErr> {
     let models = plugin::Entity::find()
         .filter(plugin::Column::IsDeleted.eq(false))
         .filter(plugin::Column::IsEnabled.eq(true))
+        .filter(plugin::Column::Status.eq(PluginStatus::Active.as_str()))
         .order_by_asc(plugin::Column::Title)
         .all(db)
         .await?;

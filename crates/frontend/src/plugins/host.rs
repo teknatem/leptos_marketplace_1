@@ -14,10 +14,12 @@ use crate::layout::global_context::AppGlobalContext;
 use crate::plugins::api;
 use crate::plugins::editor::CodeEditor;
 use crate::plugins::frame::PluginFrame;
+use crate::shared::change_tokens::ChangeTokenContext;
+use crate::shared::date_utils::{format_space_naive_utc_local, format_utc_local};
 use crate::shared::modal_frame::ModalFrame;
 use contracts::plugins::{
     PluginDefinition, PluginInvokeRequest, PluginPublishResult, PluginRunContext, PluginStats,
-    PluginUpsert, PluginValidateReport,
+    PluginStatus, PluginUpsert, PluginValidateReport,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -37,6 +39,8 @@ struct ServerMethodExample {
 #[component]
 pub fn PluginHost(plugin_id: String) -> impl IntoView {
     let ctx = use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
+    let change_tokens =
+        use_context::<ChangeTokenContext>().expect("ChangeTokenContext not found");
     let (def, set_def) = signal(None::<PluginDefinition>);
     let (loading, set_loading) = signal(true);
     let (error, set_error) = signal(None::<String>);
@@ -48,6 +52,8 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
     let sql_name_input = RwSignal::new(String::new());
     let sql_src = RwSignal::new(String::new());
     let (version, set_version) = signal(1i32);
+    // Редактируемый статус плагина (draft/active/disabled) — только на dev-странице (админ).
+    let status = RwSignal::new("draft".to_string());
     let (saving, set_saving) = signal(false);
     let (save_msg, set_save_msg) = signal(None::<String>);
     let selected_tab = RwSignal::new("app".to_string());
@@ -108,6 +114,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     sql_name_input.set(first_name.unwrap_or_default());
                     sql_src.set(first_sql);
                     set_version.set(plugin.version);
+                    status.set(plugin.status.as_str().to_string());
                     set_def.set(Some(plugin));
                 }
                 Err(message) => set_error.set(Some(message)),
@@ -140,10 +147,12 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                 return;
             };
             let saved_bundle = bundle.clone();
+            // Статус берём из редактируемого селектора (а не из текущего определения).
+            let selected_status = status.get_untracked();
             let dto = PluginUpsert {
                 id: Some(id.clone()),
                 bundle,
-                status: Some(current.status.as_str().to_string()),
+                status: Some(selected_status.clone()),
                 is_enabled: Some(current.is_enabled),
                 owner_user_id: None,
                 created_by_agent_id: None,
@@ -162,6 +171,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                             if let Some(plugin) = value {
                                 plugin.bundle = saved_bundle;
                                 plugin.version += 1;
+                                plugin.status = PluginStatus::from_str(&selected_status);
                                 preview_restart.update(|value| *value += 1);
                             }
                         });
@@ -403,10 +413,23 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     <h2 class="plugin-host__title">
                         {move || def.get().map(|plugin| plugin.bundle.manifest.title).unwrap_or_default()}
                     </h2>
-                    <span class="plugin-host__chip">"Разработка"</span>
+                    <span class="badge badge--primary">"Разработка"</span>
                     <span class="plugin-host__code">
                         {move || def.get().map(|plugin| plugin.bundle.manifest.code).unwrap_or_default()}
                     </span>
+                    // Статус плагина — применяется при сохранении (только на dev-странице).
+                    <label class="plugin-host__status" title="Статус плагина (применяется при сохранении)">
+                        "Статус: "
+                        <select
+                            class="plugin-host__status-select"
+                            prop:value=move || status.get()
+                            on:change=move |ev| status.set(event_target_value(&ev))
+                        >
+                            <option value="draft">"Черновик"</option>
+                            <option value="active">"Активен"</option>
+                            <option value="disabled">"Отключён"</option>
+                        </select>
+                    </label>
                     <button
                         class="plugin-host__run plugin-host__run--server plugin-host__export"
                         on:click=open_view
@@ -429,6 +452,20 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                 {move || def.get()
                     .and_then(|plugin| plugin.bundle.manifest.description)
                     .map(|description| view! { <p class="plugin-host__desc">{description}</p> })}
+                {move || def.get().map(|plugin| {
+                    let s3 = match plugin.s3_published_version {
+                        Some(v) if plugin.s3_published_version == Some(plugin.version) => {
+                            format!("в S3 v{v} (актуально)")
+                        }
+                        Some(v) => format!("в S3 v{v} (есть несохранённые/неопубликованные правки)"),
+                        None => "в S3 не публиковался".to_string(),
+                    };
+                    view! {
+                        <p class="plugin-host__desc text-muted" style="font-size: 12px;">
+                            {format!("Версия: локально v{} · {s3}", plugin.version)}
+                        </p>
+                    }
+                })}
                 {move || {
                     let built_for = def.get()
                         .and_then(|plugin| plugin.bundle.manifest.built_for_migration)
@@ -449,6 +486,8 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                 plugin_id=plugin_id.clone()
                 show=show_publish_dialog
                 def=def
+                set_def=set_def
+                plugins_token=change_tokens.plugins
             />
 
             <div class="plugin-host__tabs">
@@ -625,7 +664,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                             <div class="plugin-host__stats-grid">
                                 <div class="plugin-host__stat">
                                     <span class="plugin-host__runner-key">"Здоровье"</span>
-                                    <span class=format!("plugins-health plugins-health--{modifier}")>{label}</span>
+                                    <span class=format!("badge badge--{modifier}")>{label}</span>
                                 </div>
                                 <div class="plugin-host__stat">
                                     <span class="plugin-host__runner-key">"Запусков (7д)"</span>{s.total}
@@ -669,7 +708,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                                         <tbody>
                                             {recent.into_iter().map(|r| view! {
                                                 <tr>
-                                                    <td>{r.started_at}</td>
+                                                    <td>{format_space_naive_utc_local(&r.started_at, "%Y-%m-%d %H:%M:%S")}</td>
                                                     <td>{r.method}</td>
                                                     <td>{r.status}</td>
                                                     <td class="plugin-host__num">{r.duration_ms}</td>
@@ -797,10 +836,21 @@ fn PluginPublishDialog(
     plugin_id: String,
     show: RwSignal<bool>,
     def: ReadSignal<Option<PluginDefinition>>,
+    set_def: WriteSignal<Option<PluginDefinition>>,
+    /// Frontend change-token плагинов — бампим после публикации, чтобы список
+    /// (вкладка `plugins`, колонка «На сервере») перечитался сам.
+    plugins_token: RwSignal<u64>,
 ) -> impl IntoView {
     let plugin_id = StoredValue::new(plugin_id);
     let (publishing, set_publishing) = signal(false);
     let (result, set_result) = signal(None::<Result<PluginPublishResult, String>>);
+
+    // Текущая сохранённая версия уже опубликована в S3 → публиковать нечего.
+    let already_published = Signal::derive(move || {
+        def.get()
+            .map(|p| p.s3_published_version == Some(p.version))
+            .unwrap_or(false)
+    });
 
     let close = Callback::new(move |_: ()| {
         set_result.set(None);
@@ -814,6 +864,20 @@ fn PluginPublishDialog(
         set_result.set(None);
         spawn_local(async move {
             let outcome = api::publish(&id).await;
+            if let Ok(published) = &outcome {
+                // Отражаем факт публикации в локальном состоянии, иначе строка
+                // «Ранее опубликовано…» и кнопка остаются устаревшими — диалог
+                // повторно предлагает опубликовать уже опубликованную версию.
+                let published = published.clone();
+                set_def.update(|value| {
+                    if let Some(plugin) = value {
+                        plugin.s3_published_version = Some(published.version);
+                        plugin.s3_published_at = Some(published.uploaded_at);
+                    }
+                });
+                // Пусть открытая вкладка списка плагинов подхватит новую версию S3.
+                plugins_token.update(|v| *v += 1);
+            }
             set_result.set(Some(outcome));
             set_publishing.set(false);
         });
@@ -830,7 +894,7 @@ fn PluginPublishDialog(
                     {move || def.get().map(|plugin| {
                         let previous = match (plugin.s3_published_version, plugin.s3_published_at) {
                             (Some(v), Some(at)) => {
-                                format!("Ранее опубликовано: v{v} от {}", at.format("%Y-%m-%d %H:%M"))
+                                format!("Ранее опубликовано: v{v} от {}", format_utc_local(&at, "%Y-%m-%d %H:%M"))
                             }
                             _ => "Ещё не публиковался в S3".to_string(),
                         };
@@ -848,10 +912,16 @@ fn PluginPublishDialog(
                         }
                     })}
 
+                    {move || already_published.get().then(|| view! {
+                        <div class="text-muted" style="font-size: 13px;">
+                            "Текущая версия уже опубликована в S3. Сохраните изменения, чтобы опубликовать новую версию."
+                        </div>
+                    })}
+
                     {move || result.get().map(|outcome| match outcome {
                         Ok(published) => view! {
                             <div class="plugins-alert plugins-alert--info">
-                                {format!("Опубликовано: v{} от {}", published.version, published.uploaded_at.format("%Y-%m-%d %H:%M"))}
+                                {format!("Опубликовано: v{} от {}", published.version, format_utc_local(&published.uploaded_at, "%Y-%m-%d %H:%M"))}
                             </div>
                         }.into_any(),
                         Err(err) => view! { <div class="plugins-alert plugins-alert--error">{err}</div> }.into_any(),
@@ -862,7 +932,11 @@ fn PluginPublishDialog(
                     <button class="button button--secondary" on:click=move |_| close.run(()) disabled=publishing>
                         "Закрыть"
                     </button>
-                    <button class="button button--primary" on:click=publish disabled=publishing>
+                    <button
+                        class="button button--primary"
+                        on:click=publish
+                        disabled=move || publishing.get() || already_published.get()
+                    >
                         {move || if publishing.get() { "Публикация…" } else { "Опубликовать" }}
                     </button>
                 </div>

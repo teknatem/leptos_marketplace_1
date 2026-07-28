@@ -61,6 +61,9 @@ pub struct ChatMessage {
     pub role: ChatRole,
     /// Текстовое содержимое (None для assistant-сообщений с tool_calls)
     pub content: Option<String>,
+    /// Private image inputs encoded as data URLs. Used only for user messages.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub image_urls: Vec<String>,
     /// Вызовы инструментов (только для Assistant)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
@@ -74,6 +77,7 @@ impl ChatMessage {
         Self {
             role: ChatRole::System,
             content: Some(content.into()),
+            image_urls: Vec::new(),
             tool_calls: None,
             tool_call_id: None,
         }
@@ -83,6 +87,7 @@ impl ChatMessage {
         Self {
             role: ChatRole::User,
             content: Some(content.into()),
+            image_urls: Vec::new(),
             tool_calls: None,
             tool_call_id: None,
         }
@@ -92,6 +97,7 @@ impl ChatMessage {
         Self {
             role: ChatRole::Assistant,
             content: Some(content.into()),
+            image_urls: Vec::new(),
             tool_calls: None,
             tool_call_id: None,
         }
@@ -102,6 +108,7 @@ impl ChatMessage {
         Self {
             role: ChatRole::Assistant,
             content: None,
+            image_urls: Vec::new(),
             tool_calls: Some(tool_calls),
             tool_call_id: None,
         }
@@ -112,6 +119,7 @@ impl ChatMessage {
         Self {
             role: ChatRole::Tool,
             content: Some(content.into()),
+            image_urls: Vec::new(),
             tool_calls: None,
             tool_call_id: Some(tool_call_id.into()),
         }

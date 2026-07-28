@@ -69,7 +69,7 @@
   /* extra bottom padding lifts the optically bottom-heavy stack up to the
      circle's optical centre (the counterpart of the old ring offset) */
   padding-bottom: calc(var(--login-ring-offset-y) * 2);
-  border: 1px solid var(--login-ring-border);
+  /*border: 1px solid var(--login-ring-border);*/
   border-radius: 50%;
   background: radial-gradient(circle at 50% 48%, var(--login-ring-fill) 0%, transparent 68%);
   box-shadow:
@@ -119,6 +119,7 @@
   /* Matches the button gap below the fields (~40px) so the field pair is framed
      symmetrically top and bottom. */
   margin-bottom: var(--spacing-2xl);
+  margin-top: 20px;
 }
 
 .login__logo {
@@ -194,6 +195,7 @@
 /* Compact button, sized to roughly match the "Integrator" title word */
 .login__button {
   width: var(--login-button-width);
+  margin-top: 40px;
 }
 
 .login__footer {

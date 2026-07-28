@@ -29,6 +29,7 @@ pub struct Model {
     pub is_primary: bool,
     pub available_models: Option<String>,
     pub allowed_models: Option<String>,
+    pub image_input_models: Option<String>,
     pub is_deleted: bool,
     pub is_posted: bool,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -71,6 +72,7 @@ impl From<Model> for LlmConnection {
             is_primary: m.is_primary,
             available_models: m.available_models,
             allowed_models: m.allowed_models,
+            image_input_models: m.image_input_models,
         }
     }
 }
@@ -195,6 +197,7 @@ pub async fn insert(item: &LlmConnection) -> anyhow::Result<()> {
         is_primary: Set(item.is_primary),
         available_models: Set(item.available_models.clone()),
         allowed_models: Set(item.allowed_models.clone()),
+        image_input_models: Set(item.image_input_models.clone()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(now)),
@@ -222,6 +225,7 @@ pub async fn update(item: &LlmConnection) -> anyhow::Result<()> {
         is_primary: Set(item.is_primary),
         available_models: Set(item.available_models.clone()),
         allowed_models: Set(item.allowed_models.clone()),
+        image_input_models: Set(item.image_input_models.clone()),
         is_deleted: Set(false),
         is_posted: Set(false),
         created_at: Set(Some(item.base.metadata.created_at)),

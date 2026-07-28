@@ -7,16 +7,22 @@ use crate::domain::a017_llm_agent::repository as employee_repository;
 use crate::domain::a038_llm_connection::repository as connection_repository;
 use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole};
 use crate::shared::llm::{create_provider, execute_tool_call};
+use crate::system::s3::service::{self as s3_service, UploadedFile};
 use axum::extract::Multipart;
+use base64::Engine;
+use bytes::Bytes;
 use contracts::domain::a017_llm_agent::aggregate::LlmAgentId;
 use contracts::domain::a018_llm_chat::aggregate::{
-    ChatRole, LlmChat, LlmChatAttachment, LlmChatDetail, LlmChatId, LlmChatListItem, LlmChatMessage,
+    ChatRole, LlmChat, LlmChatAttachment, LlmChatAttachmentSummary, LlmChatDetail, LlmChatId,
+    LlmChatListItem, LlmChatMessage,
 };
 use contracts::domain::a018_llm_chat::context::ContextPackageSummary;
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
 use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
 use contracts::domain::common::AggregateId;
+use contracts::system::s3::S3FileCategory;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -35,7 +41,10 @@ fn utf8_truncate(s: &str, max_bytes: usize) -> &str {
 /// Максимальное число итераций tool calling в одном запросе.
 /// При исчерпании лимит обрабатывается мягко: делается финальный запрос без
 /// инструментов, чтобы модель подытожила проделанную работу (см. ниже).
-const MAX_TOOL_ITERATIONS: usize = 10;
+// Аналитические навыки нередко требуют: активация → resource → schema → несколько SQL →
+// детерминированный task → итог. Десять итераций обрывали WB-воронку сразу после последнего
+// успешного SQL, не оставляя модели хода для текстового ответа.
+const MAX_TOOL_ITERATIONS: usize = 14;
 const MAX_TOOL_FAILURES: usize = 6;
 
 /// Системные промпты вынесены в реестр навыков (см. shared/llm/skills.rs):
@@ -374,9 +383,33 @@ pub async fn get_messages(chat_id: &str) -> anyhow::Result<Vec<LlmChatMessage>> 
     let chat_id_obj = LlmChatId::new(chat_uuid);
 
     let db = crate::shared::data::db::get_connection();
-    let messages = repository::find_messages_by_chat_id(&db, &chat_id_obj).await?;
+    let mut messages = repository::find_messages_by_chat_id(&db, &chat_id_obj).await?;
+    for message in &mut messages {
+        message.attachments = repository::find_attachments_by_message_id(&db, &message.id)
+            .await?
+            .iter()
+            .map(LlmChatAttachmentSummary::from)
+            .collect();
+    }
 
     Ok(messages)
+}
+
+pub async fn ensure_chat_access(
+    chat_id: &str,
+    user_id: &str,
+    is_admin: bool,
+) -> anyhow::Result<LlmChat> {
+    let id = LlmChatId::new(Uuid::parse_str(chat_id)?);
+    let db = crate::shared::data::db::get_connection();
+    let chat = repository::find_by_id(&db, &id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Chat not found"))?;
+    if is_admin || chat.owner_user_id.as_deref() == Some(user_id) || chat.is_shared {
+        Ok(chat)
+    } else {
+        anyhow::bail!("Forbidden")
+    }
 }
 
 /// Полный журнал вызовов инструментов для сообщения ассистента (sys_tool_trace).
@@ -573,6 +606,7 @@ pub async fn send_message(
 
     // 3. Обработать вложения если есть
     let mut content_with_attachments = request.content.clone();
+    let mut has_image_attachment = false;
 
     if !request.attachment_ids.is_empty() {
         let mut attachment_contents = Vec::new();
@@ -583,8 +617,18 @@ pub async fn send_message(
 
             // Найти вложение по его id (а не сканировать все nil-вложения глобально)
             if let Some(attachment) = repository::find_attachment_by_id(&db, &att_uuid).await? {
+                if attachment.chat_id != chat_id_obj {
+                    anyhow::bail!("Attachment does not belong to this chat");
+                }
+                if attachment.message_id.is_some() {
+                    anyhow::bail!("Attachment has already been sent");
+                }
+                if is_image_content_type(&attachment.content_type) {
+                    has_image_attachment = true;
+                    continue;
+                }
                 // Прочитать содержимое файла
-                match read_text_file(&attachment.filepath).await {
+                match read_attachment_text(&attachment).await {
                     Ok(file_content) => {
                         attachment_contents
                             .push(format!("--- {} ---\n{}", attachment.filename, file_content));
@@ -593,6 +637,8 @@ pub async fn send_message(
                         tracing::warn!("Failed to read attachment {}: {}", attachment.filename, e);
                     }
                 }
+            } else {
+                anyhow::bail!("Attachment not found");
             }
         }
 
@@ -600,6 +646,13 @@ pub async fn send_message(
             content_with_attachments.push_str("\n\nПрикрепленные файлы:\n");
             content_with_attachments.push_str(&attachment_contents.join("\n\n"));
         }
+    }
+
+    if has_image_attachment && !effective.connection.supports_image_input(&model_to_use) {
+        anyhow::bail!(
+            "Модель '{}' не отмечена как поддерживающая изображения. Выберите vision-модель.",
+            model_to_use
+        );
     }
 
     // 4. Сохранить сообщение пользователя
@@ -728,9 +781,13 @@ pub async fn send_message(
     // Дописать содержимое вложений к user-сообщениям истории. В БД content хранит
     // только оригинальный ввод пользователя, поэтому текст файлов дочитывается с диска
     // при каждой сборке контекста — иначе модель теряла файлы на follow-up ходах.
+    let mut image_inputs: HashMap<Uuid, Vec<String>> = HashMap::new();
     for msg in history.iter_mut() {
         if msg.role == ChatRole::User {
-            append_attachments_text(&db, msg).await;
+            let images = append_attachments_to_context(&db, msg).await;
+            if !images.is_empty() {
+                image_inputs.insert(msg.id, images);
+            }
         }
     }
 
@@ -868,6 +925,7 @@ pub async fn send_message(
                 ChatRole::Assistant => LlmChatRole::Assistant,
             },
             content: Some(content),
+            image_urls: image_inputs.get(&msg.id).cloned().unwrap_or_default(),
             tool_calls: None,
             tool_call_id: None,
         };
@@ -1508,6 +1566,7 @@ pub async fn list_chat_context(chat_id: &str) -> anyhow::Result<Vec<ContextPacka
 pub async fn upload_attachment(
     chat_id: &str,
     multipart: &mut Multipart,
+    uploaded_by_user_id: Option<String>,
 ) -> anyhow::Result<LlmChatAttachment> {
     // Проверить что чат существует
     let chat_uuid =
@@ -1528,10 +1587,11 @@ pub async fn upload_attachment(
 
     let filename = field
         .file_name()
-        .ok_or_else(|| anyhow::anyhow!("No filename in multipart"))?
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("screenshot")
         .to_string();
 
-    let content_type = field
+    let declared_content_type = field
         .content_type()
         .unwrap_or("application/octet-stream")
         .to_string();
@@ -1542,53 +1602,150 @@ pub async fn upload_attachment(
         .map_err(|e| anyhow::anyhow!("Failed to read file bytes: {}", e))?;
 
     let file_size = data.len() as i64;
+    const MAX_UPLOAD_BYTES: usize = 10 * 1024 * 1024;
+    if data.len() > MAX_UPLOAD_BYTES {
+        anyhow::bail!("Attachment exceeds 10 MiB");
+    }
+    let content_type = normalize_image_content_type(&data)
+        .map(str::to_string)
+        .unwrap_or(declared_content_type);
+    if content_type.starts_with("image/") && !is_image_content_type(&content_type) {
+        anyhow::bail!("Only PNG, JPEG and WebP images are supported");
+    }
+    if is_image_content_type(&content_type) && normalize_image_content_type(&data).is_none() {
+        anyhow::bail!("Image contents do not match a supported image format");
+    }
 
-    // Создать директорию для вложений если не существует
-    let upload_dir = PathBuf::from("uploads")
-        .join("chat_attachments")
-        .join(chat_id);
-    tokio::fs::create_dir_all(&upload_dir)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to create upload directory: {}", e))?;
-
-    // Сохранить файл с уникальным именем
-    let file_id = Uuid::new_v4();
-    let file_ext = std::path::Path::new(&filename)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-    let stored_filename = if file_ext.is_empty() {
-        format!("{}", file_id)
+    // Изображения сразу становятся приватными S3-объектами. Текстовые вложения
+    // пока сохраняют прежнее локальное хранение.
+    let (filepath, s3_file_id) = if is_image_content_type(&content_type) {
+        let uploaded = s3_service::upload(
+            S3FileCategory::LlmChatImages,
+            UploadedFile {
+                filename: filename.clone(),
+                content_type: Some(content_type.clone()),
+                bytes: data.clone(),
+            },
+            uploaded_by_user_id,
+        )
+        .await?;
+        (String::new(), Some(uploaded.id))
     } else {
-        format!("{}.{}", file_id, file_ext)
-    };
+        let upload_dir = PathBuf::from("uploads")
+            .join("chat_attachments")
+            .join(chat_id);
+        tokio::fs::create_dir_all(&upload_dir)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create upload directory: {}", e))?;
 
-    let filepath = upload_dir.join(&stored_filename);
-    tokio::fs::write(&filepath, &data)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to write file: {}", e))?;
+        let file_id = Uuid::new_v4();
+        let file_ext = std::path::Path::new(&filename)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let stored_filename = if file_ext.is_empty() {
+            file_id.to_string()
+        } else {
+            format!("{}.{}", file_id, file_ext)
+        };
+        let filepath = upload_dir.join(&stored_filename);
+        tokio::fs::write(&filepath, &data)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write file: {}", e))?;
+        (filepath.to_string_lossy().to_string(), None)
+    };
 
     // Создать запись о вложении (без привязки к сообщению пока)
     let attachment = LlmChatAttachment::new(
-        Uuid::nil(), // Пока без message_id, привяжем при отправке сообщения
+        chat_id_obj,
+        None, // Привяжем к сообщению только при его отправке
         filename,
-        filepath.to_string_lossy().to_string(),
+        filepath,
+        s3_file_id.clone(),
         content_type,
         file_size,
     );
 
-    // Сохранить временную запись (с nil UUID для message_id)
+    // Сохранить временную запись (message_id = NULL)
     // Позже при отправке сообщения обновим message_id
-    repository::insert_attachment(&db, &attachment).await?;
+    if let Err(error) = repository::insert_attachment(&db, &attachment).await {
+        if let Some(s3_file_id) = s3_file_id {
+            let _ = s3_service::delete(&s3_file_id).await;
+        }
+        return Err(error.into());
+    }
 
     Ok(attachment)
 }
 
+pub async fn get_attachment(
+    chat_id: &str,
+    attachment_id: &str,
+) -> anyhow::Result<LlmChatAttachment> {
+    let chat_id = LlmChatId::new(Uuid::parse_str(chat_id)?);
+    let attachment_id = Uuid::parse_str(attachment_id)?;
+    let db = crate::shared::data::db::get_connection();
+    let attachment = repository::find_attachment_by_id(&db, &attachment_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Attachment not found"))?;
+    if attachment.chat_id != chat_id {
+        anyhow::bail!("Attachment does not belong to this chat");
+    }
+    Ok(attachment)
+}
+
+pub async fn delete_pending_attachment(chat_id: &str, attachment_id: &str) -> anyhow::Result<()> {
+    let attachment = get_attachment(chat_id, attachment_id).await?;
+    if attachment.message_id.is_some() {
+        anyhow::bail!("Sent attachments cannot be deleted");
+    }
+    if let Some(s3_file_id) = attachment.s3_file_id.as_deref() {
+        s3_service::delete(s3_file_id).await?;
+    } else {
+        match tokio::fs::remove_file(&attachment.filepath).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let db = crate::shared::data::db::get_connection();
+    repository::delete_attachment_by_id(&db, &attachment.id).await?;
+    Ok(())
+}
+
+fn is_image_content_type(content_type: &str) -> bool {
+    matches!(content_type, "image/png" | "image/jpeg" | "image/webp")
+}
+
+fn normalize_image_content_type(data: &[u8]) -> Option<&'static str> {
+    if data.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if data.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if data.len() >= 12 && &data[..4] == b"RIFF" && &data[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
 /// Загрузить содержимое текстового файла
-async fn read_text_file(filepath: &str) -> anyhow::Result<String> {
-    tokio::fs::read_to_string(filepath)
+pub async fn load_attachment_bytes(attachment: &LlmChatAttachment) -> anyhow::Result<Bytes> {
+    if let Some(s3_file_id) = attachment.s3_file_id.as_deref() {
+        let download = s3_service::download(s3_file_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("S3 object not found"))?;
+        return Ok(download.bytes);
+    }
+    tokio::fs::read(&attachment.filepath)
         .await
+        .map(Bytes::from)
         .map_err(|e| anyhow::anyhow!("Failed to read file: {}", e))
+}
+
+async fn read_attachment_text(attachment: &LlmChatAttachment) -> anyhow::Result<String> {
+    String::from_utf8(load_attachment_bytes(attachment).await?.to_vec())
+        .map_err(|e| anyhow::anyhow!("Attachment is not valid UTF-8: {}", e))
 }
 
 /// Потолок на текст одного вложения в контексте LLM — чтобы один большой файл
@@ -1596,20 +1753,34 @@ async fn read_text_file(filepath: &str) -> anyhow::Result<String> {
 const MAX_ATTACHMENT_FILE_BYTES: usize = 64_000;
 
 /// Дописать к тексту сообщения содержимое его вложений (для контекста LLM).
-async fn append_attachments_text(db: &sea_orm::DatabaseConnection, msg: &mut LlmChatMessage) {
+async fn append_attachments_to_context(
+    db: &sea_orm::DatabaseConnection,
+    msg: &mut LlmChatMessage,
+) -> Vec<String> {
     let atts = match repository::find_attachments_by_message_id(db, &msg.id).await {
         Ok(atts) => atts,
         Err(e) => {
             tracing::warn!("Failed to load attachments for message {}: {}", msg.id, e);
-            return;
+            return Vec::new();
         }
     };
     if atts.is_empty() {
-        return;
+        return Vec::new();
     }
     let mut parts = Vec::new();
+    let mut images = Vec::new();
     for att in &atts {
-        match read_text_file(&att.filepath).await {
+        if is_image_content_type(&att.content_type) {
+            match load_attachment_bytes(att).await {
+                Ok(bytes) => {
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+                    images.push(format!("data:{};base64,{}", att.content_type, encoded));
+                }
+                Err(e) => tracing::warn!("Failed to read image {}: {}", att.filename, e),
+            }
+            continue;
+        }
+        match read_attachment_text(att).await {
             Ok(content) => {
                 let truncated = utf8_truncate(&content, MAX_ATTACHMENT_FILE_BYTES);
                 let suffix = if truncated.len() < content.len() {
@@ -1628,6 +1799,7 @@ async fn append_attachments_text(db: &sea_orm::DatabaseConnection, msg: &mut Llm
         msg.content.push_str("\n\nПрикрепленные файлы:\n");
         msg.content.push_str(&parts.join("\n\n"));
     }
+    images
 }
 
 #[cfg(test)]

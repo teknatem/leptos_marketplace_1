@@ -1,10 +1,11 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, Mutex};
+use uuid::Uuid;
 
 use super::progress_tracker::ProgressTracker;
 use crate::shared::marketplaces::wildberries::datetime::{
@@ -3963,8 +3964,159 @@ impl WildberriesApiClient {
         Ok(items)
     }
 
+    /// Создаёт асинхронный CSV-отчёт WB `DETAIL_HISTORY_REPORT`.
+    pub async fn create_sales_funnel_detail_report(
+        &self,
+        connection: &ConnectionMP,
+        download_id: Uuid,
+        date_from: &str,
+        date_to: &str,
+    ) -> Result<()> {
+        let url = "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/downloads";
+        let request_body = serde_json::json!({
+            "id": download_id.to_string(),
+            "reportType": "DETAIL_HISTORY_REPORT",
+            "userReportName": format!("a036-{}-{}", date_from, date_to),
+            "params": {
+                "nmIDs": [],
+                "subjectIds": [],
+                "brandNames": [],
+                "tagIds": [],
+                "startDate": date_from,
+                "endDate": date_to,
+                "timezone": "Europe/Moscow",
+                "aggregationLevel": "day",
+                "skipDeletedNm": false
+            }
+        });
+        let body = serde_json::to_string(&request_body)?;
+        self.record_http_request_attempt(body.len() as u64);
+
+        let response = self
+            .client
+            .post(url)
+            .header("Authorization", &connection.api_key)
+            .header("Content-Type", "application/json")
+            .timeout(std::time::Duration::from_secs(180))
+            .body(body)
+            .send()
+            .await
+            .context("WB DETAIL_HISTORY_REPORT create request failed")?;
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        let response_body = self.read_body_for_recorded_request(response).await?;
+        if !status.is_success() {
+            anyhow::bail!(
+                "WB DETAIL_HISTORY_REPORT create: {} — {}{}",
+                status,
+                response_body.chars().take(500).collect::<String>(),
+                rate_limit.to_error_suffix()
+            );
+        }
+
+        tracing::info!(
+            "WB DETAIL_HISTORY_REPORT created: download_id={}, period={}..{}",
+            download_id,
+            date_from,
+            date_to
+        );
+        Ok(())
+    }
+
+    /// Возвращает текущий статус ранее созданного CSV-отчёта.
+    pub async fn get_sales_funnel_detail_report_status(
+        &self,
+        connection: &ConnectionMP,
+        download_id: Uuid,
+    ) -> Result<WbAnalyticsReportStatus> {
+        let url = "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/downloads";
+        self.record_http_request_attempt(0);
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", &connection.api_key)
+            .query(&[("filter[downloadIds]", download_id.to_string())])
+            .timeout(std::time::Duration::from_secs(180))
+            .send()
+            .await
+            .context("WB DETAIL_HISTORY_REPORT status request failed")?;
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        let response_body = self.read_body_for_recorded_request(response).await?;
+        if !status.is_success() {
+            anyhow::bail!(
+                "WB DETAIL_HISTORY_REPORT status: {} — {}{}",
+                status,
+                response_body.chars().take(500).collect::<String>(),
+                rate_limit.to_error_suffix()
+            );
+        }
+
+        let envelope: WbAnalyticsReportListResponse = serde_json::from_str(&response_body)
+            .with_context(|| {
+                format!(
+                    "Invalid WB DETAIL_HISTORY_REPORT status response: {}",
+                    response_body.chars().take(500).collect::<String>()
+                )
+            })?;
+        let report = envelope
+            .data
+            .into_iter()
+            .find(|item| item.id == download_id.to_string())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "WB DETAIL_HISTORY_REPORT {} is absent from status response",
+                    download_id
+                )
+            })?;
+        Ok(report)
+    }
+
+    /// Скачивает ZIP готового CSV-отчёта.
+    pub async fn download_sales_funnel_detail_report(
+        &self,
+        connection: &ConnectionMP,
+        download_id: Uuid,
+    ) -> Result<Vec<u8>> {
+        let url = format!(
+            "https://seller-analytics-api.wildberries.ru/api/v2/nm-report/downloads/file/{}",
+            download_id
+        );
+        self.record_http_request_attempt(0);
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", &connection.api_key)
+            .header(ACCEPT, "application/zip")
+            .timeout(std::time::Duration::from_secs(300))
+            .send()
+            .await
+            .context("WB DETAIL_HISTORY_REPORT download request failed")?;
+        let status = response.status();
+        let rate_limit = WbRateLimitHeaders::from_headers(response.headers());
+        if !status.is_success() {
+            let response_body = self.read_body_for_recorded_request(response).await?;
+            anyhow::bail!(
+                "WB DETAIL_HISTORY_REPORT download: {} — {}{}",
+                status,
+                response_body.chars().take(500).collect::<String>(),
+                rate_limit.to_error_suffix()
+            );
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .context("Failed to read WB DETAIL_HISTORY_REPORT ZIP")?;
+        self.record_http_response_body(bytes.len() as u64);
+        if bytes.is_empty() {
+            anyhow::bail!("WB DETAIL_HISTORY_REPORT returned an empty ZIP");
+        }
+        Ok(bytes.to_vec())
+    }
+
     /// POST /api/v2/search-report/table/details — поисковая аналитика по товарам за период
-    /// (органические показы, переходы, позиция, видимость). Требует подписки «Джем».
+    /// (видимость % в выдаче, переходы, позиция; счётчик показов WB не отдаёт → impressions=0).
+    /// Требует подписки «Джем».
     ///
     /// ВАЖНО: точная форма запроса/ответа WB не верифицирована офлайн — парсинг сделан
     /// толерантно (несколько кандидатов-ключей, метрики берутся из `{current}`), сырой
@@ -5973,6 +6125,143 @@ pub struct WbSalesFunnelHistoryDay {
     pub add_to_wishlist_count: i64,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct WbAnalyticsReportListResponse {
+    #[serde(default)]
+    data: Vec<WbAnalyticsReportStatus>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WbAnalyticsReportStatus {
+    pub id: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub size: i64,
+    #[serde(rename = "startDate", default)]
+    pub start_date: String,
+    #[serde(rename = "endDate", default)]
+    pub end_date: String,
+}
+
+/// Плоская строка CSV-отчёта WB `DETAIL_HISTORY_REPORT`.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct WbSalesFunnelDetailRow {
+    #[serde(rename = "nmID")]
+    pub nm_id: i64,
+    #[serde(rename = "dt")]
+    pub date: String,
+    #[serde(rename = "openCardCount")]
+    pub open_count: i64,
+    #[serde(rename = "addToCartCount")]
+    pub cart_count: i64,
+    #[serde(rename = "ordersCount")]
+    pub order_count: i64,
+    #[serde(rename = "ordersSumRub")]
+    pub order_sum: f64,
+    #[serde(rename = "buyoutsCount")]
+    pub buyout_count: i64,
+    #[serde(rename = "buyoutsSumRub")]
+    pub buyout_sum: f64,
+    #[serde(rename = "cancelCount")]
+    pub cancel_count: i64,
+    #[serde(rename = "cancelSumRub")]
+    pub cancel_sum: f64,
+    #[serde(rename = "addToCartConversion")]
+    pub add_to_cart_conversion: f64,
+    #[serde(rename = "cartToOrderConversion")]
+    pub cart_to_order_conversion: f64,
+    #[serde(rename = "buyoutPercent")]
+    pub buyout_percent: f64,
+    #[serde(rename = "addToWishlist")]
+    pub add_to_wishlist_count: i64,
+    pub currency: String,
+}
+
+const WB_DETAIL_HISTORY_REQUIRED_HEADERS: &[&str] = &[
+    "nmID",
+    "dt",
+    "openCardCount",
+    "addToCartCount",
+    "ordersCount",
+    "ordersSumRub",
+    "buyoutsCount",
+    "buyoutsSumRub",
+    "cancelCount",
+    "cancelSumRub",
+    "addToCartConversion",
+    "cartToOrderConversion",
+    "buyoutPercent",
+    "addToWishlist",
+    "currency",
+];
+
+/// Строго разбирает все CSV-файлы из ZIP, полученного от WB.
+pub fn parse_sales_funnel_detail_zip(bytes: &[u8]) -> Result<Vec<WbSalesFunnelDetailRow>> {
+    let cursor = Cursor::new(bytes);
+    let mut archive =
+        zip::ZipArchive::new(cursor).context("WB DETAIL_HISTORY_REPORT is not a valid ZIP")?;
+    let mut rows = Vec::new();
+    let mut csv_files = 0usize;
+
+    for index in 0..archive.len() {
+        let mut file = archive
+            .by_index(index)
+            .with_context(|| format!("Failed to open ZIP entry {}", index))?;
+        if !file.is_file() || !file.name().to_ascii_lowercase().ends_with(".csv") {
+            continue;
+        }
+        csv_files += 1;
+        let file_name = file.name().to_string();
+        let mut csv_bytes = Vec::new();
+        file.read_to_end(&mut csv_bytes)
+            .with_context(|| format!("Failed to read CSV entry {}", file_name))?;
+
+        let csv_text = match std::str::from_utf8(&csv_bytes) {
+            Ok(value) => std::borrow::Cow::Borrowed(value),
+            Err(_) => encoding_rs::WINDOWS_1251.decode(&csv_bytes).0,
+        };
+        let csv_text = csv_text.trim_start_matches('\u{feff}');
+        let mut reader = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .flexible(false)
+            .trim(csv::Trim::All)
+            .from_reader(csv_text.as_bytes());
+        let headers = reader
+            .headers()
+            .with_context(|| format!("Failed to read CSV headers from {}", file_name))?
+            .clone();
+        let missing: Vec<&str> = WB_DETAIL_HISTORY_REQUIRED_HEADERS
+            .iter()
+            .copied()
+            .filter(|required| !headers.iter().any(|actual| actual == *required))
+            .collect();
+        if !missing.is_empty() {
+            anyhow::bail!(
+                "WB DETAIL_HISTORY_REPORT CSV {} misses required headers: {}",
+                file_name,
+                missing.join(", ")
+            );
+        }
+
+        for (row_index, result) in reader.deserialize::<WbSalesFunnelDetailRow>().enumerate() {
+            let row = result.with_context(|| {
+                format!(
+                    "Failed to parse WB DETAIL_HISTORY_REPORT {} row {}",
+                    file_name,
+                    row_index + 2
+                )
+            })?;
+            rows.push(row);
+        }
+    }
+
+    if csv_files == 0 {
+        anyhow::bail!("WB DETAIL_HISTORY_REPORT ZIP contains no CSV files");
+    }
+    Ok(rows)
+}
+
 /// Строка ежедневного снимка товара WB (для агрегата a037): сырые остатки и рейтинги
 /// из `products[].product` эндпоинта /api/analytics/v3/sales-funnel/products.
 #[derive(Debug, Clone)]
@@ -6119,6 +6408,49 @@ fn parse_search_query_row(nm_id: i64, item: &serde_json::Value) -> WbSearchQuery
         clicks: json_i64(item, &["clicks", "openCard", "openCardCount"]).unwrap_or(0),
         orders: json_i64(item, &["orders", "ordersCount"]).unwrap_or(0),
         avg_position: json_f64(item, &["avgPosition", "position"]).unwrap_or(0.0),
+    }
+}
+
+#[cfg(test)]
+mod sales_funnel_detail_report_tests {
+    use super::*;
+    use zip::write::SimpleFileOptions;
+
+    fn zip_with_csv(csv: &str) -> Vec<u8> {
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        writer
+            .start_file("detail.csv", SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(csv.as_bytes()).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn parses_detail_history_report_zip() {
+        let csv = concat!(
+            "nmID,dt,openCardCount,addToCartCount,ordersCount,ordersSumRub,",
+            "buyoutsCount,buyoutsSumRub,cancelCount,cancelSumRub,",
+            "addToCartConversion,cartToOrderConversion,buyoutPercent,addToWishlist,currency\n",
+            "70027655,2026-06-01,10,4,2,1234.5,1,617.25,1,617.25,40,50,50,3,RUB\n"
+        );
+        let rows = parse_sales_funnel_detail_zip(&zip_with_csv(csv)).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].nm_id, 70027655);
+        assert_eq!(rows[0].date, "2026-06-01");
+        assert_eq!(rows[0].open_count, 10);
+        assert_eq!(rows[0].cart_count, 4);
+        assert_eq!(rows[0].add_to_wishlist_count, 3);
+        assert_eq!(rows[0].currency, "RUB");
+    }
+
+    #[test]
+    fn rejects_detail_history_report_with_missing_headers() {
+        let error = parse_sales_funnel_detail_zip(&zip_with_csv("nmID,dt\n1,2026-06-01\n"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("misses required headers"));
+        assert!(error.contains("openCardCount"));
     }
 }
 

@@ -656,6 +656,7 @@ fn category_badge(category: S3FileCategory) -> impl IntoView {
         S3FileCategory::Plugins => BadgeColor::Success,
         S3FileCategory::Backups => BadgeColor::Warning,
         S3FileCategory::ConferenceAudio => BadgeColor::Important,
+        S3FileCategory::LlmChatImages => BadgeColor::Brand,
         S3FileCategory::Other => BadgeColor::Subtle,
     };
 

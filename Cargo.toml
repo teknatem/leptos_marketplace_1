@@ -19,6 +19,8 @@ uuid = { version = "=1.19.0", features = ["v4", "v5", "serde", "js"] }
 
 [profile.dev]
 opt-level = 0
+debug = 0
+incremental = true
 
 # Код проекта оставляем без оптимизаций для быстрых dev-пересборок.
 # Для frontend dev-сборки не пишем debuginfo в wasm-артефакт.
@@ -37,10 +39,27 @@ opt-level = 0
 [profile.dev.package.adobe-cmap-parser]
 overflow-checks = false
 
+# Frontend dev: небольшая оптимизация заметно уменьшает WASM и время wasm-bindgen.
+# Запуск: trunk serve --cargo-profile wasm-dev
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+debug = 0
+incremental = true
+
+[profile.wasm-dev.package.frontend]
+opt-level = 1
+debug = 0
+
 [profile.release]
-# Одна единица кодогенерации — обязательно для fat LTO
-codegen-units = 1
-# Агрессивное удаление мёртвого кода через все crates (fat LTO)
-lto = true
+# Обычный production: параллельная кодогенерация и Thin LTO ускоряют сборку.
+codegen-units = 16
+lto = "thin"
 # opt-level = 3 (скорость). Поменять на "s" если нужно сократить размер ценой скорости.
 opt-level = 3
+
+# Максимальная оптимизация ценой существенно более долгой сборки.
+[profile.release-max]
+inherits = "release"
+codegen-units = 1
+lto = "fat"

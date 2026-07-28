@@ -931,6 +931,48 @@ impl ImportExecutor {
             );
         }
 
+        // Phase 5.5: снять pending-дубли «Будет … по графику выплат», у которых уже есть
+        // проведённый двойник (прогноз выплаты + факт = одни деньги; иначе задваивается
+        // сумма документа a013). Делаем до проводки — удалённые строки уже не проводятся
+        // (Phase 6 идёт по `entries`: для снятого record_key rebuild вернёт 0).
+        //
+        // Проверяем только заказы pending-строк ЭТОЙ партии (обычно единицы), поэтому запрос
+        // идёт по idx_p907_order_id и не сканирует всю таблицу p907; если pending-строк в
+        // партии нет — фаза пропускается без запросов к БД.
+        let pending_order_ids: Vec<i64> = entries
+            .iter()
+            .filter(|e| {
+                e.payment_status
+                    .as_deref()
+                    .map(|s| s.trim_start().starts_with("Будет "))
+                    .unwrap_or(false)
+            })
+            .filter_map(|e| e.order_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        if !pending_order_ids.is_empty() {
+            match crate::projections::p907_ym_payment_report::service::purge_superseded_pending_payouts(
+                &pending_order_ids,
+            )
+            .await
+            {
+                Ok(n) if n > 0 => {
+                    tracing::info!("YM payment report: снято {} pending-дублей «Будет …»", n)
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!("YM payment report: дедуп pending-строк не удался: {}", e);
+                    self.progress_tracker.add_error(
+                        session_id,
+                        Some(aggregate_index.to_string()),
+                        "Ошибка дедупа pending-строк (Будет … по графику выплат)".to_string(),
+                        Some(e.to_string()),
+                    );
+                }
+            }
+        }
+
         // Phase 6: post each row (GL/p914) one by one, tolerant of per-row errors
         // so a single bad row no longer aborts the whole import. Reuses the same
         // rebuild path as u508 repost. Progress is updated periodically.

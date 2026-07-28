@@ -725,6 +725,41 @@ pub async fn list_ids_by_document_nos_since(
     Ok(ids)
 }
 
+/// Вернуть для набора id пары `(id, день продажи)`, где день — `substr(sale_date, 1, 10)`
+/// (та же гранулярность, что и чанки `list_repost_chunks_by_sale_date_range`). Используется
+/// пересбором воронки, чтобы сгруппировать когортный набор a012 по дню и переиспользовать
+/// `PostingPreparationCache` через все документы дня. Порядок — по дню, затем по id.
+pub async fn list_id_sale_days_by_ids(ids: &[String]) -> Result<Vec<(String, String)>> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    const CHUNK: usize = 400;
+    let mut pairs = Vec::new();
+    for chunk in ids.chunks(CHUNK) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT id, substr(sale_date, 1, 10) AS sale_day FROM a012_wb_sales \
+             WHERE is_deleted = 0 \
+               AND sale_date IS NOT NULL \
+               AND id IN ({placeholders})"
+        );
+        let params: Vec<sea_orm::Value> = chunk.iter().map(|s| s.as_str().into()).collect();
+        let stmt =
+            sea_orm::Statement::from_sql_and_values(conn().get_database_backend(), &sql, params);
+        let rows = conn().query_all(stmt).await?;
+        for row in rows {
+            let id = row.try_get::<String>("", "id").unwrap_or_default();
+            let sale_day = row.try_get::<String>("", "sale_day").unwrap_or_default();
+            if !id.is_empty() && !sale_day.is_empty() {
+                pairs.push((id, sale_day));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    Ok(pairs)
+}
+
 /// DTO for list view - uses denormalized columns, no JSON parsing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WbSalesListRow {

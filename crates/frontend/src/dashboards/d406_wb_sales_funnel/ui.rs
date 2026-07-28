@@ -630,6 +630,10 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
     let channel = RwSignal::new(FunnelChannel::All);
     let sort_field = RwSignal::new("date".to_string());
     let sort_asc = RwSignal::new(true);
+    // Пагинация на клиенте: рендерим в DOM только текущую страницу (ответ может содержать
+    // десятки тысяч строк товар×дата — весь набор в DOM = гигабайты памяти и жуткие тормоза).
+    let page = RwSignal::new(0usize);
+    let page_size = RwSignal::new(100usize);
 
     // Drilldown списка заказов ячейки (платн./беспл.).
     let drilldown = RwSignal::new(None::<DrillCtx>);
@@ -670,6 +674,7 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
         let ax = axis.get_untracked();
         loading.set(true);
         error.set(None);
+        page.set(0);
         spawn_local(async move {
             match api::get_wb_sales_funnel(&df, &dt, &conn, &nm, ax).await {
                 Ok(response) => {
@@ -685,6 +690,16 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
     };
 
     Effect::new(move |_| load());
+
+    // Смена фильтра/сортировки меняет набор/порядок строк → возвращаемся на первую страницу.
+    // Канал (проекция значений) порядок не меняет, поэтому в ключ не входит.
+    Effect::new(move |prev: Option<(String, String, bool)>| {
+        let key = (marketplace_filter.get(), sort_field.get(), sort_asc.get());
+        if prev.is_some() && prev.as_ref() != Some(&key) {
+            page.set(0);
+        }
+        key
+    });
 
     // Загрузка drilldown-списка при открытии ячейки.
     Effect::new(move |_| {
@@ -785,18 +800,20 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                             <For
                                 each=move || {
                                     let mut list: Vec<String> = data
-                                        .get()
-                                        .map(|r| {
-                                            let mut set: Vec<String> = r
-                                                .rows
-                                                .iter()
-                                                .filter_map(|row| row.marketplace.clone())
-                                                .collect();
-                                            set.sort();
-                                            set.dedup();
-                                            set
-                                        })
-                                        .unwrap_or_default();
+                                        .with(|opt| {
+                                            opt.as_ref()
+                                                .map(|r| {
+                                                    let mut set: Vec<String> = r
+                                                        .rows
+                                                        .iter()
+                                                        .filter_map(|row| row.marketplace.clone())
+                                                        .collect();
+                                                    set.sort();
+                                                    set.dedup();
+                                                    set
+                                                })
+                                                .unwrap_or_default()
+                                        });
                                     list.sort();
                                     list
                                 }
@@ -870,15 +887,21 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                 })}
 
                 {move || {
-                    let Some(response) = data.get() else {
-                        return view! { <div class="d406-state">"Загрузка данных..."</div> }.into_any();
-                    };
                     let mp = marketplace_filter.get();
                     let sf = sort_field.get();
                     let asc = sort_asc.get();
-                    let rows = view_rows(&response, &mp, &sf, asc);
                     let ch = channel.get();
-                    let totals_raw = compute_totals(&rows);
+                    // Читаем ответ по ссылке (без клона всего набора на каждый ре-рендер);
+                    // клонируем только отфильтрованные строки внутри view_rows.
+                    let Some((rows, totals_raw)) = data.with(|opt| {
+                        opt.as_ref().map(|response| {
+                            let rows = view_rows(response, &mp, &sf, asc);
+                            let totals = compute_totals(&rows);
+                            (rows, totals)
+                        })
+                    }) else {
+                        return view! { <div class="d406-state">"Загрузка данных..."</div> }.into_any();
+                    };
                     // Проекция итогов на выбранный канал (Все/Платные/Бесплатные).
                     let (totals, totals_avail) = channel_metrics(&totals_raw, ch);
                     let totals_conv = WbSalesFunnelConversions::from_metrics(
@@ -904,6 +927,18 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                             </div>
                         }.into_any()
                     } else {
+                        // Пагинация: в DOM попадает только текущая страница строк.
+                        let total_rows = rows.len();
+                        let ps = page_size.get().max(1);
+                        let page_count = ((total_rows + ps - 1) / ps).max(1);
+                        let cur = page.get().min(page_count - 1);
+                        let start = cur * ps;
+                        let end = (start + ps).min(total_rows);
+                        let range_label = if total_rows == 0 {
+                            "Нет строк".to_string()
+                        } else {
+                            format!("Показано {}–{} из {}", start + 1, end, total_rows)
+                        };
                         view! {
                             <div class="d406-table-wrap">
                                 <table class="d406-table">
@@ -933,12 +968,12 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                                             <td></td>
                                             {metric_cells(&totals, &totals_conv, totals_avail, None)}
                                         </tr>
-                                        {if rows.is_empty() {
+                                        {if total_rows == 0 {
                                             view! {
                                                 <tr><td class="d406-state" colspan="15">"Нет данных за выбранный период."</td></tr>
                                             }.into_any()
                                         } else {
-                                            rows.into_iter().map(|row| {
+                                            rows.into_iter().skip(start).take(end - start).map(|row| {
                                                 let article = article_label(&row);
                                                 let name = row.product_name.clone().unwrap_or_default();
                                                 // Проекция строки на выбранный канал.
@@ -968,6 +1003,37 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                                         }}
                                     </tbody>
                                 </table>
+                            </div>
+                            <div class="d406-pager">
+                                <span class="d406-pager-info">{range_label}</span>
+                                <div class="d406-pager-ctrls">
+                                    <button
+                                        class="d406-btn"
+                                        disabled=cur == 0
+                                        on:click=move |_| page.set(cur.saturating_sub(1))
+                                    >"‹ Назад"</button>
+                                    <span class="d406-pager-page">{format!("Стр. {} из {}", cur + 1, page_count)}</span>
+                                    <button
+                                        class="d406-btn"
+                                        disabled=cur + 1 >= page_count
+                                        on:click=move |_| page.set(cur + 1)
+                                    >"Вперёд ›"</button>
+                                    <select
+                                        class="d406-pager-size"
+                                        title="Строк на странице"
+                                        on:change=move |ev| {
+                                            if let Ok(v) = event_target_value(&ev).parse::<usize>() {
+                                                page_size.set(v);
+                                                page.set(0);
+                                            }
+                                        }
+                                    >
+                                        <option value="100" selected=ps == 100>"100 / стр."</option>
+                                        <option value="250" selected=ps == 250>"250 / стр."</option>
+                                        <option value="500" selected=ps == 500>"500 / стр."</option>
+                                        <option value="1000" selected=ps == 1000>"1000 / стр."</option>
+                                    </select>
+                                </div>
                             </div>
                         }.into_any()
                     }

@@ -102,6 +102,12 @@
   background: transparent;
 }
 
+/* Компактная кнопка — для инлайновых действий в ячейках таблицы (напр. «Установить»). */
+.plugins-btn--sm {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
 /* ── Таблица ──────────────────────────────────────────────────────────── */
 
 .plugins-table-wrap {
@@ -159,7 +165,9 @@
   white-space: nowrap;
 }
 
-/* ── Код-чип / runtime-чип ────────────────────────────────────────────── */
+/* ── Код-чип ──────────────────────────────────────────────────────────── */
+/* Статус/исполнение/здоровье используют общие бейджи `.badge .badge--*`
+   (см. sys_style_guide / themes/core/components.css). */
 
 .plugins-code {
   font-family: var(--font-family-mono);
@@ -171,47 +179,12 @@
   white-space: nowrap;
 }
 
-.plugins-chip {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-muted, var(--color-bg-tertiary));
-  border: 1px solid var(--color-border);
-  padding: 2px 8px;
-  border-radius: var(--radius-full, 999px);
-}
+/* ── Ячейка «На сервере» (бейдж версии + кнопка «Установить») ──────────── */
 
-/* ── Бейдж статуса ────────────────────────────────────────────────────── */
-
-.plugins-badge {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 9px;
-  border-radius: var(--radius-full, 999px);
-  text-transform: capitalize;
-  border: 1px solid transparent;
-}
-
-.plugins-badge--active {
-  color: var(--badge-success-text, var(--color-success));
-  background: var(--badge-success-bg, color-mix(in srgb, var(--color-success) 14%, transparent));
-  border-color: var(--badge-success-border, color-mix(in srgb, var(--color-success) 30%, transparent));
-}
-
-.plugins-badge--draft {
-  color: var(--badge-warning-text, var(--color-warning));
-  background: var(--badge-warning-bg, color-mix(in srgb, var(--color-warning) 14%, transparent));
-  border-color: var(--badge-warning-border, color-mix(in srgb, var(--color-warning) 30%, transparent));
-}
-
-.plugins-badge--disabled {
-  color: var(--color-text-secondary);
-  background: var(--color-bg-muted, var(--color-bg-tertiary));
-  border-color: var(--color-border);
+.plugins-server-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ── Точка вкл/выкл ───────────────────────────────────────────────────── */
@@ -327,22 +300,28 @@
   color: var(--color-text-primary);
 }
 
-.plugin-host__chip {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--colorBrandForeground1, var(--color-primary));
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
-  padding: 2px 9px;
-  border-radius: var(--radius-full, 999px);
-}
-
 .plugin-host__code {
   font-family: var(--font-family-mono);
   font-size: 12px;
   color: var(--color-text-secondary);
+}
+
+.plugin-host__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.plugin-host__status-select {
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 6px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-primary);
+  cursor: pointer;
 }
 
 .plugin-host__desc {
@@ -1114,58 +1093,7 @@
   color: var(--color-text-secondary);
 }
 
-/* ── Здоровье плагина (статистика / отклонения) ───────────────────────── */
-
-.plugins-health {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.plugins-health--ok {
-  color: var(--badge-success-text, var(--color-success));
-  background: var(--badge-success-bg, color-mix(in srgb, var(--color-success) 14%, transparent));
-}
-
-.plugins-health--warn {
-  color: var(--badge-warning-text, var(--color-warning));
-  background: var(--badge-warning-bg, color-mix(in srgb, var(--color-warning) 16%, transparent));
-}
-
-.plugins-health--crit {
-  color: var(--badge-error-text, var(--color-error));
-  background: var(--badge-error-bg, color-mix(in srgb, var(--color-error) 16%, transparent));
-}
-
-.plugins-health--nodata {
-  color: var(--color-text-secondary);
-  background: color-mix(in srgb, var(--color-text-secondary, #667085) 12%, transparent);
-}
-
-/* ── Доступное обновление плагина (реестр) ────────────────────────────── */
-
-.plugins-update {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-.plugins-update--available {
-  color: var(--badge-warning-text, var(--color-warning));
-  background: var(--badge-warning-bg, color-mix(in srgb, var(--color-warning) 16%, transparent));
-  cursor: pointer;
-}
-
-.plugins-update--available:hover {
-  background: var(--badge-warning-bg, color-mix(in srgb, var(--color-warning) 26%, transparent));
-}
+/* Здоровье плагина (статистика) использует общий бейдж `.badge .badge--*`. */
 
 .plugin-host__stats {
   padding: 14px;
