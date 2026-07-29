@@ -1,8 +1,11 @@
 //! Страница разработки плагина (`plugin_dev__<id>`).
 //!
-//! Вкладки: «Приложение» (рантайм через [`PluginFrame`]), «Сервер» (runner вызовов),
-//! «Статистика» (запуски/отклонения), «Код» (редакторы + сохранение/экспорт).
-//! Рабочая версия для конечного пользователя — [`crate::plugins::PluginView`].
+//! Вкладки-редакторы кода: «Клиент», «Сервер», «SQL», «Стили» (каждый редактор —
+//! на всю высоту, один скролл). Плюс служебные: «Runner» (валидация + вызов
+//! серверных методов) и «Статистика» (запуски/отклонения). Живой предпросмотр
+//! вынесен в отдельную вкладку/окно [`crate::plugins::PluginView`] («▶ Запустить»),
+//! чтобы править код и смотреть результат на двух мониторах: сохранить здесь →
+//! Restart там подтягивает свежую версию.
 
 pub(crate) mod model;
 
@@ -13,13 +16,12 @@ use self::model::{
 use crate::layout::global_context::AppGlobalContext;
 use crate::plugins::api;
 use crate::plugins::editor::CodeEditor;
-use crate::plugins::frame::PluginFrame;
 use crate::shared::change_tokens::ChangeTokenContext;
 use crate::shared::date_utils::{format_space_naive_utc_local, format_utc_local};
 use crate::shared::modal_frame::ModalFrame;
 use contracts::plugins::{
-    PluginDefinition, PluginInvokeRequest, PluginPublishResult, PluginRunContext, PluginStats,
-    PluginStatus, PluginUpsert, PluginValidateReport,
+    PluginDefinition, PluginInvokeRequest, PluginPublishResult, PluginStats, PluginStatus,
+    PluginUpsert, PluginValidateReport,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -56,14 +58,9 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
     let status = RwSignal::new("draft".to_string());
     let (saving, set_saving) = signal(false);
     let (save_msg, set_save_msg) = signal(None::<String>);
-    let selected_tab = RwSignal::new("app".to_string());
+    let selected_tab = RwSignal::new("client".to_string());
 
     let runner_context = RwSignal::new("{}".to_string());
-    let preview_context = RwSignal::new(PluginRunContext::default());
-    let preview_data_mode = RwSignal::new(contracts::plugins::PluginDataMode::Live);
-    let preview_restart = RwSignal::new(0_u64);
-    let preview_console = RwSignal::new(Vec::<String>::new());
-    let preview_events = RwSignal::new(Vec::<String>::new());
     let server_examples = RwSignal::new(Vec::<ServerMethodExample>::new());
     let runner_output = RwSignal::new(None::<String>);
     let runner_busy = RwSignal::new(false);
@@ -88,7 +85,7 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     client_src.set(plugin.bundle.client_script.clone().unwrap_or_default());
                     server_src.set(plugin.bundle.server_script.clone().unwrap_or_default());
                     styles_src.set(plugin.bundle.styles.clone().unwrap_or_default());
-                    // Server-only плагин не имеет UI — открываем сразу вкладку «Сервер».
+                    // Server-only плагин не имеет клиента — открываем сразу код сервера.
                     let client_empty = plugin
                         .bundle
                         .client_script
@@ -106,7 +103,6 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                     }
                     let default_context = default_run_context(&plugin.bundle);
                     runner_context.set(pretty_context(&default_context));
-                    preview_context.set(default_context);
                     let resources = plugin.bundle.sql_resources.clone();
                     let (first_name, first_sql) = first_sql_resource(&resources);
                     sql_resources.set(resources);
@@ -172,7 +168,6 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                                 plugin.bundle = saved_bundle;
                                 plugin.version += 1;
                                 plugin.status = PluginStatus::from_str(&selected_status);
-                                preview_restart.update(|value| *value += 1);
                             }
                         });
                         set_save_msg.set(Some("Сохранено".to_string()));
@@ -385,12 +380,6 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
 
     // Ленивая загрузка при первом открытии вкладки «Статистика».
     Effect::new(move |_| {
-        if let Ok(context) = parse_context(&runner_context.get()) {
-            preview_context.set(context);
-        }
-    });
-
-    Effect::new(move |_| {
         if selected_tab.get() == "stats"
             && stats.get_untracked().is_none()
             && !stats_busy.get_untracked()
@@ -431,8 +420,20 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                         </select>
                     </label>
                     <button
+                        class="plugin-host__run"
+                        on:click=save
+                        disabled=Signal::derive(move || saving.get())
+                        title="Сохранить код, SQL, стили и статус"
+                    >
+                        {move || if saving.get() { "Сохранение..." } else { "Сохранить" }}
+                    </button>
+                    {move || save_msg.get().map(|message| view! {
+                        <span class="plugin-host__save-msg">{message}</span>
+                    })}
+                    <button
                         class="plugin-host__run plugin-host__run--server plugin-host__export"
                         on:click=open_view
+                        title="Открыть плагин в отдельной вкладке/окне (Restart там подтянет свежую версию)"
                     >
                         "▶ Запустить"
                     </button>
@@ -492,39 +493,124 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
 
             <div class="plugin-host__tabs">
                 <TabList selected_value=selected_tab>
-                    <Tab value="app".to_string()>"Приложение"</Tab>
+                    <Tab value="client".to_string()>"Клиент"</Tab>
                     <Tab value="server".to_string()>"Сервер"</Tab>
+                    <Tab value="sql".to_string()>"SQL"</Tab>
+                    <Tab value="styles".to_string()>"Стили"</Tab>
+                    <Tab value="runner".to_string()>"Runner"</Tab>
                     <Tab value="stats".to_string()>"Статистика"</Tab>
-                    <Tab value="code".to_string()>"Код"</Tab>
                 </TabList>
             </div>
 
             <div
-                class="plugin-host__pane"
-                class:plugin-host__hidden=move || selected_tab.get() != "app"
+                class="plugin-host__pane plugin-host__pane--editor"
+                class:plugin-host__hidden=move || selected_tab.get() != "client"
             >
-                <PluginFrame
-                    plugin_id=plugin_id.clone()
-                    client_src=client_src
-                    styles_src=styles_src
-                    context=preview_context
-                    data_mode=preview_data_mode
-                    restart=preview_restart
-                    console=preview_console
-                    events=preview_events
-                    dev=true
+                <div class="plugin-host__editor-head">
+                    <div class="plugin-host__editor-label">
+                        "client_script: ES-модуль в iframe; export async function mount(root, host)"
+                    </div>
+                </div>
+                <CodeEditor
+                    language="javascript"
+                    value=client_src
+                    class="plugin-code-editor--fill"
                 />
-                {move || {
-                    let lines = preview_console.get();
-                    (!lines.is_empty()).then(|| view! {
-                        <pre class="plugin-host__runner-output">{lines.join("\n")}</pre>
-                    })
+            </div>
+
+            <div
+                class="plugin-host__pane plugin-host__pane--editor"
+                class:plugin-host__hidden=move || selected_tab.get() != "server"
+            >
+                <div class="plugin-host__editor-head">
+                    <div class="plugin-host__editor-label">
+                        "server_script: ES-модуль QuickJS; экспортированные async-функции"
+                    </div>
+                </div>
+                <CodeEditor
+                    language="javascript"
+                    value=server_src
+                    class="plugin-code-editor--fill"
+                />
+            </div>
+
+            <div
+                class="plugin-host__pane plugin-host__pane--editor"
+                class:plugin-host__hidden=move || selected_tab.get() != "sql"
+            >
+                <div class="plugin-host__editor-head">
+                    <div class="plugin-host__editor-label">
+                        "SQL-ресурсы: host.db.queryResource(name, params)"
+                    </div>
+                    <div class="plugin-host__resource-toolbar">
+                        <select
+                            class="plugin-host__resource-select"
+                            prop:value=move || selected_sql_name.get().unwrap_or_default()
+                            on:change=select_sql
+                        >
+                            {move || sorted_resource_names(&sql_resources.get())
+                                .into_iter()
+                                .map(|name| view! {
+                                    <option value=name.clone()>{name.clone()}</option>
+                                })
+                                .collect_view()}
+                        </select>
+                        <input
+                            class="plugin-host__resource-name"
+                            placeholder="Имя SQL-ресурса"
+                            prop:value=move || sql_name_input.get()
+                            on:input=move |event| sql_name_input.set(event_target_value(&event))
+                        />
+                        <button type="button" class="plugin-host__resource-action" on:click=rename_sql>
+                            "Переименовать"
+                        </button>
+                        <button type="button" class="plugin-host__resource-action" on:click=add_sql>
+                            "Добавить"
+                        </button>
+                        <button
+                            type="button"
+                            class="plugin-host__resource-action plugin-host__resource-action--danger"
+                            on:click=delete_sql
+                            disabled=Signal::derive(move || selected_sql_name.get().is_none())
+                        >
+                            "Удалить"
+                        </button>
+                    </div>
+                </div>
+                {move || if selected_sql_name.get().is_some() {
+                    view! {
+                        <CodeEditor
+                            language="sql"
+                            value=sql_src
+                            class="plugin-code-editor--fill"
+                        />
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="plugin-host__state">
+                            "SQL-ресурсов пока нет. Нажмите «Добавить»."
+                        </div>
+                    }.into_any()
                 }}
             </div>
 
             <div
+                class="plugin-host__pane plugin-host__pane--editor"
+                class:plugin-host__hidden=move || selected_tab.get() != "styles"
+            >
+                <div class="plugin-host__editor-head">
+                    <div class="plugin-host__editor-label">"styles: CSS внутри iframe"</div>
+                </div>
+                <CodeEditor
+                    language="css"
+                    value=styles_src
+                    class="plugin-code-editor--fill"
+                />
+            </div>
+
+            <div
                 class="plugin-host__pane"
-                class:plugin-host__hidden=move || selected_tab.get() != "server"
+                class:plugin-host__hidden=move || selected_tab.get() != "runner"
             >
                 <div class="plugin-host__toolbar">
                     <button
@@ -725,106 +811,6 @@ pub fn PluginHost(plugin_id: String) -> impl IntoView {
                         </div>
                     }
                 })}
-            </div>
-
-            <div
-                class="plugin-host__pane"
-                class:plugin-host__hidden=move || selected_tab.get() != "code"
-            >
-                <div class="plugin-host__editor-block">
-                    <div class="plugin-host__editor-label">
-                        "client_script: ES-модуль в iframe; export async function mount(root, host)"
-                    </div>
-                    <CodeEditor
-                        language="javascript"
-                        value=client_src
-                        class="plugin-code-editor--large"
-                    />
-                </div>
-                <div class="plugin-host__editor-block">
-                    <div class="plugin-host__editor-label">
-                        "server_script: ES-модуль QuickJS; экспортированные async-функции"
-                    </div>
-                    <CodeEditor
-                        language="javascript"
-                        value=server_src
-                        class="plugin-code-editor--large"
-                    />
-                </div>
-                <div class="plugin-host__editor-block">
-                    <div class="plugin-host__editor-label">
-                        "SQL-ресурсы: host.db.queryResource(name, params)"
-                    </div>
-                    <div class="plugin-host__resource-toolbar">
-                        <select
-                            class="plugin-host__resource-select"
-                            prop:value=move || selected_sql_name.get().unwrap_or_default()
-                            on:change=select_sql
-                        >
-                            {move || sorted_resource_names(&sql_resources.get())
-                                .into_iter()
-                                .map(|name| view! {
-                                    <option value=name.clone()>{name.clone()}</option>
-                                })
-                                .collect_view()}
-                        </select>
-                        <input
-                            class="plugin-host__resource-name"
-                            placeholder="Имя SQL-ресурса"
-                            prop:value=move || sql_name_input.get()
-                            on:input=move |event| sql_name_input.set(event_target_value(&event))
-                        />
-                        <button type="button" class="plugin-host__resource-action" on:click=rename_sql>
-                            "Переименовать"
-                        </button>
-                        <button type="button" class="plugin-host__resource-action" on:click=add_sql>
-                            "Добавить"
-                        </button>
-                        <button
-                            type="button"
-                            class="plugin-host__resource-action plugin-host__resource-action--danger"
-                            on:click=delete_sql
-                            disabled=Signal::derive(move || selected_sql_name.get().is_none())
-                        >
-                            "Удалить"
-                        </button>
-                    </div>
-                    {move || if selected_sql_name.get().is_some() {
-                        view! {
-                            <CodeEditor
-                                language="sql"
-                                value=sql_src
-                                class="plugin-code-editor--sql"
-                            />
-                        }.into_any()
-                    } else {
-                        view! {
-                            <div class="plugin-host__state">
-                                "SQL-ресурсов пока нет. Нажмите «Добавить»."
-                            </div>
-                        }.into_any()
-                    }}
-                </div>
-                <div class="plugin-host__editor-block">
-                    <div class="plugin-host__editor-label">"styles: CSS внутри iframe"</div>
-                    <CodeEditor
-                        language="css"
-                        value=styles_src
-                        class="plugin-code-editor--medium"
-                    />
-                </div>
-                <div class="plugin-host__toolbar">
-                    <button
-                        class="plugin-host__run"
-                        on:click=save
-                        disabled=Signal::derive(move || saving.get())
-                    >
-                        {move || if saving.get() { "Сохранение..." } else { "Сохранить и запустить" }}
-                    </button>
-                    {move || save_msg.get().map(|message| view! {
-                        <span class="plugin-host__save-msg">{message}</span>
-                    })}
-                </div>
             </div>
         </div>
     }

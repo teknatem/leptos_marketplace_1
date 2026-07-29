@@ -56,10 +56,30 @@ pub fn PluginView(plugin_id: String) -> impl IntoView {
         });
     }
 
-    let restart_plugin = move |_| {
-        console.set(Vec::new());
-        events.set(Vec::new());
-        restart.update(|value| *value += 1);
+    // Restart перечитывает плагин из БД и заново монтирует iframe. Так работает
+    // сценарий «два монитора»: сохранил свежую версию на странице разработки —
+    // нажал Restart здесь и получил её без перезагрузки вкладки.
+    let restart_plugin = {
+        let id = plugin_id.clone();
+        move |_| {
+            console.set(Vec::new());
+            events.set(Vec::new());
+            let id = id.clone();
+            spawn_local(async move {
+                match api::get_by_id(&id).await {
+                    Ok(plugin) => {
+                        client_src.set(plugin.bundle.client_script.clone().unwrap_or_default());
+                        styles_src.set(plugin.bundle.styles.clone().unwrap_or_default());
+                        context.set(crate::plugins::host::model::default_run_context(
+                            &plugin.bundle,
+                        ));
+                        set_def.set(Some(plugin));
+                    }
+                    Err(message) => set_error.set(Some(message)),
+                }
+                restart.update(|value| *value += 1);
+            });
+        }
     };
 
     let select_live = move |_| {
@@ -195,7 +215,11 @@ pub fn PluginView(plugin_id: String) -> impl IntoView {
                     </button>
                 </div>
                 <span class="plugin-host__bar-spacer"></span>
-                <button class="plugin-host__run plugin-host__run--server" on:click=restart_plugin>
+                <button
+                    class="plugin-host__run plugin-host__run--server"
+                    on:click=restart_plugin
+                    title="Перечитать свежую версию из БД и перезапустить плагин"
+                >
                     "Restart"
                 </button>
                 <button
