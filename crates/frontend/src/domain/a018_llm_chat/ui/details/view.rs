@@ -22,6 +22,7 @@ const DIAGNOSTIC_PROMPT: &str = "Проведи диагностику этог�
 use super::tool_calls_trace::ToolCallsTrace;
 use crate::domain::a018_llm_chat::ui::pending_first_message_key;
 use crate::layout::global_context::AppGlobalContext;
+use crate::shared::components::hint_link::HintLink;
 use crate::shared::date_utils::{format_datetime_utc_local, format_utc_local};
 use crate::shared::icons::icon;
 use crate::shared::knowledge_base::links::KbLinkedText;
@@ -335,10 +336,57 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     let image_input_models = RwSignal::new(Vec::<String>::new());
     let selected_model = RwSignal::new(String::new());
     let pending_screenshot = RwSignal::new_local(None::<PendingScreenshot>);
-    let screenshot_uploading = RwSignal::new(false);
-    let screenshot_error = RwSignal::new(None::<String>);
-    let screenshot_hint = RwSignal::new(false);
     let nav_ctx = use_context::<AppGlobalContext>();
+
+    // Единая точка загрузки вложения: и файл-пикер, и подтверждённый скриншот
+    // проходят через неё (upload → показ чипа с превью → откат object-URL при ошибке).
+    let attach_file = {
+        let chat_id = chat_id.clone();
+        UnsyncCallback::new(move |(file, preview_url): (web_sys::File, Option<String>)| {
+            let chat_id = chat_id.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match super::model::upload_file(&chat_id, file).await {
+                    Ok(mut file_info) => {
+                        file_info.preview_url = preview_url;
+                        vm.uploaded_files.update(|files| files.push(file_info));
+                    }
+                    Err(e) => {
+                        if let Some(url) = &preview_url {
+                            let _ = web_sys::Url::revoke_object_url(url);
+                        }
+                        vm.error.set(Some(format!("Ошибка загрузки файла: {}", e)));
+                    }
+                }
+            });
+        })
+    };
+
+    // Открыть редактор для только что вставленного/выбранного изображения.
+    let begin_screenshot_edit = UnsyncCallback::new(move |file: web_sys::File| {
+        if let Some(previous) = pending_screenshot.get_untracked() {
+            let _ = web_sys::Url::revoke_object_url(&previous.preview_url);
+        }
+        match web_sys::Url::create_object_url_with_blob(&file) {
+            Ok(preview_url) => {
+                pending_screenshot.set(Some(PendingScreenshot { file, preview_url }));
+            }
+            Err(_) => vm.error.set(Some(
+                "Не удалось открыть скриншот из буфера обмена.".to_string(),
+            )),
+        }
+    });
+
+    // Ревок черновых object-URL при уходе со страницы (иначе утечка до перезагрузки).
+    on_cleanup(move || {
+        for file in vm.uploaded_files.get_untracked() {
+            if let Some(url) = file.preview_url {
+                let _ = web_sys::Url::revoke_object_url(&url);
+            }
+        }
+        if let Some(pending) = pending_screenshot.get_untracked() {
+            let _ = web_sys::Url::revoke_object_url(&pending.preview_url);
+        }
+    });
 
     // Scroll to bottom helper
     let scroll_to_bottom = {
@@ -608,43 +656,22 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     let chat_id_for_delete = chat_id.clone();
     let chat_id_for_draft_attachments = chat_id.clone();
     let cancel_screenshot = UnsyncCallback::new(move |_| {
-        if screenshot_uploading.get_untracked() {
-            return;
-        }
         if let Some(pending) = pending_screenshot.get_untracked() {
             let _ = web_sys::Url::revoke_object_url(&pending.preview_url);
         }
         pending_screenshot.set(None);
-        screenshot_error.set(None);
     });
-    let confirm_screenshot = UnsyncCallback::new({
-        let chat_id = chat_id.clone();
-        move |_| {
-            if screenshot_uploading.get_untracked() {
-                return;
-            }
-            let Some(pending) = pending_screenshot.get_untracked() else {
-                return;
-            };
-            screenshot_uploading.set(true);
-            screenshot_error.set(None);
-            let chat_id = chat_id.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                match super::model::upload_file(&chat_id, pending.file).await {
-                    Ok(mut file_info) => {
-                        file_info.preview_url = Some(pending.preview_url);
-                        vm.uploaded_files.update(|files| files.push(file_info));
-                        pending_screenshot.set(None);
-                        screenshot_error.set(None);
-                    }
-                    Err(error) => {
-                        screenshot_error
-                            .set(Some(format!("Не удалось добавить скриншот: {error}")));
-                    }
-                }
-                screenshot_uploading.set(false);
-            });
-        }
+    // Подтверждение: редактор отдаёт уже собранный (возможно, с аннотациями) файл.
+    // Модалку закрываем сразу, загрузку ведём в фоне через общий attach_file;
+    // исходный object-URL ревокаем, для чипа делаем новый — из итогового файла.
+    let confirm_screenshot = UnsyncCallback::new(move |edited: web_sys::File| {
+        let Some(pending) = pending_screenshot.get_untracked() else {
+            return;
+        };
+        let _ = web_sys::Url::revoke_object_url(&pending.preview_url);
+        pending_screenshot.set(None);
+        let preview_url = web_sys::Url::create_object_url_with_blob(&edited).ok();
+        attach_file.run((edited, preview_url));
     });
 
     view! {
@@ -807,22 +834,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                             continue;
                         }
                         ev.prevent_default();
-                        if let Some(previous) = pending_screenshot.get_untracked() {
-                            let _ = web_sys::Url::revoke_object_url(&previous.preview_url);
-                        }
-                        match web_sys::Url::create_object_url_with_blob(&file) {
-                            Ok(preview_url) => {
-                                pending_screenshot.set(Some(PendingScreenshot {
-                                    file,
-                                    preview_url,
-                                }));
-                                screenshot_error.set(None);
-                                screenshot_hint.set(false);
-                            }
-                            Err(_) => vm.error.set(Some(
-                                "Не удалось открыть скриншот из буфера обмена.".to_string(),
-                            )),
-                        }
+                        begin_screenshot_edit.run(file);
                         break;
                     }
                 }
@@ -1035,40 +1047,21 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         accept=".txt,.md,.rs,.toml,.json,.sql,.js,.ts,.py,.go,.java,.c,.cpp,.h,.hpp,.cs,.rb,.php,.html,.css,.xml,.yaml,.yml,image/png,image/jpeg,image/webp"
                         style="display: none;"
                         id="file-input"
-                        on:change={
-                            let chat_id = chat_id.clone();
-                            move |ev| {
-                                use wasm_bindgen::JsCast;
-                                let input: web_sys::HtmlInputElement = ev.target().unwrap().dyn_into().unwrap();
-                                if let Some(files) = input.files() {
-                                    if let Some(file) = files.get(0) {
-                                        let chat_id = chat_id.clone();
-                                        let preview_url = file
-                                            .type_()
-                                            .starts_with("image/")
-                                            .then(|| web_sys::Url::create_object_url_with_blob(&file).ok())
-                                            .flatten();
-                                        wasm_bindgen_futures::spawn_local(async move {
-                                            match super::model::upload_file(&chat_id, file).await {
-                                                Ok(mut file_info) => {
-                                                    file_info.preview_url = preview_url;
-                                                    let mut uploaded = vm.uploaded_files.get();
-                                                    uploaded.push(file_info);
-                                                    vm.uploaded_files.set(uploaded);
-                                                }
-                                                Err(e) => {
-                                                    if let Some(url) = preview_url {
-                                                        let _ = web_sys::Url::revoke_object_url(&url);
-                                                    }
-                                                    vm.error.set(Some(format!("Ошибка загрузки файла: {}", e)));
-                                                }
-                                            }
-                                        });
-                                    }
+                        on:change=move |ev| {
+                            use wasm_bindgen::JsCast;
+                            let input: web_sys::HtmlInputElement = ev.target().unwrap().dyn_into().unwrap();
+                            if let Some(files) = input.files() {
+                                if let Some(file) = files.get(0) {
+                                    let preview_url = file
+                                        .type_()
+                                        .starts_with("image/")
+                                        .then(|| web_sys::Url::create_object_url_with_blob(&file).ok())
+                                        .flatten();
+                                    attach_file.run((file, preview_url));
                                 }
-                                // Clear input
-                                input.set_value("");
                             }
+                            // Clear input
+                            input.set_value("");
                         }
                     />
 
@@ -1096,30 +1089,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         on_error=Callback::new(move |m: String| vm.error.set(Some(m)))
                     />
 
-                    // Диагностика микрофона + подсказка по разблокировке на HTTP
-                    // (chrome-флаг unsafely-treat-insecure-origin-as-secure).
-                    <DictationDiagnostics />
-
                     // Компактные иконочные кнопки (узкие по ширине): прикрепить и отправить.
-                    <Button
-                        appearance=ButtonAppearance::Secondary
-                        disabled=vm.is_sending
-                        attr:title="Вставить скриншот"
-                        on_click=move |_| {
-                            screenshot_hint.set(true);
-                            if let Some(element) = web_sys::window()
-                                .and_then(|window| window.document())
-                                .and_then(|document| document.get_element_by_id("llm-chat-composer"))
-                            {
-                                use wasm_bindgen::JsCast;
-                                if let Ok(element) = element.dyn_into::<web_sys::HtmlElement>() {
-                                    let _ = element.focus();
-                                }
-                            }
-                        }
-                    >
-                        "Вставить скриншот"
-                    </Button>
                     <Button
                         appearance=ButtonAppearance::Secondary
                         disabled=vm.is_sending
@@ -1150,12 +1120,25 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     >
                         {icon("send")}
                     </Button>
-                </Flex>
-                {move || screenshot_hint.get().then(|| view! {
-                    <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                        "Win+Shift+S → выделить область → Ctrl+V"
+
+                    // Компактные ссылки-подсказки в конце строки: микрофон и скриншот.
+                    <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 6px;">
+                        <DictationDiagnostics />
+                        <HintLink label="Скриншот?">
+                            <div style="display: flex; flex-direction: column; gap: 8px; line-height: 1.5;">
+                                <div style="font-weight: 600;">"Как вставить скриншот"</div>
+                                <ol style="margin: 0; padding-left: 18px;">
+                                    <li>"Нажмите Win+Shift+S и выделите область экрана."</li>
+                                    <li>"Вернитесь сюда и нажмите Ctrl+V — откроется редактор."</li>
+                                    <li>"Отметьте важное рамками/стрелками и нажмите «ОК»."</li>
+                                </ol>
+                                <div style="opacity: 0.75;">
+                                    "Также можно приложить файл кнопкой скрепки слева."
+                                </div>
+                            </div>
+                        </HintLink>
                     </div>
-                })}
+                </Flex>
                 </div>
             </div>
 
@@ -1220,9 +1203,8 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
             </Dialog>
             {move || pending_screenshot.get().map(|pending| view! {
                 <ScreenshotEditor
+                    source_file=pending.file
                     preview_url=pending.preview_url
-                    is_uploading=screenshot_uploading
-                    error=screenshot_error
                     on_cancel=cancel_screenshot
                     on_confirm=confirm_screenshot
                 />

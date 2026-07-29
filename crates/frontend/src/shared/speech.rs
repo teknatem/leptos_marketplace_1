@@ -20,6 +20,7 @@
 //! ```
 
 use crate::shared::clipboard::copy_to_clipboard;
+use crate::shared::components::hint_link::HintLink;
 use crate::shared::icons::icon;
 use leptos::prelude::*;
 use thaw::*;
@@ -301,22 +302,18 @@ pub fn DictationButton(
     }
 }
 
-/// Кнопка-диагностика голосового ввода: рядом с [`DictationButton`]. Открывает
-/// диалог со статусом (поддержка Web Speech API, безопасный контекст, origin) и
-/// подсказкой, как разблокировать микрофон на HTTP-адресе через chrome-флаг
+/// Ссылка-подсказка «Микрофон?»: по клику раскрывает поповер со статусом
+/// (поддержка Web Speech API, безопасный контекст, origin) и инструкцией, как
+/// разблокировать микрофон на HTTP-адресе через chrome-флаг
 /// `unsafely-treat-insecure-origin-as-secure`.
-///
-/// Оформлена как обычная стандартная кнопка (thaw Secondary). Диагностику
-/// проблем показывает содержимое диалога (зелёные/красные строки статуса).
 #[component]
 #[allow(non_snake_case)]
 pub fn DictationDiagnostics() -> impl IntoView {
-    let open = RwSignal::new(false);
     let supported = is_supported();
     let secure_context = is_secure_context();
     let origin = current_origin();
     // Проблема ровно тогда, когда что-то мешает записи. Именно этот случай
-    // лечит chrome-флаг (небезопасный origin) — подсвечиваем кнопку.
+    // лечит chrome-флаг (небезопасный origin).
     let has_problem = !supported || !secure_context;
 
     let origin_for_copy = origin.clone();
@@ -330,90 +327,67 @@ pub fn DictationDiagnostics() -> impl IntoView {
     };
 
     view! {
-        <Button
-            appearance=ButtonAppearance::Secondary
-            attr:title="Диагностика микрофона и разблокировка на HTTP"
-            attr:style="min-width: 40px; padding-left: 8px; padding-right: 8px;"
-            on_click=move |_| open.set(true)
-        >
-            {icon("info")}
-        </Button>
-
-        <Dialog open=open>
-            <DialogSurface>
-                <DialogBody>
-                    <DialogTitle>"Диагностика микрофона"</DialogTitle>
-                    <DialogContent>
-                        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
-                            <div style="display: flex; flex-direction: column; gap: 4px;">
-                                <div style=status_style>
-                                    {if supported {
-                                        "✓ Web Speech API поддерживается"
-                                    } else {
-                                        "✗ Web Speech API недоступен (нужен Chrome/Chromium)"
-                                    }}
-                                </div>
-                                <div style=status_style>
-                                    {if secure_context {
-                                        "✓ Безопасный контекст (HTTPS или localhost)"
-                                    } else {
-                                        "✗ Небезопасный контекст — браузер запрещает микрофон"
-                                    }}
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 6px;">
-                                    <span style="opacity: 0.7;">"Текущий origin:"</span>
-                                    <code style="user-select: all;">{origin.clone()}</code>
-                                    <Button
-                                        appearance=ButtonAppearance::Subtle
-                                        attr:title="Скопировать origin"
-                                        attr:style="min-width: 32px; padding: 2px 6px;"
-                                        on_click=move |_| copy_to_clipboard(&origin_for_copy)
-                                    >
-                                        {icon("copy")}
-                                    </Button>
-                                </div>
-                            </div>
-
-                            <div style="opacity: 0.85; line-height: 1.5;">
-                                "Если приложение открыто по HTTP (например, по IP в локальной сети), \
-                                 Chrome блокирует микрофон. Чтобы разблокировать без HTTPS, отметьте \
-                                 этот origin как «безопасный» в флаге браузера:"
-                            </div>
-
-                            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                                <a
-                                    href=flag_url.clone()
-                                    style="word-break: break-all;"
-                                >
-                                    {flag_url.clone()}
-                                </a>
-                                <Button
-                                    appearance=ButtonAppearance::Subtle
-                                    attr:title="Скопировать ссылку"
-                                    attr:style="min-width: 32px; padding: 2px 6px;"
-                                    on_click=move |_| copy_to_clipboard(&flag_url_for_copy)
-                                >
-                                    {icon("copy")}
-                                </Button>
-                            </div>
-
-                            <ol style="margin: 0; padding-left: 18px; opacity: 0.85; line-height: 1.6;">
-                                <li>"Скопируйте ссылку выше и вставьте её в адресную строку Chrome (браузер не даёт перейти по chrome:// по клику)."</li>
-                                <li>"Включите флаг «Enabled» и впишите в поле текущий origin."</li>
-                                <li>"Нажмите «Relaunch», чтобы перезапустить браузер."</li>
-                            </ol>
-                        </div>
-                    </DialogContent>
-                    <DialogActions>
+        <HintLink label="Микрофон?">
+            <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                <div style="font-weight: 600;">"Диагностика микрофона"</div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style=status_style>
+                        {if supported {
+                            "✓ Web Speech API поддерживается"
+                        } else {
+                            "✗ Web Speech API недоступен (нужен Chrome/Chromium)"
+                        }}
+                    </div>
+                    <div style=status_style>
+                        {if secure_context {
+                            "✓ Безопасный контекст (HTTPS или localhost)"
+                        } else {
+                            "✗ Небезопасный контекст — браузер запрещает микрофон"
+                        }}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="opacity: 0.7;">"Текущий origin:"</span>
+                        <code style="user-select: all;">{origin.clone()}</code>
                         <Button
-                            appearance=ButtonAppearance::Secondary
-                            on_click=move |_| open.set(false)
+                            appearance=ButtonAppearance::Subtle
+                            attr:title="Скопировать origin"
+                            attr:style="min-width: 32px; padding: 2px 6px;"
+                            on_click=move |_| copy_to_clipboard(&origin_for_copy)
                         >
-                            "Закрыть"
+                            {icon("copy")}
                         </Button>
-                    </DialogActions>
-                </DialogBody>
-            </DialogSurface>
-        </Dialog>
+                    </div>
+                </div>
+
+                <div style="opacity: 0.85; line-height: 1.5;">
+                    "Если приложение открыто по HTTP (например, по IP в локальной сети), \
+                     Chrome блокирует микрофон. Чтобы разблокировать без HTTPS, отметьте \
+                     этот origin как «безопасный» в флаге браузера:"
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <a
+                        href=flag_url.clone()
+                        style="word-break: break-all;"
+                    >
+                        {flag_url.clone()}
+                    </a>
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        attr:title="Скопировать ссылку"
+                        attr:style="min-width: 32px; padding: 2px 6px;"
+                        on_click=move |_| copy_to_clipboard(&flag_url_for_copy)
+                    >
+                        {icon("copy")}
+                    </Button>
+                </div>
+
+                <ol style="margin: 0; padding-left: 18px; opacity: 0.85; line-height: 1.6;">
+                    <li>"Скопируйте ссылку выше и вставьте её в адресную строку Chrome (браузер не даёт перейти по chrome:// по клику)."</li>
+                    <li>"Включите флаг «Enabled» и впишите в поле текущий origin."</li>
+                    <li>"Нажмите «Relaunch», чтобы перезапустить браузер."</li>
+                </ol>
+            </div>
+        </HintLink>
     }
 }
