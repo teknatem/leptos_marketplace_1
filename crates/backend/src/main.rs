@@ -107,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
             }
             shared::config::set_scheduler_config_enabled(cfg.scheduled_tasks.enabled);
             shared::config::set_mail_config(cfg.mail.clone());
+            shared::config::set_bitrix24_config(cfg.bitrix24.clone());
             if cfg.mail.enabled {
                 println!(
                     "✓ Mail: enabled (IMAP {}:{}, SMTP {}:{}, user {})\n",

@@ -9,7 +9,6 @@ use super::model::{
     fetch_chat_context, fetch_connection_model_capabilities, fetch_messages, poll_until_done,
     send_message, set_rating, JobProgress, PollOutcome,
 };
-use super::screenshot_editor::ScreenshotEditor;
 use super::view_model::LlmChatDetailsVm;
 
 /// Предопределённое сообщение для кнопки «Диагностика»: модель разбирает текущий диалог
@@ -29,6 +28,9 @@ use crate::shared::knowledge_base::links::KbLinkedText;
 use crate::shared::markdown::Markdown;
 use crate::shared::page_frame::PageFrame;
 use crate::shared::page_standard::PAGE_CAT_DETAIL;
+use crate::shared::screenshot_editor::{
+    is_editable_image_type, PendingScreenshot, ScreenshotEditor,
+};
 use crate::shared::speech::{DictationButton, DictationDiagnostics};
 use contracts::domain::a018_llm_chat::aggregate::{
     ChatRole, LlmChatAttachmentSummary, LlmChatMessage,
@@ -50,12 +52,6 @@ struct FeedRow {
     ts: chrono::DateTime<chrono::Utc>,
     key: String,
     item: FeedItem,
-}
-
-#[derive(Clone)]
-struct PendingScreenshot {
-    file: web_sys::File,
-    preview_url: String,
 }
 
 #[component]
@@ -342,35 +338,35 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     // проходят через неё (upload → показ чипа с превью → откат object-URL при ошибке).
     let attach_file = {
         let chat_id = chat_id.clone();
-        UnsyncCallback::new(move |(file, preview_url): (web_sys::File, Option<String>)| {
-            let chat_id = chat_id.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                match super::model::upload_file(&chat_id, file).await {
-                    Ok(mut file_info) => {
-                        file_info.preview_url = preview_url;
-                        vm.uploaded_files.update(|files| files.push(file_info));
-                    }
-                    Err(e) => {
-                        if let Some(url) = &preview_url {
-                            let _ = web_sys::Url::revoke_object_url(url);
+        UnsyncCallback::new(
+            move |(file, preview_url): (web_sys::File, Option<String>)| {
+                let chat_id = chat_id.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match super::model::upload_file(&chat_id, file).await {
+                        Ok(mut file_info) => {
+                            file_info.preview_url = preview_url;
+                            vm.uploaded_files.update(|files| files.push(file_info));
                         }
-                        vm.error.set(Some(format!("Ошибка загрузки файла: {}", e)));
+                        Err(e) => {
+                            if let Some(url) = &preview_url {
+                                let _ = web_sys::Url::revoke_object_url(url);
+                            }
+                            vm.error.set(Some(format!("Ошибка загрузки файла: {}", e)));
+                        }
                     }
-                }
-            });
-        })
+                });
+            },
+        )
     };
 
     // Открыть редактор для только что вставленного/выбранного изображения.
     let begin_screenshot_edit = UnsyncCallback::new(move |file: web_sys::File| {
         if let Some(previous) = pending_screenshot.get_untracked() {
-            let _ = web_sys::Url::revoke_object_url(&previous.preview_url);
+            previous.revoke();
         }
-        match web_sys::Url::create_object_url_with_blob(&file) {
-            Ok(preview_url) => {
-                pending_screenshot.set(Some(PendingScreenshot { file, preview_url }));
-            }
-            Err(_) => vm.error.set(Some(
+        match PendingScreenshot::open(file) {
+            Ok(pending) => pending_screenshot.set(Some(pending)),
+            Err(()) => vm.error.set(Some(
                 "Не удалось открыть скриншот из буфера обмена.".to_string(),
             )),
         }
@@ -384,7 +380,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
             }
         }
         if let Some(pending) = pending_screenshot.get_untracked() {
-            let _ = web_sys::Url::revoke_object_url(&pending.preview_url);
+            pending.revoke();
         }
     });
 
@@ -657,7 +653,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     let chat_id_for_draft_attachments = chat_id.clone();
     let cancel_screenshot = UnsyncCallback::new(move |_| {
         if let Some(pending) = pending_screenshot.get_untracked() {
-            let _ = web_sys::Url::revoke_object_url(&pending.preview_url);
+            pending.revoke();
         }
         pending_screenshot.set(None);
     });
@@ -668,7 +664,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
         let Some(pending) = pending_screenshot.get_untracked() else {
             return;
         };
-        let _ = web_sys::Url::revoke_object_url(&pending.preview_url);
+        pending.revoke();
         pending_screenshot.set(None);
         let preview_url = web_sys::Url::create_object_url_with_blob(&edited).ok();
         attach_file.run((edited, preview_url));
@@ -827,10 +823,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                         let Some(file) = files.get(index) else {
                             continue;
                         };
-                        if !matches!(
-                            file.type_().as_str(),
-                            "image/png" | "image/jpeg" | "image/webp"
-                        ) {
+                        if !is_editable_image_type(&file.type_()) {
                             continue;
                         }
                         ev.prevent_default();
@@ -935,7 +928,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                                         current_job_id.get().map(|job_id| view! {
                                             <button
                                                 title="Остановить генерацию"
-                                                style="border: 1px solid var(--colorNeutralStroke2); background: var(--colorNeutralBackground2); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;"
+                                                style="border: 1px solid var(--colorPaletteRedBorder2, #b10e1c); background: var(--colorPaletteRedBackground3, #c50f1f); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer;"
                                                 on:click=move |_| {
                                                     let job_id = job_id.clone();
                                                     wasm_bindgen_futures::spawn_local(async move {

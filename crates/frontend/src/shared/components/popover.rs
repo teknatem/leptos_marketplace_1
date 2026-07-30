@@ -200,9 +200,9 @@ fn append_text_div(
 
 fn show_info_popover(
     id: String,
-    title: &'static str,
-    endpoint: &'static str,
-    description: &'static str,
+    title: &str,
+    endpoint: Option<&str>,
+    description: &str,
     client_x: i32,
     client_y: i32,
 ) {
@@ -260,15 +260,17 @@ fn show_info_popover(
 
     append_text_div(&document, &panel, "info-popover-portal__title", title);
 
-    if let Ok(endpoint_row) = document.create_element("div") {
-        endpoint_row.set_class_name("info-popover-portal__endpoint");
-        let text = document.create_text_node("Endpoint: ");
-        let _ = endpoint_row.append_child(&text);
-        if let Ok(code) = document.create_element("code") {
-            code.set_text_content(Some(endpoint));
-            let _ = endpoint_row.append_child(&code);
+    if let Some(endpoint) = endpoint {
+        if let Ok(endpoint_row) = document.create_element("div") {
+            endpoint_row.set_class_name("info-popover-portal__endpoint");
+            let text = document.create_text_node("Endpoint: ");
+            let _ = endpoint_row.append_child(&text);
+            if let Ok(code) = document.create_element("code") {
+                code.set_text_content(Some(endpoint));
+                let _ = endpoint_row.append_child(&code);
+            }
+            let _ = panel.append_child(&endpoint_row);
         }
-        let _ = panel.append_child(&endpoint_row);
     }
 
     append_text_div(
@@ -328,6 +330,14 @@ fn show_info_popover(
             open_button_listener: None,
         });
     });
+}
+
+pub fn show_message_popover(title: &str, description: &str, client_x: i32, client_y: i32) {
+    let id = format!(
+        "info-popover-{}",
+        NEXT_INFO_POPOVER_ID.fetch_add(1, Ordering::Relaxed)
+    );
+    show_info_popover(id, title, None, description, client_x, client_y);
 }
 
 fn show_indicator_popover(
@@ -564,7 +574,7 @@ pub fn HelpPopoverLabel(
                         show_info_popover(
                             id,
                             label,
-                            endpoint,
+                            Some(endpoint),
                             description,
                             event.client_x(),
                             event.client_y(),

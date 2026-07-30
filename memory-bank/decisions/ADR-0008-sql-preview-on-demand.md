@@ -1,12 +1,10 @@
 ---
-type: decision
-adr: 8
+type: adr
+number: "0008"
+title: SQL Preview On-Demand Generation
 date: 2025-01-26
 status: accepted
-topics:
-  - sql preview
-  - dashboard configuration
-  - performance
+tags: [dashboards, sql, performance]
 ---
 
 # ADR-0008: SQL Preview On-Demand Generation

@@ -132,6 +132,9 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
 
         "sys_users" => "Пользователи",
         k if k.starts_with("sys_user_details_") => "Пользователь",
+        "sys_tickets" => "Тикеты",
+        "sys_ticket_new" => "Новый тикет",
+        k if k.starts_with("sys_ticket_details_") => "Тикет",
         "sys_roles" => "Роли",
         "sys_roles_matrix" => "Матрица ролей",
         "sys_audit" => "Аудит доступа",

@@ -42,7 +42,7 @@ This session completed the project-wide migration to a single modal mechanism: *
 
 ## Links to created notes
 
-- [[memory-bank/decisions/ADR0004__modal-stack-standard.md|ADR0004 — ModalStack standard]]
+- [[memory-bank/decisions/ADR-0004-modal-stack-standard.md|ADR0004 — ModalStack standard]]
 - [[memory-bank/runbooks/RB__modal-migration-to-modalstack__v1.md|RB — Modal migration to ModalStack]]
 - [[memory-bank/known-issues/KI-wasm-closure-dropped-on-modal-close-2025-12-27.md|KI — WASM closure dropped on modal close]]
 - [[memory-bank/lessons/LL-modalstack-fn-capture-clone-2025-12-27.md|LL — Fn capture + clone rules]]

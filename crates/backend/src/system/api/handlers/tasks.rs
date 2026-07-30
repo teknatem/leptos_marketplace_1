@@ -527,6 +527,7 @@ pub async fn abort_task_run(
 pub async fn get_change_tokens() -> impl IntoResponse {
     Json(serde_json::json!({
         "sys_tasks": change_token::TOKEN.get(),
+        "sys_tickets": crate::system::tickets::change_token::TOKEN.get(),
         "a027_wb_documents": crate::domain::a027_wb_documents::change_token::TOKEN.get(),
         "a015_wb_orders": crate::domain::a015_wb_orders::change_token::TOKEN.get(),
         "a012_wb_sales": crate::domain::a012_wb_sales::change_token::TOKEN.get(),

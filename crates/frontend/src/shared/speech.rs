@@ -327,7 +327,7 @@ pub fn DictationDiagnostics() -> impl IntoView {
     };
 
     view! {
-        <HintLink label="Микрофон?">
+        <HintLink label="Микрофон?" width_px=400>
             <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
                 <div style="font-weight: 600;">"Диагностика микрофона"</div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">

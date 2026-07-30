@@ -22,7 +22,7 @@ Implemented a complete scheduled task system (`sys_scheduled_task`) including ba
 - **File Logging**: Implemented a JSON-per-session logging strategy that overwrites the file for the current status, reducing DB load.
 
 ## Links to Notes
-- [Decision: Scheduled Tasks Architecture](../decisions/ADR0003__scheduled-tasks-architecture.md)
+- [Decision: Scheduled Tasks Architecture](../decisions/ADR-0003-scheduled-tasks-architecture.md)
 - [Lesson: Leptos 0.8 RwSignal Usage](../lessons/LL__leptos-0.8-rwsignal-usage__2025-12-23.md)
 - [Runbook: Implementing Scheduled Tasks](../runbooks/RB__scheduled-tasks-implementation__v1.md)
 

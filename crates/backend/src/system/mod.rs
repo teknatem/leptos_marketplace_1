@@ -11,5 +11,6 @@ pub mod roles;
 pub mod s3;
 pub mod settings;
 pub mod tasks;
+pub mod tickets;
 pub mod tracing;
 pub mod users;

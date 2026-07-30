@@ -1,13 +1,13 @@
 ---
-title: "ADR0001: Domain aggregate_metrics.json schema and metric selection UI"
+type: adr
+number: "0002"
+title: Формат aggregate_metrics.json
 date: 2025-12-31
 status: accepted
-tags:
-  - adr
-  - metrics
-  - json
-  - egui
+tags: [metrics, json, tooling]
 ---
+
+# ADR-0002: Формат aggregate_metrics.json
 
 ## Context
 

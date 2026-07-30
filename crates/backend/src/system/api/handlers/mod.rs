@@ -10,4 +10,5 @@ pub mod roles;
 pub mod runtime_info;
 pub mod s3;
 pub mod tasks;
+pub mod tickets;
 pub mod users;

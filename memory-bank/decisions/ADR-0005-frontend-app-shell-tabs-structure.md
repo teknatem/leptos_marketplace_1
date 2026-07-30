@@ -1,6 +1,8 @@
 ---
+type: adr
+number: "0005"
+title: Frontend App Shell and Tabs Module Structure
 date: 2026-01-11
-type: decision-record
 status: accepted
 tags: [frontend, architecture, module-structure]
 ---

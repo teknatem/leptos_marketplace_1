@@ -126,6 +126,7 @@
 | `task022` | mail reply |
 | `task023` | wb sales funnel daily |
 | `task024` | wb search analytics daily |
+| `task025` | bitrix ticket sync |
 
 ## Chart of accounts (account_registry)
 

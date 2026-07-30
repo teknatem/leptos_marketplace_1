@@ -1,6 +1,7 @@
 use crate::domain::a018_llm_chat::ui::pending_first_message_key;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::date_utils::format_utc_local;
 use crate::shared::icons::icon;
 use crate::shared::speech::{DictationButton, DictationDiagnostics};
 use crate::shared::table_utils::init_column_resize;
@@ -9,11 +10,107 @@ use contracts::domain::a017_llm_agent::aggregate::LlmAgent;
 use contracts::domain::a018_llm_chat::aggregate::LlmChatListItem;
 use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
 use leptos::prelude::*;
+use std::cmp::Ordering;
 use thaw::*;
 
 /// DOM-id таблицы и ключ localStorage для сохранения ширины колонок (ресайз мышью).
 const TABLE_ID: &str = "a018-llm-chat-table";
 const COLUMN_WIDTHS_KEY: &str = "a018_llm_chat_column_widths";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChatSortColumn {
+    Description,
+    Agent,
+    AgentType,
+    Model,
+    MessageCount,
+    LastMessageAt,
+    CreatedAt,
+    Rating,
+    Shared,
+}
+
+impl ChatSortColumn {
+    fn default_descending(self) -> bool {
+        matches!(
+            self,
+            Self::MessageCount | Self::LastMessageAt | Self::CreatedAt | Self::Rating
+        )
+    }
+}
+
+fn compare_chat_items(
+    left: &LlmChatListItem,
+    right: &LlmChatListItem,
+    column: ChatSortColumn,
+) -> Ordering {
+    match column {
+        ChatSortColumn::Description => left
+            .description
+            .to_lowercase()
+            .cmp(&right.description.to_lowercase()),
+        ChatSortColumn::Agent => left
+            .agent_name
+            .as_deref()
+            .unwrap_or("")
+            .to_lowercase()
+            .cmp(&right.agent_name.as_deref().unwrap_or("").to_lowercase()),
+        ChatSortColumn::AgentType => left
+            .agent_type
+            .as_deref()
+            .unwrap_or("")
+            .cmp(right.agent_type.as_deref().unwrap_or("")),
+        ChatSortColumn::Model => left
+            .model_name
+            .to_lowercase()
+            .cmp(&right.model_name.to_lowercase()),
+        ChatSortColumn::MessageCount => left
+            .message_count
+            .unwrap_or(0)
+            .cmp(&right.message_count.unwrap_or(0)),
+        ChatSortColumn::LastMessageAt => left.last_message_at.cmp(&right.last_message_at),
+        ChatSortColumn::CreatedAt => left.created_at.cmp(&right.created_at),
+        ChatSortColumn::Rating => left.rating.cmp(&right.rating),
+        ChatSortColumn::Shared => left.is_shared.cmp(&right.is_shared),
+    }
+}
+
+#[component]
+fn ChatSortHeader(
+    label: &'static str,
+    column: ChatSortColumn,
+    sort_column: RwSignal<ChatSortColumn>,
+    sort_descending: RwSignal<bool>,
+) -> impl IntoView {
+    view! {
+        <button
+            type="button"
+            style="display:flex;width:100%;align-items:center;justify-content:space-between;gap:6px;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;text-align:left;"
+            title=format!("Сортировать: {label}")
+            on:click=move |_| {
+                if sort_column.get_untracked() == column {
+                    sort_descending.update(|descending| *descending = !*descending);
+                } else {
+                    sort_column.set(column);
+                    sort_descending.set(column.default_descending());
+                }
+            }
+        >
+            <span>{label}</span>
+            <span style="min-width:12px;font-size:10px;opacity:0.75;">
+                {move || {
+                    if sort_column.get() != column {
+                        ""
+                    } else if sort_descending.get() {
+                        "▼"
+                    } else {
+                        "▲"
+                    }
+                }}
+            </span>
+        </button>
+    }
+}
 
 /// Сформировать заголовок чата из первого вопроса пользователя.
 /// Берёт первую непустую строку и обрезает до разумной длины.
@@ -43,6 +140,8 @@ pub fn LlmChatList() -> impl IntoView {
 
     let (items, set_items) = signal::<Vec<LlmChatListItem>>(Vec::new());
     let (error, set_error) = signal::<Option<String>>(None);
+    let sort_column = RwSignal::new(ChatSortColumn::LastMessageAt);
+    let sort_descending = RwSignal::new(true);
 
     // Состояние быстрого создания чата (один вопрос — остальное опционально).
     let question = RwSignal::new(String::new());
@@ -314,15 +413,33 @@ pub fn LlmChatList() -> impl IntoView {
                 <TableHeader>
                     <TableRow>
                         <TableHeaderCell resizable=false attr:style="width: 36px; min-width: 36px; max-width: 36px; padding-left: 8px; padding-right: 4px;">""</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=250.0 class="resizable">"Название"</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=180.0 class="resizable">"Агент"</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=130.0 class="resizable">"Тип агента"</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">"Модель"</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">"Сообщений"</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">"Последнее сообщение"</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">"Создан"</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">"Оценка"</TableHeaderCell>
-                        <TableHeaderCell resizable=false min_width=110.0 class="resizable">"Общий доступ"</TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=250.0 class="resizable">
+                            <ChatSortHeader label="Название" column=ChatSortColumn::Description sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=180.0 class="resizable">
+                            <ChatSortHeader label="Агент" column=ChatSortColumn::Agent sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=130.0 class="resizable">
+                            <ChatSortHeader label="Тип агента" column=ChatSortColumn::AgentType sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">
+                            <ChatSortHeader label="Модель" column=ChatSortColumn::Model sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                            <ChatSortHeader label="Сообщений" column=ChatSortColumn::MessageCount sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">
+                            <ChatSortHeader label="Последнее сообщение" column=ChatSortColumn::LastMessageAt sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=140.0 class="resizable">
+                            <ChatSortHeader label="Создан" column=ChatSortColumn::CreatedAt sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                            <ChatSortHeader label="Оценка" column=ChatSortColumn::Rating sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
+                        <TableHeaderCell resizable=false min_width=110.0 class="resizable">
+                            <ChatSortHeader label="Общий доступ" column=ChatSortColumn::Shared sort_column=sort_column sort_descending=sort_descending />
+                        </TableHeaderCell>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -331,7 +448,14 @@ pub fn LlmChatList() -> impl IntoView {
                         let auth_state = auth.get();
                         let current_user_id = auth_state.user_info.as_ref().map(|u| u.id.clone());
                         let is_admin = auth_state.user_info.as_ref().map(|u| u.is_admin).unwrap_or(false);
-                        items.get().into_iter().map(move |item| {
+                        let active_sort = sort_column.get();
+                        let descending = sort_descending.get();
+                        let mut sorted_items = items.get();
+                        sorted_items.sort_by(|left, right| {
+                            let ordering = compare_chat_items(left, right, active_sort);
+                            if descending { ordering.reverse() } else { ordering }
+                        });
+                        sorted_items.into_iter().map(move |item| {
                         let id = item.id.clone();
                         let id_for_link = id.clone();
                         let id_for_toggle = id.clone();
@@ -340,9 +464,9 @@ pub fn LlmChatList() -> impl IntoView {
 
                         let msg_count = item.message_count.unwrap_or(0);
                         let last_msg = item.last_message_at.map(|dt| {
-                            dt.format("%d.%m.%Y %H:%M").to_string()
+                            format_utc_local(&dt, "%d.%m.%Y %H:%M")
                         }).unwrap_or_else(|| "-".to_string());
-                        let created = item.created_at.format("%d.%m.%Y %H:%M").to_string();
+                        let created = format_utc_local(&item.created_at, "%d.%m.%Y %H:%M");
                         let item_agent_type = AgentType::from_str(
                             item.agent_type.as_deref().unwrap_or("business_analyst")
                         );

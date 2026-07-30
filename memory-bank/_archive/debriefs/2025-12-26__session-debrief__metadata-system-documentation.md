@@ -41,7 +41,7 @@ tags: [metadata, documentation, architecture]
 
 ## Links to Created Notes
 
-- [[ADR__0001__field-metadata-system]]
+- [[ADR-0001-field-metadata-system]]
 - [[RB__metadata-add-to-aggregate__v1]]
 - [[LL__static-lifetime-metadata__2025-12-26]]
 

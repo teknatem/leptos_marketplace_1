@@ -1,11 +1,14 @@
 ---
-title: ADR-0003 - Shared Utilities Organization
+title: Shared Utilities Organization
+archived_from: ADR-0003
 date: 2025-01-13
-status: accepted
+status: withdrawn-from-adr-series
 tags: [adr, architecture, shared-utilities]
 ---
 
-# ADR-0003: Shared Utilities Organization
+# Shared Utilities Organization
+
+> **Снято с серии ADR** (был `ADR-0003`): это конвенция кодирования, а не архитектурное решение. Само правило живёт в `memory-bank/code-standards/code-quality-rules.md`; здесь сохранён исторический контекст. Номер `0003` в активном каталоге принадлежит другому ADR.
 
 ## Status
 

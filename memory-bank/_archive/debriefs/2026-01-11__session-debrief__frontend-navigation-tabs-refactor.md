@@ -3,7 +3,7 @@ date: 2026-01-11
 type: session-debrief
 tags: [refactoring, frontend, leptos, module-structure]
 related:
-  - "[[ADR0005__frontend-app-shell-tabs-structure]]"
+  - "[[ADR-0005-frontend-app-shell-tabs-structure]]"
   - "[[RB__frontend-module-refactor__v1]]"
 ---
 

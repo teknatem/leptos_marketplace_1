@@ -1,12 +1,13 @@
 ---
-type: decision-record
-number: "0004"
+type: adr
+number: "0007"
+title: Разделение API на бизнес и системный модули
 date: 2026-01-11
 status: accepted
-tags: [architecture, api, backend, handlers]
+tags: [architecture, api, backend]
 ---
 
-# ADR-0004: Разделение API на бизнес и системный модули
+# ADR-0007: Разделение API на бизнес и системный модули
 
 ## Контекст
 

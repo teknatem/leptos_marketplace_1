@@ -1,13 +1,13 @@
 ---
-title: "ADR0004 — Modal standard: ModalStackService + ModalFrame"
+type: adr
+number: "0004"
+title: Стандарт модалок: ModalStackService + ModalFrame
 date: 2025-12-27
-type: decision
 status: accepted
-drivers:
-  - Need a single consistent modal mechanism across the frontend
-  - Need support for sequential / stacked modals
-  - Avoid double headers (modal header + details header)
+tags: [frontend, ui, modals]
 ---
+
+# ADR-0004: Стандарт модалок: ModalStackService + ModalFrame
 
 ## Context
 
@@ -52,5 +52,3 @@ Close behavior is deferred (next microtask) to avoid WASM closure lifecycle issu
 
 - `ModalFrame` overlay close should be “direct click only” (avoid drag-release closing).
 - All close operations should be deferred (see KI note).
-
-

@@ -112,6 +112,44 @@ pub fn configure_system_routes() -> Router {
                 .layer(middleware::from_fn(auth::middleware::require_auth)),
         )
         // ========================================
+        // SYSTEM TICKETS (обратная связь пользователей)
+        // Пользователь видит только свои тикеты, админ — все (правило в service)
+        // ========================================
+        .route(
+            "/api/system/tickets",
+            get(handlers::tickets::list)
+                .post(handlers::tickets::create)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/system/tickets/:id",
+            get(handlers::tickets::get_details)
+                .put(handlers::tickets::update)
+                .delete(handlers::tickets::delete)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/system/tickets/:id/comments",
+            get(handlers::tickets::list_comments)
+                .post(handlers::tickets::add_comment)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/system/tickets/:id/attachments",
+            post(handlers::tickets::upload_attachment)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/system/tickets/:id/attachments/:attachment_id/download",
+            get(handlers::tickets::download_attachment)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        .route(
+            "/api/system/tickets/:id/attachments/:attachment_id",
+            axum::routing::delete(handlers::tickets::delete_attachment)
+                .layer(middleware::from_fn(auth::middleware::require_auth)),
+        )
+        // ========================================
         // SYSTEM PAGE HISTORY ("История открытых страниц")
         // ========================================
         .route(

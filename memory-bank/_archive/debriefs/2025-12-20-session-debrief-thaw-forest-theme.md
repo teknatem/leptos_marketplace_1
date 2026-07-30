@@ -100,7 +100,7 @@ document.query_selector(".class")
 - `memory-bank/debriefs/2025-12-20-session-debrief-thaw-forest-theme.md` (this file)
 - See [[RB-thaw-css-variables-v1]] for runbook
 - See [[LL-css-variable-timing-2025-12-20]] for lessons
-- See [[ADR-0001-thaw-transparent-background]] for decision rationale
+- See [[thaw-transparent-background]] for decision rationale
 
 ## Testing Checklist
 
@@ -143,7 +143,7 @@ document.query_selector(".class")
 - Implementation: [[THAW_FOREST_THEME]]
 - Runbook: [[RB-thaw-css-variables-v1]]
 - Lesson: [[LL-css-variable-timing-2025-12-20]]
-- Decision: [[ADR-0001-thaw-transparent-background]]
+- Decision: [[thaw-transparent-background]]
 - Related: Previous session on Thaw UI integration
 
 ## Session Metadata

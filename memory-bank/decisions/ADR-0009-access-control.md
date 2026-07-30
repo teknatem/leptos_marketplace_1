@@ -1,4 +1,12 @@
-# Система управления доступом
+---
+type: adr
+number: "0009"
+title: Система управления доступом
+status: accepted
+tags: [architecture, access, auth]
+---
+
+# ADR-0009: Система управления доступом
 
 ## Цель
 

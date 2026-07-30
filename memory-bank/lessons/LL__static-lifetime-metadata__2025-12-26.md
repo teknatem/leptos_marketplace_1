@@ -65,6 +65,6 @@ pub static ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
 
 ## References
 
-- `memory-bank/decisions/ADR__0001__field-metadata-system.md`
+- `memory-bank/decisions/ADR-0001-field-metadata-system.md`
 - `memory-bank/architecture/metadata-system.md`
 

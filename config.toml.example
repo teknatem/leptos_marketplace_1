@@ -39,6 +39,18 @@ path = "data/app.db"
 [scheduled_tasks]
 enabled = false
 
+[bitrix24]
+# Обмен тикетами выполняется глобальным планировщиком каждые 5 минут.
+# Время запуска и отметки в UI показываются по Москве (UTC+3).
+enabled = false
+# Полный URL входящего вебхука, например:
+# https://example.bitrix24.ru/rest/1/secret-token/
+webhook_url = ""
+group_id = 5
+responsible_id = 0
+# Для двусторонних текстовых комментариев вебхуку также требуется scope "im".
+sync_comments = true
+
 [llm]
 # Директория с Obsidian-совместимыми MD-файлами базы знаний.
 # Относительный путь разрешается от директории бинарника.

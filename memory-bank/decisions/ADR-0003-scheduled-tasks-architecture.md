@@ -1,9 +1,13 @@
 ---
-type: decision
-status: accepted
+type: adr
+number: "0003"
+title: Scheduled Tasks Architecture
 date: 2025-12-23
+status: accepted
+tags: [architecture, tasks, vsa]
 ---
-# ADR0003: Scheduled Tasks Architecture
+
+# ADR-0003: Scheduled Tasks Architecture
 
 ## Context
 The project requires automated data synchronization from multiple marketplaces (Ozon, WB, Yandex) and 1C:UT11. This needs to run in the background with real-time monitoring in the UI.
@@ -19,5 +23,3 @@ The project requires automated data synchronization from multiple marketplaces (
 - **DB Load**: Moving logs out of the DB avoids excessive ORM operations and database growth.
 - **Flexibility**: The registry allows adding new task types without modifying the core worker.
 - **Real-time**: JSON files allow the frontend to poll for progress independently of DB transactions.
-
-

@@ -1,0 +1,660 @@
+/* Стили страниц «Тикеты» (sys_tickets: список, details, создание).
+
+   Загружается глобально из index.html, но ВСЕ правила scoped под
+
+   корневые классы страниц `.sys-tickets` и `.sys-ticket-details-page`. */
+
+
+
+/* ── Список ──────────────────────────────────────────────────────────── */
+
+
+
+.sys-tickets .sys-tickets__counters {
+
+    display: inline-flex;
+
+    gap: var(--spacing-sm);
+
+    margin-left: var(--spacing-sm);
+
+    color: var(--color-text-secondary);
+
+    font-size: 12px;
+
+}
+
+
+
+.sys-tickets .sys-tickets__counter {
+
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 2px;
+
+}
+
+
+
+.sys-tickets .sys-tickets__counter svg {
+
+    width: 12px;
+
+    height: 12px;
+
+}
+
+
+
+/* ── Details / создание ──────────────────────────────────────────────── */
+
+
+
+.sys-ticket-details-page .page__content.sys-ticket-details {
+
+    display: flex;
+
+    flex-direction: column;
+
+    min-height: 0;
+
+    flex: 1 1 auto;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__layout {
+
+    display: grid;
+
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+    gap: var(--spacing-md);
+
+    flex: 1 1 auto;
+
+    min-height: 0;
+
+    align-items: stretch;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__col {
+
+    min-width: 0;
+
+    min-height: 0;
+
+    display: flex;
+
+    flex-direction: column;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__col-card {
+
+    flex: 1 1 auto;
+
+    min-height: 0;
+
+    display: flex;
+
+    flex-direction: column;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__col-card .card-animated {
+
+    flex: 1 1 auto;
+
+    min-height: 0;
+
+    display: flex;
+
+    flex-direction: column;
+
+    overflow: hidden;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__section-divider {
+
+    margin: var(--spacing-md) 0;
+
+    border-top: 1px solid var(--color-border);
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__meta {
+
+    margin-top: var(--spacing-md);
+
+    padding-top: var(--spacing-md);
+
+    border-top: 1px solid var(--color-border);
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: var(--spacing-xs);
+
+    font-size: 13px;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__meta-row {
+
+    display: flex;
+
+    gap: var(--spacing-sm);
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__meta-label {
+
+    color: var(--color-text-secondary);
+
+    min-width: 90px;
+
+}
+
+
+
+/* Select — читаемость в тёмной теме */
+
+
+
+.sys-ticket-details-page select.form__select {
+
+    color: var(--color-text-primary);
+
+    background-color: var(--form-input-bg, var(--color-surface));
+
+    border: 1px solid var(--form-input-border, var(--color-border));
+
+}
+
+
+
+.sys-ticket-details-page select.form__select option {
+
+    color: var(--color-text-primary);
+
+    background-color: var(--color-surface);
+
+}
+
+.sys-ticket-details-page #sys_ticket_details_requisites .card-animated__content {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
+}
+
+.sys-ticket-details-page #sys_ticket_details_requisites .card-animated__content::-webkit-scrollbar {
+    width: 10px;
+}
+
+.sys-ticket-details-page #sys_ticket_details_requisites .card-animated__content::-webkit-scrollbar-track {
+    background: var(--list-scrollbar-track);
+}
+
+.sys-ticket-details-page #sys_ticket_details_requisites .card-animated__content::-webkit-scrollbar-thumb {
+    background: var(--list-scrollbar-thumb);
+    border: 2px solid var(--list-scrollbar-track);
+    border-radius: 10px;
+}
+
+.sys-ticket-details-page #sys_ticket_details_requisites .card-animated__content::-webkit-scrollbar-thumb:hover {
+    background: var(--list-scrollbar-thumb-hover);
+}
+
+.sys-ticket-details-page .sys-ticket-details__native-textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+
+
+/* Вложения */
+
+
+
+.sys-ticket-details-page .sys-ticket-details__attachments-toolbar {
+
+    display: flex;
+
+    flex-wrap: nowrap;
+
+    align-items: center;
+
+    gap: var(--spacing-xs);
+
+    margin-bottom: var(--spacing-sm);
+
+    white-space: nowrap;
+
+}
+
+.sys-ticket-details-page #sys_ticket_details_attachments > .thaw-card,
+.sys-ticket-details-page #sys_ticket_details_attachments .card-animated__content {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sys-ticket-details-page .sys-ticket-details__preview-status {
+    flex: 0 0 auto;
+    margin: 0 0 var(--spacing-xs);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__attachments-list {
+
+    flex: 1 1 auto;
+
+    min-height: 0;
+
+    overflow-y: auto;
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 2px;
+
+    outline: none;
+
+    scrollbar-width: thin;
+
+    scrollbar-color: var(--list-scrollbar-thumb) var(--list-scrollbar-track);
+
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachments-list::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachments-list::-webkit-scrollbar-track {
+    background: var(--list-scrollbar-track);
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachments-list::-webkit-scrollbar-thumb {
+    background: var(--list-scrollbar-thumb);
+    border: 2px solid var(--list-scrollbar-track);
+    border-radius: 10px;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachments-list::-webkit-scrollbar-thumb:hover {
+    background: var(--list-scrollbar-thumb-hover);
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__attachments-list--dragover {
+
+    background: rgba(59, 130, 246, 0.04);
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__attachment-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-preview {
+    flex-shrink: 0;
+    display: block;
+    width: auto;
+    max-width: 140px;
+    height: 100px;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-secondary);
+    cursor: pointer;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-item:hover {
+    background: var(--color-bg-secondary);
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-item--selected,
+.sys-ticket-details-page .sys-ticket-details__attachment-item--linked {
+    background: rgba(59, 130, 246, 0.12);
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-item--selected {
+    box-shadow: inset 2px 0 0 var(--color-accent, #3b82f6);
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-main {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--color-text-primary);
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-name--image {
+    color: var(--color-accent, #2563eb);
+    cursor: pointer;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-name--image:hover {
+    text-decoration: underline;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-meta {
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    align-items: center;
+
+    gap: 4px;
+
+    margin-top: 2px;
+
+    padding-left: 2px;
+
+    font-size: 11px;
+
+    color: var(--color-text-secondary);
+
+    line-height: 1.35;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__attachment-meta-sep {
+
+    opacity: 0.55;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__attachment-comment {
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
+
+    max-width: 100%;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__attachment-action {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 4px;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-sm);
+    opacity: 0.75;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-item:hover .sys-ticket-details__attachment-action,
+.sys-ticket-details-page .sys-ticket-details__attachment-action:focus-visible {
+    opacity: 1;
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-action:hover {
+    color: var(--color-accent, #2563eb);
+    background: rgba(59, 130, 246, 0.08);
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-action--delete:hover {
+    color: var(--color-error, #ef4444);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.sys-ticket-details-page .sys-ticket-details__attachment-action svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Комментарии */
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comments {
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: var(--spacing-sm);
+
+    margin-bottom: var(--spacing-md);
+
+    overflow-y: auto;
+
+    max-height: min(420px, 50vh);
+
+    min-height: 120px;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comments-empty {
+
+    color: var(--color-text-secondary);
+
+    font-size: 13px;
+
+    padding: var(--spacing-sm) 0;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comment {
+
+    padding: var(--spacing-sm) var(--spacing-md);
+
+    border: 1px solid var(--color-border);
+
+    border-radius: var(--radius-md);
+
+    background: var(--color-bg-secondary);
+
+    cursor: pointer;
+
+    transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comment:hover {
+
+    border-color: rgba(59, 130, 246, 0.35);
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comment--selected,
+
+.sys-ticket-details-page .sys-ticket-details__comment--linked {
+
+    background: rgba(59, 130, 246, 0.12);
+
+    border-color: rgba(59, 130, 246, 0.45);
+
+    box-shadow: inset 3px 0 0 var(--color-accent, #3b82f6);
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comment-header {
+
+    display: flex;
+
+    justify-content: space-between;
+
+    gap: var(--spacing-md);
+
+    margin-bottom: var(--spacing-xs);
+
+    font-size: 12px;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comment-author {
+
+    font-weight: 600;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comment-date {
+
+    color: var(--color-text-secondary);
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comment-body {
+
+    white-space: pre-wrap;
+
+    word-break: break-word;
+
+    font-size: 13px;
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__comment-attachments {
+
+    display: none;
+
+}
+
+
+
+/* Композер комментария */
+
+
+
+.sys-ticket-details-page .sys-ticket-details__composer {
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: var(--spacing-sm);
+
+    margin-top: auto;
+
+    padding-top: var(--spacing-sm);
+
+    border-top: 1px solid var(--color-border);
+
+}
+
+
+
+.sys-ticket-details-page .sys-ticket-details__composer-actions {
+
+    display: flex;
+
+    justify-content: flex-end;
+
+    align-items: center;
+
+    gap: var(--spacing-md);
+
+}
+
+
+
+@media (max-width: 1200px) {
+
+    .sys-ticket-details-page .sys-ticket-details__layout {
+
+        grid-template-columns: 1fr;
+
+    }
+
+
+
+    .sys-ticket-details-page .sys-ticket-details__comments {
+
+        max-height: none;
+
+    }
+
+}
+
+

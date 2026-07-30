@@ -2,8 +2,8 @@
 type: adr
 number: "0001"
 title: Field Metadata System
-status: accepted
 date: 2025-12-26
+status: accepted
 tags: [metadata, architecture, codegen]
 ---
 
@@ -98,4 +98,3 @@ fn metadata() -> serde_json::Value {
 - `memory-bank/architecture/metadata-system.md` — полная документация
 - `crates/contracts/build.rs` — генератор
 - `crates/contracts/schemas/metadata.schema.json` — JSON Schema
-

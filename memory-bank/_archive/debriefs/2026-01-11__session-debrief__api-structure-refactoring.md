@@ -83,7 +83,7 @@ crates/backend/src/
 
 - [[RB__api-handlers-refactoring__v1]] — Runbook для подобных рефакторингов
 - [[KI__domain-depends-on-handlers__2026-01-11]] — Известная проблема зависимости слоёв
-- [[ADR__0004__api-structure-separation]] — Решение о разделении API
+- [[ADR-0007-api-structure-separation]] — Решение о разделении API
 
 ## TODO / Открытые вопросы
 

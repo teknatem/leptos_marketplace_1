@@ -346,7 +346,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
         },
         MenuGroup {
             id: "operations",
-            label: "Операции",
+            label: "Финансы",
             icon: "layers",
             items: vec![
                 SidebarItem::new(
@@ -394,7 +394,7 @@ fn get_menu_groups() -> Vec<MenuGroup> {
         },
         MenuGroup {
             id: "llm",
-            label: "LLM",
+            label: "Чаты LLM",
             icon: "message-square",
             items: vec![
                 SidebarItem::with_scope(
@@ -546,13 +546,21 @@ fn get_menu_groups() -> Vec<MenuGroup> {
             ],
             admin_only: false,
         },
-        // Источники данных (роли источников — см. ADR-0010):
-        // DataView (курируемые витрины), схемы таблиц (universal_dashboard/schema_browser),
-        // drilldown, сохранённые отчёты, глобальные фильтры. Собраны в одну группу для прозрачности.
         MenuGroup {
-            id: "semantic_layer",
-            label: "Источники данных",
-            icon: "stack",
+            id: "support",
+            label: "Техподдержка",
+            icon: "message-circle",
+            items: vec![SidebarItem::new(
+                "sys_tickets",
+                tab_label_for_key("sys_tickets"),
+                "message-circle",
+            )],
+            admin_only: false,
+        },
+        MenuGroup {
+            id: "settings",
+            label: "Настройки",
+            icon: "settings",
             items: vec![
                 SidebarItem::new("data_view", tab_label_for_key("data_view"), "layers"),
                 SidebarItem::new(
@@ -576,14 +584,6 @@ fn get_menu_groups() -> Vec<MenuGroup> {
                     tab_label_for_key("filter_registry"),
                     "filter",
                 ),
-            ],
-            admin_only: true,
-        },
-        MenuGroup {
-            id: "settings",
-            label: "Настройки",
-            icon: "settings",
-            items: vec![
                 SidebarItem::new(
                     "d400_monthly_summary",
                     tab_label_for_key("d400_monthly_summary"),

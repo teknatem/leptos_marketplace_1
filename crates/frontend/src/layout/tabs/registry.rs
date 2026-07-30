@@ -112,6 +112,8 @@ use crate::system::raw_storage::ui::RawStoragePage;
 use crate::system::s3::ui::list::S3FilesPage;
 use crate::system::tasks::ui::details::ScheduledTaskDetails;
 use crate::system::tasks::ui::list::ScheduledTaskList;
+use crate::system::tickets::ui::details::{CreateTicketPage, TicketDetailsPage};
+use crate::system::tickets::ui::list::TicketsListPage;
 use crate::system::users::ui::details::{CreateUserPage, UserDetailsPage};
 use crate::system::users::ui::list::UsersListPage;
 use crate::usecases::u501_import_from_ut;
@@ -1310,6 +1312,22 @@ pub fn render_tab_content(key: &str, tabs_store: AppGlobalContext) -> AnyView {
         k if k.starts_with("sys_user_details_") => {
             let id = k.strip_prefix("sys_user_details_").unwrap().to_string();
             view! { <UserDetailsPage user_id=id /> }.into_any()
+        }
+        "sys_tickets" => view! { <TicketsListPage /> }.into_any(),
+        "sys_ticket_new" => view! {
+            <CreateTicketPage
+                on_close=Callback::new({
+                    let key_for_close = key_for_close.clone();
+                    move |_| {
+                        tabs_store.close_tab(&key_for_close);
+                    }
+                })
+            />
+        }
+        .into_any(),
+        k if k.starts_with("sys_ticket_details_") => {
+            let id = k.strip_prefix("sys_ticket_details_").unwrap().to_string();
+            view! { <TicketDetailsPage ticket_id=id /> }.into_any()
         }
         "sys_roles" => view! { <crate::system::roles::ui::list::RolesListPage /> }.into_any(),
         "sys_roles_matrix" => {

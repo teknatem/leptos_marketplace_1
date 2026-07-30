@@ -1,16 +1,13 @@
 ---
-date: 2026-01-11
 type: adr
-number: "0003"
-title: VSA System Module Naming Convention
+number: "0006"
+title: Соглашение об именовании system модулей в VSA
+date: 2026-01-11
 status: accepted
-tags:
-  - architecture
-  - vsa
-  - naming
+tags: [architecture, vsa, naming]
 ---
 
-# ADR-0003: Соглашение об именовании system модулей в VSA
+# ADR-0006: Соглашение об именовании system модулей в VSA
 
 ## Status
 

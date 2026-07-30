@@ -1,13 +1,15 @@
 ---
-adr_number: 1
+archived_from: ADR-0001
 title: Programmatic CSS Variable Manipulation for Thaw Forest Theme
 date: 2025-12-20
-status: accepted
+status: withdrawn-from-adr-series
 deciders: [user, assistant]
 tags: [adr, thaw-ui, theming, css]
 ---
 
-# ADR-0001: Programmatic CSS Variable Manipulation for Thaw Forest Theme
+# Programmatic CSS Variable Manipulation for Thaw Forest Theme
+
+> **Снято с серии ADR** (был `ADR-0001`): микро-решение, тривиально обратимое. Механика — в активном `memory-bank/runbooks/RB-thaw-css-variables-v1.md` и `memory-bank/lessons/LL-css-variable-timing-2025-12-20.md`. Номер `0001` в активном каталоге принадлежит другому ADR.
 
 ## Status
 

@@ -70,6 +70,42 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     },
     RoutePolicy {
         method: "*",
+        path: "/api/system/tickets",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/system/tickets/:id",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/system/tickets/:id/comments",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/system/tickets/:id/attachments",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/system/tickets/:id/attachments/:attachment_id",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/system/tickets/:id/attachments/:attachment_id/download",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "*",
         path: "/api/system/roles",
         scope_id: None,
         mode: PolicyMode::AdminOnly,

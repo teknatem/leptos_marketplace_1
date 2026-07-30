@@ -195,7 +195,7 @@ console.log(
 
 - Session: [[2025-12-20-session-debrief-thaw-forest-theme]]
 - Runbook: [[RB-thaw-css-variables-v1]]
-- Decision: [[ADR-0001-thaw-transparent-background]]
+- Decision: [[thaw-transparent-background]]
 - Leptos Book: Effects chapter
 - web_sys docs: DOM manipulation
 

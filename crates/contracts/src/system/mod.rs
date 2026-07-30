@@ -8,4 +8,5 @@ pub mod raw_storage;
 pub mod roles;
 pub mod s3;
 pub mod tasks;
+pub mod tickets;
 pub mod users;

@@ -1,5 +1,6 @@
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::api_utils::api_base;
+use crate::shared::date_utils::format_utc_local;
 use crate::shared::icons::icon;
 use contracts::domain::a019_llm_artifact::aggregate::{ArtifactType, LlmArtifact};
 use gloo_net::http::Request;
@@ -88,7 +89,8 @@ pub fn ArtifactCard(artifact_id: String) -> impl IntoView {
                     }.into_any()
                 } else if let Some(a) = artifact.get() {
                     let description = a.base.description.clone();
-                    let created_at = a.base.metadata.created_at.format("%d.%m.%Y %H:%M").to_string();
+                    let created_at =
+                        format_utc_local(&a.base.metadata.created_at, "%d.%m.%Y %H:%M");
 
                     if a.artifact_type == ArtifactType::DrilldownReport {
                         // ── Drilldown Report карточка ──

@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 static EXT_API_KEY: OnceLock<String> = OnceLock::new();
 static SCHEDULER_CONFIG_ENABLED: OnceLock<bool> = OnceLock::new();
 static MAIL_CONFIG: OnceLock<MailConfig> = OnceLock::new();
+static BITRIX24_CONFIG: OnceLock<Bitrix24Config> = OnceLock::new();
 
 /// Store the mail configuration once at application startup, so LLM mail tools
 /// (which run without access to the loaded `Config`) can read it.
@@ -18,6 +19,17 @@ pub fn get_mail_config() -> &'static MailConfig {
     MAIL_CONFIG
         .get()
         .unwrap_or_else(|| DISABLED.get_or_init(MailConfig::default))
+}
+
+pub fn set_bitrix24_config(cfg: Bitrix24Config) {
+    let _ = BITRIX24_CONFIG.set(cfg);
+}
+
+pub fn get_bitrix24_config() -> &'static Bitrix24Config {
+    static DISABLED: OnceLock<Bitrix24Config> = OnceLock::new();
+    BITRIX24_CONFIG
+        .get()
+        .unwrap_or_else(|| DISABLED.get_or_init(Bitrix24Config::default))
 }
 
 /// Set the external API key once at application startup.
@@ -75,6 +87,62 @@ pub struct Config {
     pub s3: S3Config,
     #[serde(default)]
     pub mail: MailConfig,
+    #[serde(default)]
+    pub bitrix24: Bitrix24Config,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Bitrix24Config {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub webhook_url: String,
+    #[serde(default = "default_bitrix_group_id")]
+    pub group_id: i64,
+    #[serde(default)]
+    pub responsible_id: i64,
+    #[serde(default = "default_true")]
+    pub sync_comments: bool,
+}
+
+impl Default for Bitrix24Config {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            webhook_url: String::new(),
+            group_id: default_bitrix_group_id(),
+            responsible_id: 0,
+            sync_comments: true,
+        }
+    }
+}
+
+impl Bitrix24Config {
+    pub fn validate_ready(&self) -> anyhow::Result<()> {
+        if !self.enabled {
+            return Err(anyhow::anyhow!(
+                "Bitrix24 is disabled ([bitrix24].enabled=false)"
+            ));
+        }
+        if !self.webhook_url.trim().starts_with("https://") {
+            return Err(anyhow::anyhow!(
+                "[bitrix24].webhook_url must be a non-empty HTTPS URL"
+            ));
+        }
+        if self.group_id <= 0 {
+            return Err(anyhow::anyhow!("[bitrix24].group_id must be positive"));
+        }
+        if self.responsible_id <= 0 {
+            return Err(anyhow::anyhow!(
+                "[bitrix24].responsible_id must be positive"
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn default_bitrix_group_id() -> i64 {
+    5
 }
 
 /// Настройки почтового ящика для LLM (приём по IMAP, отправка по SMTP).

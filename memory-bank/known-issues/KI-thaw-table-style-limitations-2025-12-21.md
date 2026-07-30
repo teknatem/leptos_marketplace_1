@@ -172,7 +172,7 @@ getComputedStyle(document.querySelector(".thaw-table")).getPropertyValue(
 ## Related Issues
 
 - [[LL-thaw-html-hybrid-2025-12-20]] - When to use HTML vs Thaw
-- [[ADR-0001-thaw-transparent-background]] - Overriding Thaw variables
+- [[thaw-transparent-background]] - Overriding Thaw variables
 - [[THAW_THEME_SYNC.md]] - Theme synchronization system
 
 ## Resolution
