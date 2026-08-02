@@ -30,7 +30,7 @@ fn main() {
 
     if !source_config.exists() {
         panic!(
-            "Required config.toml not found at {:?}. Create it from config.example.toml and set an absolute [database].path.",
+            "Required config.toml not found at {:?}. Create it from config.toml.example and set an absolute [database].path.",
             source_config
         );
     }

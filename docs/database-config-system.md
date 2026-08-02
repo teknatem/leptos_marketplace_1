@@ -167,7 +167,7 @@ path = "/var/lib/marketplace/database.db"
 - ✅ `crates/backend/src/shared/data/db.rs` - обновлена инициализация БД
 - ✅ `crates/backend/src/main.rs` - упрощена логика (удален хрупкий код)
 - ✅ `config.toml` - создан файл конфигурации в workspace root
-- ✅ `config.example.toml` - создан файл-пример с документацией
+- ✅ `config.toml.example` - файл-пример с документацией
 
 ## Решенная проблема
 
