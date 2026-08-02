@@ -178,7 +178,7 @@ Create a Windows Task Scheduler task to run `backup_db.ps1` daily:
 
 ```powershell
 # Run as Administrator
-$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File E:\dev\rust\leptos_marketplace_1\scripts\backup_db.ps1"
+$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File F:\dev\leptos_marketplace_1\scripts\backup_db.ps1"
 $Trigger = New-ScheduledTaskTrigger -Daily -At 9am
 Register-ScheduledTask -TaskName "Marketplace DB Backup" -Action $Action -Trigger $Trigger
 ```

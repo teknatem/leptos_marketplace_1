@@ -54,7 +54,7 @@ sync_comments = true
 [llm]
 # Директория с Obsidian-совместимыми MD-файлами базы знаний.
 # Относительный путь разрешается от директории бинарника.
-knowledge_base_path = "E:/dev/rust/2/data/knowledge"
+knowledge_base_path = "F:/data/leptos_marketplace_1/knowledge"
 # Внешний каталог навыков. Новый формат: <id>/SKILL.md + references/scripts/schemas;
 # корневые *.md поддерживаются для совместимости. Относительный путь — от бинарника.
 skills_path = "skills"
@@ -92,10 +92,10 @@ imap_port = 993
 smtp_host = "mail.hosting.reg.ru"
 smtp_port = 465
 # Учётные данные ящика (полный адрес как логин).
-username = "bot@xmx.ru"
+username = "bot@example.com"
 password = ""
 # Адрес и имя в поле From (если пусто — берётся username).
-from_address = "bot@xmx.ru"
+from_address = "bot@example.com"
 from_name = "XMX Bot"
 # Rate-limit отправки: не более send_rate_limit писем за send_rate_window_secs секунд.
 # 0 отключает ограничение. Приём/отправка в любом случае разрешены только на

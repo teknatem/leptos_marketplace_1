@@ -159,21 +159,23 @@ GL — скелет финансовой модели. Поверх неё ко�
 - **Миграции БД** — SQL-файлы `migrations/NNNN_имя.sql`, применяются автоматически при старте бэкенда (`shared/data/migration_runner.rs`, трекинг по checksum). Новая миграция = следующий номер.
 - Soft delete (`is_deleted`); сложные поля хранятся JSON-ом в БД.
 - Фронт: `spawn_local` для async, `RwSignal` для состояния; per-page CSS в `static/pages/<page>.css` под корневым классом страницы (см. memory `per-page-css-convention`).
-- Боевая БД и knowledge — вне репозитория: `E:/dev/rust/2/data/` (пути в `config.toml`).
+- Боевая БД и knowledge — вне репозитория: `F:/data/leptos_marketplace_1/` (пути в `config.toml`).
+  Диск F: отдан под проекты: `F:\dev\<проект>` — репозитории, `F:\data\<проект>` — рабочие данные.
 
 ---
 
 ## Плагины (runtime JS)
 
 Плагины — самодостаточные JS-артефакты (`bundle`: `client_script` + `server_script` в QuickJS +
-`styles` + `sql_resources`), которые **живут строками в таблице `plugin`** (БД `C:/rust/data/app.db`),
+`styles` + `sql_resources`), которые **живут строками в таблице `plugin`** (боевая БД, см. `[database].path`),
 а НЕ файлами в репо. Их не найти grep'ом по коду. Идентичность — `manifest.code` (UUID `id` локальный).
 Движок — `plugins/engine.rs`, доступ — `plugins/repository.rs`.
 
-**Как править (самый простой путь):** helper
-`~/.claude/projects/c--rust-mpi-leptos-marketplace-1/secrets/plugin_cli.py` (admin-креды и Bearer-логин
-он берёт из соседнего `plugin-admin.json`; backend должен работать на :3000 — иначе
-`powershell -File tools/restart_backend.ps1`):
+**Как править (самый простой путь):** helper `plugin_cli.py` в каталоге состояния Claude Code
+для этого проекта (`~/.claude/projects/<derived-от-пути-проекта>/secrets/plugin_cli.py`; admin-креды
+и Bearer-логин он берёт из соседнего `plugin-admin.json`; backend должен работать на :3000 — иначе
+`powershell -File tools/restart_backend.ps1`).
+> ⚠️ На текущей машине этого файла нет — при необходимости восстановить перед использованием.
 
 ```bash
 python plugin_cli.py get <id|code> <dir>       # explode бандла в файлы: client.js, server.js, styles.css, manifest.json, sql/<name>.sql

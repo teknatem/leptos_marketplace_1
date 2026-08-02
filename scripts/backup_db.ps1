@@ -1,9 +1,10 @@
 # Database Backup Script for Marketplace Integrator
 # Creates timestamped backups of the database
 
-$ProjectRoot = "E:\dev\rust\leptos_marketplace_1"
-$DbPath = "$ProjectRoot\data\app.db"
-$BackupDir = "$ProjectRoot\data\backups"
+# Рабочие данные лежат вне репозитория (см. [database].path в config.toml)
+$DataRoot = "F:\data\leptos_marketplace_1"
+$DbPath = "$DataRoot\app.db"
+$BackupDir = "$DataRoot\backups"
 $Timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $BackupPath = "$BackupDir\app_backup_$Timestamp.db"
 

@@ -1,9 +1,10 @@
 # Auto Backup Script - Run before starting the application
 # This creates a backup only if database has changed since last backup
 
-$ProjectRoot = "E:\dev\rust\leptos_marketplace_1"
-$DbPath = "$ProjectRoot\data\app.db"
-$BackupDir = "$ProjectRoot\data\backups"
+# Рабочие данные лежат вне репозитория (см. [database].path в config.toml)
+$DataRoot = "F:\data\leptos_marketplace_1"
+$DbPath = "$DataRoot\app.db"
+$BackupDir = "$DataRoot\backups"
 $LatestBackup = "$BackupDir\app_latest.db"
 
 # Check if database exists
@@ -31,6 +32,6 @@ if (Test-Path $LatestBackup) {
 
 if ($NeedsBackup) {
     Write-Host "Creating automatic backup..." -ForegroundColor Cyan
-    & "$ProjectRoot\scripts\backup_db.ps1"
+    & "$PSScriptRoot\backup_db.ps1"
 }
 

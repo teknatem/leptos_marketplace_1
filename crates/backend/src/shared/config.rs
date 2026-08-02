@@ -489,7 +489,7 @@ mod tests {
         let config: Config = toml::from_str(
             r#"
 [database]
-path = "E:/dev/rust/leptos_marketplace_1/data/app.db"
+path = "C:/tmp/mpi-test/app.db"
 
 [scheduled_tasks]
 enabled = true
@@ -503,7 +503,7 @@ knowledge_base_path = "data/knowledge"
         assert!(validate_config(&config).is_ok());
         assert_eq!(
             get_database_path(&config).unwrap(),
-            PathBuf::from("E:/dev/rust/leptos_marketplace_1/data/app.db")
+            PathBuf::from("C:/tmp/mpi-test/app.db")
         );
         assert!(config.scheduled_tasks.enabled);
     }

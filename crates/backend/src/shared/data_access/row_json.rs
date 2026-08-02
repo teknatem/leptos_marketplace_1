@@ -164,14 +164,18 @@ mod tests {
     }
 
     /// Прямое воспроизведение против ЖИВОЙ БД: до фикса SUM(qty) пропадал (только product_name).
-    /// #[ignore] — требует локальный app.db; запуск: `cargo test ... -- --ignored --nocapture`.
+    /// #[ignore] — требует локальный app.db; путь берётся из APP_DB_PATH, чтобы тест не был
+    /// привязан к конкретной машине. Запуск:
+    /// `$env:APP_DB_PATH="F:/data/leptos_marketplace_1/app.db"; cargo test ... -- --ignored --nocapture`
     #[tokio::test]
     #[ignore]
     async fn live_db_aggregate_column_present() {
         use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
         use std::time::Duration;
+        let db_path = std::env::var("APP_DB_PATH")
+            .expect("APP_DB_PATH не задана — укажите путь к живой app.db");
         let opts = SqliteConnectOptions::new()
-            .filename("E:/dev/rust/2/data/app.db")
+            .filename(&db_path)
             .journal_mode(SqliteJournalMode::Wal)
             .busy_timeout(Duration::from_secs(15));
         let pool = SqlitePoolOptions::new()

@@ -141,7 +141,7 @@ path = "../shared/database.db"   # В родительской директор�
 ```toml
 [database]
 # Windows
-path = "E:/dev/rust/leptos_marketplace_1/target/db/app.db"
+path = "F:/data/leptos_marketplace_1/app.db"
 path = "C:/Production/MarketplaceData/database.db"
 
 # Linux/Mac

@@ -80,15 +80,14 @@ Read: config.toml
 
 Если `config.toml` не найден, БД по умолчанию: `target/db/app.db` относительно корня проекта.
 
-Если config.toml содержит путь вида `E:/dev/rust/leptos_marketplace_1/data/app.db` — обрати внимание: папка называется `leptos_marketplace_1`, а текущий проект может быть в `leptos_marketplace_1` (другой). Проверь реальное существование файла командой:
+Боевая БД лежит вне репозитория: `F:/data/leptos_marketplace_1/app.db`. Проверь реальное
+существование файла перед запросами:
 
 ```powershell
 # Проверить что файл существует
-Test-Path "E:/dev/rust/leptos_marketplace_1/data/app.db"
-# Если нет — искать рядом с проектом
-Get-ChildItem -Recurse -Filter "app.db" -Path "E:\dev\rust\2\leptos_marketplace_1" -ErrorAction SilentlyContinue | Select-Object FullName
-# Широкий поиск по диску
-Get-ChildItem -Recurse -Filter "app.db" -Path "E:\dev\rust" -ErrorAction SilentlyContinue | Select-Object FullName
+Test-Path "F:/data/leptos_marketplace_1/app.db"
+# Если нет — искать в корне данных
+Get-ChildItem -Recurse -Filter "app.db" -Path "F:\data" -ErrorAction SilentlyContinue | Select-Object FullName
 ```
 
 Зафиксируй путь как переменную `$DB` для всех дальнейших запросов.
