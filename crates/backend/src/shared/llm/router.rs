@@ -284,6 +284,9 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
         "вб",
         "яндекс маркет",
         "маркетплейс",
+        // «Кабинет» в этом домене всегда означает кабинет маркетплейса (a006_connection_mp):
+        // продажник пишет «по двум кабинетам», не называя площадку.
+        "кабинет",
     ]);
     // «Воронка + маркетплейс», а также WB-вопросы по низу воронки (выкуп/отмены/возвраты/топ
     // товаров/конверсии), которые продажник задаёт БЕЗ слова «воронка», но их авторитет — навык
@@ -310,11 +313,16 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
     {
         return IntentResult::new("marketplace_funnel_analysis", 0.55, "rules");
     }
+    // Слово «воронка» само по себе. Другой воронки, кроме маркетплейсовой, в домене нет,
+    // а площадку в переспросе («проверь данные именно по воронке») обычно не повторяют —
+    // без этого правила такие уточнения уходили в marketing_query/data-analytics.
+    if any(&["воронк", "funnel"]) {
+        return IntentResult::new("marketplace_funnel_analysis", 0.5, "rules");
+    }
     if any(&[
         "реклам",
         "дрр",
         "ctr",
-        "воронк",
         "конверс",
         "выкуп",
         "ставк",
@@ -407,6 +415,23 @@ mod tests {
             "Какой процент выкупа по WB - SANSTAR за июль 2026?",
             "Топ-5 товаров WB - SANSTAR по заказам за июль",
             "Сколько отмен и возвратов по WB за июль?",
+        ] {
+            let result = quick_intent_result(q, &AgentType::BusinessAnalyst);
+            assert_eq!(
+                result.intent, "marketplace_funnel_analysis",
+                "ожидали funnel для: {q}"
+            );
+        }
+    }
+
+    /// Реальные формулировки из чата CHAT-75b58343 (оценка 2): все четыре ушли мимо навыка
+    /// воронки — «кабинет» не считался маркетплейс-словом, а переспрос без площадки терялся.
+    #[test]
+    fn cabinet_wording_and_bare_funnel_route_to_funnel_skill() {
+        for q in [
+            "я загрузил Воронки по двум кабинетам с августа, посмотри что получилось",
+            "Проверь данные именно по воронке.",
+            "Сколько отмен по 2-м кабинетам за июль?",
         ] {
             let result = quick_intent_result(q, &AgentType::BusinessAnalyst);
             assert_eq!(

@@ -8,6 +8,10 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 2_000;
+/// Потолок для лимита, выведенного из самого SQL (без явного аргумента `limit`).
+/// Совпадает с максимумом в схеме инструмента `execute_query`: вывод лимита — это
+/// удобство, а не способ протащить в контекст модели тысячи строк.
+const DECLARED_LIMIT_CEILING: usize = 200;
 const QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,7 +114,17 @@ pub async fn execute_raw_query(
         error
     })?;
 
-    let limit = request.limit.unwrap_or(DEFAULT_LIMIT);
+    // Явный `LIMIT n` в самом SQL — это намерение автора запроса. Если вызывающий не задал
+    // limit отдельным аргументом, берём лимит из SQL (в пределах MAX_LIMIT), иначе дефолтные 50
+    // молча срезали бы результат ниже запрошенного — и по обрезанной выборке делались выводы.
+    let limit = match request.limit {
+        Some(limit) => limit,
+        None => query_info
+            .declared_limit
+            .filter(|declared| *declared > 0)
+            .map(|declared| declared.clamp(DEFAULT_LIMIT, DECLARED_LIMIT_CEILING))
+            .unwrap_or(DEFAULT_LIMIT),
+    };
     if !(1..=MAX_LIMIT).contains(&limit) {
         return Err(format!("limit must be between 1 and {MAX_LIMIT}"));
     }

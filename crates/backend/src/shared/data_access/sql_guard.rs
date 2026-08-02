@@ -1,6 +1,6 @@
 use sqlparser::ast::{
-    Expr, FunctionArg, FunctionArgExpr, FunctionArguments, ObjectName, Query, Select, SelectItem,
-    Statement, TableFactor, Visit, Visitor,
+    Expr, FunctionArg, FunctionArgExpr, FunctionArguments, LimitClause, ObjectName, Query, Select,
+    SelectItem, Statement, TableFactor, Value as SqlValue, Visit, Visitor,
 };
 use sqlparser::dialect::SQLiteDialect;
 use sqlparser::parser::Parser;
@@ -10,6 +10,10 @@ use std::ops::ControlFlow;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadQueryInfo {
     pub tables: Vec<String>,
+    /// Литеральный `LIMIT n` верхнего уровня запроса, если автор его написал явно.
+    /// Нужен, чтобы внешний лимит инструмента не резал результат молча ниже того,
+    /// что запросил автор SQL (см. `execute_raw_query`).
+    pub declared_limit: Option<usize>,
 }
 
 // SQLite table-valued JSON functions. They are safe pseudo-relations (they read
@@ -196,7 +200,30 @@ pub fn inspect_read_query(sql: &str) -> Result<ReadQueryInfo, String> {
         .collect();
     tables.sort();
     enforce_sensitive_field_policy(&visitor, &tables)?;
-    Ok(ReadQueryInfo { tables })
+    let declared_limit = match statements.first() {
+        Some(Statement::Query(query)) => declared_limit(query),
+        _ => None,
+    };
+    Ok(ReadQueryInfo {
+        tables,
+        declared_limit,
+    })
+}
+
+/// `LIMIT <число>` верхнего уровня. Выражения (`LIMIT ?`, `LIMIT 1+1`) игнорируем —
+/// нужен только явный литерал, по которому видно намерение автора запроса.
+fn declared_limit(query: &Query) -> Option<usize> {
+    let limit = match query.limit_clause.as_ref()? {
+        LimitClause::LimitOffset { limit, .. } => limit.as_ref()?,
+        LimitClause::OffsetCommaLimit { limit, .. } => limit,
+    };
+    match limit {
+        Expr::Value(value) => match &value.value {
+            SqlValue::Number(raw, _) => raw.parse::<usize>().ok(),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 pub fn wrap_limited_sql(sql: &str, row_limit: usize, alias: &str) -> String {
@@ -207,6 +234,29 @@ pub fn wrap_limited_sql(sql: &str, row_limit: usize, alias: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Явный LIMIT автора запроса нужен целиком: по нему `execute_raw_query` решает, сколько
+    /// строк вернуть, вместо молчаливого среза до 50 (по разбору чата — выводы по обрезку).
+    #[test]
+    fn reads_declared_top_level_limit() {
+        let with_limit = inspect_read_query("SELECT id FROM a012_wb_sales ORDER BY id LIMIT 200")
+            .unwrap()
+            .declared_limit;
+        assert_eq!(with_limit, Some(200));
+
+        let without_limit = inspect_read_query("SELECT id FROM a012_wb_sales")
+            .unwrap()
+            .declared_limit;
+        assert_eq!(without_limit, None);
+
+        // LIMIT во вложенном запросе — не намерение автора о размере ответа.
+        let nested = inspect_read_query(
+            "SELECT COUNT(*) FROM (SELECT id FROM a012_wb_sales LIMIT 10) AS sample",
+        )
+        .unwrap()
+        .declared_limit;
+        assert_eq!(nested, None);
+    }
 
     #[test]
     fn extracts_nested_and_cte_tables() {

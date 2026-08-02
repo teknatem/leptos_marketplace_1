@@ -421,6 +421,16 @@ pub async fn get_tool_trace(
     Ok(entries)
 }
 
+/// Инструменты, повтор которых с теми же аргументами в рамках одного ответа гарантированно
+/// даёт тот же результат: только чтение, без записи и без побочных эффектов.
+/// Метаданные (`get_entity_schema`, `list_entities`, …) кэшируются глубже — в `tool_executor`.
+fn is_memoizable_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "query_data_schema" | "run_data_view_scalar" | "run_data_view_drilldown" | "execute_query"
+    )
+}
+
 /// Человекочитаемая подпись инструмента для индикатора прогресса (показывается
 /// пользователю, не модели). Неизвестные имена показываем как есть.
 fn human_tool_label(name: &str) -> String {
@@ -1019,6 +1029,11 @@ pub async fn send_message(
         let mut tool_trace: Vec<serde_json::Value> = initial_skill_trace.into_iter().collect();
         let mut total_tokens_used: i64 = 0;
         let mut tool_failures = 0usize;
+        // Memo одинаковых read-only вызовов в пределах ОДНОГО ответа: модель регулярно
+        // повторяет тот же drilldown/запрос на соседних итерациях (в разобранных чатах —
+        // до 18 секунд на повтор). Данные внутри ответа не меняются: путь только читающий.
+        let mut tool_memo: std::collections::HashMap<(String, String), String> =
+            std::collections::HashMap::new();
 
         for iteration in 0..MAX_TOOL_ITERATIONS {
             if let Some(id) = job_id {
@@ -1110,21 +1125,55 @@ pub async fn send_message(
                     utf8_truncate(&tool_call.arguments, 200)
                 );
                 let active_skill_ids = skill_session.active_skill_set();
-                let result = execute_tool_call(
-                    tool_call,
-                    chat_id,
-                    &agent_id_str,
-                    &effective.agent_type,
-                    &active_tools,
-                    &active_skill_ids,
-                    skill_session.snapshot(),
-                    skill_session.access(),
-                    skill_session.artifact_publish_allowed(),
-                    skill_session.script_execute_allowed(),
-                    skill_session.script_develop_allowed(),
-                    actor.as_ref(),
-                )
-                .await;
+                let memo_key = is_memoizable_tool(&tool_call.name)
+                    .then(|| (tool_call.name.clone(), tool_call.arguments.clone()));
+                let memoized = memo_key
+                    .as_ref()
+                    .and_then(|key| tool_memo.get(key))
+                    .cloned();
+                let result = match memoized {
+                    Some(cached) => {
+                        tracing::info!(
+                            "[tool_call] iter={} tool='{}' — повтор с теми же аргументами, ответ из memo",
+                            iteration + 1,
+                            tool_call.name
+                        );
+                        cached
+                    }
+                    None => {
+                        let fresh = execute_tool_call(
+                            tool_call,
+                            chat_id,
+                            &agent_id_str,
+                            &effective.agent_type,
+                            &active_tools,
+                            &active_skill_ids,
+                            skill_session.snapshot(),
+                            skill_session.access(),
+                            skill_session.artifact_publish_allowed(),
+                            skill_session.script_execute_allowed(),
+                            skill_session.script_develop_allowed(),
+                            actor.as_ref(),
+                        )
+                        .await;
+                        if let Some(key) = memo_key {
+                            // Ошибки не кэшируем: у них своя причина исправиться (модель
+                            // чинит SQL и осмысленно повторяет вызов с тем же текстом).
+                            let ok = serde_json::from_str::<serde_json::Value>(&fresh)
+                                .ok()
+                                .and_then(|v| {
+                                    v.get("_ok").and_then(serde_json::Value::as_bool).or_else(
+                                        || v.get("error").is_none().then_some(true),
+                                    )
+                                })
+                                .unwrap_or(true);
+                            if ok {
+                                tool_memo.insert(key, fresh.clone());
+                            }
+                        }
+                        fresh
+                    }
+                };
                 let call_ms = call_start.elapsed().as_millis() as u64;
 
                 // Разобрать результат: единственный источник истины об успехе — поле `_ok`
@@ -1475,8 +1524,20 @@ pub async fn send_message(
         assistant_msg.skill_trace = serde_json::to_string(&skill_trace).ok();
     }
 
-    // Метка интента от роутера (Фаза 0): для аналитики и UI-бейджа.
-    assistant_msg.intent = Some(intent_result.intent.clone());
+    // Метка интента: пишем ТОТ интент, который реально управлял подбором навыка (быстрый
+    // rule-based селектор), а не мнение LLM-роутера. Раньше в сообщение попадал роутер, и в
+    // разборе чатов было видно `intent=marketplace_funnel_analysis` при фактически
+    // работавшем data-analytics — поле вводило в заблуждение. Расхождение остаётся в логах.
+    if intent_result.intent != quick {
+        tracing::warn!(
+            "[router] chat_id='{}' intent divergence: acting='{}' router='{}' (confidence={:.2})",
+            chat_id,
+            quick,
+            intent_result.intent,
+            intent_result.confidence
+        );
+    }
+    assistant_msg.intent = Some(quick.clone());
 
     repository::insert_message(&db, &assistant_msg).await?;
 

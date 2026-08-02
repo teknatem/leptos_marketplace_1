@@ -9,7 +9,8 @@ use uuid::Uuid;
 
 use super::progress_tracker::ProgressTracker;
 use crate::shared::marketplaces::wildberries::datetime::{
-    format_wb_cursor_datetime, parse_wb_datetime, wb_day_end_utc, wb_day_start_utc,
+    format_wb_cursor_datetime, format_wb_local_datetime_seconds, parse_wb_datetime, wb_day_end_utc,
+    wb_day_start_utc,
 };
 
 const WB_ORDERS_MAX_RATE_LIMIT_SLEEP_SECS: u64 = 300;
@@ -2195,6 +2196,12 @@ impl WildberriesApiClient {
         let mut cursor = format!("{}T00:00:00", date_from.format("%Y-%m-%d"));
         let soft_stop =
             wb_day_end_utc(date_to).ok_or_else(|| anyhow::anyhow!("Invalid date_to value"))?;
+        // Сколько строк WB вообще отдал и какая из них самая ранняя. Нужно, чтобы отличить
+        // «за период заказов не было» (WB вернул пусто) от «WB не хранит такую глубину и
+        // отдал данные новее запрошенного окна» — во втором случае раньше импорт молча
+        // завершался нулём, и это выглядело как зависшая загрузка.
+        let mut received_rows = 0usize;
+        let mut earliest_change: Option<chrono::DateTime<chrono::Utc>> = None;
 
         self.log_to_file(&format!(
             "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
@@ -2426,6 +2433,7 @@ impl WildberriesApiClient {
 
                     let mut max_last_change = None::<chrono::DateTime<chrono::Utc>>;
                     let mut kept_rows = 0usize;
+                    received_rows += page_count;
                     for row in page_data {
                         let row_last_change =
                             row.last_change_date.as_deref().and_then(parse_wb_datetime);
@@ -2433,6 +2441,9 @@ impl WildberriesApiClient {
                         if let Some(parsed) = row_last_change {
                             if max_last_change.map(|v| parsed > v).unwrap_or(true) {
                                 max_last_change = Some(parsed);
+                            }
+                            if earliest_change.map(|v| parsed < v).unwrap_or(true) {
+                                earliest_change = Some(parsed);
                             }
                         }
 
@@ -2481,6 +2492,21 @@ impl WildberriesApiClient {
         self.log_to_file(&format!(
             "\nв•”в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•—"
         ));
+        // WB игнорирует dateFrom за пределами своей глубины хранения и отдаёт самые старые
+        // из доступных строк. Тогда soft-stop отсеивает вообще всё, и «успешный» импорт
+        // приносит 0 записей. Это не успех — это недоступный период, и сказать об этом надо
+        // прямо, вместе с фактической границей, до которой WB ещё отдаёт заказы.
+        if let Some(message) = unavailable_orders_period_message(
+            date_from,
+            date_to,
+            all_orders.len(),
+            received_rows,
+            earliest_change,
+        ) {
+            self.log_to_file(&format!("в•‘ ABORT: {message}"));
+            anyhow::bail!("{message}");
+        }
+
         self.log_to_file(&format!(
             "в•‘ COMPLETED: Loaded {} total order records",
             all_orders.len()
@@ -5430,6 +5456,33 @@ struct WbStickersResponse {
     pub stickers: Vec<WbStickerRow>,
 }
 
+/// Диагностика пустого результата загрузки заказов.
+///
+/// WB игнорирует `dateFrom` за пределами своей глубины хранения и отдаёт самые старые из
+/// доступных строк. Тогда soft-stop по `date_to` отсеивает вообще всё, и импорт «успешно»
+/// завершается нулём — на экране это выглядит как зависшая загрузка без объяснений.
+/// Отличаем такой случай от честного «за период заказов не было» (WB вернул пусто) и
+/// называем фактическую границу, до которой WB ещё отдаёт заказы.
+///
+/// `None` — ситуация штатная, ошибку поднимать не нужно.
+fn unavailable_orders_period_message(
+    date_from: chrono::NaiveDate,
+    date_to: chrono::NaiveDate,
+    kept_rows: usize,
+    received_rows: usize,
+    earliest_change: Option<chrono::DateTime<chrono::Utc>>,
+) -> Option<String> {
+    if kept_rows > 0 || received_rows == 0 {
+        return None;
+    }
+    let boundary = format_wb_local_datetime_seconds(&earliest_change?);
+    Some(format!(
+        "Wildberries не отдаёт заказы за период {date_from} — {date_to}: в ответе {received_rows} строк, \
+         и самая ранняя из них — {boundary} (МСК). Statistics API хранит заказы ограниченное время, \
+         более ранние периоды через него недоступны. Запросите период начиная с {boundary}."
+    ))
+}
+
 fn supply_matches_window(
     supply: &WbSupplyRow,
     range_start: chrono::DateTime<chrono::Utc>,
@@ -6408,6 +6461,48 @@ fn parse_search_query_row(nm_id: i64, item: &serde_json::Value) -> WbSearchQuery
         clicks: json_i64(item, &["clicks", "openCard", "openCardCount"]).unwrap_or(0),
         orders: json_i64(item, &["orders", "ordersCount"]).unwrap_or(0),
         avg_position: json_f64(item, &["avgPosition", "position"]).unwrap_or(0.0),
+    }
+}
+
+#[cfg(test)]
+mod orders_period_tests {
+    use super::*;
+    use chrono::{NaiveDate, TimeZone, Utc};
+
+    fn day(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
+    /// Реальный случай: запросили август 2025, WB отдал 10 248 строк начиная с 08.02.2026,
+    /// soft-stop отсеял всё. Раньше это тихо завершалось нулём — теперь внятная ошибка.
+    #[test]
+    fn reports_boundary_when_whole_response_is_outside_window() {
+        let earliest = Utc.with_ymd_and_hms(2026, 2, 7, 21, 43, 45).unwrap();
+        let message = unavailable_orders_period_message(
+            day(2025, 8, 1),
+            day(2025, 8, 31),
+            0,
+            10_248,
+            Some(earliest),
+        )
+        .expect("ожидали сообщение о недоступном периоде");
+        // Границу показываем в МСК — как её видит продавец в личном кабинете WB.
+        assert!(message.contains("2026-02-08T00:43:45"), "{message}");
+        assert!(message.contains("10248"), "{message}");
+    }
+
+    #[test]
+    fn stays_silent_when_rows_were_kept_or_wb_returned_nothing() {
+        let earliest = Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap();
+        // Что-то попало в окно — штатный импорт.
+        assert!(
+            unavailable_orders_period_message(day(2026, 7, 1), day(2026, 7, 31), 42, 100, Some(earliest))
+                .is_none()
+        );
+        // WB вернул пусто — это честное «заказов за период не было», не ошибка.
+        assert!(
+            unavailable_orders_period_message(day(2026, 7, 1), day(2026, 7, 31), 0, 0, None).is_none()
+        );
     }
 }
 

@@ -12,6 +12,7 @@ use super::{
         WbSalesFunnelHistoryItem, WbSearchQueryRow, WbSearchReportRow, WildberriesApiClient,
     },
 };
+use crate::domain::a026_wb_advert_daily::posting_context::AdvertPostingContext;
 use crate::shared::marketplaces::wildberries::datetime::{wb_day_end_utc, wb_day_start_utc};
 use anyhow::{Context, Result};
 use contracts::domain::a026_wb_advert_daily::aggregate::{
@@ -71,6 +72,53 @@ const WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS: u64 = 21;
 const WB_ADVERT_FULLSTATS_CHUNK_SIZE: usize = 50;
 const WB_ADVERT_RATE_LIMIT_MARKER: &str = "WB Advert API fullstats: 429";
 
+/// Нарезка периода на календарные месяцы для `/adv/v3/fullstats`.
+///
+/// WB отвергает интервал длиннее 31 дня:
+/// `400 {"detail":"max date range 31 days","field":"begin and end"}`.
+/// Календарный месяц заведомо укладывается в лимит, а границы окон совпадают с
+/// границами месяцев — так повторный запуск за тот же месяц шлёт тот же запрос
+/// (стабильный ключ кэша на стороне WB) и данные читаются в логе глазами.
+///
+/// Первое и последнее окна обрезаются по фактическим границам периода.
+fn calendar_month_windows(
+    date_from: chrono::NaiveDate,
+    date_to: chrono::NaiveDate,
+) -> Vec<(chrono::NaiveDate, chrono::NaiveDate)> {
+    use chrono::Datelike;
+
+    let mut windows = Vec::new();
+    if date_to < date_from {
+        return windows;
+    }
+
+    let mut cursor = date_from;
+    while cursor <= date_to {
+        let (next_year, next_month) = if cursor.month() == 12 {
+            (cursor.year() + 1, 1)
+        } else {
+            (cursor.year(), cursor.month() + 1)
+        };
+        let Some(next_month_start) = chrono::NaiveDate::from_ymd_opt(next_year, next_month, 1)
+        else {
+            break;
+        };
+        let Some(month_end) = next_month_start.pred_opt() else {
+            break;
+        };
+
+        let window_end = month_end.min(date_to);
+        windows.push((cursor, window_end));
+
+        let Some(next_cursor) = window_end.succ_opt() else {
+            break;
+        };
+        cursor = next_cursor;
+    }
+
+    windows
+}
+
 // Sales-funnel (Analytics API v3): лимит 3 запроса/мин на метод.
 const WB_SALES_FUNNEL_REQUEST_DELAY_SECS: u64 = 21;
 const WB_SALES_FUNNEL_CHUNK_SIZE: usize = 20;
@@ -96,11 +144,19 @@ fn is_sqlite_lock_error(error: &anyhow::Error) -> bool {
 
 /// Retry the complete posting operation. SQLITE_BUSY_SNAPSHOT cannot be fixed by
 /// busy_timeout: the stale DEFERRED transaction must be rolled back and recreated.
-async fn post_wb_advert_document_with_retry(document_id: Uuid) -> Result<()> {
+async fn post_wb_advert_document_with_retry(
+    document_id: Uuid,
+    context: &mut AdvertPostingContext,
+) -> Result<()> {
     const MAX_ATTEMPTS: u32 = 8;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        match crate::domain::a026_wb_advert_daily::posting::post_document(document_id).await {
+        match crate::domain::a026_wb_advert_daily::posting::post_document_with_context(
+            document_id,
+            context,
+        )
+        .await
+        {
             Ok(()) => return Ok(()),
             Err(error) if attempt < MAX_ATTEMPTS && is_sqlite_lock_error(&error) => {
                 let backoff_ms = 50u64 * u64::from(attempt);
@@ -2779,11 +2835,19 @@ impl ImportExecutor {
             return Ok(false);
         }
 
+        // Период режется на календарные месяцы: WB отвергает интервал > 31 дня.
+        let windows = calendar_month_windows(date_from, date_to);
+        let chunks: Vec<&[i64]> = advert_ids.chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE).collect();
+        let total_chunks = chunks.len();
+        let total_requests = windows.len() * total_chunks;
+
         tracing::info!(
-            "WB Advert: {} campaigns → {} chunks of up to {} (delay {}s each)",
+            "WB Advert: {} campaigns × {} month windows → {} chunks of up to {} = {} requests (delay {}s each)",
             advert_ids.len(),
-            advert_ids.chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE).count(),
+            windows.len(),
+            total_chunks,
             WB_ADVERT_FULLSTATS_CHUNK_SIZE,
+            total_requests,
             WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS,
         );
         self.progress_tracker.update_aggregate(
@@ -2795,111 +2859,159 @@ impl ImportExecutor {
             0,
         );
 
-        let chunks: Vec<&[i64]> = advert_ids.chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE).collect();
-        let total_chunks = chunks.len();
-        let mut processed_campaigns = 0i32;
         let mut had_fetch_errors = false;
         let mut all_stats: Vec<WbAdvertFullStat> = Vec::new();
-        let mut successful_advert_ids: Vec<i64> = Vec::new();
+        // Кампания считается загруженной, только если закрыты ВСЕ окна периода:
+        // частично покрытую нельзя пускать в scoped-replace, иначе удаление за
+        // весь период сотрёт месяцы, которые не удалось перезапросить.
+        let mut covered_windows: HashMap<i64, usize> = HashMap::new();
+        let mut completed_requests = 0usize;
 
-        for (chunk_idx, chunk) in chunks.iter().enumerate() {
-            self.progress_tracker.set_current_item(
-                session_id,
-                aggregate_index,
-                Some(format!(
-                    "Чанк {}/{} (advertIds: {}..)",
-                    chunk_idx + 1,
-                    total_chunks,
-                    chunk[0]
-                )),
-            );
+        'windows: for (window_idx, (window_from, window_to)) in windows.iter().enumerate() {
+            let window_begin = window_from.format("%Y-%m-%d").to_string();
+            let window_end = window_to.format("%Y-%m-%d").to_string();
 
-            match self
-                .api_client
-                .fetch_advert_fullstats(connection, chunk, &begin_date, &end_date)
-                .await
-            {
-                Ok(stats) => {
-                    processed_campaigns += chunk.len() as i32;
-                    successful_advert_ids.extend(chunk.iter().copied());
-                    all_stats.extend(stats.iter().cloned());
-                }
-                Err(e) => {
-                    had_fetch_errors = true;
-                    let error_text = e.to_string();
-                    tracing::warn!(
-                        "Failed to fetch fullstats for connection={} period={}..{} chunk {}/{} campaigns={} first_advert_id={} error={}",
-                        connection.to_string_id(),
-                        begin_date,
-                        end_date,
+            for (chunk_idx, chunk) in chunks.iter().enumerate() {
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!(
+                        "Месяц {}/{} ({}..{}), чанк {}/{} (advertIds: {}..)",
+                        window_idx + 1,
+                        windows.len(),
+                        window_begin,
+                        window_end,
                         chunk_idx + 1,
                         total_chunks,
-                        chunk.len(),
-                        chunk.first().copied().unwrap_or_default(),
-                        error_text
-                    );
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        format!(
-                            "WB Advert fullstats: чанк {}/{} не загружен для кабинета {}",
-                            chunk_idx + 1,
-                            total_chunks,
-                            connection.to_string_id()
-                        ),
-                        Some(error_text.clone()),
-                    );
+                        chunk[0]
+                    )),
+                );
 
-                    if is_wb_advert_fullstats_rate_limit(&error_text) {
-                        let retry_seconds = extract_wb_rate_limit_retry_seconds(&error_text);
-                        let retry_hint = retry_seconds
-                            .map(|seconds| format!(" Рекомендованный повтор через {seconds} сек."))
-                            .unwrap_or_default();
-                        let diagnostic = format!(
-                            "WB Advert fullstats остановлен после 429 Too Many Requests: кабинет={}, период={}..{}, чанк {}/{}, успешно обработано кампаний={}/{}.{}",
+                match self
+                    .api_client
+                    .fetch_advert_fullstats(connection, chunk, &window_begin, &window_end)
+                    .await
+                {
+                    Ok(stats) => {
+                        for advert_id in chunk.iter() {
+                            *covered_windows.entry(*advert_id).or_insert(0) += 1;
+                        }
+                        all_stats.extend(stats.iter().cloned());
+                    }
+                    Err(e) => {
+                        had_fetch_errors = true;
+                        let error_text = e.to_string();
+                        tracing::warn!(
+                            "Failed to fetch fullstats for connection={} window={}..{} ({}/{}) chunk {}/{} campaigns={} first_advert_id={} error={}",
                             connection.to_string_id(),
-                            begin_date,
-                            end_date,
+                            window_begin,
+                            window_end,
+                            window_idx + 1,
+                            windows.len(),
                             chunk_idx + 1,
                             total_chunks,
-                            processed_campaigns,
-                            advert_ids.len(),
-                            retry_hint
+                            chunk.len(),
+                            chunk.first().copied().unwrap_or_default(),
+                            error_text
                         );
-                        tracing::warn!("{}", diagnostic);
                         self.progress_tracker.add_error(
                             session_id,
                             Some(aggregate_index.to_string()),
-                            diagnostic,
-                            Some(error_text),
+                            format!(
+                                "WB Advert fullstats: месяц {}..{}, чанк {}/{} не загружен для кабинета {} — {}",
+                                window_begin,
+                                window_end,
+                                chunk_idx + 1,
+                                total_chunks,
+                                connection.to_string_id(),
+                                error_text
+                            ),
+                            Some(error_text.clone()),
                         );
-                        break;
+
+                        if is_wb_advert_fullstats_rate_limit(&error_text) {
+                            let retry_seconds = extract_wb_rate_limit_retry_seconds(&error_text);
+                            let retry_hint = retry_seconds
+                                .map(|seconds| {
+                                    format!(" Рекомендованный повтор через {seconds} сек.")
+                                })
+                                .unwrap_or_default();
+                            let diagnostic = format!(
+                                "WB Advert fullstats остановлен после 429 Too Many Requests: кабинет={}, период={}..{}, месяц {}/{}, чанк {}/{}, выполнено запросов={}/{}.{}",
+                                connection.to_string_id(),
+                                begin_date,
+                                end_date,
+                                window_idx + 1,
+                                windows.len(),
+                                chunk_idx + 1,
+                                total_chunks,
+                                completed_requests,
+                                total_requests,
+                                retry_hint
+                            );
+                            tracing::warn!("{}", diagnostic);
+                            self.progress_tracker.add_error(
+                                session_id,
+                                Some(aggregate_index.to_string()),
+                                diagnostic,
+                                Some(error_text),
+                            );
+                            break 'windows;
+                        }
                     }
                 }
-            }
 
-            self.progress_tracker.update_aggregate(
-                session_id,
-                aggregate_index,
-                processed_campaigns,
-                Some(advert_ids.len() as i32),
-                all_stats.len() as i32,
-                0,
-            );
+                completed_requests += 1;
+                let fully_covered = covered_windows
+                    .values()
+                    .filter(|count| **count == windows.len())
+                    .count();
+                self.progress_tracker.update_aggregate(
+                    session_id,
+                    aggregate_index,
+                    fully_covered as i32,
+                    Some(advert_ids.len() as i32),
+                    all_stats.len() as i32,
+                    0,
+                );
 
-            if chunk_idx + 1 < total_chunks {
-                tokio::time::sleep(tokio::time::Duration::from_secs(
-                    WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS,
-                ))
-                .await;
+                if completed_requests < total_requests {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(
+                        WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS,
+                    ))
+                    .await;
+                }
             }
         }
 
+        let mut successful_advert_ids: Vec<i64> = advert_ids
+            .iter()
+            .copied()
+            .filter(|advert_id| {
+                covered_windows.get(advert_id).copied().unwrap_or(0) == windows.len()
+            })
+            .collect();
+        let processed_campaigns = successful_advert_ids.len() as i32;
+
+        // Статистика частично покрытых кампаний отбрасывается: их документы за
+        // удавшиеся месяцы не с чем согласовать, а вставка без парного удаления
+        // упёрлась бы в UNIQUE(connection, date, advert_id).
         if had_fetch_errors {
+            let covered: HashSet<i64> = successful_advert_ids.iter().copied().collect();
+            let before = all_stats.len();
+            all_stats.retain(|stat| covered.contains(&stat.advert_id));
+            tracing::warn!(
+                "WB Advert: dropped {} stat records of partially covered campaigns (connection={}, covered={}/{})",
+                before - all_stats.len(),
+                connection.to_string_id(),
+                covered.len(),
+                advert_ids.len(),
+            );
+
             self.progress_tracker.add_error(
                 session_id,
                 Some(aggregate_index.to_string()),
-                "Часть рекламной статистики не загрузилась; сохранены только успешно полученные данные"
+                "Часть рекламной статистики не загрузилась; сохранены только кампании, закрытые за весь период"
                     .to_string(),
                 None,
             );
@@ -2907,8 +3019,9 @@ impl ImportExecutor {
 
         if had_fetch_errors && successful_advert_ids.is_empty() {
             anyhow::bail!(
-                "WB Advert fullstats failed for all {} chunks; existing a026 data was left unchanged",
-                total_chunks
+                "WB Advert fullstats: no campaign was covered across all {} month windows ({} requests); existing a026 data was left unchanged",
+                windows.len(),
+                total_requests
             );
         }
 
@@ -2996,8 +3109,24 @@ impl ImportExecutor {
             end_date,
             document_ids.len()
         );
+        // Контекст строится СТРОГО после replace_for_period: снимок p913 должен
+        // содержать только «чужие» документы (свои за период уже удалены).
+        let mut posting_context = AdvertPostingContext::prefetched(
+            &connection.to_string_id(),
+            &begin_date,
+            &end_date,
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to prefetch WB advert posting context for connection={} period={}..{}",
+                connection.to_string_id(),
+                begin_date,
+                end_date
+            )
+        })?;
         for document_id in &document_ids {
-            post_wb_advert_document_with_retry(*document_id)
+            post_wb_advert_document_with_retry(*document_id, &mut posting_context)
                 .await
                 .with_context(|| {
                     format!(
@@ -3153,58 +3282,90 @@ impl ImportExecutor {
             )),
         );
 
+        // Диапазон догрузки почти всегда длиннее 31 дня (он тянется от горизонта
+        // данных до текущего окна), поэтому без нарезки по месяцам каждый запрос
+        // здесь возвращал 400 «max date range 31 days» и шаг молча не работал.
+        let windows = calendar_month_windows(floor_date, backfill_end);
         let chunks: Vec<&[i64]> = backfill_ids
             .chunks(WB_ADVERT_FULLSTATS_CHUNK_SIZE)
             .collect();
         let total_chunks = chunks.len();
+        let total_requests = windows.len() * total_chunks;
         let mut all_stats: Vec<WbAdvertFullStat> = Vec::new();
-        let mut successful_advert_ids: Vec<i64> = Vec::new();
+        let mut covered_windows: HashMap<i64, usize> = HashMap::new();
+        let mut completed_requests = 0usize;
         let mut stopped_by_rate_limit = false;
 
-        for (chunk_idx, chunk) in chunks.iter().enumerate() {
-            match self
-                .api_client
-                .fetch_advert_fullstats(connection, chunk, &begin_date, &end_date)
-                .await
-            {
-                Ok(stats) => {
-                    successful_advert_ids.extend(chunk.iter().copied());
-                    all_stats.extend(stats);
-                }
-                Err(e) => {
-                    let error_text = e.to_string();
-                    tracing::warn!(
-                        "WB Advert backfill: chunk {}/{} failed connection={} range={}..{} error={}",
-                        chunk_idx + 1,
-                        total_chunks,
-                        connection_id,
-                        begin_date,
-                        end_date,
-                        error_text
-                    );
-                    self.progress_tracker.add_error(
-                        session_id,
-                        Some(aggregate_index.to_string()),
-                        format!(
-                            "Догрузка истории рекламы: чанк {}/{} не загружен (будет повторено позже)",
+        'windows: for (window_idx, (window_from, window_to)) in windows.iter().enumerate() {
+            let window_begin = window_from.format("%Y-%m-%d").to_string();
+            let window_end = window_to.format("%Y-%m-%d").to_string();
+
+            for (chunk_idx, chunk) in chunks.iter().enumerate() {
+                match self
+                    .api_client
+                    .fetch_advert_fullstats(connection, chunk, &window_begin, &window_end)
+                    .await
+                {
+                    Ok(stats) => {
+                        for advert_id in chunk.iter() {
+                            *covered_windows.entry(*advert_id).or_insert(0) += 1;
+                        }
+                        all_stats.extend(stats);
+                    }
+                    Err(e) => {
+                        let error_text = e.to_string();
+                        tracing::warn!(
+                            "WB Advert backfill: window {}/{} ({}..{}) chunk {}/{} failed connection={} error={}",
+                            window_idx + 1,
+                            windows.len(),
+                            window_begin,
+                            window_end,
                             chunk_idx + 1,
-                            total_chunks
-                        ),
-                        Some(error_text.clone()),
-                    );
-                    if is_wb_advert_fullstats_rate_limit(&error_text) {
-                        stopped_by_rate_limit = true;
-                        break;
+                            total_chunks,
+                            connection_id,
+                            error_text
+                        );
+                        self.progress_tracker.add_error(
+                            session_id,
+                            Some(aggregate_index.to_string()),
+                            format!(
+                                "Догрузка истории рекламы: месяц {}..{}, чанк {}/{} не загружен (будет повторено позже) — {}",
+                                window_begin,
+                                window_end,
+                                chunk_idx + 1,
+                                total_chunks,
+                                error_text
+                            ),
+                            Some(error_text.clone()),
+                        );
+                        if is_wb_advert_fullstats_rate_limit(&error_text) {
+                            stopped_by_rate_limit = true;
+                            break 'windows;
+                        }
                     }
                 }
-            }
 
-            if chunk_idx + 1 < total_chunks {
-                tokio::time::sleep(tokio::time::Duration::from_secs(
-                    WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS,
-                ))
-                .await;
+                completed_requests += 1;
+                if completed_requests < total_requests {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(
+                        WB_ADVERT_FULLSTATS_CHUNK_DELAY_SECS,
+                    ))
+                    .await;
+                }
             }
+        }
+
+        // Как и в основном окне: берём только кампании, закрытые за все месяцы.
+        let mut successful_advert_ids: Vec<i64> = backfill_ids
+            .iter()
+            .copied()
+            .filter(|advert_id| {
+                covered_windows.get(advert_id).copied().unwrap_or(0) == windows.len()
+            })
+            .collect();
+        if successful_advert_ids.len() != backfill_ids.len() {
+            let covered: HashSet<i64> = successful_advert_ids.iter().copied().collect();
+            all_stats.retain(|stat| covered.contains(&stat.advert_id));
         }
 
         if successful_advert_ids.is_empty() {
@@ -3237,8 +3398,12 @@ impl ImportExecutor {
         .await
         .context("Failed to store backfill advert documents")?;
 
+        let mut posting_context =
+            AdvertPostingContext::prefetched(&connection_id, &begin_date, &end_date)
+                .await
+                .context("Failed to prefetch backfill advert posting context")?;
         for document_id in &document_ids {
-            crate::domain::a026_wb_advert_daily::posting::post_document(*document_id)
+            post_wb_advert_document_with_retry(*document_id, &mut posting_context)
                 .await
                 .with_context(|| {
                     format!("Failed to post backfill advert document {}", document_id)
@@ -4766,6 +4931,88 @@ impl Clone for ImportExecutor {
         Self {
             api_client: Arc::clone(&self.api_client),
             progress_tracker: Arc::clone(&self.progress_tracker),
+        }
+    }
+}
+
+#[cfg(test)]
+mod calendar_month_windows_tests {
+    use super::calendar_month_windows;
+    use chrono::NaiveDate;
+
+    fn date(value: &str) -> NaiveDate {
+        NaiveDate::parse_from_str(value, "%Y-%m-%d").expect("valid test date")
+    }
+
+    fn windows(from: &str, to: &str) -> Vec<(String, String)> {
+        calendar_month_windows(date(from), date(to))
+            .into_iter()
+            .map(|(start, end)| (start.to_string(), end.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn splits_period_on_calendar_month_boundaries() {
+        assert_eq!(
+            windows("2025-09-01", "2025-12-31"),
+            vec![
+                ("2025-09-01".to_string(), "2025-09-30".to_string()),
+                ("2025-10-01".to_string(), "2025-10-31".to_string()),
+                ("2025-11-01".to_string(), "2025-11-30".to_string()),
+                ("2025-12-01".to_string(), "2025-12-31".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn clips_first_and_last_windows_to_the_period() {
+        assert_eq!(
+            windows("2025-09-14", "2025-11-07"),
+            vec![
+                ("2025-09-14".to_string(), "2025-09-30".to_string()),
+                ("2025-10-01".to_string(), "2025-10-31".to_string()),
+                ("2025-11-01".to_string(), "2025-11-07".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn single_day_and_within_one_month_stay_one_window() {
+        assert_eq!(
+            windows("2026-02-10", "2026-02-10"),
+            vec![("2026-02-10".to_string(), "2026-02-10".to_string())]
+        );
+        assert_eq!(
+            windows("2026-02-01", "2026-02-28"),
+            vec![("2026-02-01".to_string(), "2026-02-28".to_string())]
+        );
+    }
+
+    #[test]
+    fn crosses_year_boundary_and_leap_february() {
+        assert_eq!(
+            windows("2023-12-20", "2024-02-29"),
+            vec![
+                ("2023-12-20".to_string(), "2023-12-31".to_string()),
+                ("2024-01-01".to_string(), "2024-01-31".to_string()),
+                ("2024-02-01".to_string(), "2024-02-29".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn inverted_period_yields_no_windows() {
+        assert!(windows("2026-03-01", "2026-02-01").is_empty());
+    }
+
+    /// Главный инвариант: WB отвергает интервал длиннее 31 дня.
+    #[test]
+    fn every_window_fits_wb_31_day_limit() {
+        let full_year = calendar_month_windows(date("2025-08-01"), date("2026-07-31"));
+        assert_eq!(full_year.len(), 12);
+        for (start, end) in full_year {
+            let span = (end - start).num_days();
+            assert!(span >= 0 && span < 31, "window {start}..{end} spans {span}");
         }
     }
 }

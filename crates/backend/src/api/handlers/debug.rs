@@ -122,9 +122,11 @@ pub async fn tool_test(Query(params): Query<ToolTestParams>) -> impl IntoRespons
     )
     .await;
 
+    // Резать по символам, а не по байтам: результаты почти всегда кириллические, и срез
+    // по байту 500 попадал внутрь символа → паника прямо в обработчике.
     tracing::info!(
         "[debug/tool-test] result preview: {}",
-        &raw_result[..raw_result.len().min(500)]
+        raw_result.chars().take(500).collect::<String>()
     );
 
     let parsed: serde_json::Value = serde_json::from_str(&raw_result)

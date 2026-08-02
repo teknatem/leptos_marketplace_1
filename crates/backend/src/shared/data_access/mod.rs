@@ -1,5 +1,6 @@
 pub mod catalog;
 pub mod data_view;
+pub mod physical_schema;
 pub mod raw_query;
 pub mod row_json;
 pub mod schema_query;

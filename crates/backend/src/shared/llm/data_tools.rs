@@ -211,7 +211,10 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
             description: "Raw SQL fallback: один SQLite SELECT/WITH с AST-проверкой, профилем \
                           доступа, bind-параметрами, таймаутом и лимитом. Не читает таблицы \
                           подключений с credentials. Используй только когда DataView и base-схемы \
-                          не покрывают запрос."
+                          не покрывают запрос. Строк возвращается не больше 50 по умолчанию \
+                          (явный LIMIT в SQL поднимает планку до 200) — если в ответе пришло \
+                          truncated: true, выборка НЕполная: агрегируй запрос, а не достраивай \
+                          выводы по обрезку."
                 .into(),
             parameters: json!({
                 "type": "object",
@@ -318,6 +321,29 @@ fn access_profile(agent_type: &AgentType) -> Result<SqlAccessProfile, String> {
 
 fn parse_args<T: for<'de> Deserialize<'de>>(arguments: &str) -> Result<T, String> {
     serde_json::from_str(arguments).map_err(|error| format!("Invalid tool arguments: {error}"))
+}
+
+/// Флаг `truncated: true` модели легко пропустить — она видит таблицу с данными и делает по ней
+/// выводы, не зная, что часть строк не вернулась. Поэтому усечение проговаривается словами:
+/// это единственная часть ответа, которую модель точно прочитает.
+fn with_truncation_warning(mut value: Value) -> Value {
+    if value.get("truncated").and_then(Value::as_bool) != Some(true) {
+        return value;
+    }
+    let row_count = value
+        .get("row_count")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    value["warning"] = Value::String(format!(
+        "РЕЗУЛЬТАТ УСЕЧЁН: вернулись первые {row_count} строк, дальше данные есть, но они не показаны. \
+         Выводы о полноте/пропусках/крайних датах по этой выборке делать НЕЛЬЗЯ."
+    ));
+    value["next_step"] = Value::String(
+        "Повтори запрос с агрегацией (COUNT/MIN/MAX/SUM/GROUP BY) вместо построчной выборки — \
+         либо задай limit явно (максимум 200)."
+            .to_string(),
+    );
+    value
 }
 
 async fn save_query_artifact(
@@ -498,9 +524,11 @@ pub async fn execute_data_tool(
                 .map_err(|error| error.to_string())
             }),
         "query_data_schema" => match parse_args::<SchemaQueryRequest>(arguments) {
-            Ok(request) => query_schema(request)
-                .await
-                .and_then(|value| serde_json::to_value(value).map_err(|error| error.to_string())),
+            Ok(request) => query_schema(request).await.and_then(|value| {
+                serde_json::to_value(value)
+                    .map(with_truncation_warning)
+                    .map_err(|error| error.to_string())
+            }),
             Err(error) => Err(error),
         },
         "run_data_view_scalar" => match parse_args::<DataViewScalarRequest>(arguments) {
@@ -531,6 +559,7 @@ pub async fn execute_data_tool(
                         let artifact_id =
                             save_query_artifact(&args, chat_id, agent_id, tabular.row_count).await;
                         serde_json::to_value(tabular)
+                            .map(with_truncation_warning)
                             .map(|mut value| {
                                 if let Some(id) = artifact_id {
                                     value["artifact_id"] = Value::String(id);
@@ -574,6 +603,18 @@ mod tests {
                 .map(Vec::len),
             Some(3)
         );
+    }
+
+    /// Усечение должно быть проговорено словами: голый флаг `truncated` модель пропускает
+    /// и делает по неполной выборке выводы о полноте данных.
+    #[test]
+    fn truncated_results_carry_an_explicit_warning() {
+        let warned = with_truncation_warning(json!({ "truncated": true, "row_count": 50 }));
+        assert!(warned["warning"].as_str().unwrap().contains("50"));
+        assert!(warned["next_step"].is_string());
+
+        let intact = json!({ "truncated": false, "row_count": 3 });
+        assert_eq!(with_truncation_warning(intact.clone()), intact);
     }
 
     #[test]

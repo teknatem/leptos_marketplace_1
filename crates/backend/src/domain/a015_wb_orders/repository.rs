@@ -8,6 +8,7 @@ use contracts::domain::common::{BaseAggregate, EntityMetadata};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::shared::data::db::get_connection;
@@ -216,6 +217,73 @@ pub async fn list_by_income_id(income_id: i64) -> Result<Vec<WbOrders>> {
     Ok(orders)
 }
 
+/// Сборка `WbOrders` из «сырой» строки `SELECT * FROM a015_wb_orders`.
+fn row_to_wb_orders(row: &sea_orm::QueryResult) -> WbOrders {
+    let id: String = row.try_get("", "id").unwrap_or_default();
+    let code: String = row.try_get("", "code").unwrap_or_default();
+    let description: String = row.try_get("", "description").unwrap_or_default();
+    let comment: Option<String> = row.try_get("", "comment").ok().flatten();
+    let document_no: String = row.try_get("", "document_no").unwrap_or_default();
+    let document_date: Option<String> = row.try_get("", "document_date").ok().flatten();
+    let g_number: Option<String> = row.try_get("", "g_number").ok().flatten();
+    let spp: Option<f64> = row.try_get("", "spp").ok().flatten();
+    let is_cancel: Option<bool> = row
+        .try_get::<Option<i32>>("", "is_cancel")
+        .ok()
+        .flatten()
+        .map(|v| v != 0);
+    let cancel_date: Option<String> = row.try_get("", "cancel_date").ok().flatten();
+    let header_json: String = row.try_get("", "header_json").unwrap_or_default();
+    let line_json: String = row.try_get("", "line_json").unwrap_or_default();
+    let state_json: String = row.try_get("", "state_json").unwrap_or_default();
+    let warehouse_json: String = row.try_get("", "warehouse_json").unwrap_or_default();
+    let geography_json: String = row.try_get("", "geography_json").unwrap_or_default();
+    let source_meta_json: String = row.try_get("", "source_meta_json").unwrap_or_default();
+    let marketplace_product_ref: Option<String> =
+        row.try_get("", "marketplace_product_ref").ok().flatten();
+    let nomenclature_ref: Option<String> = row.try_get("", "nomenclature_ref").ok().flatten();
+    let base_nomenclature_ref: Option<String> =
+        row.try_get("", "base_nomenclature_ref").ok().flatten();
+    let is_deleted: bool = row
+        .try_get::<i32>("", "is_deleted")
+        .map(|v| v != 0)
+        .unwrap_or(false);
+    let is_posted: bool = row
+        .try_get::<i32>("", "is_posted")
+        .map(|v| v != 0)
+        .unwrap_or(false);
+    let version: i32 = row.try_get("", "version").unwrap_or(0);
+
+    WbOrders::from(Model {
+        id,
+        code,
+        description,
+        comment,
+        document_no,
+        document_date,
+        g_number,
+        spp,
+        is_cancel,
+        cancel_date,
+        header_json,
+        line_json,
+        state_json,
+        warehouse_json,
+        geography_json,
+        source_meta_json,
+        marketplace_product_ref,
+        nomenclature_ref,
+        base_nomenclature_ref,
+        // Зеркало читаем не из колонки, а из line_json при сборке WbOrders.
+        dealer_price_ut: None,
+        is_deleted,
+        is_posted,
+        created_at: None,
+        updated_at: None,
+        version,
+    })
+}
+
 /// Найти посчитанные, не отменённые заказы a015 по nm_id, кабинету и дате
 /// документа. Используется при проведении a026 для валидации механизма
 /// привязки рекламных расходов и впоследствии для проекции p913.
@@ -246,75 +314,51 @@ pub async fn list_for_advert_attribution(
     let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
     let query_results = db.query_all(stmt).await?;
 
-    let mut orders = Vec::with_capacity(query_results.len());
-    for row in query_results {
-        let id: String = row.try_get("", "id").unwrap_or_default();
-        let code: String = row.try_get("", "code").unwrap_or_default();
-        let description: String = row.try_get("", "description").unwrap_or_default();
-        let comment: Option<String> = row.try_get("", "comment").ok().flatten();
-        let document_no: String = row.try_get("", "document_no").unwrap_or_default();
-        let document_date: Option<String> = row.try_get("", "document_date").ok().flatten();
-        let g_number: Option<String> = row.try_get("", "g_number").ok().flatten();
-        let spp: Option<f64> = row.try_get("", "spp").ok().flatten();
-        let is_cancel: Option<bool> = row
-            .try_get::<Option<i32>>("", "is_cancel")
-            .ok()
-            .flatten()
-            .map(|v| v != 0);
-        let cancel_date: Option<String> = row.try_get("", "cancel_date").ok().flatten();
-        let header_json: String = row.try_get("", "header_json").unwrap_or_default();
-        let line_json: String = row.try_get("", "line_json").unwrap_or_default();
-        let state_json: String = row.try_get("", "state_json").unwrap_or_default();
-        let warehouse_json: String = row.try_get("", "warehouse_json").unwrap_or_default();
-        let geography_json: String = row.try_get("", "geography_json").unwrap_or_default();
-        let source_meta_json: String = row.try_get("", "source_meta_json").unwrap_or_default();
-        let marketplace_product_ref: Option<String> =
-            row.try_get("", "marketplace_product_ref").ok().flatten();
-        let nomenclature_ref: Option<String> = row.try_get("", "nomenclature_ref").ok().flatten();
-        let base_nomenclature_ref: Option<String> =
-            row.try_get("", "base_nomenclature_ref").ok().flatten();
-        let is_deleted: bool = row
-            .try_get::<i32>("", "is_deleted")
-            .map(|v| v != 0)
-            .unwrap_or(false);
-        let is_posted: bool = row
-            .try_get::<i32>("", "is_posted")
-            .map(|v| v != 0)
-            .unwrap_or(false);
-        let version: i32 = row.try_get("", "version").unwrap_or(0);
+    Ok(query_results.iter().map(row_to_wb_orders).collect())
+}
 
-        let model = Model {
-            id,
-            code,
-            description,
-            comment,
-            document_no,
-            document_date,
-            g_number,
-            spp,
-            is_cancel,
-            cancel_date,
-            header_json,
-            line_json,
-            state_json,
-            warehouse_json,
-            geography_json,
-            source_meta_json,
-            marketplace_product_ref,
-            nomenclature_ref,
-            base_nomenclature_ref,
-            // Зеркало читаем не из колонки, а из line_json при сборке WbOrders.
-            dealer_price_ut: None,
-            is_deleted,
-            is_posted,
-            created_at: None,
-            updated_at: None,
-            version,
-        };
-        orders.push(WbOrders::from(model));
+/// Та же выборка, что и `list_for_advert_attribution`, но сразу за весь период
+/// и одним запросом: `(дата, nm_id) → заказы`.
+///
+/// Массовое проведение a026 иначе вырождается в N+1: пер-строчный вариант не
+/// покрыт индексом (`substr(document_date,…)` + `json_extract(line_json,…)`) и
+/// стоит ~136 мс на вызов. Порядок внутри группы — по `document_date`, как и в
+/// пер-строчной версии: `build_linked_orders` сортирует кандидатов стабильно и
+/// опирается на хронологию при равных суммах атрибуции.
+pub async fn list_for_advert_attribution_range(
+    connection_id: &str,
+    date_from: &str,
+    date_to: &str,
+) -> Result<HashMap<(String, i64), Vec<WbOrders>>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let sql = format!(
+        "SELECT *, substr(document_date, 1, 10) AS attribution_date FROM a015_wb_orders \
+         WHERE substr(document_date, 1, 10) >= '{}' \
+           AND substr(document_date, 1, 10) <= '{}' \
+           AND is_posted = 1 \
+           AND is_deleted = 0 \
+           AND json_extract(header_json, '$.connection_id') = '{}' \
+         ORDER BY document_date",
+        date_from.replace('\'', "''"),
+        date_to.replace('\'', "''"),
+        connection_id.replace('\'', "''"),
+    );
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    let query_results = db.query_all(stmt).await?;
+
+    let mut grouped: HashMap<(String, i64), Vec<WbOrders>> = HashMap::new();
+    for row in &query_results {
+        let attribution_date: String = row.try_get("", "attribution_date").unwrap_or_default();
+        let order = row_to_wb_orders(row);
+        grouped
+            .entry((attribution_date, order.line.nm_id))
+            .or_default()
+            .push(order);
     }
 
-    Ok(orders)
+    Ok(grouped)
 }
 
 pub async fn list_by_numeric_order_ids(order_ids: &[i64]) -> Result<Vec<WbOrders>> {

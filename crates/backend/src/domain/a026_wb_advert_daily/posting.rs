@@ -10,8 +10,8 @@ use sea_orm::TransactionTrait;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use super::posting_context::AdvertPostingContext;
 use super::repository;
-use crate::domain::a015_wb_orders;
 use crate::general_ledger::repository::Model as GeneralLedgerModel;
 use crate::general_ledger::turnover_registry::get_turnover_class;
 use crate::shared::analytics::normalization::is_significant_amount;
@@ -229,26 +229,26 @@ fn build_direct_p911_entries(
 async fn build_linked_orders(
     document: &WbAdvertDaily,
     document_id: Uuid,
+    context: &mut AdvertPostingContext,
 ) -> Result<(i64, Vec<WbAdvertLinkedOrdersByNm>)> {
     // ── Phase 1: fetch all raw candidates ────────────────────────────────────
+    // Цены из marketplace-пейлаода дочитывает сам контекст (в предзагруженном
+    // режиме — один раз на заказ, в ленивом — при выборке).
     let mut raw_per_nm: Vec<(i64, String, Option<String>, i64, Vec<WbOrders>)> = Vec::new();
 
     for line in &document.lines {
         let raw = if line.metrics.orders > 0 {
-            a015_wb_orders::repository::list_for_advert_attribution(
-                line.nm_id,
-                &document.header.connection_id,
-                &document.header.document_date,
-            )
-            .await
-            .unwrap_or_else(|err| {
-                tracing::warn!(
-                    "a026 linked orders lookup failed for nm_id={}: {}",
-                    line.nm_id,
-                    err
-                );
-                Vec::new()
-            })
+            context
+                .orders_for(&document.header.document_date, line.nm_id)
+                .await
+                .unwrap_or_else(|err| {
+                    tracing::warn!(
+                        "a026 linked orders lookup failed for nm_id={}: {}",
+                        line.nm_id,
+                        err
+                    );
+                    Vec::new()
+                })
         } else {
             Vec::new()
         };
@@ -261,23 +261,14 @@ async fn build_linked_orders(
         ));
     }
 
-    for (_, _, _, _, raw) in &mut raw_per_nm {
-        for order in raw.iter_mut() {
-            a015_wb_orders::service::fill_line_price_from_marketplace_raw(order).await;
-        }
-    }
-
     // ── Phase 3: sort candidates by existing attribution (excluding self) ─────
     // Записи текущего документа исключаем — они будут удалены при перепроведении
     // и не должны искусственно повышать «накопленную нагрузку» его заказов.
     let self_ref = document_id.to_string();
     for (_, _, _, _, raw) in &mut raw_per_nm {
         let order_keys: Vec<String> = raw.iter().map(|o| o.header.document_no.clone()).collect();
-        let existing_attr =
-            crate::projections::p913_wb_advert_order_attr::repository::sum_reserve_by_order_keys(
-                &order_keys,
-                Some(&self_ref),
-            )
+        let existing_attr = context
+            .reserve_sums(&order_keys, &self_ref)
             .await
             .unwrap_or_default();
 
@@ -427,24 +418,14 @@ async fn build_linked_orders(
     Ok((total_found, groups))
 }
 
-async fn refresh_line_nomenclature_refs(document: &mut WbAdvertDaily) -> Result<usize> {
-    let mut cache: HashMap<i64, Option<String>> = HashMap::new();
+async fn refresh_line_nomenclature_refs(
+    document: &mut WbAdvertDaily,
+    context: &mut AdvertPostingContext,
+) -> Result<usize> {
     let mut changed = 0usize;
 
     for line in &mut document.lines {
-        let resolved = if let Some(cached) = cache.get(&line.nm_id) {
-            cached.clone()
-        } else {
-            let resolved =
-                crate::domain::a007_marketplace_product::service::resolve_wb_nomenclature_ref(
-                    &document.header.connection_id,
-                    line.nm_id,
-                    None,
-                )
-                .await?;
-            cache.insert(line.nm_id, resolved.clone());
-            resolved
-        };
+        let resolved = context.nomenclature_ref(line.nm_id).await?;
 
         if line.nomenclature_ref != resolved {
             line.nomenclature_ref = resolved;
@@ -463,6 +444,7 @@ async fn refresh_line_nomenclature_refs(document: &mut WbAdvertDaily) -> Result<
 async fn ensure_marketplace_products(
     document: &WbAdvertDaily,
     document_id: Uuid,
+    context: &mut AdvertPostingContext,
 ) -> Result<HashMap<i64, String>> {
     let mut refs: HashMap<i64, String> = HashMap::new();
 
@@ -471,17 +453,14 @@ async fn ensure_marketplace_products(
             continue;
         }
 
-        let product_ref =
-            crate::domain::a007_marketplace_product::service::find_or_create_for_advert(
-                crate::domain::a007_marketplace_product::service::AdvertProductParams {
-                    connection_mp_ref: document.header.connection_id.clone(),
-                    marketplace_ref: document.header.marketplace_id.clone(),
-                    nm_id: line.nm_id,
-                    nm_name: line.nm_name.clone(),
-                    document_no: document.header.document_no.clone(),
-                    document_id: document_id.to_string(),
-                    document_date: document.header.document_date.clone(),
-                },
+        let product_ref = context
+            .product_ref(
+                line.nm_id,
+                &line.nm_name,
+                &document.header.marketplace_id,
+                &document.header.document_no,
+                &document.header.document_date,
+                document_id,
             )
             .await?;
 
@@ -491,14 +470,29 @@ async fn ensure_marketplace_products(
     Ok(refs)
 }
 
+/// Проведение одного документа с собственным (ленивым) контекстом.
+/// Для массового проведения используй [`post_document_with_context`] с
+/// предзагруженным контекстом — иначе каждый документ платит за N+1 к a015.
 pub async fn post_document(id: Uuid) -> Result<()> {
+    let document = repository::get_by_id(id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
+
+    let mut context = AdvertPostingContext::lazy(document.header.connection_id.clone());
+    post_document_with_context(id, &mut context).await
+}
+
+pub async fn post_document_with_context(
+    id: Uuid,
+    context: &mut AdvertPostingContext,
+) -> Result<()> {
     let mut document = repository::get_by_id(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Document not found: {}", id))?;
 
-    let refreshed_lines = refresh_line_nomenclature_refs(&mut document).await?;
-    let product_refs = ensure_marketplace_products(&document, id).await?;
-    let (total_found, linked_orders) = build_linked_orders(&document, id).await?;
+    let refreshed_lines = refresh_line_nomenclature_refs(&mut document, context).await?;
+    let product_refs = ensure_marketplace_products(&document, id, context).await?;
+    let (total_found, linked_orders) = build_linked_orders(&document, id, context).await?;
     document.linked_orders_count = total_found;
     document.has_linked_orders = linked_orders.iter().any(|g| g.wb_reported_orders > 0);
     document.linked_orders = linked_orders;
@@ -652,6 +646,10 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         id,
         transaction_started_at.elapsed().as_millis()
     );
+
+    // Только после коммита: следующий документ пачки должен видеть атрибуцию
+    // этого документа так же, как увидел бы её в БД при проведении по одному.
+    context.record_posted_reserve(&p913_entries);
 
     Ok(())
 }

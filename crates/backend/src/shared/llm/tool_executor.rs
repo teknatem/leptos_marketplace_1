@@ -611,7 +611,12 @@ pub async fn execute_tool_call(
         "get_entity_schema" => {
             let index = parse_string_arg(&call.arguments, "entity_index").unwrap_or_default();
             tracing::info!("[get_entity_schema] called with entity_index='{}'", index);
-            let result = METADATA_REGISTRY.get_entity_schema(&index);
+            // Метаданные описывают агрегат логически; сверяем с физической таблицей и
+            // отдаём json_extract-выражения для полей, которых нет отдельными колонками.
+            let result = crate::shared::data_access::physical_schema::annotate_with_physical_schema(
+                METADATA_REGISTRY.get_entity_schema(&index),
+            )
+            .await;
             let fields_count = result
                 .get("fields")
                 .and_then(|f| f.as_array())

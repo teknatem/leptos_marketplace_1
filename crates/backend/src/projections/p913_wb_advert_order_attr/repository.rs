@@ -315,6 +315,33 @@ pub async fn aggregate_by_campaign() -> Result<std::collections::HashMap<String,
     Ok(map)
 }
 
+/// Накопленная reserve-атрибуция по ВСЕМ `order_key` одним запросом.
+///
+/// Снимок-основа для массового проведения a026: пер-документный
+/// `sum_reserve_by_order_keys` вырождается в N+1. Снимать строго ПОСЛЕ очистки
+/// проекций за период (`replace_for_period`) — тогда в нём остаются только
+/// «чужие» документы, что и требует сортировка кандидатов в `build_linked_orders`.
+pub async fn sum_reserve_all_by_order_key() -> Result<std::collections::HashMap<String, f64>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let sql = "SELECT order_key, SUM(amount) AS total \
+               FROM p913_wb_advert_order_attr \
+               WHERE turnover_code = 'advert_clicks_order_accrual' \
+                 AND order_key <> '' \
+               GROUP BY order_key";
+
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    let rows = conn().query_all(stmt).await?;
+
+    let mut map = std::collections::HashMap::with_capacity(rows.len());
+    for row in rows {
+        let key: String = row.try_get("", "order_key").unwrap_or_default();
+        let total: f64 = row.try_get("", "total").unwrap_or(0.0);
+        map.insert(key, total);
+    }
+    Ok(map)
+}
+
 pub async fn sum_reserve_by_order_keys(
     order_keys: &[String],
     exclude_registrator_ref: Option<&str>,

@@ -46,7 +46,9 @@ fn resolve_metric_def(id: &str) -> Result<MetricDef> {
     match id {
         "open_count" => Ok(m(
             "CAST(COALESCE(SUM(json_extract(j.value, '$.metrics.open_count')), 0) AS REAL)",
-            "Просмотры карточки",
+            // Именно ПЕРЕХОДЫ (открытия карточки), а не показы в выдаче: слово «просмотры»
+            // читается как impressions и путало LLM с show_* из p916.
+            "Переходы в карточку",
         )),
         "cart_count" => Ok(m(
             "CAST(COALESCE(SUM(json_extract(j.value, '$.metrics.cart_count')), 0) AS REAL)",

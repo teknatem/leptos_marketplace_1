@@ -4,6 +4,7 @@ use crate::shared::marketplaces::wildberries::datetime::{
     format_wb_local_datetime_seconds, parse_wb_datetime,
 };
 use anyhow::Result;
+use chrono::Datelike;
 use contracts::domain::a006_connection_mp::aggregate::ConnectionMP;
 use contracts::domain::a015_wb_orders::aggregate::{
     WbOrders, WbOrdersGeography, WbOrdersHeader, WbOrdersLine, WbOrdersSourceMeta, WbOrdersState,
@@ -76,15 +77,21 @@ pub async fn process_order_row(
         .as_ref()
         .and_then(|date_str| parse_wb_datetime(date_str));
 
+    let is_cancel = order_row.is_cancel.unwrap_or(false);
+    // У неотменённых заказов WB присылает плейсхолдер `0001-01-01T00:00:00`, который после
+    // перевода из МСК в UTC оседал в базе как «0000-12-31T21:00:00+00:00» — в карточке и в
+    // SQL это выглядит настоящей датой отмены. Дату держим только для реальных отмен.
     let cancel_dt = order_row
         .cancel_date
         .as_ref()
-        .and_then(|date_str| parse_wb_datetime(date_str));
+        .filter(|_| is_cancel)
+        .and_then(|date_str| parse_wb_datetime(date_str))
+        .filter(|dt| dt.year() >= 2000);
 
     let state = WbOrdersState {
         order_dt,
         last_change_dt,
-        is_cancel: order_row.is_cancel.unwrap_or(false),
+        is_cancel,
         cancel_dt,
         is_supply: order_row.is_supply,
         is_realization: order_row.is_realization,
