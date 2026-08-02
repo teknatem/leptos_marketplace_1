@@ -25,10 +25,9 @@ deploy/
 .DS_Store
 Thumbs.db
 
-# Database (exclude data files but keep structure)
-/data/app.db
-/data/backups/*.db
-/target/db/*.db
+# Database — рабочая БД живёт вне репозитория (F:\data\<проект>), см. [database].path.
+# Ловим любые *.db в дереве: так в репо когда-то попал пустой marketplace.db.
+*.db
 *.db-shm
 *.db-wal
 
@@ -37,9 +36,16 @@ Thumbs.db
 
 # Logs
 *.log
+/task_logs/
 
-# Runtime downloads and extracted marketplace reports
+# Runtime-каталоги приложения: данные, не исходники. Вычищены из истории 2026-08-02.
 /downloads/
+/csv_export/
+/uploads/
+
+# Генерируемые артефакты инструментов (машинно-специфичны)
+/.vsa_designer/
+scripts/crates_dump.txt
 
 # Node.js / Tailwind tooling
 node_modules/
