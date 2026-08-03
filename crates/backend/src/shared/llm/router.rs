@@ -26,6 +26,7 @@ pub const KNOWN_INTENTS: &[&str] = &[
     "sys_admin",                   // системная диагностика
     "kb_curation",                 // работа с базой знаний
     "mailbox",                     // чтение/отправка почты
+    "support",                     // обращение в поддержку: сбой, пожелание, тикет
     "meta_smalltalk",              // приветствие/уточнение/«что ты умеешь»
 ];
 
@@ -69,6 +70,7 @@ fn classifier_system_prompt() -> String {
          - sys_admin: состояние системы, производительность, фоновые задачи, целостность данных.\n\
          - kb_curation: работа с базой знаний — прочитать/исправить статью, тикет правки.\n\
          - mailbox: почта — прочитать входящие письма, найти письмо, ответить или отправить письмо.\n\
+         - support: обращение по работе самой программы — что-то не работает/ошибка/сломалось, просьба доработать или идея по улучшению, просьба завести тикет/заявку.\n\
          - meta_smalltalk: приветствие, благодарность, «что ты умеешь», уточнение без конкретной задачи.\n\n\
          Ответь СТРОГО валидным JSON без пояснений и без markdown:\n\
          {{\"intent\": \"<один из: {}>\", \"confidence\": <число 0.0..1.0>}}",
@@ -138,7 +140,8 @@ fn preview(s: &str) -> String {
 pub fn intent_to_agent_type(intent: &str) -> AgentType {
     match intent {
         "kb_curation" => AgentType::KbAdmin,
-        "plugin_dev" => AgentType::PluginAdmin,
+        // Разработчик один: и плагины, и поддержка пользователей (навык `support`).
+        "plugin_dev" | "support" => AgentType::PluginAdmin,
         "sys_admin" => AgentType::SystemAdmin,
         "sales_query" => AgentType::SalesAnalyst,
         "marketing_query" => AgentType::Marketer,
@@ -201,6 +204,32 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
 
     let any = |needles: &[&str]| needles.iter().any(|n| m.contains(n));
 
+    // Поддержка — раньше остальных правил: «не работает график» это обращение о сбое,
+    // а не просьба построить график. Исключение — разработка плагинов (свой интент).
+    if !any(&["плагин", "plugin"])
+        && any(&[
+            "тикет",
+            "обращени",
+            "заявк",
+            "поддержк",
+            "баг",
+            "не работает",
+            "не работают",
+            "не открывается",
+            "не грузит",
+            "не загружается",
+            "не сохраня",
+            "ошибк",
+            "сломал",
+            "глючит",
+            "зависает",
+            "доработ",
+            "пожелани",
+            "неудобно",
+        ])
+    {
+        return IntentResult::new("support", 0.5, "rules");
+    }
     if any(&["график", "графік", "диаграмм", "chart", "чарт", "визуализ"])
     {
         return IntentResult::new("chart_build", 0.5, "rules");
@@ -347,7 +376,9 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
     let seeded = match seed_agent_type {
         AgentType::SystemAdmin => "sys_admin",
         AgentType::KbAdmin => "kb_curation",
-        AgentType::PluginAdmin => "plugin_dev",
+        // Расплывчатая реплика разработчику — это почти всегда вопрос по системе:
+        // просьбы про плагины ловятся явным правилом по слову «плагин» выше.
+        AgentType::PluginAdmin => "support",
         AgentType::SalesAnalyst => "sales_query",
         AgentType::Marketer => "marketing_query",
         AgentType::Financier => "finance_query",

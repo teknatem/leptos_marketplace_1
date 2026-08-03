@@ -105,6 +105,10 @@ pub fn tab_label_for_key(key: &str) -> &'static str {
         k if k.starts_with("a033_wb_day_close_details_") => "Закрытие дня WB",
         "knowledge_base" => "База знаний",
         k if k.starts_with("kb_article_") => "Статья KB",
+        // Без этих правил вкладка чата, восстановленная из `?active=`, получает
+        // заголовком свой сырой ключ (`a018_llm_chat_details_<uuid>`).
+        k if k.starts_with("a018_llm_chat_details_") => "AI чат",
+        k if k.starts_with("a018_llm_context_details_") => "Контекст чата",
 
         "p900_sales_register" => "Регистр продаж",
         "p901_barcodes" => "Штрихкоды номенклатуры",

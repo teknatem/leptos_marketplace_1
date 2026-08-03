@@ -275,7 +275,10 @@ pub(crate) fn analyst_tool_definitions() -> Vec<ToolDefinition> {
 ///
 /// `chat_id` и `agent_id` нужны для создания артефактов (a019_llm_artifact).
 /// `agent_type` определяет допустимый набор инструментов.
+/// `caller` — пользователь-собеседник; `None` у фоновых сценариев, тогда инструменты,
+/// действующие от лица человека (тикеты), отказывают.
 /// Вызывается в цикле `send_message`, когда LLM возвращает `tool_calls`.
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_tool_call(
     call: &ToolCall,
     chat_id: &str,
@@ -288,6 +291,7 @@ pub async fn execute_tool_call(
     artifact_publish_allowed: bool,
     skill_script_execute_allowed: bool,
     skill_script_develop_allowed: bool,
+    caller: Option<&super::types::ToolCaller>,
 ) -> String {
     // Авторизация: исполняем только инструменты активного набора (core ∪ активные навыки).
     // Единый источник истины вместо разрозненных проверок по роли агента.
@@ -462,6 +466,37 @@ pub async fn execute_tool_call(
     // Table builder tools — dispatch to table_tools module (заготовки, без БД)
     if TABLE_TOOL_NAMES.contains(&call.name.as_str()) {
         let result = execute_table_tool(&call.name, &call.arguments);
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    // Тикеты — dispatch to ticket_tools module. Действуют от лица собеседника,
+    // поэтому требуют `caller`; в фоновых сценариях его нет.
+    if super::ticket_tools::TICKET_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result = match caller {
+            Some(caller) => {
+                super::ticket_tools::execute_ticket_tool(
+                    &call.name,
+                    &call.arguments,
+                    chat_id,
+                    caller,
+                )
+                .await
+            }
+            None => serde_json::json!({
+                "error": "Инструменты тикетов доступны только в диалоге с пользователем: \
+                          в текущей сессии автор обращения неизвестен.",
+            }),
+        };
         let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {

@@ -46,6 +46,20 @@ pub struct ToolCall {
     pub arguments: String,
 }
 
+/// Кто разговаривает с моделью — реальный пользователь приложения.
+///
+/// Нужен инструментам, которые действуют от его имени (оформление тикета заводится
+/// на автора-человека, а не на LLM), и для обращения к собеседнику в диалоге.
+/// `None` на месте вызывающего означает фоновый сценарий (планировщик, почтовый
+/// конвейер) — такие инструменты для него недоступны.
+#[derive(Debug, Clone)]
+pub struct ToolCaller {
+    pub user_id: String,
+    pub username: String,
+    pub is_admin: bool,
+    pub primary_role: String,
+}
+
 /// Определение инструмента для передачи LLM
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {

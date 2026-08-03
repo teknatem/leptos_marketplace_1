@@ -199,8 +199,38 @@ fn short_value(v: &Value) -> Option<String> {
     Some(truncated)
 }
 
+/// Назначение раздела приложения из каталога областей доступа.
+///
+/// Каталог ключуется теми же идентификаторами, что и вкладки, поэтому для
+/// `a015_wb_orders_details_<id>` смотрим базовый ключ `a015_wb_orders`. Даёт ответ на
+/// вопрос «что это за экран и зачем он» — метаданные сущности его не содержат.
+fn scope_purpose(page_key: &str) -> Option<(&'static str, &'static str)> {
+    let base = page_key
+        .find("_details_")
+        .map(|idx| &page_key[..idx])
+        .unwrap_or(page_key);
+    crate::system::access::scope_catalog::SCOPE_CATALOG
+        .iter()
+        .find(|s| s.scope_id == base)
+        .map(|s| (s.label, s.description))
+}
+
 /// Собрать пакет контекста по ключу страницы.
 pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltContext {
+    build_for_page_key_with_session(page_key, label, None).await
+}
+
+/// То же самое плюс снимок последних страниц пользователя.
+///
+/// Снимок делается ОДИН раз, в момент прикрепления страницы, и дальше живёт в пакете
+/// неизменным: он отвечает на вопрос «что человек делал перед обращением», а заодно не
+/// ломает кэш префикса у провайдера — в отличие от списка, который пересчитывался бы
+/// на каждое сообщение.
+pub async fn build_for_page_key_with_session(
+    page_key: &str,
+    label: Option<&str>,
+    session_user_id: Option<&str>,
+) -> BuiltContext {
     let pr = parse_page_key(page_key);
     let deep_link = format!("?active={}", page_key);
     let label_title = label
@@ -217,6 +247,33 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
     }
     if let Some(id) = &pr.entity_id {
         ctx["entity_id"] = json!(id);
+    }
+
+    // Назначение раздела — для консультаций «что это за экран и зачем».
+    let purpose = scope_purpose(page_key);
+    if let Some((label, description)) = purpose {
+        ctx["section"] = json!({ "label": label, "description": description });
+    }
+
+    // Снимок навигации: путь пользователя до обращения.
+    let mut recent_pages: Vec<(String, String)> = Vec::new();
+    if let Some(user_id) = session_user_id {
+        match crate::system::history::repository::list_recent(user_id, 10).await {
+            Ok(items) => {
+                recent_pages = items
+                    .into_iter()
+                    .map(|p| (p.tab_key, p.title))
+                    .filter(|(key, _)| key != page_key)
+                    .collect();
+                if !recent_pages.is_empty() {
+                    ctx["recent_pages"] = json!(recent_pages
+                        .iter()
+                        .map(|(key, title)| json!({ "page_key": key, "title": title }))
+                        .collect::<Vec<_>>());
+                }
+            }
+            Err(e) => tracing::warn!("context: не удалось прочитать историю страниц: {e}"),
+        }
     }
 
     // Описание сущности и список FK-полей из метаданных.
@@ -357,6 +414,12 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
     ));
     text.push_str(&format!("Тип страницы: {}\n", pr.page_type));
     text.push_str(&format!("Ссылка: {}\n", deep_link));
+    if let Some((section_label, section_desc)) = purpose {
+        text.push_str(&format!(
+            "Раздел приложения: {} — {}\n",
+            section_label, section_desc
+        ));
+    }
     if let Some(name) = &entity_name {
         let ix = pr.entity_index.as_deref().unwrap_or("");
         text.push_str(&format!("Сущность: {} [{}]\n", name, ix));
@@ -397,6 +460,14 @@ pub async fn build_for_page_key(page_key: &str, label: Option<&str>) -> BuiltCon
             text.push_str("Данные объекта (JSON):\n```json\n");
             text.push_str(&pretty);
             text.push_str("\n```\n");
+        }
+    }
+    if !recent_pages.is_empty() {
+        text.push_str(
+            "Страницы, открытые пользователем перед обращением (свежие сверху):\n",
+        );
+        for (key, title) in recent_pages.iter().take(10) {
+            text.push_str(&format!("  {} [{}]\n", title, key));
         }
     }
     if !adjacent.is_empty() {

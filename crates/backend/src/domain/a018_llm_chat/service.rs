@@ -5,7 +5,7 @@ use super::repository;
 // как UUID (chat.agent_id) → сотрудник a017. Существующие чаты валидны: у a017 и a038 совпадают id.
 use crate::domain::a017_llm_agent::repository as employee_repository;
 use crate::domain::a038_llm_connection::repository as connection_repository;
-use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole};
+use crate::shared::llm::types::{ChatMessage, ChatRole as LlmChatRole, ToolCaller};
 use crate::shared::llm::{create_provider, execute_tool_call};
 use crate::system::s3::service::{self as s3_service, UploadedFile};
 use axum::extract::Multipart;
@@ -452,6 +452,11 @@ fn human_tool_label(name: &str) -> String {
         "get_data_integrity_report" => "Проверка целостности данных",
         "list_scheduled_tasks" => "Просмотр регламентных заданий",
         "describe_task_types" => "Справка по типам заданий",
+        "find_page_help" => "Поиск инструкции по разделу",
+        "get_user_recent_pages" => "Просмотр истории страниц",
+        "ticket_search" => "Поиск похожих обращений",
+        "ticket_validate" => "Проверка черновика тикета",
+        "ticket_create" => "Оформление тикета",
         other => return format!("Инструмент: {other}"),
     };
     label.to_string()
@@ -526,6 +531,13 @@ fn trace_output(value: Option<&serde_json::Value>) -> serde_json::Value {
         "digest",
         "registry_generation",
         "activated",
+        // Тикеты: `complete` + `payload_hash` — опора гейта ticket_create, они ОБЯЗАНЫ
+        // переживать усечение трассы, иначе создание тикета перестанет проходить.
+        "complete",
+        "payload_hash",
+        "missing",
+        "ticket_id",
+        "ticket_code",
     ] {
         if let Some(item) = value.get(key) {
             out.insert(key.to_string(), item.clone());
@@ -571,10 +583,14 @@ async fn report_progress(job_id: Option<&str>, step: u32, stage: impl Into<Strin
 /// Отправить сообщение пользователя и получить ответ от LLM.
 /// `job_id` — идентификатор фоновой задачи для отчёта о прогрессе (None для
 /// синхронных вызовов из фоновых тасков, где прогресс не нужен).
+/// `actor` — пользователь, от чьего имени идёт диалог. `None` у фоновых сценариев
+/// (планировщик, почтовый конвейер): у них нет человека-собеседника, и инструменты,
+/// действующие от лица пользователя, для них закрыты.
 pub async fn send_message(
     chat_id: &str,
     request: SendMessageRequest,
     job_id: Option<&str>,
+    actor: Option<ToolCaller>,
 ) -> anyhow::Result<LlmChatMessage> {
     let chat_uuid =
         Uuid::parse_str(chat_id).map_err(|e| anyhow::anyhow!("Invalid chat ID: {}", e))?;
@@ -851,6 +867,24 @@ pub async fn send_message(
     );
     llm_messages.push(ChatMessage::system(system_text));
 
+    // Кто по ту сторону чата. Отдельным system-сообщением сразу после промпта: блок
+    // неизменен в пределах чата, поэтому кэш префикса не страдает (в отличие от даты,
+    // которая уходит в самый конец).
+    if let Some(actor) = &actor {
+        llm_messages.push(ChatMessage::system(format!(
+            "Собеседник — реальный пользователь системы: {} (роль «{}»{}). \
+             Обращайся к нему по имени. Всё, что ты делаешь инструментами от лица \
+             пользователя (например, оформление тикета), выполняется от его имени.",
+            actor.username,
+            actor.primary_role,
+            if actor.is_admin {
+                ", администратор"
+            } else {
+                ""
+            }
+        )));
+    }
+
     // Сводка ранней части диалога (компакция): заменяет сообщения старше summary_upto.
     if let Some(summary) = &chat_summary {
         llm_messages.push(ChatMessage::system(format!(
@@ -1088,6 +1122,7 @@ pub async fn send_message(
                     skill_session.artifact_publish_allowed(),
                     skill_session.script_execute_allowed(),
                     skill_session.script_develop_allowed(),
+                    actor.as_ref(),
                 )
                 .await;
                 let call_ms = call_start.elapsed().as_millis() as u64;
@@ -1490,13 +1525,17 @@ pub async fn send_message(
 }
 
 /// Собрать контекст текущей страницы и привязать его к чату.
+/// `session_user_id` включает снимок навигации пользователя в пакет контекста
+/// (см. `context::build_for_page_key_with_session`).
 pub async fn add_chat_context(
     chat_id: &str,
     page_key: &str,
     label: Option<&str>,
+    session_user_id: Option<&str>,
 ) -> anyhow::Result<ContextPackageSummary> {
     let db = crate::shared::data::db::get_connection();
-    let built = super::context::build_for_page_key(page_key, label).await;
+    let built =
+        super::context::build_for_page_key_with_session(page_key, label, session_user_id).await;
 
     let id = Uuid::new_v4().to_string();
     let created_at = chrono::Utc::now().to_rfc3339();

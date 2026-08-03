@@ -267,6 +267,7 @@ impl Task021MailIntakeManager {
                 request_id: email.message_id.clone(),
             },
             None,
+            None, // почтовый конвейер: собеседника-человека в сессии нет
         )
         .await
         {

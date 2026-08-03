@@ -157,7 +157,7 @@ pub fn LlmAgentDetails(
                             <option value="marketer">"Маркетолог"</option>
                             <option value="financier">"Финансист"</option>
                             <option value="coordinator_admin">"Координатор-администратор"</option>
-                            <option value="plugin_admin">"Разработчик плагинов"</option>
+                            <option value="plugin_admin">"Разработчик"</option>
                             <option value="system_admin">"Системный администратор"</option>
                             <option value="kb_admin">"Администратор базы знаний"</option>
                         </select>

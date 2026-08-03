@@ -127,6 +127,7 @@ impl TaskManager for Task014KbAnalyzeManager {
                 request_id: None,
             },
             None,
+            None, // фоновая задача: собеседника-человека нет
         )
         .await?;
 

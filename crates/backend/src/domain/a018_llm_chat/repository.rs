@@ -634,9 +634,42 @@ pub async fn find_tool_trace_by_message(
     Ok(models.into_iter().map(Into::into).collect())
 }
 
+/// Все вызовы инструмента `tool` в чате, уже записанные в журнал.
+///
+/// Опора детерминированного гейта создания тикета: трасса пишется пачкой ПОСЛЕ того,
+/// как ответ ассистента сохранён (см. `insert_tool_trace_batch`), поэтому во время
+/// tool-цикла в таблице лежат только вызовы предыдущих ходов. Значит сам факт наличия
+/// строки здесь означает «это было в прошлом ходе, пользователь успел ответить».
+pub async fn find_tool_trace_by_tool(
+    db: &DatabaseConnection,
+    chat_id: &str,
+    tool: &str,
+) -> Result<Vec<ToolTraceEntry>, DbErr> {
+    let models = tool_trace::Entity::find()
+        .filter(tool_trace::Column::ChatId.eq(chat_id))
+        .filter(tool_trace::Column::Tool.eq(tool))
+        .order_by_asc(tool_trace::Column::CreatedAt)
+        .all(db)
+        .await?;
+    Ok(models.into_iter().map(Into::into).collect())
+}
+
 // ============================================================================
 // Attachment Repository Functions
 // ============================================================================
+
+/// Все вложения чата (в т.ч. привязанные к сообщениям), новейшие последними.
+pub async fn find_attachments_by_chat_id(
+    db: &DatabaseConnection,
+    chat_id: &LlmChatId,
+) -> Result<Vec<LlmChatAttachment>, DbErr> {
+    let models = attachment::Entity::find()
+        .filter(attachment::Column::ChatId.eq(chat_id.as_string()))
+        .order_by_asc(attachment::Column::CreatedAt)
+        .all(db)
+        .await?;
+    Ok(models.into_iter().map(|m| m.into()).collect())
+}
 
 /// Найти все вложения для сообщения
 pub async fn find_attachments_by_message_id(

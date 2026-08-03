@@ -228,8 +228,18 @@ pub struct JobStatusResponse {
 /// The LLM call runs in background; poll GET /jobs/:job_id for the result.
 pub async fn send_message(
     Path(id): Path<String>,
+    CurrentUser(claims): CurrentUser,
     Json(payload): Json<a018_llm_chat::service::SendMessageRequest>,
 ) -> Result<(StatusCode, Json<SendJobResponse>), StatusCode> {
+    // Собеседник переезжает в фоновую задачу: инструменты, действующие от лица
+    // пользователя (тикеты), должны знать автора, а сам HTTP-запрос к моменту их
+    // выполнения уже завершится.
+    let actor = crate::shared::llm::types::ToolCaller {
+        user_id: claims.sub.clone(),
+        username: claims.username.clone(),
+        is_admin: claims.is_admin,
+        primary_role: claims.primary_role.clone(),
+    };
     let proposed_job_id = Uuid::new_v4().to_string();
     let request_id = payload
         .request_id
@@ -249,7 +259,9 @@ pub async fn send_message(
     let job_id_clone = job_id.clone();
     tokio::spawn(async move {
         tracing::info!("[llm_job] started job_id={} chat_id={}", job_id_clone, id);
-        match a018_llm_chat::service::send_message(&id, payload, Some(&job_id_clone)).await {
+        match a018_llm_chat::service::send_message(&id, payload, Some(&job_id_clone), Some(actor))
+            .await
+        {
             Ok(msg) => {
                 tracing::info!("[llm_job] done job_id={}", job_id_clone);
                 job_store::complete(&job_id_clone, msg).await;
@@ -411,9 +423,20 @@ pub async fn get_context_package(
 /// Собрать контекст текущей страницы по page_key и привязать к чату.
 pub async fn add_chat_context(
     Path(id): Path<String>,
+    CurrentUser(claims): CurrentUser,
     Json(req): Json<AddContextRequest>,
 ) -> Result<Json<ContextPackageSummary>, StatusCode> {
-    match a018_llm_chat::service::add_chat_context(&id, &req.page_key, req.label.as_deref()).await {
+    // Снимок навигации кладём только если клиент его просит: аналитическому чату по
+    // объекту он не нужен, а обращению в поддержку — наоборот, самое ценное.
+    let session_user_id = req.with_session_snapshot.then_some(claims.sub.as_str());
+    match a018_llm_chat::service::add_chat_context(
+        &id,
+        &req.page_key,
+        req.label.as_deref(),
+        session_user_id,
+    )
+    .await
+    {
         Ok(summary) => Ok(Json(summary)),
         Err(e) => {
             tracing::error!("add_chat_context error: {}", e);

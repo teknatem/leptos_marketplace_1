@@ -36,7 +36,8 @@ pub fn AiChatHeaderButton() -> impl IntoView {
 
     // Открытые чаты (для «добавить в чат»).
     let open_chats = move || -> Vec<(String, String)> {
-        ctx.opened
+        let mut chats: Vec<(String, String)> = ctx
+            .opened
             .get()
             .into_iter()
             .filter(|t| t.key.starts_with(CHAT_DETAIL_PREFIX))
@@ -48,10 +49,25 @@ pub fn AiChatHeaderButton() -> impl IntoView {
                     .to_string();
                 (chat_id, t.title)
             })
-            .collect()
+            .collect();
+
+        // Вкладка, восстановленная из `?active=`, получает родовой заголовок «AI чат»,
+        // поэтому несколько чатов в списке выглядели бы одинаково. Развести их можно
+        // только началом идентификатора — но лишь там, где заголовки реально совпали.
+        let titles: Vec<String> = chats.iter().map(|(_, t)| t.clone()).collect();
+        for (chat_id, title) in chats.iter_mut() {
+            if titles.iter().filter(|t| *t == title).count() > 1 {
+                let short: String = chat_id.chars().take(6).collect();
+                title.push_str(&format!(" · {short}"));
+            }
+        }
+        chats
     };
 
-    // Новый чат с контекстом.
+    // Новый чат. Вход один: и вопрос по данным, и жалоба на работу программы идут
+    // сюда — тему определяет роутер интентов по формулировке, а не пользователь
+    // выбором пункта меню. Снимок навигации кладём всегда: для разбора «я был там,
+    // нажал сюда, сломалось» он нужен, а аналитическому вопросу не мешает.
     let do_new_chat = move |page_key: String, label: String| {
         if busy.get_untracked() {
             return;
@@ -63,7 +79,11 @@ pub fn AiChatHeaderButton() -> impl IntoView {
                 let (agent_id, model) = fetch_default_agent().await?;
                 let desc = derive_title(&label);
                 let chat_id = create_chat(&desc, &agent_id, &model).await?;
-                add_context(&chat_id, &page_key, &label).await?;
+                // Контекст не обязателен: с вкладки без полезного контекста чат тоже
+                // должен открываться.
+                if !page_key.is_empty() {
+                    add_context(&chat_id, &page_key, &label, true).await?;
+                }
                 Ok(chat_id)
             }
             .await;
@@ -86,7 +106,7 @@ pub fn AiChatHeaderButton() -> impl IntoView {
         busy.set(true);
         open.set(false);
         wasm_bindgen_futures::spawn_local(async move {
-            match add_context(&chat_id, &page_key, &label).await {
+            match add_context(&chat_id, &page_key, &label, false).await {
                 Ok(()) => {
                     // Сигнал открытой странице чата перезагрузить ленту контекста.
                     let vkey = crate::domain::a018_llm_chat::ui::context_version_key(&chat_id);
@@ -123,73 +143,69 @@ pub fn AiChatHeaderButton() -> impl IntoView {
                     on:click=move |_| open.set(false)
                 ></div>
 
-                <div style="position: absolute; top: calc(100% + 6px); right: 0; z-index: 1001; \
-                            min-width: 280px; max-width: 360px; background: var(--colorNeutralBackground1); \
-                            border: 1px solid var(--colorNeutralStroke2); border-radius: 10px; \
-                            box-shadow: var(--shadow-md, 0 6px 24px rgba(0,0,0,.18)); padding: 8px;">
-                    {move || {
-                        match current_page() {
-                            None => view! {
-                                <div style="padding: 8px 10px; color: var(--colorNeutralForeground3); font-size: 13px;">
-                                    "Откройте страницу объекта или отчёта, чтобы взять её контекст."
+                <div class="ai-chat-menu">
+                    // Шапка меню — только вопрос и представление контекста. Ничего
+                    // кликабельного: раньше первым пунктом стояло действие, и оно
+                    // читалось как заголовок.
+                    {move || match current_page() {
+                        Some((_, label)) => {
+                            let hint = label.clone();
+                            view! {
+                                <div class="ai-chat-menu__caption">
+                                    "Что сделать с текущим контекстом?"
                                 </div>
-                            }.into_any(),
-                            Some((page_key, label)) => {
-                                let label_for_title = label.clone();
-                                let pk_new = page_key.clone();
-                                let lbl_new = label.clone();
-                                view! {
-                                    <div style="padding: 6px 10px; font-size: 12px; color: var(--colorNeutralForeground3); \
-                                                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                        "Контекст: " {label_for_title}
-                                    </div>
-                                    <button
-                                        class="ai-chat-menu__item"
-                                        style="display: flex; align-items: center; gap: 8px; width: 100%; \
-                                               padding: 8px 10px; background: none; border: none; cursor: pointer; \
-                                               border-radius: 6px; font-size: 13px; text-align: left; color: var(--colorNeutralForeground1);"
-                                        disabled=busy
-                                        on:click=move |_| do_new_chat(pk_new.clone(), lbl_new.clone())
-                                    >
-                                        {icon("plus")}
-                                        " Новый чат с контекстом"
-                                    </button>
+                                <div class="ai-chat-menu__context" title=hint>
+                                    {label}
+                                </div>
+                            }.into_any()
+                        }
+                        None => view! {
+                            <div class="ai-chat-menu__caption">"Открыть AI чат"</div>
+                        }.into_any(),
+                    }}
 
-                                    {move || {
-                                        let chats = open_chats();
-                                        if chats.is_empty() {
-                                            return view! { <></> }.into_any();
-                                        }
-                                        let pk = page_key.clone();
-                                        let lbl = label.clone();
+                    <div class="ai-chat-menu__divider"></div>
+
+                    {move || {
+                        let page = current_page();
+                        let (pk, lbl) = page.clone().unwrap_or_default();
+                        let (pk_new, lbl_new) = (pk.clone(), lbl.clone());
+                        view! {
+                            <button
+                                class="ai-chat-menu__item"
+                                disabled=busy
+                                on:click=move |_| do_new_chat(pk_new.clone(), lbl_new.clone())
+                            >
+                                {icon("plus")}
+                                <span>"Новый чат"</span>
+                            </button>
+
+                            {move || {
+                                let chats = open_chats();
+                                if chats.is_empty() || page.is_none() {
+                                    return view! { <></> }.into_any();
+                                }
+                                let (pk, lbl) = (pk.clone(), lbl.clone());
+                                view! {
+                                    <div class="ai-chat-menu__divider"></div>
+                                    <div class="ai-chat-menu__section">"Добавить в открытый чат"</div>
+                                    {chats.into_iter().map(|(chat_id, title)| {
+                                        let (pk, lbl) = (pk.clone(), lbl.clone());
+                                        let hint = title.clone();
                                         view! {
-                                            <div style="height: 1px; background: var(--colorNeutralStroke2); margin: 6px 4px;"></div>
-                                            <div style="padding: 2px 10px 6px; font-size: 12px; color: var(--colorNeutralForeground3);">
-                                                "Добавить в открытый чат:"
-                                            </div>
-                                            {chats.into_iter().map(|(chat_id, title)| {
-                                                let pk = pk.clone();
-                                                let lbl = lbl.clone();
-                                                view! {
-                                                    <button
-                                                        class="ai-chat-menu__item"
-                                                        style="display: flex; align-items: center; gap: 8px; width: 100%; \
-                                                               padding: 8px 10px; background: none; border: none; cursor: pointer; \
-                                                               border-radius: 6px; font-size: 13px; text-align: left; \
-                                                               color: var(--colorNeutralForeground1); white-space: nowrap; \
-                                                               overflow: hidden; text-overflow: ellipsis;"
-                                                        disabled=busy
-                                                        on:click=move |_| do_add_to(chat_id.clone(), pk.clone(), lbl.clone())
-                                                    >
-                                                        {icon("message-circle")}
-                                                        {format!(" {}", title)}
-                                                    </button>
-                                                }
-                                            }).collect_view()}
-                                        }.into_any()
-                                    }}
+                                            <button
+                                                class="ai-chat-menu__item"
+                                                title=hint
+                                                disabled=busy
+                                                on:click=move |_| do_add_to(chat_id.clone(), pk.clone(), lbl.clone())
+                                            >
+                                                {icon("message-circle")}
+                                                <span class="ai-chat-menu__item-text">{title}</span>
+                                            </button>
+                                        }
+                                    }).collect_view()}
                                 }.into_any()
-                            }
+                            }}
                         }
                     }}
                 </div>
@@ -307,9 +323,19 @@ async fn create_chat(description: &str, agent_id: &str, model: &str) -> Result<S
         .ok_or_else(|| "No chat id in response".to_string())
 }
 
-async fn add_context(chat_id: &str, page_key: &str, label: &str) -> Result<(), String> {
-    let dto = serde_json::json!({ "page_key": page_key, "label": label });
+async fn add_context(
+    chat_id: &str,
+    page_key: &str,
+    label: &str,
+    with_session_snapshot: bool,
+) -> Result<(), String> {
+    let dto = serde_json::json!({
+        "page_key": page_key,
+        "label": label,
+        "with_session_snapshot": with_session_snapshot,
+    });
     let url = format!("{}/api/a018-llm-chat/{}/context", api_base(), chat_id);
     http_request("POST", &url, Some(dto.to_string())).await?;
     Ok(())
 }
+

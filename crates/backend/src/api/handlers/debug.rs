@@ -117,6 +117,8 @@ pub async fn tool_test(Query(params): Query<ToolTestParams>) -> impl IntoRespons
         artifact_publish_allowed,
         skill_script_execute_allowed,
         skill_script_develop_allowed,
+        // Собеседника у debug-вызова нет: инструменты «от лица пользователя» откажут.
+        None,
     )
     .await;
 

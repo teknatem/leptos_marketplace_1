@@ -19,6 +19,7 @@ pub mod skill_runtime;
 pub mod skill_session;
 pub mod skills;
 pub mod table_tools;
+pub mod ticket_tools;
 pub mod tool_executor;
 pub mod types;
 

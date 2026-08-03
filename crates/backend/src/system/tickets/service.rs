@@ -74,6 +74,30 @@ pub async fn list(requester: &Requester, params: ListParams) -> Result<TicketLis
 }
 
 pub async fn create(requester: &Requester, req: CreateTicketRequest) -> Result<TicketDto> {
+    create_inner(requester, req, None).await
+}
+
+/// Создание тикета из AI-чата: то же, что `create`, плюс обратная ссылка на диалог.
+/// `source_chat_id` умышленно не входит в HTTP-контракт `CreateTicketRequest` —
+/// его проставляет только сервер, из фактического чата.
+pub async fn create_from_chat(
+    requester: &Requester,
+    req: CreateTicketRequest,
+    source_chat_id: &str,
+) -> Result<TicketDto> {
+    create_inner(requester, req, Some(source_chat_id.to_string())).await
+}
+
+/// Тикеты, уже оформленные из этого чата.
+pub async fn list_by_source_chat(chat_id: &str) -> Result<Vec<TicketDto>> {
+    Ok(repository::list_by_source_chat(chat_id).await?)
+}
+
+async fn create_inner(
+    requester: &Requester,
+    req: CreateTicketRequest,
+    source_chat_id: Option<String>,
+) -> Result<TicketDto> {
     let title = req.title.trim().to_string();
     if title.is_empty() {
         return Err(anyhow!("Ticket title is required"));
@@ -103,6 +127,7 @@ pub async fn create(requester: &Requester, req: CreateTicketRequest) -> Result<T
         origin: normalize_origin(req.origin),
         context_page_key: req.context_page_key,
         context_json: req.context_json,
+        source_chat_id,
         bitrix_task_id: None,
         bitrix_synced_at: None,
         bitrix_received_at: None,

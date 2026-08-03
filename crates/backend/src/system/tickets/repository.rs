@@ -30,6 +30,7 @@ fn ticket_from_row(row: &sea_orm::QueryResult) -> Result<TicketDto, DbErr> {
         origin: row.try_get("", "origin")?,
         context_page_key: row.try_get("", "context_page_key")?,
         context_json: row.try_get("", "context_json")?,
+        source_chat_id: row.try_get("", "source_chat_id").unwrap_or(None),
         bitrix_task_id: row.try_get("", "bitrix_task_id")?,
         bitrix_synced_at: row.try_get("", "bitrix_synced_at")?,
         bitrix_received_at: row.try_get("", "bitrix_received_at").unwrap_or(None),
@@ -123,6 +124,19 @@ pub async fn get_by_id(id: &str) -> Result<Option<TicketDto>, DbErr> {
     row.as_ref().map(ticket_from_row).transpose()
 }
 
+/// Тикеты, оформленные из указанного чата. Нужны для защиты от повторного создания
+/// одного и того же обращения в рамках одного диалога.
+pub async fn list_by_source_chat(chat_id: &str) -> Result<Vec<TicketDto>, DbErr> {
+    let sql = format!(
+        "{} WHERE t.source_chat_id = ? AND t.is_deleted = 0 ORDER BY t.created_at ASC",
+        TICKET_SELECT
+    );
+    let rows = get_connection()
+        .query_all(stmt(&sql, vec![chat_id.to_string().into()]))
+        .await?;
+    rows.iter().map(ticket_from_row).collect()
+}
+
 pub async fn list_for_bitrix_sync() -> Result<Vec<TicketDto>, DbErr> {
     let sql = format!(
         "{} WHERE t.is_deleted = 0 ORDER BY t.created_at ASC",
@@ -185,9 +199,10 @@ pub async fn insert(ticket: &TicketDto) -> Result<(), DbErr> {
             "INSERT INTO sys_ticket (
                 id, code, title, description, ticket_type, status, priority,
                 deadline, author_user_id, assignee_user_id, tags, origin,
-                context_page_key, context_json, bitrix_task_id, bitrix_synced_at,
+                context_page_key, context_json, source_chat_id,
+                bitrix_task_id, bitrix_synced_at,
                 sync_status, created_at, updated_at, is_deleted
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, 0)",
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, 0)",
             vec![
                 ticket.id.clone().into(),
                 ticket.code.clone().into(),
@@ -203,6 +218,7 @@ pub async fn insert(ticket: &TicketDto) -> Result<(), DbErr> {
                 ticket.origin.clone().into(),
                 ticket.context_page_key.clone().into(),
                 ticket.context_json.clone().into(),
+                ticket.source_chat_id.clone().into(),
                 ticket.created_at.clone().into(),
                 ticket.updated_at.clone().into(),
             ],

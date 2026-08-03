@@ -41,6 +41,7 @@ const EMBEDDED_SKILL_FILES: &[&str] = &[
     include_str!("../../../skills/sales-analytics.md"),
     include_str!("../../../skills/finance-analytics.md"),
     include_str!("../../../skills/price-optimization.md"),
+    include_str!("../../../skills/support.md"),
 ];
 
 // ─── Core: всегда активные инструменты ───────────────────────────────────────
@@ -1259,6 +1260,7 @@ fn tool_universe() -> Vec<ToolDefinition> {
     v.extend(super::table_tools::table_tool_definitions());
     v.extend(super::mail_tools::mail_tool_definitions());
     v.extend(super::schedule_tools::schedule_tool_definitions());
+    v.extend(super::ticket_tools::ticket_tool_definitions());
     v.extend(meta_tool_definitions());
     v
 }
@@ -1426,6 +1428,7 @@ pub fn tools_catalog() -> Value {
             "schedule",
             super::schedule_tools::schedule_tool_definitions(),
         ),
+        ("ticket", super::ticket_tools::ticket_tool_definitions()),
         ("meta", meta_tool_definitions()),
     ];
 
@@ -1478,6 +1481,17 @@ mod tests {
         assert!(names.contains("plugin_upsert"));
         assert!(names.contains("execute_query")); // из b_sql
         assert!(names.contains("use_skill")); // core всегда
+    }
+
+    #[test]
+    fn support_skill_brings_ticket_tools() {
+        // Цепочка регистрации инструмента рвётся тихо: имя, отсутствующее в
+        // `tool_universe()`, выбрасывается при парсинге навыка без ошибки сборки.
+        let tools = assemble_tools(&["support"]);
+        let names: HashSet<_> = tools.iter().map(|t| t.name.clone()).collect();
+        for expected in super::super::ticket_tools::TICKET_TOOL_NAMES {
+            assert!(names.contains(*expected), "потерян инструмент {expected}");
+        }
     }
 
     #[test]

@@ -232,6 +232,10 @@ pub struct TicketDto {
     pub origin: String,
     pub context_page_key: Option<String>,
     pub context_json: Option<String>,
+    /// Чат a018, из которого тикет был оформлен (origin = llm_chat). Обратная ссылка
+    /// на диалог: по ней разработчик читает исходный разговор с пользователем.
+    #[serde(default)]
+    pub source_chat_id: Option<String>,
     pub bitrix_task_id: Option<String>,
     #[serde(default)]
     pub bitrix_synced_at: Option<String>,

@@ -146,6 +146,7 @@ fn TicketDetailsInner(ticket_id: String) -> impl IntoView {
     let created_at = RwSignal::new(String::new());
     let updated_at = RwSignal::new(String::new());
     let context_page_key = RwSignal::new(Option::<String>::None);
+    let source_chat_id = RwSignal::new(Option::<String>::None);
     let bitrix_task_id = RwSignal::new(Option::<String>::None);
     let bitrix_synced_at = RwSignal::new(Option::<String>::None);
     let bitrix_received_at = RwSignal::new(Option::<String>::None);
@@ -206,6 +207,7 @@ fn TicketDetailsInner(ticket_id: String) -> impl IntoView {
                     created_at.set(t.created_at);
                     updated_at.set(t.updated_at);
                     context_page_key.set(t.context_page_key);
+                    source_chat_id.set(t.source_chat_id);
                     bitrix_task_id.set(t.bitrix_task_id);
                     bitrix_synced_at.set(t.bitrix_synced_at);
                     bitrix_received_at.set(t.bitrix_received_at);
@@ -788,11 +790,43 @@ fn TicketDetailsInner(ticket_id: String) -> impl IntoView {
                                     <span class="sys-ticket-details__meta-label">"Источник:"</span>
                                     <span>{move || origin_label(&origin.get()).to_string()}</span>
                                 </div>
-                                {move || context_page_key.get().map(|k| view! {
-                                    <div class="sys-ticket-details__meta-row">
-                                        <span class="sys-ticket-details__meta-label">"Контекст:"</span>
-                                        <span>{k}</span>
-                                    </div>
+                                {move || context_page_key.get().map(|k| {
+                                    let key = k.clone();
+                                    view! {
+                                        <div class="sys-ticket-details__meta-row">
+                                            <span class="sys-ticket-details__meta-label">"Контекст:"</span>
+                                            <button
+                                                class="sys-ticket-details__link-button"
+                                                title="Открыть страницу, на которой возникло обращение"
+                                                on:click=move |_| {
+                                                    if let Some(ctx) = global_ctx {
+                                                        ctx.open_tab(&key, "Страница обращения");
+                                                    }
+                                                }
+                                            >
+                                                {k}
+                                            </button>
+                                        </div>
+                                    }
+                                })}
+                                {move || source_chat_id.get().map(|chat_id| {
+                                    let key = format!("a018_llm_chat_details_{chat_id}");
+                                    view! {
+                                        <div class="sys-ticket-details__meta-row">
+                                            <span class="sys-ticket-details__meta-label">"Чат-исток:"</span>
+                                            <button
+                                                class="sys-ticket-details__link-button"
+                                                title="Открыть диалог, из которого оформлено обращение"
+                                                on:click=move |_| {
+                                                    if let Some(ctx) = global_ctx {
+                                                        ctx.open_tab(&key, "Поддержка");
+                                                    }
+                                                }
+                                            >
+                                                "Открыть диалог"
+                                            </button>
+                                        </div>
+                                    }
                                 })}
                                 <div class="sys-ticket-details__meta-row">
                                     <span class="sys-ticket-details__meta-label">"Создан:"</span>

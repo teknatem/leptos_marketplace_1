@@ -150,6 +150,7 @@ impl TaskManager for Task016KbIntakeManager {
                 request_id: None,
             },
             None,
+            None, // фоновая задача: собеседника-человека нет
         )
         .await?;
 

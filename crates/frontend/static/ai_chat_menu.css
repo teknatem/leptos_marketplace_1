@@ -1,0 +1,79 @@
+/* Меню кнопки «AI чат» в шапке приложения.
+   Сначала — неинтерактивная шапка (вопрос + представление контекста), затем список
+   действий. Действия отличаются от подписей курсором и подсветкой при наведении. */
+
+.ai-chat-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 1001;
+    min-width: 300px;
+    max-width: 380px;
+    padding: 8px;
+    background: var(--colorNeutralBackground1);
+    border: 1px solid var(--colorNeutralStroke2);
+    border-radius: 10px;
+    box-shadow: var(--shadow-md, 0 6px 24px rgba(0, 0, 0, 0.18));
+}
+
+/* Вопрос, на который отвечает меню. */
+.ai-chat-menu__caption {
+    padding: 6px 10px 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--colorNeutralForeground1);
+}
+
+/* Представление контекста: что именно будет передано в чат. */
+.ai-chat-menu__context {
+    padding: 0 10px 6px;
+    font-size: 12px;
+    color: var(--colorNeutralForeground3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ai-chat-menu__section {
+    padding: 2px 10px 6px;
+    font-size: 12px;
+    color: var(--colorNeutralForeground3);
+}
+
+.ai-chat-menu__divider {
+    height: 1px;
+    margin: 6px 4px;
+    background: var(--colorNeutralStroke2);
+}
+
+.ai-chat-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    text-align: left;
+    color: var(--colorNeutralForeground1);
+    cursor: pointer;
+}
+
+.ai-chat-menu__item:hover:not(:disabled) {
+    background: var(--colorNeutralBackground1Hover, rgba(127, 127, 127, 0.14));
+}
+
+.ai-chat-menu__item:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Длинные названия чатов не должны распирать меню. */
+.ai-chat-menu__item-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

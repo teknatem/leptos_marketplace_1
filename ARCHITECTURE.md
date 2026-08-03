@@ -293,6 +293,7 @@
 - `GET` /api/a017-llm-agent/skills
 
 ### `/a018-llm-chat`
+- `GET DELETE` /api/a018-llm-chat/:chat_id/attachments/:attachment_id
 - `GET DELETE` /api/a018-llm-chat/:id
 - `GET POST` /api/a018-llm-chat/:id/context
 - `GET POST` /api/a018-llm-chat/:id/messages
@@ -694,13 +695,12 @@
 - `GET` /api/p915/order-events/by-order/:order_id
 
 ### `/plugin`
+- `POST GET` /api/plugin
 - `GET POST` /api/plugin
-- `GET DELETE` /api/plugin/:id
+- `DELETE POST` /api/plugin/:id
 - `POST` /api/plugin/:id/apply-update
 - `GET POST` /api/plugin/:id/export
-- `POST` /api/plugin/:id/invoke
-- `POST` /api/plugin/:id/rating
-- `GET POST` /api/plugin/all
+- `POST` /api/plugin/:id/publish
 - `GET` /api/plugin/migration-version
 - `POST GET` /api/plugin/testdata
 - `GET POST` /api/plugin/updates
