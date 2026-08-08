@@ -661,6 +661,42 @@ pub async fn list_by_numeric_order_ids(order_ids: &[i64]) -> Result<Vec<WbOrders
     repository::list_by_numeric_order_ids(order_ids).await
 }
 
+/// Помечает заказ отменённым (FBS-путь импорта) и перепроводит его, чтобы движение
+/// отмены появилось в p916. Forward-only: уже отменённый заказ не трогается, поэтому
+/// повторные проходы поллинга не переписывают дату отмены из Statistics API.
+///
+/// Возвращает `true`, если заказ только что стал отменённым.
+pub async fn mark_cancelled_by_document_no(
+    document_no: &str,
+    observed_at: chrono::DateTime<chrono::Utc>,
+) -> Result<bool> {
+    let changed = repository::mark_cancelled_by_document_no(document_no, observed_at).await?;
+    if !changed {
+        return Ok(false);
+    }
+
+    // Перепроведение обязательно: p916 наполняется push-ом при проведении, сам по себе
+    // UPDATE документа движений не создаст.
+    match repository::get_by_document_no(document_no).await? {
+        Some(document) => {
+            let id = document.base.id.value();
+            if let Err(e) = super::posting::post_document(id).await {
+                tracing::error!(
+                    "Failed to repost cancelled WB order {} ({}): {}",
+                    document_no,
+                    id,
+                    e
+                );
+            }
+        }
+        None => tracing::warn!(
+            "WB order {} disappeared right after cancel update — p916 not rebuilt",
+            document_no
+        ),
+    }
+    Ok(true)
+}
+
 /// Update income_id for an order by its document_no (srid).
 /// Called when marketplace API provides supply assignment in real-time.
 pub async fn update_income_id_by_document_no(document_no: &str, income_id: i64) -> Result<bool> {

@@ -31,13 +31,22 @@ fn wb_fx_rate(order: &WbMarketplaceOrderRow) -> f64 {
         .unwrap_or(1.0)
 }
 
+/// Признак отмены по статусу FBS-заказа (`/api/v3/orders`).
+fn is_cancelled_status(status: Option<&str>) -> bool {
+    matches!(
+        status,
+        Some("cancelled") | Some("cancelledByClient") | Some("defect") | Some("didNotFit")
+    )
+}
+
 /// Process a single order from /api/v3/orders or /api/v3/orders/new.
 ///
 /// Strategy:
 /// - If the order doesn't exist in a015 yet → INSERT with partial marketplace data.
 ///   Financial fields (prices, discounts, geography) will be filled later by Statistics API.
-/// - If the order already exists → only update income_id (if not already set) and preserve
-///   all financial data from Statistics API.
+/// - If the order already exists → update income_id (if not already set), pick up a
+///   cancellation that happened after the first import, and preserve all financial data
+///   from Statistics API.
 ///
 /// Returns true if a new record was inserted.
 pub async fn process_marketplace_order(
@@ -94,6 +103,29 @@ pub async fn process_marketplace_order(
         {
             let _ = a015_wb_orders::service::update_line_price_if_missing(&document_no, price_rub)
                 .await;
+        }
+        // Отмена после первичного импорта видна только здесь: заказ уже существует, а
+        // FBS-эндпоинт не отдаёт дату отмены. Без этого шага отменённый FBS-заказ жил в
+        // a015 как активный до тех пор, пока его не догонит Statistics-путь.
+        if is_cancelled_status(order.status.as_deref()) && !existing.state.is_cancel {
+            match a015_wb_orders::service::mark_cancelled_by_document_no(
+                &document_no,
+                chrono::Utc::now(),
+            )
+            .await
+            {
+                Ok(true) => tracing::info!(
+                    "WB FBS order {} cancelled (status={:?}) — a015 updated and reposted",
+                    document_no,
+                    order.status
+                ),
+                Ok(false) => {}
+                Err(e) => tracing::error!(
+                    "Failed to mark WB FBS order {} as cancelled: {}",
+                    document_no,
+                    e
+                ),
+            }
         }
         return Ok(false);
     }
@@ -163,15 +195,15 @@ pub async fn process_marketplace_order(
         .unwrap_or_else(chrono::Utc::now);
 
     // Determine if cancelled based on status field
-    let is_cancel = matches!(
-        order.status.as_deref(),
-        Some("cancelled") | Some("cancelledByClient") | Some("defect") | Some("didNotFit")
-    );
+    let is_cancel = is_cancelled_status(order.status.as_deref());
 
     let state = WbOrdersState {
         order_dt,
         last_change_dt: None,
         is_cancel,
+        // Заказ пришёл уже отменённым: точной даты отмены FBS-эндпоинт не даёт, а момент
+        // наблюдения тут не годится (заказ мог быть отменён задолго до первого импорта).
+        // Оставляем None — Statistics-путь позже проставит настоящую дату.
         cancel_dt: None,
         is_supply: Some(true), // marketplace API orders are always FBS
         is_realization: None,

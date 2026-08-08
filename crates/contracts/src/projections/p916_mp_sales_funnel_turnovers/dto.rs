@@ -65,11 +65,23 @@ pub struct MpFunnelTurnoverDto {
     pub show_free_count: Option<i64>,
     /// Платные показы (реклама a026, views), nullable.
     pub show_paid_count: Option<i64>,
+    /// Общие показы маркетплейса без деления на платные/органические (YM, a041).
+    /// У WB NULL — общего счётчика показов там нет. Не складывать с show_free/show_paid.
+    #[serde(default)]
+    pub total_impressions: Option<i64>,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,
     pub funnel_order_count: i64,
     pub funnel_order_sum: f64,
+    /// Отмены по счётчику воронки маркетплейса (a036 у WB), nullable.
+    /// Отличается от `cancel_count` стадии fulfillment: тот считается по документам
+    /// заказов (a015) на дату отмены, а этот — дневной счётчик самого маркетплейса.
+    #[serde(default)]
+    pub funnel_cancel_count: Option<i64>,
+    /// Сумма отмен по счётчику воронки, nullable.
+    #[serde(default)]
+    pub funnel_cancel_sum: Option<f64>,
 
     // стадия 2 (fulfillment/когорта):
     pub order_count: i64,
@@ -112,6 +124,11 @@ pub struct MpFunnelAggRow {
     /// Есть ли данные платных показов (реклама a026) в срезе. `false` → `N/A`.
     #[serde(default)]
     pub show_paid_available: bool,
+    /// Общие показы маркетплейса (YM, a041). Для WB данных нет → `N/A`.
+    #[serde(default)]
+    pub total_impressions: i64,
+    #[serde(default)]
+    pub total_impressions_available: bool,
     /// Есть ли рекламные данные (a026/p913) в срезе — для N/A платной/бесплатной стороны
     /// на стадиях переходы/корзина/заказы/выкупы/отмены/возвраты.
     #[serde(default)]
@@ -121,6 +138,14 @@ pub struct MpFunnelAggRow {
     pub wishlist_count: i64,
     pub funnel_order_count: i64,
     pub funnel_order_sum: f64,
+    /// Отмены по счётчику воронки маркетплейса (a036). ≠ `cancel_count` (a015).
+    #[serde(default)]
+    pub funnel_cancel_count: i64,
+    #[serde(default)]
+    pub funnel_cancel_sum: f64,
+    /// Есть ли счётчик отмен воронки в срезе. `false` → показывать `N/A`, а не `0`.
+    #[serde(default)]
+    pub funnel_cancel_available: bool,
 
     pub order_count: i64,
     pub order_sum: f64,
@@ -151,8 +176,23 @@ pub struct MpFunnelAggRow {
 
 impl MpFunnelAggRow {
     /// Всего показов = бесплатные + платные (не хранится, считается на чтении).
+    /// Это разрез WB; у YM общий счётчик приходит готовым в `total_impressions`
+    /// и в эту сумму не входит.
     pub fn show_total_count(&self) -> i64 {
         self.show_free_count + self.show_paid_count
+    }
+
+    /// Показы для верха воронки: общий счётчик маркетплейса (YM), а при его
+    /// отсутствии — сумма платных и органических (WB). `None` — показов нет ни в
+    /// одном виде: конверсии от показа для этого среза считать нельзя.
+    pub fn impressions_for_funnel(&self) -> Option<i64> {
+        if self.total_impressions_available {
+            return Some(self.total_impressions);
+        }
+        if self.show_free_available || self.show_paid_available {
+            return Some(self.show_total_count());
+        }
+        None
     }
 }
 
@@ -220,11 +260,24 @@ pub struct FunnelPeriodSummary {
     /// Доступность платных показов (a026) в периоде: `false` → `N/A`, а не `0`.
     #[serde(default)]
     pub show_paid_available: bool,
+    /// Общие показы маркетплейса (YM, a041) в периоде.
+    #[serde(default)]
+    pub total_impressions: i64,
+    #[serde(default)]
+    pub total_impressions_available: bool,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,
     pub funnel_order_count: i64,
     pub funnel_order_sum: f64,
+    /// Отмены по счётчику воронки маркетплейса (a036). ≠ `cancel_count` (a015).
+    #[serde(default)]
+    pub funnel_cancel_count: i64,
+    #[serde(default)]
+    pub funnel_cancel_sum: f64,
+    /// Доступность счётчика отмен воронки в периоде: `false` → `N/A`, а не `0`.
+    #[serde(default)]
+    pub funnel_cancel_available: bool,
 
     // Fulfillment (стадия fulfillment):
     pub order_count: i64,

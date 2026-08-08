@@ -141,6 +141,27 @@ pub async fn list_by_order_ids(order_ids: &[i64]) -> Result<Vec<YmReturn>> {
     Ok(items)
 }
 
+/// `id` возвратов по набору номеров заказов — когортный отбор для пересбора воронки
+/// (u508): берём возвраты заказов периода, а не возвраты по своей дате, чтобы
+/// движения легли в когорту заказа.
+pub async fn list_ids_by_order_ids(order_ids: &[i64], only_posted: bool) -> Result<Vec<String>> {
+    if order_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut query = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::OrderId.is_in(order_ids.iter().copied()));
+    if only_posted {
+        query = query.filter(Column::IsPosted.eq(true));
+    }
+    Ok(query
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(|item| item.id)
+        .collect())
+}
+
 pub async fn upsert_document(aggregate: &YmReturn) -> Result<Uuid> {
     let uuid = aggregate.base.id.value();
     let existing = get_by_return_id(aggregate.header.return_id).await?;

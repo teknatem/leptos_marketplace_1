@@ -1055,6 +1055,8 @@ pub async fn wb_sales_funnel(
                 show_free_available: row.show_free_available,
                 show_paid_available: row.show_paid_available,
                 show_total_available: row.show_free_available || row.show_paid_available,
+                total_impressions: row.total_impressions,
+                total_impressions_available: row.total_impressions_available,
                 advert_available: row.advert_available,
                 open_count: row.open_count,
                 cart_count: row.cart_count,
@@ -1063,6 +1065,9 @@ pub async fn wb_sales_funnel(
                 wishlist_count: row.wishlist_count,
                 funnel_order_count: row.funnel_order_count,
                 funnel_order_sum: row.funnel_order_sum,
+                funnel_cancel_count: row.funnel_cancel_count,
+                funnel_cancel_sum: row.funnel_cancel_sum,
+                funnel_cancel_available: row.funnel_cancel_available,
                 order_count: row.order_count,
                 order_sum: row.order_sum,
                 paid_order_count: row.paid_order_count,
@@ -1092,12 +1097,14 @@ pub async fn wb_sales_funnel(
                 .cloned()
                 .unwrap_or((None, None));
             // Конверсии «всего» (для строки total-канала); канальные конверсии считает клиент.
-            let conversions = WbSalesFunnelConversions::from_metrics(
+            let conversions = WbSalesFunnelConversions::from_metrics_with_funnel_cancel(
                 metrics.open_count,
                 metrics.cart_count,
                 metrics.order_count,
                 metrics.buyout_count,
                 metrics.cancel_count,
+                metrics.funnel_cancel_count,
+                metrics.funnel_order_count,
             );
 
             WbSalesFunnelRow {
@@ -1117,12 +1124,14 @@ pub async fn wb_sales_funnel(
         })
         .collect();
 
-    let totals_conversions = WbSalesFunnelConversions::from_metrics(
+    let totals_conversions = WbSalesFunnelConversions::from_metrics_with_funnel_cancel(
         totals.open_count,
         totals.cart_count,
         totals.order_count,
         totals.buyout_count,
         totals.cancel_count,
+        totals.funnel_cancel_count,
+        totals.funnel_order_count,
     );
 
     Ok(Json(WbSalesFunnelResponse {
@@ -1141,6 +1150,8 @@ fn accumulate_funnel_totals(totals: &mut WbSalesFunnelMetrics, row: &WbSalesFunn
     totals.show_free_available |= row.show_free_available;
     totals.show_paid_available |= row.show_paid_available;
     totals.show_total_available |= row.show_total_available;
+    totals.total_impressions += row.total_impressions;
+    totals.total_impressions_available |= row.total_impressions_available;
     totals.advert_available |= row.advert_available;
     totals.open_count += row.open_count;
     totals.cart_count += row.cart_count;
@@ -1149,6 +1160,9 @@ fn accumulate_funnel_totals(totals: &mut WbSalesFunnelMetrics, row: &WbSalesFunn
     totals.wishlist_count += row.wishlist_count;
     totals.funnel_order_count += row.funnel_order_count;
     totals.funnel_order_sum += row.funnel_order_sum;
+    totals.funnel_cancel_count += row.funnel_cancel_count;
+    totals.funnel_cancel_sum += row.funnel_cancel_sum;
+    totals.funnel_cancel_available |= row.funnel_cancel_available;
     totals.order_count += row.order_count;
     totals.order_sum += row.order_sum;
     totals.paid_order_count += row.paid_order_count;

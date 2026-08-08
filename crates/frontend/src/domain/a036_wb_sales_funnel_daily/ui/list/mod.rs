@@ -88,6 +88,9 @@ pub struct WbSalesFunnelDailyListDto {
     pub total_order_sum: f64,
     pub total_buyout_count: i64,
     pub total_buyout_sum: f64,
+    /// `None` — счётчика отмен в источнике не было; в списке показываем «—», а не 0.
+    pub total_cancel_count: Option<i64>,
+    pub total_cancel_sum: Option<f64>,
     pub connection_id: String,
     pub connection_name: Option<String>,
     pub organization_name: Option<String>,
@@ -126,6 +129,8 @@ impl ExcelExportable for ExportRowDto {
             "Выкупы",
             "Сумма выкупов",
             "Процент выкупа, %",
+            "Отмены",
+            "Сумма отмен",
             "Отложенные",
         ]
     }
@@ -150,6 +155,15 @@ impl ExcelExportable for ExportRowDto {
             self.metrics.buyout_count.to_string(),
             fmt_csv_decimal(self.metrics.buyout_sum),
             fmt_csv_decimal(self.metrics.buyout_percent),
+            // Нет счётчика в источнике → пустая ячейка, а не 0.
+            self.metrics
+                .cancel_count
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            self.metrics
+                .cancel_sum
+                .map(fmt_csv_decimal)
+                .unwrap_or_default(),
             self.metrics.add_to_wishlist_count.to_string(),
         ]
     }
@@ -274,6 +288,12 @@ pub fn WbSalesFunnelDailyList() -> impl IntoView {
                                         .get("total_buyout_sum")
                                         .and_then(|x| x.as_f64())
                                         .unwrap_or(0.0),
+                                    total_cancel_count: v
+                                        .get("total_cancel_count")
+                                        .and_then(|x| x.as_i64()),
+                                    total_cancel_sum: v
+                                        .get("total_cancel_sum")
+                                        .and_then(|x| x.as_f64()),
                                     connection_id: v
                                         .get("connection_id")
                                         .and_then(|x| x.as_str())
@@ -822,6 +842,24 @@ pub fn WbSalesFunnelDailyList() -> impl IntoView {
                                     </div>
                                 </TableHeaderCell>
 
+                                <TableHeaderCell resizable=false min_width=90.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer; text-align: right; justify-content: flex-end;" on:click=move |_| toggle_sort("total_cancel_count")>
+                                        "Отмены"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_cancel_count"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "total_cancel_count", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
+                                <TableHeaderCell resizable=false min_width=120.0 class="resizable">
+                                    <div class="table__sortable-header" style="cursor: pointer; text-align: right; justify-content: flex-end;" on:click=move |_| toggle_sort("total_cancel_sum")>
+                                        "Сумма отмен"
+                                        <span class=move || state.with(|s| get_sort_class(&s.sort_field, "total_cancel_sum"))>
+                                            {move || get_sort_indicator(&state.with(|s| s.sort_field.clone()), "total_cancel_sum", state.with(|s| s.sort_ascending))}
+                                        </span>
+                                    </div>
+                                </TableHeaderCell>
+
                                 <TableHeaderCell resizable=false min_width=170.0 class="resizable">
                                     <div class="table__sortable-header" style="cursor: pointer;" on:click=move |_| toggle_sort("fetched_at")>
                                         "Загружено"
@@ -852,6 +890,15 @@ pub fn WbSalesFunnelDailyList() -> impl IntoView {
                                     let fetched_at = format_datetime(&item.fetched_at);
                                     let order_sum = format_money(item.total_order_sum);
                                     let buyout_sum = format_money(item.total_buyout_sum);
+                                    // Нет счётчика отмен в источнике → «—» (N/A), а не 0.
+                                    let cancel_count = item
+                                        .total_cancel_count
+                                        .map(|v| v.to_string())
+                                        .unwrap_or_else(|| "—".to_string());
+                                    let cancel_sum = item
+                                        .total_cancel_sum
+                                        .map(format_money)
+                                        .unwrap_or_else(|| "—".to_string());
 
                                     view! {
                                         <TableRow>
@@ -927,6 +974,18 @@ pub fn WbSalesFunnelDailyList() -> impl IntoView {
                                             <TableCell>
                                                 <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
                                                     {buyout_sum}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
+                                                    {cancel_count}
+                                                </TableCellLayout>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <TableCellLayout attr:style="justify-content: flex-end; text-align: right;">
+                                                    {cancel_sum}
                                                 </TableCellLayout>
                                             </TableCell>
 

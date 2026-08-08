@@ -56,14 +56,32 @@ pub struct WbSalesFunnelConversions {
     pub cart_to_order: Option<f64>,
     /// Заказ → выкуп = buyout / order.
     pub order_to_buyout: Option<f64>,
-    /// Доля отмен = cancel / order.
+    /// Доля отмен order-level = cancel / order (обе метрики из документов заказов).
     pub cancel_rate: Option<f64>,
+    /// Доля отказов по счётчикам самого маркетплейса = funnel_cancel / funnel_order.
+    /// Считается отдельно и только от «своих» знаменателей: делить счётчик отмен
+    /// маркетплейса на фактические заказы нельзя — это разные измерения.
+    #[serde(default)]
+    pub funnel_cancel_rate: Option<f64>,
 }
 
 impl WbSalesFunnelConversions {
     /// Собрать конверсии из аддитивных метрик (0 в знаменателе → None).
     /// Под канальным фильтром вызывается от метрик выбранного канала (all/paid/free).
     pub fn from_metrics(open: i64, cart: i64, order: i64, buyout: i64, cancel: i64) -> Self {
+        Self::from_metrics_with_funnel_cancel(open, cart, order, buyout, cancel, 0, 0)
+    }
+
+    /// То же плюс доля отказов по счётчикам маркетплейса (собственный знаменатель).
+    pub fn from_metrics_with_funnel_cancel(
+        open: i64,
+        cart: i64,
+        order: i64,
+        buyout: i64,
+        cancel: i64,
+        funnel_cancel: i64,
+        funnel_order: i64,
+    ) -> Self {
         let pct = |num: i64, den: i64| -> Option<f64> {
             if den > 0 {
                 Some(num as f64 / den as f64 * 100.0)
@@ -76,6 +94,7 @@ impl WbSalesFunnelConversions {
             cart_to_order: pct(order, cart),
             order_to_buyout: pct(buyout, order),
             cancel_rate: pct(cancel, order),
+            funnel_cancel_rate: pct(funnel_cancel, funnel_order),
         }
     }
 }
@@ -86,6 +105,12 @@ pub struct WbSalesFunnelMetrics {
     pub show_free_count: i64,
     pub show_paid_count: i64,
     pub show_total_count: i64,
+    /// Общие показы маркетплейса (YM, a041) — приходят готовым счётчиком, без
+    /// деления на платные/органические. У WB такого счётчика нет → `N/A`.
+    #[serde(default)]
+    pub total_impressions: i64,
+    #[serde(default)]
+    pub total_impressions_available: bool,
     /// Доступность органических показов (a040) в срезе: `false` → показывать `N/A`, не `0`.
     #[serde(default)]
     pub show_free_available: bool,
@@ -111,6 +136,17 @@ pub struct WbSalesFunnelMetrics {
     /// Заказы «глазами воронки» a036 (маркетинговый счётчик, ≠ order_count).
     pub funnel_order_count: i64,
     pub funnel_order_sum: f64,
+    /// Отмены по счётчику воронки самого маркетплейса (WB — a036, YM — a041).
+    /// Это ОСНОВНОЙ показатель отказов за период: он полнее order-level `cancel_count`,
+    /// который считается по документам заказов и на FBS-пути бывает неполон.
+    /// Складывать с `cancel_count` нельзя — это два измерения одного явления.
+    #[serde(default)]
+    pub funnel_cancel_count: i64,
+    #[serde(default)]
+    pub funnel_cancel_sum: f64,
+    /// Доступность счётчика отмен воронки в срезе: `false` → `N/A`, а не `0`.
+    #[serde(default)]
+    pub funnel_cancel_available: bool,
     /// Фактические заказы (a015).
     pub order_count: i64,
     pub order_sum: f64,

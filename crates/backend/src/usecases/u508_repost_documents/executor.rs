@@ -26,6 +26,8 @@ const A021_PRODUCTION_OUTPUT: &str = "a021_production_output";
 const A023_PURCHASE_OF_GOODS: &str = "a023_purchase_of_goods";
 const A026_WB_ADVERT_DAILY: &str = "a026_wb_advert_daily";
 const A034_YM_REALIZATION: &str = "a034_ym_realization";
+const A013_YM_ORDER: &str = "a013_ym_order";
+const A016_YM_RETURNS: &str = "a016_ym_returns";
 
 pub struct RepostExecutor {
     pub progress_tracker: Arc<ProgressTracker>,
@@ -98,6 +100,16 @@ impl RepostExecutor {
                 key: A034_YM_REALIZATION.to_string(),
                 label: "a034 — YM Realization".to_string(),
                 description: "Перепроведение документов a034_ym_realization с пересборкой GL-проводок слоя ybuh и событий реализации/возврата p915".to_string(),
+            },
+            AggregateOption {
+                key: A013_YM_ORDER.to_string(),
+                label: "a013 — YM Order".to_string(),
+                description: "Перепроведение заказов a013_ym_order с пересборкой p900/p904/p915 и движений воронки p916 (заказы, отмены, выкупы)".to_string(),
+            },
+            AggregateOption {
+                key: A016_YM_RETURNS.to_string(),
+                label: "a016 — YM Returns".to_string(),
+                description: "Перепроведение возвратов a016_ym_returns с пересборкой p904 и движений возврата в воронке p916 (только return_type=RETURN)".to_string(),
             },
         ]
     }
@@ -216,11 +228,15 @@ impl RepostExecutor {
         })
     }
 
-    /// Четыре шага пересбора воронки. Перепроведение a015/a012/a026 переиспользует
-    /// `dispatch_aggregate_repost_with_retry` (внутри — p916-хуки в проведении);
-    /// стадия 1 a036 — `a036::service::rebuild_stage1_for_period`. a012 отбирается по
-    /// периоду заказов (srid'ы a015), a026 — по `document_date` за период. Ошибки шага
-    /// не прерывают прогон — копятся в сессии.
+    /// Шесть шагов пересбора воронки: WB (a015 → a012 → a026 → a036) и YM (a013 → a016).
+    /// Перепроведение агрегатов переиспользует `dispatch_aggregate_repost_with_retry`
+    /// (внутри — p916-хуки в проведении); стадия 1 a036 —
+    /// `a036::service::rebuild_stage1_for_period`.
+    ///
+    /// Когортный отбор: a012 — по srid'ам заказов a015 периода, a016 — по номерам заказов
+    /// a013 периода, a026/a036 — по `document_date`. Порядок a013 → a016 обязателен:
+    /// когорта возврата резолвится по дате заказа из a013. Ошибки шага не прерывают
+    /// прогон — копятся в сессии.
     async fn execute_funnel_rebuild(
         &self,
         session_id: &str,
@@ -231,9 +247,10 @@ impl RepostExecutor {
         let only_posted = false;
 
         // Перечень документов-источников за период.
-        let a015_ids = crate::domain::a015_wb_orders::repository::list_ids_by_date_range(
+        let a015_ids = crate::domain::a015_wb_orders::repository::list_ids_by_date_range_scoped(
             &request.date_from,
             &request.date_to,
+            &request.connection_mp_refs,
             only_posted,
         )
         .await?;
@@ -256,30 +273,57 @@ impl RepostExecutor {
         .await?;
 
         // Документы рекламы a026 за период (стадия 1, платные показы p916).
-        let a026_ids = crate::domain::a026_wb_advert_daily::repository::list_ids_by_period(
+        let a026_ids = crate::domain::a026_wb_advert_daily::repository::list_ids_by_period_scoped(
             &request.date_from,
             &request.date_to,
+            &request.connection_mp_refs,
+            only_posted,
+        )
+        .await?;
+
+        // YM: заказы когорты (заказ/отмена/выкуп) и возвраты этих заказов.
+        // Отбор возвратов идёт по заказам периода, а не по своей дате — движение
+        // возврата должно лечь в когорту заказа.
+        let ym_orders = crate::domain::a013_ym_order::repository::list_ids_by_creation_period(
+            &request.date_from,
+            &request.date_to,
+            &request.connection_mp_refs,
+            only_posted,
+        )
+        .await?;
+        let ym_order_numbers: Vec<i64> = ym_orders
+            .iter()
+            .filter_map(|(_, document_no)| document_no.parse::<i64>().ok())
+            .collect();
+        let a013_ids: Vec<String> = ym_orders.into_iter().map(|(id, _)| id).collect();
+        let a016_ids = crate::domain::a016_ym_returns::repository::list_ids_by_order_ids(
+            &ym_order_numbers,
             only_posted,
         )
         .await?;
 
         // +1 — шаг пересборки стадии 1 (a036).
-        let total = (a015_ids.len() + a012_ids.len() + a026_ids.len() + 1) as i32;
+        let total = (a015_ids.len()
+            + a012_ids.len()
+            + a026_ids.len()
+            + a013_ids.len()
+            + a016_ids.len()
+            + 1) as i32;
         self.progress_tracker.set_total(session_id, total);
-        self.progress_tracker.set_chunks_total(session_id, 4);
+        self.progress_tracker.set_chunks_total(session_id, 6);
 
-        // Сквозные счётчики прогресса по всем 4 шагам (шаги a015/a026 — конкурентные, поэтому
-        // атомики; шаги a012/a036 — последовательные, но пишут в те же счётчики).
+        // Сквозные счётчики прогресса по всем шагам (конкурентные шаги пишут в атомики;
+        // последовательные — в те же счётчики).
         let processed = Arc::new(AtomicI32::new(0));
         let reposted = Arc::new(AtomicI32::new(0));
 
-        // === Шаг 1/4: a015 — заказы/отмены (стадия 2) ===
+        // === Шаг 1/6: a015 — заказы/отмены WB (стадия 2) ===
         self.progress_tracker.update_chunk_progress(
             session_id,
             0,
             None,
             None,
-            Some("Шаг 1/4: заказы a015 (стадия 2)".to_string()),
+            Some("Шаг 1/6: заказы a015 (стадия 2)".to_string()),
         );
         repost_ids_concurrent(
             &self.progress_tracker,
@@ -291,7 +335,7 @@ impl RepostExecutor {
         )
         .await?;
 
-        // === Шаг 2/4: a012 — выкупы/возвраты (стадия 2) ===
+        // === Шаг 2/6: a012 — выкупы/возвраты (стадия 2) ===
         // Кэш-по-дню: группируем когортный набор по дню продажи и один раз прогреваем
         // PostingPreparationCache на весь день (как в execute_a012_chunked_repost) — иначе
         // post_document создаёт пустой кэш на каждый документ и повторяет дорогие lookups.
@@ -300,18 +344,18 @@ impl RepostExecutor {
             1,
             None,
             None,
-            Some("Шаг 2/4: продажи a012 (стадия 2)".to_string()),
+            Some("Шаг 2/6: продажи a012 (стадия 2)".to_string()),
         );
         self.rebuild_funnel_a012_cached(session_id, a012_ids, &processed, &reposted)
             .await?;
 
-        // === Шаг 3/4: a026 — реклама/платные показы (стадия 1) ===
+        // === Шаг 3/6: a026 — реклама/платные показы (стадия 1) ===
         self.progress_tracker.update_chunk_progress(
             session_id,
             2,
             None,
             None,
-            Some("Шаг 3/4: реклама a026 (стадия 1)".to_string()),
+            Some("Шаг 3/6: реклама a026 (стадия 1)".to_string()),
         );
         repost_ids_concurrent(
             &self.progress_tracker,
@@ -323,13 +367,50 @@ impl RepostExecutor {
         )
         .await?;
 
-        // === Шаг 4/4: a036 — стадия 1 (маркетинг) из сохранённых документов ===
+        // === Шаг 4/6: a013 — заказы/отмены/выкупы YM (стадия 2) ===
         self.progress_tracker.update_chunk_progress(
             session_id,
             3,
             None,
             None,
-            Some("Шаг 4/4: воронка a036 (стадия 1)".to_string()),
+            Some("Шаг 4/6: заказы a013 YM (стадия 2)".to_string()),
+        );
+        repost_ids_concurrent(
+            &self.progress_tracker,
+            session_id,
+            A013_YM_ORDER,
+            a013_ids,
+            &processed,
+            &reposted,
+        )
+        .await?;
+
+        // === Шаг 5/6: a016 — возвраты YM (стадия 2) ===
+        // Строго после a013: когорта возврата резолвится по дате заказа из a013.
+        self.progress_tracker.update_chunk_progress(
+            session_id,
+            4,
+            None,
+            None,
+            Some("Шаг 5/6: возвраты a016 YM (стадия 2)".to_string()),
+        );
+        repost_ids_concurrent(
+            &self.progress_tracker,
+            session_id,
+            A016_YM_RETURNS,
+            a016_ids,
+            &processed,
+            &reposted,
+        )
+        .await?;
+
+        // === Шаг 6/6: a036 — стадия 1 (маркетинг) из сохранённых документов ===
+        self.progress_tracker.update_chunk_progress(
+            session_id,
+            5,
+            None,
+            None,
+            Some("Шаг 6/6: воронка a036 (стадия 1)".to_string()),
         );
         match crate::domain::a036_wb_sales_funnel_daily::service::rebuild_stage1_for_period(
             &request.connection_mp_refs,
@@ -351,7 +432,7 @@ impl RepostExecutor {
             .update_progress(session_id, processed_final, reposted_final, None);
         self.progress_tracker.update_chunk_progress(
             session_id,
-            4,
+            6,
             None,
             None,
             Some("Готово".to_string()),
@@ -371,6 +452,16 @@ impl RepostExecutor {
             .complete_session(session_id, final_status);
 
         Ok(())
+    }
+
+    /// Синхронный вход для оркестраторов, которым нужен подтверждённый итог шага,
+    /// а не только фоновый session id.
+    pub async fn run_funnel_rebuild(
+        &self,
+        session_id: &str,
+        request: &FunnelRebuildRequest,
+    ) -> Result<()> {
+        self.execute_funnel_rebuild(session_id, request).await
     }
 
     /// Шаг 2/4 воронки: пересбор a012 с кэшем-по-дню. Когортный набор `a012_ids`
@@ -469,7 +560,8 @@ impl RepostExecutor {
                 );
                 let p = processed.fetch_add(1, Ordering::Relaxed) + 1;
                 let r = reposted.load(Ordering::Relaxed);
-                self.progress_tracker.update_progress(session_id, p, r, None);
+                self.progress_tracker
+                    .update_progress(session_id, p, r, None);
             }
         }
 
@@ -506,6 +598,8 @@ impl RepostExecutor {
             && request.aggregate_key != A023_PURCHASE_OF_GOODS
             && request.aggregate_key != A026_WB_ADVERT_DAILY
             && request.aggregate_key != A034_YM_REALIZATION
+            && request.aggregate_key != A013_YM_ORDER
+            && request.aggregate_key != A016_YM_RETURNS
         {
             return Err(anyhow!(
                 "Unsupported aggregate_key: {}",
@@ -770,6 +864,35 @@ impl RepostExecutor {
                 crate::domain::a034_ym_realization::repository::list_ids_by_period(
                     &request.date_from,
                     &request.date_to,
+                    request.only_posted,
+                )
+                .await?
+            }
+            A013_YM_ORDER => crate::domain::a013_ym_order::repository::list_ids_by_creation_period(
+                &request.date_from,
+                &request.date_to,
+                &[],
+                request.only_posted,
+            )
+            .await?
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect(),
+            A016_YM_RETURNS => {
+                // Возвраты отбираются по заказам периода (когорта), а не по своей дате.
+                let order_numbers: Vec<i64> =
+                    crate::domain::a013_ym_order::repository::list_ids_by_creation_period(
+                        &request.date_from,
+                        &request.date_to,
+                        &[],
+                        false,
+                    )
+                    .await?
+                    .into_iter()
+                    .filter_map(|(_, document_no)| document_no.parse::<i64>().ok())
+                    .collect();
+                crate::domain::a016_ym_returns::repository::list_ids_by_order_ids(
+                    &order_numbers,
                     request.only_posted,
                 )
                 .await?
@@ -1174,6 +1297,10 @@ async fn dispatch_aggregate_repost(aggregate_key: &str, aggregate_id: Uuid) -> R
         }
         A034_YM_REALIZATION => {
             crate::domain::a034_ym_realization::posting::post_document(aggregate_id).await
+        }
+        A013_YM_ORDER => crate::domain::a013_ym_order::posting::post_document(aggregate_id).await,
+        A016_YM_RETURNS => {
+            crate::domain::a016_ym_returns::posting::post_document(aggregate_id).await
         }
         _ => Err(anyhow!("Unsupported aggregate_key: {}", aggregate_key)),
     }

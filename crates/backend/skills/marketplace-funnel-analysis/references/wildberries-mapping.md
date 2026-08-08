@@ -51,10 +51,25 @@ a040 (поиск/«Джем»)  ✗ НЕ подключён к воронке (�
 | a036 addToCart | `cart_count` | корзина | `cart_adds` |
 | a036 addToWishlist | `wishlist_count` | избранное | (вне линейной воронки) |
 | a036 orders | `funnel_order_count` / `funnel_order_sum` | заказы-воронки (маркетинг) | — (счётчик, не факт) |
+| a036 `cancelCount` | `funnel_cancel_count` / `funnel_cancel_sum` | **отказы по счётчику WB** | (ветка) |
 | a015 (заказ) | `order_count` / `order_sum` | заказы (факт) | `orders` |
-| a015 (отмена) | `cancel_count` / `cancel_sum` | отмены | (ветка) |
+| a015 (отмена) | `cancel_count` / `cancel_sum` | отмены по документам заказов | (ветка) |
 | a012 (выкуп) | `buyout_count` / `buyout_sum` | выкупы | `deliveries` |
 | a012 (возврат) | `return_count` / `return_sum` | возвраты | (ветка) |
+
+### Две метрики отказов — не смешивать
+
+`funnel_cancel_count` (дневной счётчик самого WB из a036) — **основной ответ на вопрос
+«сколько отказов за период»**. `cancel_count` (движения по документам a015) нужен для
+когортного анализа и drilldown до конкретного srid. Значения не обязаны совпадать:
+разная гранулярность и разная привязка к дате. Складывать нельзя; доли считай от «своего»
+знаменателя — `funnel_cancel_count / funnel_order_count` или `cancel_count / order_count`.
+
+У документов a036, импортированных до подключения отмен, `funnel_cancel_count` = `NULL`
+(N/A, а не ноль). В таких периодах отвечай по `cancel_count`, явно оговорив источник.
+
+Все метрики p916 — **положительные** величины, включая возвраты: чистые выкупы =
+`buyout_count - return_count` (вычитать явно).
 
 ## Две оси дат (ключевая особенность)
 
@@ -133,6 +148,9 @@ SELECT
   SUM(COALESCE(f.cart_count,0)) AS carts,
   SUM(COALESCE(f.order_count,0)) AS orders,
   SUM(COALESCE(f.cancel_count,0)) AS cancels,
+  SUM(COALESCE(f.funnel_cancel_count,0)) AS funnel_cancels,
+  CASE WHEN SUM(CASE WHEN f.funnel_cancel_count IS NOT NULL THEN 1 ELSE 0 END) > 0
+       THEN 1 ELSE 0 END AS funnel_cancels_available,
   SUM(COALESCE(f.buyout_count,0)) AS buyouts,
   SUM(COALESCE(f.return_count,0)) AS returns,
   SUM(COALESCE(f.paid_open_count,0)) AS paid_opens,
@@ -183,8 +201,9 @@ ORDER BY orders DESC
 
 **3. Конверсии считаются на чтении** (не хранятся):
 `open_to_cart = carts/opens`, `cart_to_order = orders/carts`,
-`order_to_buyout = buyouts/orders`, `cancel_rate = cancels/orders`. Если знаменатель 0 —
-конверсия `null`, а не 0.
+`order_to_buyout = buyouts/orders`, `cancel_rate = cancels/orders`,
+`funnel_cancel_rate = funnel_cancels/funnel_orders` (только «свой» знаменатель — счётчик
+воронки, а не фактические заказы). Если знаменатель 0 — конверсия `null`, а не 0.
 
 **4. Разбивка paid/free низа воронки** (заказы по каналу через p913):
 

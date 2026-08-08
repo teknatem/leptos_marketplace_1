@@ -65,8 +65,26 @@ fn fmt_money_avail(value: f64, available: bool) -> String {
 fn channel_metrics(m: &WbSalesFunnelMetrics, ch: FunnelChannel) -> (WbSalesFunnelMetrics, bool) {
     let mut d = m.clone();
     let stages_available = matches!(ch, FunnelChannel::All) || m.advert_available;
+    // Счётчики самого маркетплейса (funnel_cancel_*, total_impressions) — дневные
+    // агрегаты без атрибуции к рекламе, разложить их по каналам нечем. Под канальным
+    // фильтром показываем N/A, а не долю: делённое пополам число было бы выдумкой.
+    if !matches!(ch, FunnelChannel::All) {
+        d.funnel_cancel_count = 0;
+        d.funnel_cancel_sum = 0.0;
+        d.funnel_cancel_available = false;
+        d.total_impressions = 0;
+        d.total_impressions_available = false;
+    }
     match ch {
-        FunnelChannel::All => {}
+        FunnelChannel::All => {
+            // У YM показы приходят готовым общим счётчиком (a041), а не суммой
+            // платных и органических — подставляем его в колонку «Показы».
+            // У WB общего счётчика нет, там остаётся free + paid.
+            if m.total_impressions_available {
+                d.show_total_count = m.total_impressions;
+                d.show_total_available = true;
+            }
+        }
         FunnelChannel::Paid => {
             d.show_total_count = m.show_paid_count;
             d.show_total_available = m.show_paid_available;
@@ -136,6 +154,8 @@ fn compute_totals(rows: &[WbSalesFunnelRow]) -> WbSalesFunnelMetrics {
         t.show_free_available |= m.show_free_available;
         t.show_paid_available |= m.show_paid_available;
         t.show_total_available |= m.show_total_available;
+        t.total_impressions += m.total_impressions;
+        t.total_impressions_available |= m.total_impressions_available;
         t.advert_available |= m.advert_available;
         t.open_count += m.open_count;
         t.cart_count += m.cart_count;
@@ -144,6 +164,9 @@ fn compute_totals(rows: &[WbSalesFunnelRow]) -> WbSalesFunnelMetrics {
         t.wishlist_count += m.wishlist_count;
         t.funnel_order_count += m.funnel_order_count;
         t.funnel_order_sum += m.funnel_order_sum;
+        t.funnel_cancel_count += m.funnel_cancel_count;
+        t.funnel_cancel_sum += m.funnel_cancel_sum;
+        t.funnel_cancel_available |= m.funnel_cancel_available;
         t.order_count += m.order_count;
         t.order_sum += m.order_sum;
         t.paid_order_count += m.paid_order_count;
@@ -192,6 +215,10 @@ fn sort_rows(rows: &mut [WbSalesFunnelRow], field: &str, ascending: bool) {
             "order" => a.metrics.order_count.cmp(&b.metrics.order_count),
             "buyout" => a.metrics.buyout_count.cmp(&b.metrics.buyout_count),
             "cancel" => a.metrics.cancel_count.cmp(&b.metrics.cancel_count),
+            "funnel_cancel" => a
+                .metrics
+                .funnel_cancel_count
+                .cmp(&b.metrics.funnel_cancel_count),
             "return" => a.metrics.return_count.cmp(&b.metrics.return_count),
             "order_sum" => a
                 .metrics
@@ -206,6 +233,10 @@ fn sort_rows(rows: &mut [WbSalesFunnelRow], field: &str, ascending: bool) {
                 cmp_opt_f64(a.conversions.order_to_buyout, b.conversions.order_to_buyout)
             }
             "conv_cancel" => cmp_opt_f64(a.conversions.cancel_rate, b.conversions.cancel_rate),
+            "conv_funnel_cancel" => cmp_opt_f64(
+                a.conversions.funnel_cancel_rate,
+                b.conversions.funnel_cancel_rate,
+            ),
             _ => Ordering::Equal,
         };
         if ascending {
@@ -261,13 +292,15 @@ impl ExcelExportable for FunnelExportRow {
             "Корзина",
             "Заказы",
             "Выкупы",
-            "Отмены",
+            "Отмены (заказы)",
+            "Отмены (воронка)",
             "Возвраты",
             "Сумма заказов",
             "Переход→корзина, %",
             "Корзина→заказ, %",
             "Заказ→выкуп, %",
-            "Доля отмен, %",
+            "Доля отмен (заказы), %",
+            "Доля отказов (воронка), %",
         ]
     }
 
@@ -288,12 +321,15 @@ impl ExcelExportable for FunnelExportRow {
             cnt(m.order_count),
             cnt(m.buyout_count),
             cnt(m.cancel_count),
+            // Счётчик отказов маркетплейса: своя доступность, не зависит от канального N/A.
+            fmt_avail(m.funnel_cancel_count, m.funnel_cancel_available),
             cnt(m.return_count),
             if a { format!("{:.0}", m.order_sum) } else { "N/A".to_string() },
             pct(c.open_to_cart),
             pct(c.cart_to_order),
             pct(c.order_to_buyout),
             pct(c.cancel_rate),
+            pct(c.funnel_cancel_rate),
         ]
     }
 }
@@ -305,12 +341,14 @@ fn export_rows(
 ) -> Vec<FunnelExportRow> {
     // Конверсии/значения экспортируем по выбранному каналу.
     let conv_of = |m: &WbSalesFunnelMetrics| {
-        WbSalesFunnelConversions::from_metrics(
+        WbSalesFunnelConversions::from_metrics_with_funnel_cancel(
             m.open_count,
             m.cart_count,
             m.order_count,
             m.buyout_count,
             m.cancel_count,
+            m.funnel_cancel_count,
+            m.funnel_order_count,
         )
     };
     let mut out: Vec<FunnelExportRow> = Vec::with_capacity(rows.len() + 1);
@@ -384,12 +422,16 @@ fn metric_cells(
         {order_cell}
         <td class="d406-n">{fmt_avail(m.buyout_count, stages_available)}</td>
         <td class="d406-n">{fmt_avail(m.cancel_count, stages_available)}</td>
+        // Счётчик отказов маркетплейса: канального сплита у него нет (это дневной
+        // агрегат), поэтому доступность своя, а не stages_available.
+        <td class="d406-n">{fmt_avail(m.funnel_cancel_count, m.funnel_cancel_available)}</td>
         <td class="d406-n">{fmt_avail(m.return_count, stages_available)}</td>
         <td class="d406-money">{fmt_money_avail(m.order_sum, stages_available)}</td>
         <td class="d406-c">{fmt_pct(c.open_to_cart)}</td>
         <td class="d406-c">{fmt_pct(c.cart_to_order)}</td>
         <td class="d406-c">{fmt_pct(c.order_to_buyout)}</td>
         <td class="d406-c">{fmt_pct(c.cancel_rate)}</td>
+        <td class="d406-c">{fmt_pct(c.funnel_cancel_rate)}</td>
     }
 }
 
@@ -904,9 +946,10 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                     };
                     // Проекция итогов на выбранный канал (Все/Платные/Бесплатные).
                     let (totals, totals_avail) = channel_metrics(&totals_raw, ch);
-                    let totals_conv = WbSalesFunnelConversions::from_metrics(
+                    let totals_conv = WbSalesFunnelConversions::from_metrics_with_funnel_cancel(
                         totals.open_count, totals.cart_count, totals.order_count,
                         totals.buyout_count, totals.cancel_count,
+                        totals.funnel_cancel_count, totals.funnel_order_count,
                     );
 
                     if active_tab.get().as_str() == "chart" {
@@ -952,13 +995,15 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                                             {sort_th("Корзина", "cart", false, "Добавления в корзину (канал: платные — a026 atbs; бесплатные — всего − платные)", sort_field, sort_asc)}
                                             {sort_th("Заказы", "order", false, "Заказы канала (платные — srid ∈ рекламы p913). Клик — список заказов.", sort_field, sort_asc)}
                                             {sort_th("Выкупы", "buyout", false, "Выкупы товара (a012), канал — по заказу", sort_field, sort_asc)}
-                                            {sort_th("Отмены", "cancel", false, "Отмены заказов (a015), шт.", sort_field, sort_asc)}
-                                            {sort_th("Возвраты", "return", false, "Возвраты покупателя (a012), шт.", sort_field, sort_asc)}
+                                            {sort_th("Отмены", "cancel", false, "Отмены заказов по документам (WB — a015, YM — a013), шт. Считаются на дату отмены конкретного заказа.", sort_field, sort_asc)}
+                                            {sort_th("Отказы (воронка)", "funnel_cancel", false, "Отказы по дневному счётчику самого маркетплейса (WB — a036, YM — a041), шт. Полнее колонки «Отмены»; складывать их нельзя. Канального сплита нет → под фильтром каналов N/A.", sort_field, sort_asc)}
+                                            {sort_th("Возвраты", "return", false, "Возвраты покупателя (WB — a012, YM — a016), шт.", sort_field, sort_asc)}
                                             {sort_th("Сумма заказов", "order_sum", false, "Сумма заказов, ₽", sort_field, sort_asc)}
                                             {sort_th("Переход→корзина", "conv_open_cart", false, "Корзина / переходы", sort_field, sort_asc)}
                                             {sort_th("Корзина→заказ", "conv_cart_order", false, "Заказы / корзина", sort_field, sort_asc)}
                                             {sort_th("Заказ→выкуп", "conv_order_buyout", false, "Выкупы / заказы", sort_field, sort_asc)}
-                                            {sort_th("Доля отмен", "conv_cancel", false, "Отмены / заказы", sort_field, sort_asc)}
+                                            {sort_th("Доля отмен", "conv_cancel", false, "Отмены / заказы (обе метрики — из документов заказов)", sort_field, sort_asc)}
+                                            {sort_th("Доля отказов (воронка)", "conv_funnel_cancel", false, "Отказы / заказы по счётчикам маркетплейса (собственный знаменатель — счётчик заказов воронки, а не документы)", sort_field, sort_asc)}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -978,9 +1023,10 @@ pub fn WbSalesFunnelDashboard() -> impl IntoView {
                                                 let name = row.product_name.clone().unwrap_or_default();
                                                 // Проекция строки на выбранный канал.
                                                 let (dm, avail) = channel_metrics(&row.metrics, ch);
-                                                let dc = WbSalesFunnelConversions::from_metrics(
+                                                let dc = WbSalesFunnelConversions::from_metrics_with_funnel_cancel(
                                                     dm.open_count, dm.cart_count, dm.order_count,
                                                     dm.buyout_count, dm.cancel_count,
+                                                    dm.funnel_cancel_count, dm.funnel_order_count,
                                                 );
                                                 // Drilldown доступен только при известном nm_id.
                                                 let drill = row.nm_id.map(|nm| {

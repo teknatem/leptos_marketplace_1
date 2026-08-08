@@ -10,12 +10,17 @@
 //! Стадия 2 (fulfillment) — из a015/a012: cohort_date = дата заказа (когорта),
 //! event_date = дата транзакции события. Отменённый заказ порождает ДВЕ строки:
 //! «заказ» (на дату заказа) и «отмена» (на дату отмены), обе — один регистратор.
+//!
+//! Все метрики — ПОЛОЖИТЕЛЬНЫЕ величины, включая возвраты и отмены: знак несёт не
+//! число, а вид движения. Потребитель вычитает возвраты из выкупов явно.
 
 use chrono::{DateTime, FixedOffset, Utc};
 use uuid::Uuid;
 
 use contracts::domain::a012_wb_sales::aggregate::WbSales;
+use contracts::domain::a013_ym_order::aggregate::YmOrder;
 use contracts::domain::a015_wb_orders::aggregate::WbOrders;
+use contracts::domain::a016_ym_returns::aggregate::YmReturn;
 use contracts::domain::a026_wb_advert_daily::aggregate::WbAdvertDaily;
 use contracts::domain::a036_wb_sales_funnel_daily::aggregate::WbSalesFunnelDaily;
 use contracts::projections::p916_mp_sales_funnel_turnovers::dto::FunnelStage;
@@ -26,6 +31,9 @@ pub const REG_A036: &str = "a036_wb_sales_funnel_daily";
 pub const REG_A015: &str = "a015_wb_orders";
 pub const REG_A012: &str = "a012_wb_sales";
 pub const REG_A026: &str = "a026_wb_advert_daily";
+pub const REG_A013: &str = "a013_ym_order";
+pub const REG_A016: &str = "a016_ym_returns";
+pub const REG_A041: &str = "a041_ym_shows_sales_daily";
 
 /// Namespace для детерминированного `id` строки движения (uuid v5).
 /// Фиксированное значение — менять нельзя, иначе `id` перестанут совпадать между прогонами.
@@ -131,11 +139,14 @@ fn base_row(
         show_paid_count: None,
         paid_open_count: None,
         paid_cart_count: None,
+        total_impressions: None,
         open_count: 0,
         cart_count: 0,
         wishlist_count: 0,
         funnel_order_count: 0,
         funnel_order_sum: 0.0,
+        funnel_cancel_count: None,
+        funnel_cancel_sum: None,
         order_count: 0,
         order_sum: 0.0,
         cancel_count: 0,
@@ -153,6 +164,8 @@ fn base_row(
 /// `cohort_date = event_date = header.document_date`. Показы (`show_free_count`/`show_paid_count`)
 /// a036 не заполняет: `show_paid_count` — за a026 (реклама), `show_free_count` — источник
 /// органических показов пока не подключён (a040 исключён), поэтому остаётся N/A.
+/// Отмены пишутся в `funnel_cancel_*` (дневной счётчик маркетплейса), а не в `cancel_*`:
+/// последние — order-level движения из a015 на дату отмены конкретного заказа.
 pub fn from_wb_funnel_daily(doc: &WbSalesFunnelDaily, registrator_ref: &str) -> Vec<Model> {
     let now = now_msk();
     let Some(date) = msk_date_str(&doc.header.document_date) else {
@@ -169,6 +182,8 @@ pub fn from_wb_funnel_daily(doc: &WbSalesFunnelDaily, registrator_ref: &str) -> 
             && m.add_to_wishlist_count == 0
             && m.order_count == 0
             && m.order_sum == 0.0
+            && m.cancel_count.unwrap_or(0) == 0
+            && m.cancel_sum.unwrap_or(0.0) == 0.0
         {
             continue;
         }
@@ -191,6 +206,11 @@ pub fn from_wb_funnel_daily(doc: &WbSalesFunnelDaily, registrator_ref: &str) -> 
         row.wishlist_count = m.add_to_wishlist_count;
         row.funnel_order_count = m.order_count;
         row.funnel_order_sum = m.order_sum;
+        // Отмены по счётчику воронки маркетплейса — отдельная метрика от order-level
+        // отмен a015 (те приходят строкой kind=cancel на дату отмены). None источника
+        // пробрасываем как None: «счётчика не было» ≠ «отмен не было».
+        row.funnel_cancel_count = m.cancel_count;
+        row.funnel_cancel_sum = m.cancel_sum;
         rows.push(row);
     }
     rows
@@ -271,12 +291,17 @@ pub fn from_wb_orders(doc: &WbOrders, registrator_ref: &str) -> Vec<Model> {
     order_row.order_sum = amount;
     rows.push(order_row);
 
-    // Строка «отмена»: когорта = дата заказа, событие = дата отмены (фолбэк — дата заказа).
+    // Строка «отмена»: когорта = дата заказа, событие = дата отмены.
+    // Фолбэк-цепочка: cancel_dt → last_change_dt → дата заказа. last_change_dt (Statistics
+    // API) отражает момент смены статуса, поэтому для заказов без точной cancel_dt он
+    // на порядок ближе к правде, чем дата заказа: иначе отмена садится на день заказа
+    // и потоковая ось показывает всплеск отмен там, где их не было.
     if doc.state.is_cancel {
         let cancel_event_date = doc
             .state
             .cancel_dt
             .as_ref()
+            .or(doc.state.last_change_dt.as_ref())
             .map(msk_date_from_utc)
             .unwrap_or_else(|| order_date.clone());
         let mut cancel_row = base_row(
@@ -351,13 +376,285 @@ pub fn from_wb_sales(
     // srid — мост к атрибуции рекламы p913 (канальный сплит выкупа/возврата на чтении).
     row.order_key = Some(doc.header.document_no.clone());
     if is_return {
-        row.return_count = count;
-        row.return_sum = amount;
+        // Возвраты приходят из a012 со знаком минус (qty/forPay отрицательные), но в p916
+        // все метрики — положительные величины: потребитель вычитает возвраты явно.
+        // Без abs() SUM(return_count) выходил отрицательным и «выкупы минус возвраты»
+        // молча превращалось в сложение.
+        row.return_count = count.abs();
+        row.return_sum = amount.abs();
     } else {
         row.buyout_count = count;
         row.buyout_sum = amount;
     }
     vec![row]
+}
+
+/// Стадия 1 для YM: верх воронки из a041 (отчёт «Аналитика продаж») — по строке на товар.
+/// `cohort_date = event_date = день отчёта`.
+///
+/// Маппинг метрик:
+/// - `shows` → `total_impressions` (настоящие показы; у WB эта колонка пуста —
+///   там счётчика органических показов нет, а `show_paid_count` — только реклама);
+/// - `clicks` → `open_count` (переходы в карточку, как у a036);
+/// - `to_cart` → `cart_count`;
+/// - `order_items` → `funnel_order_count`, `canceled_count` → `funnel_cancel_count`
+///   (счётчики маркетплейса, отличны от фактических заказов/отмен стадии fulfillment).
+///
+/// `by_msku_shows` (показы всех продавцов по MSKU) НЕ проецируется: это объём рынка,
+/// делить на него свои клики нельзя. `delivered_count`/`returned_count` тоже остаются
+/// в a041 — низ воронки берётся из документов a013/a016, как у WB из a015/a012.
+/// Суммы (`funnel_order_sum`) отчёт не отдаёт → 0.
+pub fn from_ym_shows_sales_daily(
+    doc: &contracts::domain::a041_ym_shows_sales_daily::aggregate::YmShowsSalesDaily,
+    registrator_ref: &str,
+) -> Vec<Model> {
+    let now = now_msk();
+    let Some(date) = msk_date_str(&doc.header.document_date) else {
+        return Vec::new();
+    };
+    let connection = doc.header.connection_id.clone();
+
+    let mut rows = Vec::new();
+    for line in &doc.lines {
+        let m = &line.metrics;
+        if !m.has_activity() {
+            continue;
+        }
+        let mut row = base_row(
+            FunnelStage::Marketing,
+            "marketing",
+            date.clone(),
+            date.clone(),
+            connection.clone(),
+            line.marketplace_product_ref.clone(),
+            line.nomenclature_ref.clone(),
+            None, // nm_id — WB-специфичен
+            REG_A041,
+            registrator_ref,
+            &now,
+        );
+        row.total_impressions = m.shows;
+        row.open_count = m.clicks.unwrap_or(0);
+        row.cart_count = m.to_cart.unwrap_or(0);
+        row.funnel_order_count = m.order_items.unwrap_or(0);
+        row.funnel_cancel_count = m.canceled_count;
+        rows.push(row);
+    }
+    rows
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Yandex Market, стадия 2 (fulfillment)
+//
+// Матрица источников — чтобы одно физическое событие не посчиталось дважды:
+//   заказ / отмена / выкуп — только a013 (документ заказа со статусами);
+//   возврат               — только a016, и только `return_type = RETURN`.
+// `UNREDEEMED` из a016 (невыкуп) НЕ проводится: то же событие приходит из a013
+// как отмена или как позиция REJECTED. Детали `RETURNED` внутри a013 тоже не
+// проводятся — по возвратам главнее a016.
+//
+// Единица измерения — штуки позиции (`line.qty`), в отличие от WB, где документ
+// заказа сам по себе одна единица.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Цена за единицу позиции YM: `amount_line / qty` → `price_effective` → `buyer_price`.
+/// Нужна, чтобы частичный отказ (2 из 5 шт) дал корректную сумму, а не сумму всей строки.
+fn ym_unit_price(line: &contracts::domain::a013_ym_order::aggregate::YmOrderLine) -> f64 {
+    if let Some(amount) = line.amount_line.filter(|v| *v != 0.0) {
+        if line.qty != 0.0 {
+            return amount / line.qty;
+        }
+    }
+    line.price_effective
+        .filter(|v| *v != 0.0)
+        .or(line.buyer_price)
+        .unwrap_or(0.0)
+}
+
+/// Сумма единиц позиции с указанным статусом судьбы (`items[].details[].itemStatus`).
+fn ym_detail_units(
+    line: &contracts::domain::a013_ym_order::aggregate::YmOrderLine,
+    status: &str,
+) -> f64 {
+    line.details
+        .iter()
+        .filter(|d| d.status.eq_ignore_ascii_case(status))
+        .map(|d| d.count)
+        .sum()
+}
+
+/// Стадия 2 для YM: движения заказа из a013 — по строке на позицию.
+///
+/// - «заказ» — всегда, на дату создания заказа (обе оси);
+/// - «отмена» — при `status_norm = CANCELLED` на всё количество, а у доставленных
+///   заказов на количество позиций со статусом `REJECTED` (отказ при получении);
+/// - «выкуп» — при `status_norm = DELIVERED` на количество за вычетом `REJECTED`
+///   (отказанные единицы физически не выкупались). Единицы `RETURNED` из выкупа НЕ
+///   вычитаются: они были выкуплены, а возврат придёт отдельным движением из a016.
+pub fn from_ym_order(doc: &YmOrder, registrator_ref: &str) -> Vec<Model> {
+    let now = now_msk();
+    let connection = doc.header.connection_id.clone();
+    let Some(created) = doc.state.creation_date.as_ref() else {
+        // Без даты создания когорту не построить — движения не пишем (документ
+        // попадёт в quality-check как отсутствующий в проекции).
+        return Vec::new();
+    };
+    let order_date = msk_date_from_utc(created);
+    let order_key = Some(doc.header.document_no.clone());
+
+    let status_changed_date = doc
+        .state
+        .status_changed_at
+        .as_ref()
+        .or(doc.state.updated_at_source.as_ref())
+        .map(msk_date_from_utc)
+        .unwrap_or_else(|| order_date.clone());
+    let delivery_date = doc
+        .state
+        .delivery_date
+        .as_ref()
+        .map(msk_date_from_utc)
+        .unwrap_or_else(|| status_changed_date.clone());
+
+    let is_cancelled = doc.state.status_norm.eq_ignore_ascii_case("CANCELLED");
+    let is_delivered = doc.state.status_norm.eq_ignore_ascii_case("DELIVERED");
+
+    let mut rows = Vec::new();
+    for line in &doc.lines {
+        if line.qty == 0.0 {
+            continue;
+        }
+        let unit_price = ym_unit_price(line);
+        let qty = line.qty.round() as i64;
+        let mp_ref = line.marketplace_product_ref.clone();
+        let nom_ref = line.nomenclature_ref.clone();
+
+        let make = |kind: &str, event_date: String| -> Model {
+            let mut row = base_row(
+                FunnelStage::Fulfillment,
+                kind,
+                order_date.clone(),
+                event_date,
+                connection.clone(),
+                mp_ref.clone(),
+                nom_ref.clone(),
+                None, // nm_id — WB-специфичен; товарный ключ YM = marketplace_product_ref
+                REG_A013,
+                registrator_ref,
+                &now,
+            );
+            row.order_key = order_key.clone();
+            row
+        };
+
+        let mut order_row = make("order", order_date.clone());
+        order_row.order_count = qty;
+        order_row.order_sum = unit_price * line.qty;
+        rows.push(order_row);
+
+        let rejected_units = ym_detail_units(line, "REJECTED");
+
+        if is_cancelled {
+            let mut cancel_row = make("cancel", status_changed_date.clone());
+            cancel_row.cancel_count = qty;
+            cancel_row.cancel_sum = unit_price * line.qty;
+            rows.push(cancel_row);
+            continue;
+        }
+
+        if rejected_units > 0.0 {
+            // Дата отказа берётся из самой детали: она точнее общей смены статуса.
+            let reject_date = line
+                .details
+                .iter()
+                .filter(|d| d.status.eq_ignore_ascii_case("REJECTED"))
+                .find_map(|d| d.update_date.as_deref().and_then(msk_date_str))
+                .unwrap_or_else(|| delivery_date.clone());
+            let mut cancel_row = make("cancel", reject_date);
+            cancel_row.cancel_count = rejected_units.round() as i64;
+            cancel_row.cancel_sum = unit_price * rejected_units;
+            rows.push(cancel_row);
+        }
+
+        if is_delivered {
+            let bought_units = line.qty - rejected_units;
+            if bought_units > 0.0 {
+                let mut buyout_row = make("buyout", delivery_date.clone());
+                buyout_row.buyout_count = bought_units.round() as i64;
+                buyout_row.buyout_sum = unit_price * bought_units;
+                rows.push(buyout_row);
+            }
+        }
+    }
+
+    rows
+}
+
+/// Стадия 2 для YM: возвраты из a016 — по строке на позицию возврата.
+///
+/// Проводится только `return_type = RETURN` (возврат после получения). `UNREDEEMED`
+/// (невыкуп) пропускается: это то же событие, что отмена/`REJECTED` из a013, и его
+/// проведение задвоило бы отказы.
+///
+/// `cohort_date` — дата заказа, резолвится вызывающей стороной по `header.order_id`
+/// (там доступна БД); без неё когорта фолбэком = дата события возврата.
+/// `product_refs` — соответствие `shop_sku → (a007, a004)`, тоже резолвится снаружи:
+/// строки a016 ссылок на товар не несут.
+pub fn from_ym_return(
+    doc: &YmReturn,
+    registrator_ref: &str,
+    order_cohort_date: Option<String>,
+    product_refs: &std::collections::HashMap<String, (Option<String>, Option<String>)>,
+) -> Vec<Model> {
+    if !doc.header.return_type.eq_ignore_ascii_case("RETURN") {
+        return Vec::new();
+    }
+
+    let now = now_msk();
+    let connection = doc.header.connection_id.clone();
+    let event_date = doc
+        .state
+        .refund_date
+        .as_ref()
+        .or(doc.state.updated_at_source.as_ref())
+        .or(doc.state.created_at_source.as_ref())
+        .map(msk_date_from_utc);
+    let Some(event_date) = event_date else {
+        return Vec::new();
+    };
+    let cohort_date = order_cohort_date.unwrap_or_else(|| event_date.clone());
+    let order_key = Some(doc.header.order_id.to_string());
+
+    let mut rows = Vec::new();
+    for line in &doc.lines {
+        if line.count == 0 {
+            continue;
+        }
+        let (mp_ref, nom_ref) = product_refs
+            .get(&line.shop_sku)
+            .cloned()
+            .unwrap_or((None, None));
+
+        let mut row = base_row(
+            FunnelStage::Fulfillment,
+            "return",
+            cohort_date.clone(),
+            event_date.clone(),
+            connection.clone(),
+            mp_ref,
+            nom_ref,
+            None,
+            REG_A016,
+            registrator_ref,
+            &now,
+        );
+        row.order_key = order_key.clone();
+        // Положительные величины — общее правило p916 (см. модуль-док).
+        row.return_count = (line.count as i64).abs();
+        row.return_sum = (line.price.unwrap_or(0.0) * line.count as f64).abs();
+        rows.push(row);
+    }
+    rows
 }
 
 #[cfg(test)]
@@ -381,6 +678,16 @@ mod tests {
 
     fn utc(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    }
+
+    fn wb_order_with_last_change(
+        is_cancel: bool,
+        cancel_dt: Option<&str>,
+        last_change_dt: Option<&str>,
+    ) -> WbOrders {
+        let mut doc = wb_order(is_cancel, cancel_dt);
+        doc.state.last_change_dt = last_change_dt.map(utc);
+        doc
     }
 
     fn wb_order(is_cancel: bool, cancel_dt: Option<&str>) -> WbOrders {
@@ -489,6 +796,37 @@ mod tests {
     }
 
     #[test]
+    fn cancel_without_cancel_dt_falls_back_to_last_change_date() {
+        // FBS-заказ: точной даты отмены нет, но есть момент смены статуса.
+        let doc = wb_order_with_last_change(true, None, Some("2026-03-07T21:30:00Z"));
+        let rows = from_wb_orders(&doc, "reg-1");
+        let cancel = rows.iter().find(|r| r.cancel_count == 1).unwrap();
+        assert_eq!(cancel.cohort_date, "2026-03-01");
+        // MSK +3 → 2026-03-08, а не дата заказа.
+        assert_eq!(cancel.event_date, "2026-03-08");
+    }
+
+    #[test]
+    fn cancel_without_any_date_falls_back_to_order_date() {
+        let doc = wb_order_with_last_change(true, None, None);
+        let rows = from_wb_orders(&doc, "reg-1");
+        let cancel = rows.iter().find(|r| r.cancel_count == 1).unwrap();
+        assert_eq!(cancel.event_date, "2026-03-01");
+    }
+
+    #[test]
+    fn return_metrics_are_stored_as_positive_magnitudes() {
+        // a012 отдаёт возврат отрицательными qty/суммой; в p916 знак несёт вид движения.
+        let mut doc = wb_sale(true, "2026-03-12T08:00:00Z");
+        doc.line.qty = -2.0;
+        doc.line.amount_line = Some(-1000.0);
+        let rows = from_wb_sales(&doc, "reg-s-2", Some("2026-03-01".to_string()));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].return_count, 2);
+        assert_eq!(rows[0].return_sum, 1000.0);
+    }
+
+    #[test]
     fn funnel_daily_skips_empty_and_maps_metrics() {
         let header = WbSalesFunnelDailyHeader {
             document_no: "F-1".to_string(),
@@ -549,6 +887,53 @@ mod tests {
         assert_eq!(r.event_date, "2026-03-02");
         assert!(r.show_free_count.is_none());
         assert!(r.show_paid_count.is_none());
+        // Источник счётчик отмен не отдал → N/A, а не 0.
+        assert!(r.funnel_cancel_count.is_none());
+    }
+
+    #[test]
+    fn funnel_daily_maps_cancel_counter_and_keeps_cancel_only_line() {
+        let header = WbSalesFunnelDailyHeader {
+            document_no: "F-2".to_string(),
+            document_date: "2026-03-04".to_string(),
+            connection_id: "conn-1".to_string(),
+            organization_id: "org-1".to_string(),
+            marketplace_id: "mp-1".to_string(),
+            currency: "RUB".to_string(),
+        };
+        // День, где у товара из активности только отмены (заказ пришёл в прошлый период).
+        let cancel_only_line = WbSalesFunnelDailyLine {
+            nm_id: 303,
+            title: "T".to_string(),
+            vendor_code: "V".to_string(),
+            brand_name: "B".to_string(),
+            subject_id: 1,
+            subject_name: "S".to_string(),
+            nomenclature_ref: None,
+            metrics: WbSalesFunnelDailyMetrics {
+                cancel_count: Some(3),
+                cancel_sum: Some(4500.0),
+                ..Default::default()
+            },
+        };
+        let doc = contracts::domain::a036_wb_sales_funnel_daily::aggregate::WbSalesFunnelDaily::new_for_insert(
+            header,
+            WbSalesFunnelDailyMetrics::default(),
+            vec![cancel_only_line],
+            WbSalesFunnelDailySourceMeta {
+                source: "wb_detail_history_report".to_string(),
+                fetched_at: "2026-03-04T00:00:00Z".to_string(),
+            },
+        );
+
+        let rows = from_wb_funnel_daily(&doc, "reg-f-2");
+        assert_eq!(rows.len(), 1); // строка с одними отменами не считается пустой
+        let r = &rows[0];
+        assert_eq!(r.funnel_cancel_count, Some(3));
+        assert_eq!(r.funnel_cancel_sum, Some(4500.0));
+        // Счётчик воронки не подменяет order-level отмены из a015.
+        assert_eq!(r.cancel_count, 0);
+        assert_eq!(r.stage, "marketing");
     }
 
     #[test]
@@ -706,6 +1091,224 @@ mod tests {
         // Заказ не найден → когорта фолбэком = дата продажи.
         assert_eq!(r.cohort_date, "2026-03-10");
         assert_eq!(r.event_date, "2026-03-10");
+    }
+
+    fn ym_order(status_norm: &str, qty: f64, details: Vec<(&str, f64, &str)>) -> YmOrder {
+        use contracts::domain::a013_ym_order::aggregate::{
+            YmOrder, YmOrderHeader, YmOrderLine, YmOrderLineDetail, YmOrderSourceMeta, YmOrderState,
+        };
+
+        let line = YmOrderLine {
+            line_id: "item-1".to_string(),
+            shop_sku: "SKU-1".to_string(),
+            offer_id: "OFF-1".to_string(),
+            name: "Товар".to_string(),
+            qty,
+            price_list: None,
+            discount_total: None,
+            price_effective: Some(500.0),
+            amount_line: Some(500.0 * qty),
+            currency_code: Some("RUR".to_string()),
+            buyer_price: None,
+            subsidies_json: None,
+            status: None,
+            price_plan: None,
+            marketplace_product_ref: Some("mp-ym-1".to_string()),
+            nomenclature_ref: Some("nom-ym-1".to_string()),
+            dealer_price_ut: None,
+            details: details
+                .into_iter()
+                .map(|(status, count, update_date)| YmOrderLineDetail {
+                    count,
+                    status: status.to_string(),
+                    update_date: Some(update_date.to_string()),
+                })
+                .collect(),
+        };
+        let header = YmOrderHeader {
+            document_no: "YM-1001".to_string(),
+            connection_id: "conn-ym".to_string(),
+            organization_id: "org-1".to_string(),
+            marketplace_id: "mp-ym".to_string(),
+            campaign_id: "camp-1".to_string(),
+            fulfillment_type: Some("FBS".to_string()),
+            total_amount: Some(500.0 * qty),
+            currency: Some("RUR".to_string()),
+            items_total: None,
+            delivery_total: None,
+            subsidies_json: None,
+            total_dealer_amount: None,
+            margin_pro: None,
+        };
+        let state = YmOrderState {
+            status_raw: status_norm.to_string(),
+            substatus_raw: None,
+            status_norm: status_norm.to_string(),
+            status_changed_at: Some(utc("2026-04-05T09:00:00Z")),
+            updated_at_source: Some(utc("2026-04-05T09:00:00Z")),
+            creation_date: Some(utc("2026-04-01T10:00:00Z")),
+            delivery_date: Some(utc("2026-04-07T12:00:00Z")),
+        };
+        let source_meta = YmOrderSourceMeta {
+            raw_payload_ref: "raw-ym-1".to_string(),
+            fetched_at: utc("2026-04-08T00:00:00Z"),
+            document_version: 1,
+        };
+        YmOrder::new_for_insert(
+            "YM-1001".to_string(),
+            "YM заказ".to_string(),
+            header,
+            vec![line],
+            state,
+            source_meta,
+            true,
+        )
+    }
+
+    #[test]
+    fn ym_delivered_order_emits_order_and_buyout() {
+        let doc = ym_order("DELIVERED", 3.0, vec![]);
+        let rows = from_ym_order(&doc, "reg-ym-1");
+        assert_eq!(rows.len(), 2);
+
+        let order = rows.iter().find(|r| r.order_count > 0).unwrap();
+        assert_eq!(order.order_count, 3);
+        assert_eq!(order.cohort_date, "2026-04-01");
+        assert_eq!(order.event_date, "2026-04-01");
+        assert_eq!(order.registrator_type, REG_A013);
+        assert!(order.nm_id.is_none()); // nm_id — WB-специфичен
+        assert_eq!(order.marketplace_product_ref.as_deref(), Some("mp-ym-1"));
+
+        let buyout = rows.iter().find(|r| r.buyout_count > 0).unwrap();
+        assert_eq!(buyout.buyout_count, 3);
+        assert_eq!(buyout.cohort_date, "2026-04-01");
+        assert_eq!(buyout.event_date, "2026-04-07"); // дата доставки
+    }
+
+    #[test]
+    fn ym_cancelled_order_emits_cancel_on_status_change_date() {
+        let doc = ym_order("CANCELLED", 2.0, vec![]);
+        let rows = from_ym_order(&doc, "reg-ym-2");
+        assert_eq!(rows.len(), 2);
+
+        let cancel = rows.iter().find(|r| r.cancel_count > 0).unwrap();
+        assert_eq!(cancel.cancel_count, 2);
+        assert_eq!(cancel.cancel_sum, 1000.0);
+        assert_eq!(cancel.cohort_date, "2026-04-01");
+        assert_eq!(cancel.event_date, "2026-04-05");
+        // Отменённый заказ не даёт выкупа.
+        assert!(rows.iter().all(|r| r.buyout_count == 0));
+    }
+
+    #[test]
+    fn ym_partial_rejection_splits_cancel_and_buyout() {
+        // 5 заказано, 2 отказано при получении → выкуплено 3.
+        let doc = ym_order(
+            "DELIVERED",
+            5.0,
+            vec![("REJECTED", 2.0, "2026-04-08T15:00:00Z")],
+        );
+        let rows = from_ym_order(&doc, "reg-ym-3");
+        assert_eq!(rows.len(), 3);
+
+        let cancel = rows.iter().find(|r| r.cancel_count > 0).unwrap();
+        assert_eq!(cancel.cancel_count, 2);
+        assert_eq!(cancel.cancel_sum, 1000.0);
+        assert_eq!(cancel.event_date, "2026-04-08"); // дата из details
+
+        let buyout = rows.iter().find(|r| r.buyout_count > 0).unwrap();
+        assert_eq!(buyout.buyout_count, 3);
+        assert_eq!(buyout.buyout_sum, 1500.0);
+
+        let order = rows.iter().find(|r| r.order_count > 0).unwrap();
+        assert_eq!(order.order_count, 5); // заказано всё
+    }
+
+    #[test]
+    fn ym_returned_units_stay_in_buyout() {
+        // Возврат после получения не уменьшает выкуп — движение возврата придёт из a016.
+        let doc = ym_order(
+            "DELIVERED",
+            4.0,
+            vec![("RETURNED", 1.0, "2026-04-20T10:00:00Z")],
+        );
+        let rows = from_ym_order(&doc, "reg-ym-4");
+        let buyout = rows.iter().find(|r| r.buyout_count > 0).unwrap();
+        assert_eq!(buyout.buyout_count, 4);
+        assert!(rows.iter().all(|r| r.cancel_count == 0));
+    }
+
+    fn ym_return(return_type: &str) -> YmReturn {
+        use contracts::domain::a016_ym_returns::aggregate::{
+            YmReturn, YmReturnHeader, YmReturnLine, YmReturnSourceMeta, YmReturnState,
+        };
+
+        YmReturn::new_for_insert(
+            "YM-RET-1".to_string(),
+            "YM возврат".to_string(),
+            YmReturnHeader {
+                return_id: 501,
+                order_id: 1001,
+                connection_id: "conn-ym".to_string(),
+                organization_id: "org-1".to_string(),
+                marketplace_id: "mp-ym".to_string(),
+                campaign_id: "camp-1".to_string(),
+                return_type: return_type.to_string(),
+                amount: Some(500.0),
+                currency: Some("RUR".to_string()),
+            },
+            vec![YmReturnLine {
+                item_id: 1,
+                shop_sku: "SKU-1".to_string(),
+                offer_id: "OFF-1".to_string(),
+                name: "Товар".to_string(),
+                count: 1,
+                price: Some(500.0),
+                return_reason: None,
+                decisions: vec![],
+                photos: vec![],
+            }],
+            YmReturnState {
+                refund_status: "REFUNDED".to_string(),
+                created_at_source: Some(utc("2026-04-20T10:00:00Z")),
+                updated_at_source: Some(utc("2026-04-22T10:00:00Z")),
+                refund_date: Some(utc("2026-04-25T10:00:00Z")),
+            },
+            YmReturnSourceMeta {
+                raw_payload_ref: "raw-ret-1".to_string(),
+                fetched_at: utc("2026-04-26T00:00:00Z"),
+                document_version: 1,
+            },
+            true,
+        )
+    }
+
+    #[test]
+    fn ym_return_maps_to_return_movement_in_order_cohort() {
+        let doc = ym_return("RETURN");
+        let mut refs = std::collections::HashMap::new();
+        refs.insert(
+            "SKU-1".to_string(),
+            (Some("mp-ym-1".to_string()), Some("nom-ym-1".to_string())),
+        );
+        let rows = from_ym_return(&doc, "reg-ret-1", Some("2026-04-01".to_string()), &refs);
+        assert_eq!(rows.len(), 1);
+        let r = &rows[0];
+        assert_eq!(r.return_count, 1);
+        assert_eq!(r.return_sum, 500.0);
+        assert_eq!(r.cohort_date, "2026-04-01"); // когорта заказа
+        assert_eq!(r.event_date, "2026-04-25"); // дата возврата денег
+        assert_eq!(r.registrator_type, REG_A016);
+        assert_eq!(r.marketplace_product_ref.as_deref(), Some("mp-ym-1"));
+    }
+
+    #[test]
+    fn ym_unredeemed_is_not_projected_as_return() {
+        // Невыкуп приходит из a013 как отказ; проведение его же из a016 задвоило бы отказы.
+        let doc = ym_return("UNREDEEMED");
+        let refs = std::collections::HashMap::new();
+        let rows = from_ym_return(&doc, "reg-ret-2", None, &refs);
+        assert!(rows.is_empty());
     }
 
     #[test]

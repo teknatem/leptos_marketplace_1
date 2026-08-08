@@ -260,6 +260,8 @@ fn funnel_metrics_from_day(day: &WbSalesFunnelHistoryDay) -> WbSalesFunnelDailyM
         order_sum: day.order_sum,
         buyout_count: day.buyout_count,
         buyout_sum: day.buyout_sum,
+        cancel_count: day.cancel_count,
+        cancel_sum: day.cancel_sum,
         buyout_percent: day.buyout_percent,
         add_to_cart_conversion: day.add_to_cart_conversion,
         cart_to_order_conversion: day.cart_to_order_conversion,
@@ -275,6 +277,22 @@ fn funnel_metrics_is_empty(metrics: &WbSalesFunnelDailyMetrics) -> bool {
         && metrics.buyout_count == 0
         && metrics.buyout_sum == 0.0
         && metrics.add_to_wishlist_count == 0
+        && metrics.cancel_count.unwrap_or(0) == 0
+        && metrics.cancel_sum.unwrap_or(0.0) == 0.0
+}
+
+/// Накопление опционального счётчика: `None` источника не превращает итог в 0,
+/// но первое же `Some` делает итог определённым (N/A ≠ 0).
+fn add_optional_i64(target: &mut Option<i64>, source: Option<i64>) {
+    if let Some(value) = source {
+        *target = Some(target.unwrap_or(0) + value);
+    }
+}
+
+fn add_optional_f64(target: &mut Option<f64>, source: Option<f64>) {
+    if let Some(value) = source {
+        *target = Some(target.unwrap_or(0.0) + value);
+    }
 }
 
 fn append_funnel_totals(
@@ -288,6 +306,8 @@ fn append_funnel_totals(
     target.buyout_count += source.buyout_count;
     target.buyout_sum += source.buyout_sum;
     target.add_to_wishlist_count += source.add_to_wishlist_count;
+    add_optional_i64(&mut target.cancel_count, source.cancel_count);
+    add_optional_f64(&mut target.cancel_sum, source.cancel_sum);
 }
 
 /// Производные проценты итогов пересчитываются от сумм (не усредняются по строкам).
@@ -4086,8 +4106,8 @@ impl ImportExecutor {
         let mut seen_keys = HashSet::new();
         let mut by_date: BTreeMap<String, Vec<WbSalesFunnelDailyLine>> = BTreeMap::new();
         let mut currency_by_date: HashMap<String, String> = HashMap::new();
-        let mut ignored_cancel_count = 0i64;
-        let mut ignored_cancel_sum = 0.0f64;
+        let mut imported_cancel_count = 0i64;
+        let mut imported_cancel_sum = 0.0f64;
 
         for row in rows {
             let date = normalize_day_date(&row.date);
@@ -4170,8 +4190,8 @@ impl ImportExecutor {
                 _ => {}
             }
 
-            ignored_cancel_count += row.cancel_count;
-            ignored_cancel_sum += row.cancel_sum;
+            imported_cancel_count += row.cancel_count;
+            imported_cancel_sum += row.cancel_sum;
             let metrics = WbSalesFunnelDailyMetrics {
                 open_count: row.open_count,
                 cart_count: row.cart_count,
@@ -4179,6 +4199,10 @@ impl ImportExecutor {
                 order_sum: row.order_sum,
                 buyout_count: row.buyout_count,
                 buyout_sum: row.buyout_sum,
+                // Колонка обязательна в CSV-отчёте (см. WB_DETAIL_HISTORY_REQUIRED_HEADERS),
+                // поэтому значение всегда определено — 0 здесь означает «отмен не было».
+                cancel_count: Some(row.cancel_count),
+                cancel_sum: Some(row.cancel_sum),
                 buyout_percent: row.buyout_percent,
                 add_to_cart_conversion: row.add_to_cart_conversion,
                 cart_to_order_conversion: row.cart_to_order_conversion,
@@ -4247,9 +4271,9 @@ impl ImportExecutor {
         }
 
         tracing::info!(
-            "WB DETAIL_HISTORY_REPORT cancellations are diagnostic only (a015 is canonical): count={}, sum={}",
-            ignored_cancel_count,
-            ignored_cancel_sum
+            "WB DETAIL_HISTORY_REPORT cancellations imported into a036 (funnel counter, отличен от order-level a015): count={}, sum={}",
+            imported_cancel_count,
+            imported_cancel_sum
         );
         Ok(documents)
     }

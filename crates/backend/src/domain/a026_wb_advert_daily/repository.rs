@@ -493,6 +493,29 @@ pub async fn list_ids_by_period(
     Ok(items.into_iter().map(|item| item.id).collect())
 }
 
+pub async fn list_ids_by_period_scoped(
+    date_from: &str,
+    date_to: &str,
+    connection_mp_refs: &[String],
+    only_posted: bool,
+) -> Result<Vec<String>> {
+    let db = get_connection();
+    let mut query = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::DocumentDate.gte(date_from))
+        .filter(Column::DocumentDate.lte(date_to));
+
+    if !connection_mp_refs.is_empty() {
+        query = query.filter(Column::ConnectionId.is_in(connection_mp_refs.iter().cloned()));
+    }
+    if only_posted {
+        query = query.filter(Column::IsPosted.eq(true));
+    }
+
+    let items = query.all(db).await?;
+    Ok(items.into_iter().map(|item| item.id).collect())
+}
+
 #[derive(Debug, Clone)]
 pub struct WbAdvertDailyListQuery {
     pub date_from: Option<String>,

@@ -63,6 +63,10 @@ pub fn GeneralTab(vm: WbSalesFunnelDailyDetailsVm) -> impl IntoView {
                                 <ReadField label="Выкупы, шт" value=d.totals.buyout_count.to_string() />
                                 <ReadField label="Сумма выкупов" value=fmt_money(d.totals.buyout_sum) />
                             </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm);">
+                                <ReadField label="Отмены, шт" value=d.totals.cancel_count.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string()) />
+                                <ReadField label="Сумма отмен" value=d.totals.cancel_sum.map(fmt_money).unwrap_or_else(|| "—".to_string()) />
+                            </div>
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--spacing-sm);">
                                 <ReadField label="Конв. в корзину, %" value=fmt_ratio(d.totals.add_to_cart_conversion) />
                                 <ReadField label="Конв. в заказ, %" value=fmt_ratio(d.totals.cart_to_order_conversion) />

@@ -456,6 +456,45 @@ pub async fn list_by_numeric_order_ids(order_ids: &[i64]) -> Result<Vec<WbOrders
     Ok(orders)
 }
 
+/// Помечает заказ отменённым по `document_no` (srid) — для FBS-пути импорта
+/// (`/api/v3/orders`), где отмена видна только сменой статуса у уже существующего
+/// документа. Обновление forward-only: срабатывает лишь когда заказ ещё не отменён,
+/// поэтому Statistics API (владелец точной `cancelDate`) не затирается.
+///
+/// `observed_at` — момент наблюдения смены статуса, а не настоящая дата отмены: WB v3
+/// её не отдаёт. Пишем в `cancel_date` только если её ещё нет; при следующем проходе
+/// Statistics-путь заменит на точную. Без этого движение отмены в p916 садилось бы на
+/// дату заказа (фолбэк builder'а) и искажало потоковую ось.
+///
+/// Возвращает `true`, если строка была обновлена (заказ только что стал отменённым).
+pub async fn mark_cancelled_by_document_no(
+    document_no: &str,
+    observed_at: chrono::DateTime<chrono::Utc>,
+) -> Result<bool> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = get_connection();
+    let observed = observed_at.to_rfc3339();
+    let sql = format!(
+        "UPDATE a015_wb_orders \
+         SET is_cancel = 1, \
+             cancel_date = COALESCE(cancel_date, '{observed}'), \
+             state_json = json_set( \
+                 json_set(state_json, '$.is_cancel', json('true')), \
+                 '$.cancel_dt', \
+                 COALESCE(json_extract(state_json, '$.cancel_dt'), '{observed}')), \
+             updated_at = datetime('now') \
+         WHERE document_no = '{doc}' \
+           AND is_deleted = 0 \
+           AND COALESCE(is_cancel, 0) = 0",
+        observed = observed.replace('\'', "''"),
+        doc = document_no.replace('\'', "''")
+    );
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql);
+    let result = db.execute(stmt).await?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// Update income_id in source_meta_json for a specific order (by document_no / srid).
 /// Only updates if income_id is currently NULL or 0 — does not overwrite existing data.
 /// Returns true if a row was updated.
@@ -679,6 +718,51 @@ pub async fn list_ids_by_date_range(
 
     let models = query.into_model::<IdOnly>().all(db).await?;
     Ok(models.into_iter().map(|m| m.id).collect())
+}
+
+/// Same period selection as [`list_ids_by_date_range`], restricted to the
+/// marketplace connections selected for a funnel rebuild.
+pub async fn list_ids_by_date_range_scoped(
+    date_from: &str,
+    date_to: &str,
+    connection_mp_refs: &[String],
+    only_posted: bool,
+) -> Result<Vec<String>> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    if connection_mp_refs.is_empty() {
+        return list_ids_by_date_range(date_from, date_to, only_posted).await;
+    }
+
+    let db = get_connection();
+    let to_str = format!("{}T23:59:59.999", date_to);
+    let placeholders = std::iter::repeat("?")
+        .take(connection_mp_refs.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut sql = format!(
+        "SELECT id FROM a015_wb_orders \
+         WHERE is_deleted = 0 \
+           AND document_date >= ? \
+           AND document_date <= ? \
+           AND json_extract(header_json, '$.connection_id') IN ({placeholders})"
+    );
+    if only_posted {
+        sql.push_str(" AND is_posted = 1");
+    }
+    let mut params: Vec<sea_orm::Value> = vec![date_from.into(), to_str.into()];
+    params.extend(connection_mp_refs.iter().cloned().map(Into::into));
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            &sql,
+            params,
+        ))
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| row.try_get::<String>("", "id").ok())
+        .collect())
 }
 
 /// srid'ы (`document_no`) не удалённых заказов за период `document_date` в

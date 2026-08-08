@@ -136,10 +136,45 @@ fn shift_date(d: &str, months: i32) -> String {
     format!("{:04}-{:02}-{:02}", ny, nm, nd)
 }
 
+/// Дней в диапазоне (включительно). None — если дату не разобрать.
+fn span_days(date_from: &str, date_to: &str) -> Option<i64> {
+    let f = chrono::NaiveDate::parse_from_str(date_from, "%Y-%m-%d").ok()?;
+    let t = chrono::NaiveDate::parse_from_str(date_to, "%Y-%m-%d").ok()?;
+    Some((t - f).num_days() + 1)
+}
+
+/// Диапазон укладывается в один календарный месяц.
+fn within_single_month(date_from: &str, date_to: &str) -> bool {
+    date_from.len() >= 7 && date_to.len() >= 7 && date_from[..7] == date_to[..7]
+}
+
+fn shift_days(d: &str, days: i64) -> String {
+    match chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d") {
+        Ok(date) => (date - chrono::Duration::days(days))
+            .format("%Y-%m-%d")
+            .to_string(),
+        Err(_) => d.to_string(),
+    }
+}
+
+/// Период сравнения по умолчанию — непосредственно предшествующее окно.
+///
+/// Сдвиг ровно на месяц верен только для запроса в пределах одного месяца.
+/// Для диапазона в год он давал период2, перекрывающий период1 на одиннадцать
+/// месяцев: сравнение шло почти само с собой (value2 ≈ value1).
 fn resolve_period2(ctx: &ViewContext) -> (String, String) {
     match (&ctx.period2_from, &ctx.period2_to) {
         (Some(f), Some(t)) => (f.clone(), t.clone()),
-        _ => (shift_date(&ctx.date_from, -1), shift_date(&ctx.date_to, -1)),
+        _ if within_single_month(&ctx.date_from, &ctx.date_to) => {
+            (shift_date(&ctx.date_from, -1), shift_date(&ctx.date_to, -1))
+        }
+        _ => match span_days(&ctx.date_from, &ctx.date_to) {
+            Some(days) if days > 0 => (
+                shift_days(&ctx.date_from, days),
+                shift_days(&ctx.date_to, days),
+            ),
+            _ => (shift_date(&ctx.date_from, -1), shift_date(&ctx.date_to, -1)),
+        },
     }
 }
 
@@ -173,6 +208,10 @@ fn pct_change(cur: f64, prev: f64) -> Option<f64> {
 
 /// Day-of-month label, used so period-1 and period-2 "date" rows line up
 /// (01 ↔ 01) even when the two periods fall in different months.
+///
+/// Схлопывание к дню месяца допустимо ТОЛЬКО когда каждый период лежит внутри
+/// одного месяца. На диапазоне в год оно молча склеивало тринадцать первых
+/// чисел в одну строку «01», и по такой таблице считали динамику.
 fn day_key(iso: &str) -> String {
     let parts: Vec<&str> = iso.split('-').collect();
     if parts.len() >= 3 {
@@ -259,24 +298,95 @@ fn group_by_label(group_by: &str) -> Result<&'static str> {
     match group_by {
         "nm_id" => Ok("По товару"),
         "date" => Ok("По дню"),
+        "week" => Ok("По неделе"),
+        "month" => Ok("По месяцу"),
         "connection_mp_ref" => Ok("По кабинету МП"),
         other => Err(anyhow!("Unsupported group_by '{}' for {}", other, VIEW_ID)),
     }
 }
 
-/// Fetch one period of drilldown data for all requested metrics in a single query.
+/// SQL-выражение ключа группировки по периоду.
+///
+/// Помесячный разрез — рабочий ответ на «динамику за год»: группировка по дню
+/// вернула бы 368 строк, которые нечитаемы и в отчёте, и в контексте модели.
+fn period_key_expr(group_by: &str) -> Option<&'static str> {
+    match group_by {
+        "date" => Some("d.document_date"),
+        // %Y-%W: неделя года по ISO-подобной нумерации SQLite (неделя с понедельника).
+        "week" => Some("strftime('%Y-W%W', d.document_date)"),
+        "month" => Some("substr(d.document_date, 1, 7)"),
+        _ => None,
+    }
+}
+
+/// Слагаемые, из которых собираются ВСЕ метрики представления.
+///
+/// Дрилдаун тянет только их, а проценты выводит из накопленных сумм. Складывать
+/// сами проценты нельзя: при слиянии строк в одну группу это давало «процент
+/// выкупа 1023%» вместо 81,8% — сумму тринадцати дневных долей.
+const BASE_METRIC_IDS: &[&str] = &[
+    "open_count",
+    "cart_count",
+    "order_count",
+    "order_sum",
+    "buyout_count",
+    "buyout_sum",
+];
+
+/// Накопленные слагаемые одной группы.
+#[derive(Debug, Default, Clone, Copy)]
+struct Bases([f64; BASE_METRIC_IDS.len()]);
+
+impl Bases {
+    fn add(&mut self, values: &[f64]) {
+        for (slot, value) in self.0.iter_mut().zip(values.iter()) {
+            *slot += value;
+        }
+    }
+
+    fn sum_of(&self, id: &str) -> f64 {
+        BASE_METRIC_IDS
+            .iter()
+            .position(|base| *base == id)
+            .map(|i| self.0[i])
+            .unwrap_or(0.0)
+    }
+
+    /// Значение любой метрики представления из накопленных слагаемых.
+    fn metric(&self, id: &str) -> f64 {
+        let ratio = |numerator: &str, denominator: &str| {
+            let d = self.sum_of(denominator);
+            if d == 0.0 {
+                0.0
+            } else {
+                self.sum_of(numerator) * 100.0 / d
+            }
+        };
+        match id {
+            "cart_conv_pct" => ratio("cart_count", "open_count"),
+            "order_conv_pct" => ratio("order_count", "cart_count"),
+            "buyout_pct" => ratio("buyout_count", "order_count"),
+            other => self.sum_of(other),
+        }
+    }
+}
+
+/// Fetch one period of drilldown base sums in a single query.
 async fn fetch_drilldown_multi_period(
     group_by: &str,
-    metrics: &[(String, MetricDef)],
     date_from: &str,
     date_to: &str,
     connection_mp_refs: &[String],
-) -> Result<Vec<(String, String, Vec<f64>)>> {
+) -> Result<Vec<(String, String, Bases)>> {
     let db = get_connection();
-    let metric_cols: String = metrics
+    let metric_cols: String = BASE_METRIC_IDS
         .iter()
         .enumerate()
-        .map(|(i, (_, def))| format!("{} AS m{}", def.expr, i))
+        .map(|(i, id)| {
+            format!(
+                "CAST(COALESCE(SUM(json_extract(j.value, '$.metrics.{id}')), 0) AS REAL) AS m{i}"
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -284,13 +394,16 @@ async fn fetch_drilldown_multi_period(
         vec![date_from.to_string().into(), date_to.to_string().into()];
 
     let mut sql = match group_by {
-        "date" => format!(
-            r#"
-            SELECT d.document_date AS group_key, d.document_date AS label, {metric_cols}
+        _ if period_key_expr(group_by).is_some() => {
+            let key = period_key_expr(group_by).expect("checked above");
+            format!(
+                r#"
+            SELECT {key} AS group_key, {key} AS label, {metric_cols}
             FROM a036_wb_sales_funnel_daily d, json_each(d.lines_json) j
             WHERE d.is_deleted = 0 AND d.document_date >= ? AND d.document_date <= ?
             "#
-        ),
+            )
+        }
         "nm_id" => format!(
             r#"
             SELECT
@@ -318,12 +431,18 @@ async fn fetch_drilldown_multi_period(
     append_connection_filter(&mut sql, &mut params, connection_mp_refs);
 
     let group_clause = match group_by {
-        "date" => " GROUP BY d.document_date ORDER BY group_key ASC",
-        "nm_id" => " GROUP BY CAST(json_extract(j.value, '$.nm_id') AS INTEGER) ORDER BY m0 DESC",
-        "connection_mp_ref" => " GROUP BY d.connection_id ORDER BY m0 DESC",
+        _ if period_key_expr(group_by).is_some() => format!(
+            " GROUP BY {} ORDER BY group_key ASC",
+            period_key_expr(group_by).expect("checked above")
+        ),
+        "nm_id" => {
+            " GROUP BY CAST(json_extract(j.value, '$.nm_id') AS INTEGER) ORDER BY m0 DESC"
+                .to_string()
+        }
+        "connection_mp_ref" => " GROUP BY d.connection_id ORDER BY m0 DESC".to_string(),
         _ => unreachable!(),
     };
-    sql.push_str(group_clause);
+    sql.push_str(&group_clause);
 
     let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, &sql, params);
     let rows = db.query_all(stmt).await?;
@@ -331,10 +450,12 @@ async fn fetch_drilldown_multi_period(
         .map(|row| {
             let group_key: String = row.try_get("", "group_key")?;
             let label: String = row.try_get("", "label")?;
-            let values: Vec<f64> = (0..metrics.len())
+            let values: Vec<f64> = (0..BASE_METRIC_IDS.len())
                 .map(|i| row.try_get::<f64>("", &format!("m{}", i)).unwrap_or(0.0))
                 .collect();
-            Ok((group_key, label, values))
+            let mut bases = Bases::default();
+            bases.add(&values);
+            Ok((group_key, label, bases))
         })
         .collect::<std::result::Result<Vec<_>, sea_orm::DbErr>>()
         .map_err(anyhow::Error::from)
@@ -394,78 +515,80 @@ pub async fn compute_drilldown_multi(
         .collect::<Result<Vec<_>>>()?;
 
     let (p2_from, p2_to) = resolve_period2(ctx);
-    let is_date_group = group_by == "date";
+    // Схлопывать даты к дню месяца можно только когда оба периода лежат внутри
+    // одного месяца — иначе «01» склеит первые числа всех месяцев диапазона.
+    let collapse_to_day = group_by == "date"
+        && within_single_month(&ctx.date_from, &ctx.date_to)
+        && within_single_month(&p2_from, &p2_to);
+    let is_date_group = period_key_expr(group_by).is_some();
 
     let (rows1, rows2) = tokio::join!(
         fetch_drilldown_multi_period(
             group_by,
-            &metrics,
             &ctx.date_from,
             &ctx.date_to,
             &ctx.connection_mp_refs
         ),
-        fetch_drilldown_multi_period(
-            group_by,
-            &metrics,
-            &p2_from,
-            &p2_to,
-            &ctx.connection_mp_refs
-        ),
+        fetch_drilldown_multi_period(group_by, &p2_from, &p2_to, &ctx.connection_mp_refs),
     );
     let rows1 = rows1?;
     let rows2 = rows2?;
 
     let key_of = |raw: &str| {
-        if is_date_group {
+        if collapse_to_day {
             day_key(raw)
         } else {
             raw.to_string()
         }
     };
 
-    let mut merged: HashMap<String, DrilldownRow> = HashMap::new();
+    // Копим слагаемые, а не готовые метрики: проценты выводим один раз в конце.
+    let mut merged: HashMap<String, (String, Bases, Bases)> = HashMap::new();
 
-    for (group_key, label, values) in rows1 {
+    for (group_key, label, bases) in rows1 {
         let key = key_of(&group_key);
-        let label = if is_date_group { key_of(&label) } else { label };
-        let entry = merged.entry(key.clone()).or_insert_with(|| DrilldownRow {
-            group_key: key,
-            label,
-            value1: 0.0,
-            value2: 0.0,
-            delta_pct: None,
-            metric_values: HashMap::new(),
-        });
-        for (i, (id, _)) in metrics.iter().enumerate() {
-            let mv = entry.metric_values.entry(id.clone()).or_default();
-            mv.value1 += values.get(i).copied().unwrap_or(0.0);
-        }
+        let label = if collapse_to_day { key_of(&label) } else { label };
+        let entry = merged
+            .entry(key)
+            .or_insert_with(|| (label, Bases::default(), Bases::default()));
+        entry.1.add(&bases.0);
     }
 
-    for (group_key, label, values) in rows2 {
+    for (group_key, label, bases) in rows2 {
         let key = key_of(&group_key);
-        let label = if is_date_group { key_of(&label) } else { label };
-        let entry = merged.entry(key.clone()).or_insert_with(|| DrilldownRow {
-            group_key: key,
-            label,
-            value1: 0.0,
-            value2: 0.0,
-            delta_pct: None,
-            metric_values: HashMap::new(),
-        });
-        for (i, (id, _)) in metrics.iter().enumerate() {
-            let mv = entry.metric_values.entry(id.clone()).or_default();
-            mv.value2 += values.get(i).copied().unwrap_or(0.0);
-        }
+        let label = if collapse_to_day { key_of(&label) } else { label };
+        let entry = merged
+            .entry(key)
+            .or_insert_with(|| (label, Bases::default(), Bases::default()));
+        entry.2.add(&bases.0);
     }
 
     let mut rows: Vec<DrilldownRow> = merged
-        .into_values()
-        .map(|mut row| {
-            for mv in row.metric_values.values_mut() {
-                mv.delta_pct = pct_change(mv.value1, mv.value2);
+        .into_iter()
+        .map(|(group_key, (label, bases1, bases2))| {
+            let metric_values = metrics
+                .iter()
+                .map(|(id, _)| {
+                    let value1 = bases1.metric(id);
+                    let value2 = bases2.metric(id);
+                    (
+                        id.clone(),
+                        contracts::shared::drilldown::MetricValues {
+                            value1,
+                            value2,
+                            delta_pct: pct_change(value1, value2),
+                        },
+                    )
+                })
+                .collect();
+            DrilldownRow {
+                group_key,
+                label,
+                value1: 0.0,
+                value2: 0.0,
+                delta_pct: None,
+                metric_values,
             }
-            row
         })
         .collect();
 
@@ -512,7 +635,110 @@ pub async fn compute_drilldown_multi(
 
 #[cfg(test)]
 mod tests {
-    use super::{day_key, pct_change, resolve_metric_def};
+    use super::{
+        day_key, pct_change, resolve_metric_def, span_days, within_single_month, Bases,
+        BASE_METRIC_IDS,
+    };
+
+    fn bases_of(pairs: &[(&str, f64)]) -> Bases {
+        let mut b = Bases::default();
+        let values: Vec<f64> = BASE_METRIC_IDS
+            .iter()
+            .map(|id| {
+                pairs
+                    .iter()
+                    .find(|(name, _)| name == id)
+                    .map(|(_, v)| *v)
+                    .unwrap_or(0.0)
+            })
+            .collect();
+        b.add(&values);
+        b
+    }
+
+    /// Регрессия: при слиянии строк складывались готовые проценты. На запросе
+    /// «воронка WB за год с группировкой по дате» тринадцать первых чисел
+    /// схлопывались в строку «01», и процент выкупа выходил 1023,8% вместо 81,8%.
+    #[test]
+    fn ratios_are_recomputed_from_sums_not_added() {
+        let mut merged = Bases::default();
+        // Тринадцать дней, каждый ~81,8% выкупа.
+        for _ in 0..13 {
+            let day = bases_of(&[("order_count", 173.0), ("buyout_count", 141.0)]);
+            merged.add(&day.0);
+        }
+        let buyout_pct = merged.metric("buyout_pct");
+        assert!(
+            (buyout_pct - 81.5).abs() < 1.0,
+            "процент выкупа должен остаться долей, получено {buyout_pct}"
+        );
+        // Счётчики, наоборот, обязаны складываться.
+        assert_eq!(merged.metric("order_count"), 173.0 * 13.0);
+    }
+
+    #[test]
+    fn ratio_with_zero_denominator_is_zero_not_nan() {
+        let empty = bases_of(&[("buyout_count", 5.0)]);
+        assert_eq!(empty.metric("buyout_pct"), 0.0);
+        assert_eq!(empty.metric("cart_conv_pct"), 0.0);
+    }
+
+    #[test]
+    fn every_view_metric_derives_from_bases() {
+        let b = bases_of(&[
+            ("open_count", 1000.0),
+            ("cart_count", 100.0),
+            ("order_count", 50.0),
+            ("order_sum", 12345.0),
+            ("buyout_count", 40.0),
+            ("buyout_sum", 9000.0),
+        ]);
+        assert_eq!(b.metric("cart_conv_pct"), 10.0);
+        assert_eq!(b.metric("order_conv_pct"), 50.0);
+        assert_eq!(b.metric("buyout_pct"), 80.0);
+        assert_eq!(b.metric("order_sum"), 12345.0);
+        assert_eq!(b.metric("buyout_sum"), 9000.0);
+    }
+
+    /// Схлопывание к дню месяца осмысленно только внутри одного месяца.
+    #[test]
+    fn period_grain_keys_cover_day_week_and_month() {
+        use super::period_key_expr;
+        assert_eq!(period_key_expr("date"), Some("d.document_date"));
+        assert_eq!(
+            period_key_expr("month"),
+            Some("substr(d.document_date, 1, 7)")
+        );
+        assert!(period_key_expr("week").is_some());
+        // Разрезы не по периоду сюда не попадают — у них своя ветка SQL.
+        assert_eq!(period_key_expr("nm_id"), None);
+        assert_eq!(period_key_expr("connection_mp_ref"), None);
+    }
+
+    #[test]
+    fn new_grains_are_labelled() {
+        use super::group_by_label;
+        assert_eq!(group_by_label("month").unwrap(), "По месяцу");
+        assert_eq!(group_by_label("week").unwrap(), "По неделе");
+        assert!(group_by_label("quarter").is_err());
+    }
+
+    #[test]
+    fn single_month_detection_gates_day_collapsing() {
+        assert!(within_single_month("2026-07-01", "2026-07-31"));
+        assert!(!within_single_month("2025-08-01", "2026-08-03"));
+        assert!(!within_single_month("2026-06-25", "2026-07-05"));
+    }
+
+    /// Регрессия: период сравнения сдвигался ровно на месяц независимо от длины
+    /// запроса, из-за чего годовой диапазон сравнивался почти сам с собой.
+    #[test]
+    fn span_days_counts_range_inclusively() {
+        assert_eq!(span_days("2026-07-01", "2026-07-31"), Some(31));
+        assert_eq!(span_days("2026-07-01", "2026-07-01"), Some(1));
+        assert_eq!(span_days("2025-08-01", "2026-08-03"), Some(368));
+        assert_eq!(span_days("не дата", "2026-07-01"), None);
+    }
 
     #[test]
     fn day_key_extracts_day_of_month() {

@@ -114,6 +114,11 @@ impl Sortable for LineDto {
             "buyout_percent" => {
                 cmp_float(self.metrics.buyout_percent, other.metrics.buyout_percent)
             }
+            "cancel_count" => self.metrics.cancel_count.cmp(&other.metrics.cancel_count),
+            "cancel_sum" => cmp_float(
+                self.metrics.cancel_sum.unwrap_or(0.0),
+                other.metrics.cancel_sum.unwrap_or(0.0),
+            ),
             "add_to_cart_conversion" => cmp_float(
                 self.metrics.add_to_cart_conversion,
                 other.metrics.add_to_cart_conversion,
@@ -149,6 +154,8 @@ impl ExcelExportable for LineDto {
             "Выкупы",
             "Сумма выкупов",
             "Процент выкупа, %",
+            "Отмены",
+            "Сумма отмен",
             "Отложенные",
         ]
     }
@@ -172,6 +179,15 @@ impl ExcelExportable for LineDto {
             self.metrics.buyout_count.to_string(),
             fmt_csv_decimal(self.metrics.buyout_sum),
             fmt_csv_decimal(self.metrics.buyout_percent),
+            // Нет счётчика в источнике → пустая ячейка, а не 0.
+            self.metrics
+                .cancel_count
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            self.metrics
+                .cancel_sum
+                .map(fmt_csv_decimal)
+                .unwrap_or_default(),
             self.metrics.add_to_wishlist_count.to_string(),
         ]
     }

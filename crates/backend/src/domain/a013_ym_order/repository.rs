@@ -221,6 +221,48 @@ pub async fn get_by_document_no(document_no: &str) -> Result<Option<YmOrder>> {
     Ok(result.map(Into::into))
 }
 
+/// `(id, document_no)` заказов, созданных в периоде — когортный отбор для пересбора
+/// воронки (u508). Пустой `connection_mp_refs` — все кабинеты. Фильтр по
+/// денормализованной `creation_date` (там ISO-строка, сравнение лексикографическое,
+/// поэтому границы задаются как `YYYY-MM-DD`).
+pub async fn list_ids_by_creation_period(
+    date_from: &str,
+    date_to: &str,
+    connection_mp_refs: &[String],
+    only_posted: bool,
+) -> Result<Vec<(String, String)>> {
+    let mut query = Entity::find()
+        .filter(Column::IsDeleted.eq(false))
+        .filter(Column::CreationDate.gte(date_from.to_string()))
+        // `date_to` включительно: у creation_date есть время, поэтому сравниваем с концом дня.
+        .filter(Column::CreationDate.lte(format!("{date_to}T23:59:59Z")));
+
+    if only_posted {
+        query = query.filter(Column::IsPosted.eq(true));
+    }
+    if !connection_mp_refs.is_empty() {
+        query = query.filter(Column::ConnectionId.is_in(connection_mp_refs.to_vec()));
+    }
+
+    Ok(query
+        .all(conn())
+        .await?
+        .into_iter()
+        .map(|item| (item.id, item.document_no))
+        .collect())
+}
+
+/// Дата создания заказа (когорта воронки) по номеру заказа YM. Используется при
+/// проведении a016: возврат должен лечь в когорту своего заказа, а не своей даты.
+/// `None` — заказа нет в базе (возврат приехал раньше заказа или заказ вне периода).
+pub async fn order_date_by_document_no(
+    document_no: &str,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>> {
+    Ok(get_by_document_no(document_no)
+        .await?
+        .and_then(|order| order.state.creation_date))
+}
+
 /// Вычисление денормализованных полей из агрегата
 fn calculate_denormalized_fields(aggregate: &YmOrder) -> DenormalizedFields {
     // Рассчитываем итоги по строкам

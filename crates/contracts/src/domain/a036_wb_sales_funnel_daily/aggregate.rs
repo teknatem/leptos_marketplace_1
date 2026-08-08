@@ -90,6 +90,14 @@ pub struct WbSalesFunnelDailyMetrics {
     pub buyout_count: i64,
     /// Выкупили на сумму.
     pub buyout_sum: f64,
+    /// Отменили товаров, шт. `None` — источник счётчик не отдал (N/A ≠ 0):
+    /// у документов, импортированных до подключения отмен, и у путей API,
+    /// где поля нет. CSV-отчёт `DETAIL_HISTORY_REPORT` отдаёт его всегда.
+    #[serde(default)]
+    pub cancel_count: Option<i64>,
+    /// Отменили на сумму. `None` — см. `cancel_count`.
+    #[serde(default)]
+    pub cancel_sum: Option<f64>,
     /// Процент выкупа.
     pub buyout_percent: f64,
     /// Конверсия в корзину, %.

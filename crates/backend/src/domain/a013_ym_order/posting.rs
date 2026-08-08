@@ -75,6 +75,27 @@ pub async fn post_document(id: Uuid) -> Result<()> {
         txn.commit().await?;
     }
 
+    // Воронка продаж (p916), стадия fulfillment: заказ / отмена / выкуп.
+    // Отменённые заказы p900/p904 отбрасывают (там нужна только реализация), поэтому
+    // для воронки нужен собственный проход — иначе отказы YM нигде не видны.
+    {
+        use crate::projections::p916_mp_sales_funnel_turnovers::{
+            builder as funnel_builder, repository as funnel_repo,
+        };
+        let registrator_ref = id.to_string();
+        let rows = funnel_builder::from_ym_order(&document, &registrator_ref);
+        let db = crate::shared::data::db::get_connection();
+        let txn = db.begin().await?;
+        funnel_repo::delete_by_registrator_with_conn(
+            &txn,
+            funnel_builder::REG_A013,
+            &registrator_ref,
+        )
+        .await?;
+        funnel_repo::insert_many_with_conn(&txn, &rows).await?;
+        txn.commit().await?;
+    }
+
     tracing::info!(
         "Posted document a013: {}, is_error: {}",
         id,
@@ -106,6 +127,10 @@ pub async fn unpost_document(id: Uuid) -> Result<()> {
         .await?;
     crate::projections::p904_sales_data::repository::delete_by_registrator(&id.to_string()).await?;
     crate::projections::p915_mp_order_events::repository::delete_by_registrator_ref(
+        &id.to_string(),
+    )
+    .await?;
+    crate::projections::p916_mp_sales_funnel_turnovers::repository::delete_by_registrator_ref(
         &id.to_string(),
     )
     .await?;

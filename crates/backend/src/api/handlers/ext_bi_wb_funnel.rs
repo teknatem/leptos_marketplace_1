@@ -65,6 +65,11 @@ pub struct FunnelRow {
     pub buyout_count: i64,
     /// Выкупили на сумму.
     pub buyout_sum: f64,
+    /// Отменили товаров, шт. по счётчику воронки WB. `null` — счётчика в источнике
+    /// не было (данные до подключения отмен); это N/A, а не ноль.
+    pub cancel_count: Option<i64>,
+    /// Отменили на сумму. `null` — см. `cancel_count`.
+    pub cancel_sum: Option<f64>,
     /// Процент выкупа.
     pub buyout_percent: f64,
     /// Конверсия в корзину, %.
@@ -143,6 +148,8 @@ pub async fn list_funnel(
             order_sum: r.order_sum,
             buyout_count: r.buyout_count,
             buyout_sum: r.buyout_sum,
+            cancel_count: r.cancel_count,
+            cancel_sum: r.cancel_sum,
             buyout_percent: r.buyout_percent,
             add_to_cart_conversion: r.add_to_cart_conversion,
             cart_to_order_conversion: r.cart_to_order_conversion,

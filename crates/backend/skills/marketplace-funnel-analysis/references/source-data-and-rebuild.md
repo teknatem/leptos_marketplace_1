@@ -1,126 +1,67 @@
-# Первичные данные и пересбор воронки WB
+# Первичные данные и пересбор воронки
 
-`p916` — производная проекция. Пустая или неполная проекция ещё не означает, что бизнес-данных
-нет. Перед выводом о нехватке данных проверь документы-источники на том же периоде и кабинете.
+`p916` — производная проекция. Её пустота или неполнота не доказывает отсутствие бизнес-событий.
 
-## Источники и движения
+| МП | Документ | Что хранит | Что создаёт в p916 |
+|---|---|---|---|
+| WB | `a036_wb_sales_funnel_daily` | дневная воронка по `nm_id` | marketing: карточка, корзина, wishlist, заказы-воронки, **отказы** |
+| WB | `a026_wb_advert_daily` | дневная реклама | marketing: платные показы, переходы и корзина |
+| WB | `a015_wb_orders` | заказ/отмена на уровне `srid` | fulfillment: `order_*`, `cancel_*` |
+| WB | `a012_wb_sales` | выкуп/возврат на уровне `srid` | fulfillment: `buyout_*`, `return_*` |
+| YM | `a041_ym_shows_sales_daily` | дневная воронка по `offer_id` | marketing: показы, клики, корзина, заказы, **отказы** |
+| YM | `a013_ym_order` | заказ со статусами и судьбой позиций | fulfillment: `order_*`, `cancel_*`, `buyout_*` |
+| YM | `a016_ym_returns` | возвраты и невыкупы | fulfillment: `return_*` (только `RETURN`) |
 
-| Документ | Что хранит | Что создаёт в p916 |
-|---|---|---|
-| `a036_wb_sales_funnel_daily` | дневная воронка по `nm_id`: карточка, корзина, заказы-воронки | `marketing`: `open_count`, `cart_count`, `wishlist_count`, `funnel_order_*` |
-| `a026_wb_advert_daily` | дневная реклама | `marketing`: `show_paid_count`, `paid_open_count`, `paid_cart_count` |
-| `a015_wb_orders` | заказ и отмена на уровне `srid` | `fulfillment`: `order_*`, `cancel_*` |
-| `a012_wb_sales` | выкуп и возврат на уровне `srid` | `fulfillment`: `buyout_*`, `return_*` |
+## Обязательная проверка покрытия
 
-## Обязательная диагностика первички
+Не воспроизводи SQL сверки источников с `p916` внутри навыка. Запусти:
 
-Сначала зафиксируй `date_from`, `date_to` и `connection_mp_ref`. Выполни read-only проверки:
+- `run_quality_check(check_id="wb_funnel_projection_coverage")` — заказы/продажи WB
+  плюс санитарные метрики движений (отмены с датой-фолбэком, `event_date < cohort_date`,
+  отрицательные метрики);
+- `run_quality_check(check_id="wb_marketing_projection_coverage")` — marketing-стадия WB;
+- `run_quality_check(check_id="ym_funnel_projection_coverage")` — весь пайплайн YM.
 
-```sql
-SELECT COUNT(*) AS docs,
-       MIN(document_date) AS min_date,
-       MAX(document_date) AS max_date,
-       SUM(total_open_count) AS opens,
-       SUM(total_cart_count) AS carts,
-       SUM(total_order_count) AS funnel_orders
-FROM a036_wb_sales_funnel_daily
-WHERE document_date BETWEEN ? AND ?
-  AND connection_id = ?
-  AND is_deleted = 0
-```
+Проверки централизованно различают `source_missing`, `projection_missing` и
+`projection_extra`, возвращают разрез по полным месяцам и кабинетам. Текущий незавершённый
+месяц показывается отдельно и не влияет на итоговый статус.
 
-```sql
-SELECT COUNT(*) AS docs,
-       MIN(document_date) AS min_date,
-       MAX(document_date) AS max_date,
-       SUM(total_views) AS paid_shows,
-       SUM(total_clicks) AS paid_clicks,
-       SUM(total_orders) AS advert_orders
-FROM a026_wb_advert_daily
-WHERE document_date BETWEEN ? AND ?
-  AND connection_id = ?
-  AND is_deleted = 0
-```
-
-```sql
-SELECT COUNT(*) AS docs,
-       MIN(document_date) AS min_date,
-       MAX(document_date) AS max_date,
-       SUM(CASE WHEN COALESCE(is_cancel,0) = 1 THEN 1 ELSE 0 END) AS cancelled_docs,
-       SUM(CASE WHEN nomenclature_ref IS NULL OR nomenclature_ref = '' THEN 1 ELSE 0 END) AS unmapped_docs
-FROM a015_wb_orders
-WHERE substr(document_date,1,10) BETWEEN ? AND ?
-  AND json_extract(header_json, '$.connection_id') = ?
-  AND is_deleted = 0
-```
-
-Для `a012` нельзя ограничиваться только `sale_date <= date_to`: `u508` берёт `srid` заказов
-когорты из `a015`, затем выбирает связанные продажи/возвраты начиная с `date_from` без верхней
-границы, чтобы захватить поздние выкупы.
-
-```sql
-WITH cohort_orders AS (
-  SELECT DISTINCT document_no AS srid
-  FROM a015_wb_orders
-  WHERE substr(document_date,1,10) BETWEEN ? AND ?
-    AND json_extract(header_json, '$.connection_id') = ?
-    AND is_deleted = 0
-)
-SELECT COUNT(*) AS docs,
-       MIN(substr(s.sale_date,1,10)) AS min_sale_date,
-       MAX(substr(s.sale_date,1,10)) AS max_sale_date,
-       SUM(CASE WHEN COALESCE(s.is_customer_return,0) = 1 THEN 1 ELSE 0 END) AS returns,
-       SUM(CASE WHEN s.nomenclature_ref IS NULL OR s.nomenclature_ref = ''
-                THEN 1 ELSE 0 END) AS unmapped_docs
-FROM a012_wb_sales s
-JOIN cohort_orders o ON o.srid = s.document_no
-WHERE substr(s.sale_date,1,10) >= ?
-  AND s.is_deleted = 0
-```
-
-После первички сравни покрытие проекции:
-
-```sql
-SELECT registrator_type,
-       COUNT(*) AS projection_rows,
-       MIN(cohort_date) AS min_cohort_date,
-       MAX(cohort_date) AS max_cohort_date,
-       SUM(open_count) AS opens,
-       SUM(cart_count) AS carts,
-       SUM(order_count) AS orders,
-       SUM(buyout_count) AS buyouts,
-       SUM(COALESCE(show_paid_count,0)) AS paid_shows
-FROM p916_mp_sales_funnel_turnovers
-WHERE cohort_date BETWEEN ? AND ?
-  AND connection_mp_ref = ?
-GROUP BY registrator_type
-ORDER BY registrator_type
-```
+Собственные read-only запросы используй после quality check только для точечного расследования
+конкретного периода, кабинета, заказа или `registrator_ref`, а не для повторного расчёта покрытия.
 
 ## Как интерпретировать
 
-- Источник пуст → пересбор не создаст отсутствующие события. Сообщи, какой импорт и период
-  отсутствуют. Историю `a036` нельзя восстановить из `a026`, `a015` или `a012`.
-- Источник заполнен, а соответствующих строк `p916` нет/мало → проекция не проведена или
-  устарела; это кандидат на `u508`.
-- `a036` есть, но `open_count/cart_count` в `p916` нет → пересобери stage marketing.
-- `a015/a012` есть, но fulfillment пуст → перепроведи нижнюю часть воронки.
-- `a026` есть, но платные показы отсутствуют → перепроведи рекламные документы.
+- `source_missing` — пересбор не создаст отсутствующие события; укажи, какой импорт и период пусты.
+- `projection_missing` — первичка есть, но движения не сформированы; это кандидат на `u508`.
+- `projection_extra` — в p916 остались движения без актуального документа-источника; требуется разбор перед исправлением.
+- `cancel_date_fallback` — отмены сели на дату заказа, потому что дата отмены не пришла
+  (старый дефект FBS-пути WB). Потоковая ось (`event_date`) за такие периоды искажена —
+  используй когортную и предупреди. Пересбор это не чинит: даты в источнике нет.
+- `negative_metric` — движения со знаком минус (данные до нормализации возвратов);
+  кандидат на пересбор `u508`.
+- Историю `a036` нельзя восстановить из `a026`, `a015` или `a012`. Аналогично `a041` у YM:
+  за пределами тарифного окна (90/400 дней) отчёт «Аналитика продаж» пуст.
 
 ## `u508_repost_documents`
 
 UI: **u508 — «Перепроведение документов и проекций» → «Пересбор воронки за период»**.
 
-Сценарий выполняет четыре шага:
+Сценарий (шесть шагов):
 
-1. перепроводит `a015` — заказы/отмены;
+1. перепроводит `a015` — заказы/отмены WB;
 2. перепроводит связанные `a012` — выкупы/возвраты когорты;
 3. перепроводит `a026` — платные показы/переходы/корзина;
-4. пересобирает stage marketing из сохранённых `a036`.
+4. перепроводит `a013` — заказы/отмены/выкупы YM;
+5. перепроводит `a016` — возвраты YM (строго после `a013`: когорта возврата резолвится
+   по дате заказа);
+6. пересобирает stage marketing из сохранённых `a036`.
+
+Стадия marketing YM (`a041`) через `u508` **не** пересобирается — её обновляет
+перезагрузка отчёта (`task026_ym_shows_sales_daily` или u503 с целью
+`a041_ym_shows_sales_daily`).
 
 API запуска: `POST /api/u508/repost/funnel/start`; прогресс:
 `GET /api/u508/repost/{session_id}/progress`; сводка после пересбора:
 `GET /api/u508/repost/funnel/diagnostics`.
 
-`u508` меняет данные. Аналитический агент не запускает его без явного поручения и разрешения:
-он диагностирует, показывает расхождение «первичка → p916» и рекомендует оператору пересбор.
+`u508` изменяет данные. Аналитический агент не запускает его без явного поручения и разрешения.

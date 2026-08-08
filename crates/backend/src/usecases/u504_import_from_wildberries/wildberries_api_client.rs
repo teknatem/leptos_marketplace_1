@@ -6168,6 +6168,22 @@ pub struct WbSalesFunnelHistoryDay {
     pub buyout_count: i64,
     #[serde(rename = "buyoutSum", default)]
     pub buyout_sum: f64,
+    /// Отмены. Имя поля у v3-истории не зафиксировано документацией — принимаем
+    /// известные варианты; отсутствие поля даёт `None` (N/A), а не 0.
+    #[serde(
+        rename = "cancelCount",
+        alias = "cancelsCount",
+        alias = "canceledCount",
+        default
+    )]
+    pub cancel_count: Option<i64>,
+    #[serde(
+        rename = "cancelSum",
+        alias = "cancelSumRub",
+        alias = "cancelsSumRub",
+        default
+    )]
+    pub cancel_sum: Option<f64>,
     #[serde(rename = "buyoutPercent", default)]
     pub buyout_percent: f64,
     #[serde(rename = "addToCartConversion", default)]

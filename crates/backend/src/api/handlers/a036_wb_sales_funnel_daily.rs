@@ -40,6 +40,9 @@ pub struct WbSalesFunnelDailyListItemDto {
     pub total_order_sum: f64,
     pub total_buyout_count: i64,
     pub total_buyout_sum: f64,
+    /// `null` — счётчика отмен в источнике не было (N/A ≠ 0).
+    pub total_cancel_count: Option<i64>,
+    pub total_cancel_sum: Option<f64>,
     pub connection_id: String,
     pub connection_name: Option<String>,
     pub organization_name: Option<String>,
@@ -60,6 +63,8 @@ impl From<WbSalesFunnelDailyListRow> for WbSalesFunnelDailyListItemDto {
             total_order_sum: row.total_order_sum,
             total_buyout_count: row.total_buyout_count,
             total_buyout_sum: row.total_buyout_sum,
+            total_cancel_count: row.total_cancel_count,
+            total_cancel_sum: row.total_cancel_sum,
             connection_id: row.connection_id,
             connection_name: row.connection_name,
             organization_name: row.organization_name,

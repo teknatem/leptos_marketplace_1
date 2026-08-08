@@ -51,11 +51,24 @@ pub struct Model {
     /// Платная корзина (реклама a026, atbs).
     #[sea_orm(nullable)]
     pub paid_cart_count: Option<i64>,
+    /// Общие показы (impressions) как их отдаёт сам маркетплейс, без деления на
+    /// платные/органические. Заполняет YM (a041, «Показы моих товаров»); у WB NULL —
+    /// там общего счётчика показов нет, есть только платный `show_paid_count`.
+    /// Не складывать с `show_free_count`/`show_paid_count`: это другой разрез.
+    #[sea_orm(nullable)]
+    pub total_impressions: Option<i64>,
     pub open_count: i64,
     pub cart_count: i64,
     pub wishlist_count: i64,
     pub funnel_order_count: i64,
     pub funnel_order_sum: f64,
+    /// Отмены по дневному счётчику воронки маркетплейса (a036 у WB). Отличается от
+    /// `cancel_count` (стадия fulfillment, документы a015): это маркетинговый счётчик
+    /// самого маркетплейса. NULL — источник счётчик не отдал (N/A ≠ 0).
+    #[sea_orm(nullable)]
+    pub funnel_cancel_count: Option<i64>,
+    #[sea_orm(nullable)]
+    pub funnel_cancel_sum: Option<f64>,
 
     // стадия 2 (fulfillment/когорта):
     pub order_count: i64,
@@ -97,11 +110,14 @@ fn active_from_model(entry: &Model) -> ActiveModel {
         show_paid_count: Set(entry.show_paid_count),
         paid_open_count: Set(entry.paid_open_count),
         paid_cart_count: Set(entry.paid_cart_count),
+        total_impressions: Set(entry.total_impressions),
         open_count: Set(entry.open_count),
         cart_count: Set(entry.cart_count),
         wishlist_count: Set(entry.wishlist_count),
         funnel_order_count: Set(entry.funnel_order_count),
         funnel_order_sum: Set(entry.funnel_order_sum),
+        funnel_cancel_count: Set(entry.funnel_cancel_count),
+        funnel_cancel_sum: Set(entry.funnel_cancel_sum),
         order_count: Set(entry.order_count),
         order_sum: Set(entry.order_sum),
         cancel_count: Set(entry.cancel_count),
@@ -127,11 +143,14 @@ fn funnel_on_conflict() -> OnConflict {
             Column::ShowPaidCount,
             Column::PaidOpenCount,
             Column::PaidCartCount,
+            Column::TotalImpressions,
             Column::OpenCount,
             Column::CartCount,
             Column::WishlistCount,
             Column::FunnelOrderCount,
             Column::FunnelOrderSum,
+            Column::FunnelCancelCount,
+            Column::FunnelCancelSum,
             Column::OrderCount,
             Column::OrderSum,
             Column::CancelCount,
@@ -300,6 +319,8 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
             SUM(COALESCE(paid_cart_count, 0)) AS paid_cart_count,
             SUM(CASE WHEN show_free_count IS NOT NULL THEN 1 ELSE 0 END) AS show_free_present,
             SUM(CASE WHEN show_paid_count IS NOT NULL THEN 1 ELSE 0 END) AS show_paid_present,
+            SUM(COALESCE(total_impressions, 0)) AS total_impressions,
+            SUM(CASE WHEN total_impressions IS NOT NULL THEN 1 ELSE 0 END) AS total_impressions_present,
             MAX(CASE WHEN pj.order_key IS NOT NULL OR show_paid_count IS NOT NULL
                           OR paid_open_count IS NOT NULL OR paid_cart_count IS NOT NULL
                      THEN 1 ELSE 0 END) AS advert_present,
@@ -308,6 +329,9 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
             SUM(wishlist_count) AS wishlist_count,
             SUM(funnel_order_count) AS funnel_order_count,
             SUM(funnel_order_sum) AS funnel_order_sum,
+            SUM(COALESCE(funnel_cancel_count, 0)) AS funnel_cancel_count,
+            SUM(COALESCE(funnel_cancel_sum, 0)) AS funnel_cancel_sum,
+            SUM(CASE WHEN funnel_cancel_count IS NOT NULL THEN 1 ELSE 0 END) AS funnel_cancel_present,
             SUM(order_count) AS order_count,
             SUM(order_sum) AS order_sum,
             SUM(CASE WHEN pj.order_key IS NOT NULL THEN order_count ELSE 0 END) AS paid_order_count,
@@ -355,12 +379,23 @@ pub async fn aggregate_by_product(request: &MpFunnelListRequest) -> Result<Vec<M
             paid_cart_count: row.try_get("", "paid_cart_count").unwrap_or(0),
             show_free_available: row.try_get::<i64>("", "show_free_present").unwrap_or(0) > 0,
             show_paid_available: row.try_get::<i64>("", "show_paid_present").unwrap_or(0) > 0,
+            total_impressions: row.try_get("", "total_impressions").unwrap_or(0),
+            total_impressions_available: row
+                .try_get::<i64>("", "total_impressions_present")
+                .unwrap_or(0)
+                > 0,
             advert_available: row.try_get::<i64>("", "advert_present").unwrap_or(0) > 0,
             open_count: row.try_get("", "open_count").unwrap_or(0),
             cart_count: row.try_get("", "cart_count").unwrap_or(0),
             wishlist_count: row.try_get("", "wishlist_count").unwrap_or(0),
             funnel_order_count: row.try_get("", "funnel_order_count").unwrap_or(0),
             funnel_order_sum: row.try_get("", "funnel_order_sum").unwrap_or(0.0),
+            funnel_cancel_count: row.try_get("", "funnel_cancel_count").unwrap_or(0),
+            funnel_cancel_sum: row.try_get("", "funnel_cancel_sum").unwrap_or(0.0),
+            funnel_cancel_available: row
+                .try_get::<i64>("", "funnel_cancel_present")
+                .unwrap_or(0)
+                > 0,
             order_count: row.try_get("", "order_count").unwrap_or(0),
             order_sum: row.try_get("", "order_sum").unwrap_or(0.0),
             paid_order_count: row.try_get("", "paid_order_count").unwrap_or(0),
@@ -412,11 +447,16 @@ pub async fn funnel_period_summary(
             SUM(COALESCE(show_paid_count, 0)) AS show_paid_count,
             SUM(CASE WHEN show_free_count IS NOT NULL THEN 1 ELSE 0 END) AS show_free_present,
             SUM(CASE WHEN show_paid_count IS NOT NULL THEN 1 ELSE 0 END) AS show_paid_present,
+            SUM(COALESCE(total_impressions, 0)) AS total_impressions,
+            SUM(CASE WHEN total_impressions IS NOT NULL THEN 1 ELSE 0 END) AS total_impressions_present,
             SUM(open_count) AS open_count,
             SUM(cart_count) AS cart_count,
             SUM(wishlist_count) AS wishlist_count,
             SUM(funnel_order_count) AS funnel_order_count,
             SUM(funnel_order_sum) AS funnel_order_sum,
+            SUM(COALESCE(funnel_cancel_count, 0)) AS funnel_cancel_count,
+            SUM(COALESCE(funnel_cancel_sum, 0)) AS funnel_cancel_sum,
+            SUM(CASE WHEN funnel_cancel_count IS NOT NULL THEN 1 ELSE 0 END) AS funnel_cancel_present,
             SUM(order_count) AS order_count,
             SUM(order_sum) AS order_sum,
             SUM(cancel_count) AS cancel_count,
@@ -448,11 +488,20 @@ pub async fn funnel_period_summary(
         summary.show_paid_count = row.try_get("", "show_paid_count").unwrap_or(0);
         summary.show_free_available = row.try_get::<i64>("", "show_free_present").unwrap_or(0) > 0;
         summary.show_paid_available = row.try_get::<i64>("", "show_paid_present").unwrap_or(0) > 0;
+        summary.total_impressions = row.try_get("", "total_impressions").unwrap_or(0);
+        summary.total_impressions_available = row
+            .try_get::<i64>("", "total_impressions_present")
+            .unwrap_or(0)
+            > 0;
         summary.open_count = row.try_get("", "open_count").unwrap_or(0);
         summary.cart_count = row.try_get("", "cart_count").unwrap_or(0);
         summary.wishlist_count = row.try_get("", "wishlist_count").unwrap_or(0);
         summary.funnel_order_count = row.try_get("", "funnel_order_count").unwrap_or(0);
         summary.funnel_order_sum = row.try_get("", "funnel_order_sum").unwrap_or(0.0);
+        summary.funnel_cancel_count = row.try_get("", "funnel_cancel_count").unwrap_or(0);
+        summary.funnel_cancel_sum = row.try_get("", "funnel_cancel_sum").unwrap_or(0.0);
+        summary.funnel_cancel_available =
+            row.try_get::<i64>("", "funnel_cancel_present").unwrap_or(0) > 0;
         summary.order_count = row.try_get("", "order_count").unwrap_or(0);
         summary.order_sum = row.try_get("", "order_sum").unwrap_or(0.0);
         summary.cancel_count = row.try_get("", "cancel_count").unwrap_or(0);

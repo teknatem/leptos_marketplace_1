@@ -139,6 +139,8 @@ pub fn LinesTab(vm: WbSalesFunnelDailyDetailsVm) -> impl IntoView {
                                 <SortHeaderCell label="Выкупы" field="buyout_count" min_width=70.0 sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort numeric=true />
                                 <SortHeaderCell label="Сумма выкупов" field="buyout_sum" min_width=105.0 sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort numeric=true />
                                 <SortHeaderCell label="Выкуп, %" field="buyout_percent" min_width=75.0 sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort numeric=true />
+                                <SortHeaderCell label="Отмены" field="cancel_count" min_width=70.0 sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort numeric=true />
+                                <SortHeaderCell label="Сумма отмен" field="cancel_sum" min_width=105.0 sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort numeric=true />
                                 <SortHeaderCell label="Отложенные" field="add_to_wishlist_count" min_width=90.0 sort_field=sort_field sort_ascending=sort_ascending on_toggle=toggle_sort numeric=true />
                             </TableRow>
                         </TableHeader>
@@ -177,6 +179,8 @@ pub fn LinesTab(vm: WbSalesFunnelDailyDetailsVm) -> impl IntoView {
                                             <TableCell class="text-right"><TableCellLayout>{line.metrics.buyout_count}</TableCellLayout></TableCell>
                                             <TableCell class="text-right"><TableCellLayout>{fmt_money(line.metrics.buyout_sum)}</TableCellLayout></TableCell>
                                             <TableCell class="text-right"><TableCellLayout>{fmt_ratio(line.metrics.buyout_percent)}</TableCellLayout></TableCell>
+                                            <TableCell class="text-right"><TableCellLayout>{line.metrics.cancel_count.map(|v| v.to_string()).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
+                                            <TableCell class="text-right"><TableCellLayout>{line.metrics.cancel_sum.map(fmt_money).unwrap_or_else(|| "—".to_string())}</TableCellLayout></TableCell>
                                             <TableCell class="text-right"><TableCellLayout>{line.metrics.add_to_wishlist_count}</TableCellLayout></TableCell>
                                         </TableRow>
                                     }
