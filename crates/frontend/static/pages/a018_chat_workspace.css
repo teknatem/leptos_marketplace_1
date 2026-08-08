@@ -1,0 +1,255 @@
+/* Drawer «Файлы задачи» и бар уточняющих вопросов в деталях LLM-чата.
+   Палитра — переменные проекта (--color-*), они определены и в тёмной теме;
+   фолбэком идут fluent-переменные thaw. */
+
+.chat-workspace-drawer {
+    display: flex;
+    flex-direction: column;
+    color: var(--color-text-primary, inherit);
+}
+
+.chat-workspace__status,
+.chat-workspace__error {
+    padding: 8px 0;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.chat-workspace__error {
+    color: var(--color-error);
+}
+
+/* ── Дерево рабочего каталога ────────────────────────────────────────────────
+   Ровно то, что лежит на диске: задачи — каталоги, внутри активной — файлы.
+   Без рамок и подложек: отступ показывает вложенность, цвет — тип файла. */
+
+.chat-tree {
+    display: flex;
+    flex-direction: column;
+    font-family: var(--fontFamilyMonospace, ui-monospace, monospace);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.chat-tree__row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    width: 100%;
+    padding: 2px 4px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.chat-tree__row:hover {
+    background: var(--color-hover, rgba(127, 127, 127, 0.12));
+}
+
+.chat-tree__row--open {
+    background: var(--color-active, rgba(127, 127, 127, 0.2));
+}
+
+.chat-tree__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-tree__size {
+    flex: 0 0 auto;
+    color: var(--color-text-muted, var(--color-text-tertiary));
+    font-variant-numeric: tabular-nums;
+}
+
+/* Каталоги отделены от файлов начертанием и приглушённым цветом; активная
+   задача — единственная, у которой бэкенд отдаёт содержимое. */
+.chat-tree__dir {
+    margin-top: 6px;
+    color: var(--color-text-tertiary, var(--color-text-secondary));
+    font-weight: 600;
+}
+
+.chat-tree__dir--active {
+    color: var(--color-text-primary);
+    cursor: default;
+}
+
+.chat-tree__dir--sub {
+    margin-top: 2px;
+    cursor: default;
+}
+
+.chat-tree__dir--sub:hover,
+.chat-tree__dir--active:hover {
+    background: transparent;
+}
+
+/* Цвет имени по типу файла: живые документы правятся, шаги журнала — читаются. */
+.chat-tree__file--md .chat-tree__name {
+    color: var(--color-link, var(--color-primary));
+}
+
+.chat-tree__file--json .chat-tree__name {
+    color: var(--color-accent, var(--color-success));
+}
+
+.chat-tree__file--other .chat-tree__name {
+    color: var(--color-text-secondary);
+}
+
+/* ── Просмотр и правка выбранного файла ──────────────────────────────────── */
+
+.chat-workspace__editor {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--color-border-light, var(--color-border));
+}
+
+.chat-workspace__editor-head {
+    font-family: var(--fontFamilyMonospace, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+}
+
+.chat-workspace__textarea {
+    width: 100%;
+    min-height: 180px;
+    resize: vertical;
+    font-family: var(--fontFamilyMonospace, ui-monospace, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px;
+    border: 1px solid var(--color-border-light, var(--color-border));
+    border-radius: 6px;
+    background: var(--color-code-bg, transparent);
+    color: var(--color-text-primary, inherit);
+    box-sizing: border-box;
+}
+
+.chat-workspace__textarea[readonly] {
+    color: var(--color-text-secondary);
+}
+
+.chat-workspace__editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.chat-workspace__save {
+    padding: 4px 14px;
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid var(--color-primary);
+    background: transparent;
+    color: var(--color-primary);
+    cursor: pointer;
+}
+
+.chat-workspace__save:hover:not(:disabled) {
+    background: var(--color-primary-50, var(--color-hover));
+}
+
+.chat-workspace__save:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.chat-workspace__saved {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+}
+
+/* ── Бар уточняющих вопросов над полем ввода ─────────────────────────────────
+   Вопрос стоит там, где человек и так печатает ответ, поэтому он заметен
+   без разворачивания панелей. */
+
+.chat-questions-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--color-primary-200, var(--color-border));
+    background: var(--color-primary-50, var(--color-bg-secondary));
+    color: var(--color-text-primary, inherit);
+}
+
+.chat-questions-bar__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+.chat-questions-bar__icon {
+    display: flex;
+}
+
+.chat-questions-bar__item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.chat-questions-bar__text {
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.chat-questions-bar__answers {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.chat-workspace__option {
+    padding: 5px 12px;
+    font-size: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-primary, inherit);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.chat-workspace__option:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.chat-workspace__option:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.chat-workspace__question-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 5px 8px;
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-primary, inherit);
+}
+
+/* Разделитель перед деструктивным пунктом меню «Ещё». */
+.chat-more__separator {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--color-border);
+}

@@ -60,7 +60,8 @@ fn looks_like_index(seg: &str) -> bool {
 const PLUGIN_DATAVIEW_HINTS: &[(&str, &str)] = &[(
     "PLG-WB-SALES-FUNNEL",
     "Это отчёт «Воронка продаж WB» (a036_wb_sales_funnel_daily). Данные доступны через \
-     run_data_view_drilldown(view_id=\"dv008_wb_sales_funnel\", group_by=\"nm_id\"|\"date\"|\"connection_mp_ref\", \
+     run_data_view_drilldown(view_id=\"dv008_wb_sales_funnel\", \
+     group_by=\"nm_id\"|\"date\"|\"week\"|\"month\"|\"connection_mp_ref\" (на диапазоне длиннее месяца — month/week), \
      date_from, date_to, connection_mp_refs, metric_ids=[...]) или run_data_view_scalar для сводной цифры \
      за период (params.metric = open_count|cart_count|order_count|order_sum|buyout_count|buyout_sum|\
      cart_conv_pct|order_conv_pct|buyout_pct).",

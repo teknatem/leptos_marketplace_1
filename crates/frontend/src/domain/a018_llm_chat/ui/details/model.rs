@@ -3,6 +3,7 @@
 use super::view_model::FileInfo;
 use crate::shared::api_utils::api_base;
 use contracts::domain::a018_llm_chat::aggregate::{LlmChatDetail, LlmChatMessage};
+use contracts::domain::a018_llm_chat::workspace::{ChatFileContent, ChatWorkspaceView};
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -566,4 +567,91 @@ pub async fn fetch_attachment_object_url(
             .map_err(|e| format!("{e:?}"))?;
     let blob: Blob = blob_value.dyn_into().map_err(|e| format!("{e:?}"))?;
     web_sys::Url::create_object_url_with_blob(&blob).map_err(|e| format!("{e:?}"))
+}
+
+// ─── Рабочий каталог чата ────────────────────────────────────────────────────
+
+/// Задачи чата и файлы активной задачи.
+pub async fn fetch_workspace(chat_id: &str) -> Result<ChatWorkspaceView, String> {
+    let url = format!("{}/api/a018-llm-chat/{}/workspace", api_base(), chat_id);
+    get_json(&url).await
+}
+
+/// Содержимое файла каталога. `path` — `<задача>/<файл>`.
+pub async fn fetch_workspace_file(chat_id: &str, path: &str) -> Result<ChatFileContent, String> {
+    let url = format!(
+        "{}/api/a018-llm-chat/{}/workspace/file/{}",
+        api_base(),
+        chat_id,
+        path
+    );
+    get_json(&url).await
+}
+
+/// Правка живого документа (анкета, план, заметки).
+pub async fn save_workspace_file(
+    chat_id: &str,
+    path: &str,
+    content: &str,
+) -> Result<(), String> {
+    let url = format!(
+        "{}/api/a018-llm-chat/{}/workspace/file/{}",
+        api_base(),
+        chat_id,
+        path
+    );
+    let body = serde_json::json!({ "content": content }).to_string();
+    send_no_content("PUT", &url, &body).await
+}
+
+/// Переключить активную задачу.
+pub async fn set_active_activity(chat_id: &str, name: &str) -> Result<(), String> {
+    let url = format!(
+        "{}/api/a018-llm-chat/{}/workspace/active",
+        api_base(),
+        chat_id
+    );
+    let body = serde_json::json!({ "name": name }).to_string();
+    send_no_content("POST", &url, &body).await
+}
+
+/// Запрос с телом, у которого нет содержательного ответа.
+async fn send_no_content(method: &str, url: &str, body: &str) -> Result<(), String> {
+    use wasm_bindgen::JsCast;
+    use web_sys::{Request, RequestInit, RequestMode, Response};
+
+    let opts = RequestInit::new();
+    opts.set_method(method);
+    opts.set_mode(RequestMode::Cors);
+    opts.set_body(&wasm_bindgen::JsValue::from_str(body));
+
+    let request = Request::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
+    request
+        .headers()
+        .set("Content-Type", "application/json")
+        .map_err(|e| format!("{e:?}"))?;
+    let window = web_sys::window().ok_or_else(|| "no window".to_string())?;
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let resp: Response = resp_value.dyn_into().map_err(|e| format!("{e:?}"))?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
+}
+
+/// Ответ на уточняющий вопрос анкеты.
+pub async fn answer_intake_question(
+    chat_id: &str,
+    question_id: &str,
+    answer: &str,
+) -> Result<(), String> {
+    let url = format!(
+        "{}/api/a018-llm-chat/{}/workspace/answer",
+        api_base(),
+        chat_id
+    );
+    let body = serde_json::json!({ "question_id": question_id, "answer": answer }).to_string();
+    send_no_content("POST", &url, &body).await
 }

@@ -18,7 +18,9 @@ use contracts::domain::a018_llm_chat::aggregate::{
 };
 use contracts::domain::a018_llm_chat::context::ContextPackageSummary;
 use contracts::domain::a019_llm_artifact::aggregate::LlmArtifactId;
-use contracts::domain::a038_llm_connection::aggregate::{AgentType, LlmConnection};
+use contracts::domain::a038_llm_connection::aggregate::{
+    AgentType, LlmConnection, LlmProviderType,
+};
 use contracts::domain::common::AggregateId;
 use contracts::system::s3::S3FileCategory;
 use serde::{Deserialize, Serialize};
@@ -44,8 +46,11 @@ fn utf8_truncate(s: &str, max_bytes: usize) -> &str {
 // Аналитические навыки нередко требуют: активация → resource → schema → несколько SQL →
 // детерминированный task → итог. Десять итераций обрывали WB-воронку сразу после последнего
 // успешного SQL, не оставляя модели хода для текстового ответа.
-const MAX_TOOL_ITERATIONS: usize = 14;
-const MAX_TOOL_FAILURES: usize = 6;
+// Рабочий каталог чата (план + журнал шагов) удерживает нить на длинных задачах, но требует
+// собственных ходов: завести активность, заполнить анкету, сохранить шаг, отметить пункт плана.
+// На четырнадцати итерациях многошаговая сверка обрывалась до текстового ответа.
+const MAX_TOOL_ITERATIONS: usize = 40;
+const MAX_TOOL_FAILURES: usize = 10;
 
 /// Системные промпты вынесены в реестр навыков (см. shared/llm/skills.rs):
 /// базовый core-промпт + промпт-фрагменты активных навыков.
@@ -53,9 +58,33 @@ const MAX_TOOL_FAILURES: usize = 6;
 /// Токен-бюджет истории диалога (грубая оценка ~3 символа на токен для RU/EN-микса).
 /// При превышении старая часть истории СУММИРУЕТСЯ (компакция) и заменяется сводкой,
 /// которая сохраняется в чате (a018_llm_chat.summary_text/summary_upto).
-const HISTORY_TOKEN_BUDGET: usize = 24_000;
-/// Сколько «живой» (несжатой) истории оставляем после компакции.
-const KEEP_RECENT_TOKENS: usize = 12_000;
+/// Инструменты, чей `artifact_id` показывается пользователю карточкой под ответом.
+/// Всё остальное, что возвращает `artifact_id` (напр. `execute_query`), — служебные
+/// записи для воспроизводимости, а не результат для чтения.
+const USER_FACING_ARTIFACT_TOOLS: &[&str] = &[
+    "create_drilldown_report",
+    "build_chart",
+    "build_table",
+    "plugin_upsert",
+];
+
+/// Бюджет истории и размер живого хвоста — производные от окна контекста подключения (a038).
+///
+/// Раньше это были константы 120_000/60_000, верные для облачных моделей и разрушительные
+/// для локальных: у Ollama с `num_ctx = 32k` история просто не влезает, и сервер молча
+/// обрезает промпт. Коэффициент 3/4 оставляет место под системный промпт, схемы инструментов
+/// и ответ, а также страхует неточность `estimate_tokens` на чужих токенизаторах.
+///
+/// Дефолт колонки `context_window` = 160_000 даёт ровно прежние 120_000/60_000.
+fn history_budget(context_window: i32) -> (usize, usize) {
+    let window = if context_window <= 0 {
+        contracts::domain::a038_llm_connection::aggregate::default_context_window()
+    } else {
+        context_window
+    } as usize;
+    let budget = window * 3 / 4;
+    (budget, budget / 2)
+}
 
 /// Грубая оценка числа токенов в строке (~3 символа/токен).
 fn estimate_tokens(s: &str) -> usize {
@@ -73,10 +102,14 @@ fn message_tokens(m: &LlmChatMessage) -> usize {
 }
 
 /// Индекс разреза для компакции: history[..idx] уходит в сводку, history[idx..]
-/// остаётся живым хвостом (≈ KEEP_RECENT_TOKENS по оценке; system-сообщения не
+/// остаётся живым хвостом (≈ `keep_recent` по оценке; system-сообщения не
 /// считаются — они сохраняются отдельно). Последнее сообщение (текущий вопрос
 /// пользователя) не компактится никогда. 0 — резать нечего.
-fn compaction_cut_index(history: &[LlmChatMessage], total_tokens: usize) -> usize {
+fn compaction_cut_index(
+    history: &[LlmChatMessage],
+    total_tokens: usize,
+    keep_recent: usize,
+) -> usize {
     if history.len() < 2 {
         return 0;
     }
@@ -86,7 +119,7 @@ fn compaction_cut_index(history: &[LlmChatMessage], total_tokens: usize) -> usiz
             continue;
         }
         running += message_tokens(m);
-        if total_tokens - running <= KEEP_RECENT_TOKENS {
+        if total_tokens - running <= keep_recent {
             return i + 1;
         }
     }
@@ -128,6 +161,16 @@ pub struct EffectiveAgent {
     pub display_name: String,
     /// Закреплённая сотрудником модель (пусто → None).
     pub pinned_model: Option<String>,
+}
+
+/// Нужен ли отдельный LLM-вызов классификатора интента для этого подключения.
+///
+/// Для локальной модели — нет: классификатор занимает ту же карту, что и основной цикл,
+/// поэтому «конкурентный и потому бесплатный» вызов становится серийным удвоением времени
+/// ответа. Метку интента в сообщение всё равно пишет правиловый `quick_result`, так что
+/// теряется только диагностика расхождения.
+fn llm_router_enabled(connection: &LlmConnection) -> bool {
+    connection.provider_type != LlmProviderType::Ollama
 }
 
 /// Разрешить техническое подключение сотрудника: явная привязка → близнец с тем же UUID
@@ -449,6 +492,9 @@ fn human_tool_label(name: &str) -> String {
         "get_architecture_overview" => "Обзор архитектуры",
         "search_knowledge" => "Поиск в базе знаний",
         "get_knowledge" => "Чтение базы знаний",
+        "kb_propose_article" => "Черновик статьи в базу знаний",
+        "kb_report_issue" => "Замечание к статье базы знаний",
+        "list_kb_vocabulary" => "Словарь тегов базы знаний",
         "chart_template" | "chart_examples" | "get_chart_ui_contract" => "Подготовка графика",
         "plugin_validate" => "Проверка плагина",
         "plugin_smoke_test" => "Проверка графика/таблицы",
@@ -478,7 +524,7 @@ fn tool_stage(name: &str) -> &'static str {
     match name {
         "find_data_sources" => "discovery",
         "preview_data" => "preview",
-        "build_chart" | "build_table" => "publish",
+        "build_chart" | "build_table" | "kb_propose_article" => "publish",
         _ => "tool",
     }
 }
@@ -548,6 +594,16 @@ fn trace_output(value: Option<&serde_json::Value>) -> serde_json::Value {
         "missing",
         "ticket_id",
         "ticket_code",
+        // База знаний: без этих ключей трасса KB-инструментов схлопывается до {ok}
+        // и разобрать плохую выдачу поиска становится нечем.
+        "returned",
+        "total_matched",
+        "kb_edit_id",
+        "issue_id",
+        "open_issues",
+        "unknown_tags",
+        "warnings",
+        "path",
     ] {
         if let Some(item) = value.get(key) {
             out.insert(key.to_string(), item.clone());
@@ -722,11 +778,13 @@ pub async fn send_message(
         .filter(|m| m.role != ChatRole::System)
         .map(message_tokens)
         .sum();
-    if total_tokens > HISTORY_TOKEN_BUDGET {
+    let (history_budget_tokens, keep_recent_tokens) =
+        history_budget(effective.connection.context_window);
+    if total_tokens > history_budget_tokens {
         report_progress(job_id, 0, "Сжимаю контекст диалога…").await;
 
-        // Точка разреза: свежий хвост ≤ KEEP_RECENT_TOKENS остаётся живым.
-        let cut = compaction_cut_index(&history, total_tokens);
+        // Точка разреза: свежий хвост ≤ keep_recent_tokens остаётся живым.
+        let cut = compaction_cut_index(&history, total_tokens, keep_recent_tokens);
 
         if cut > 0 {
             let recent = history.split_off(cut);
@@ -783,8 +841,10 @@ pub async fn send_message(
                             tracing::warn!("set_chat_summary failed for chat {}: {}", chat_id, e);
                         }
                         tracing::info!(
-                            "[compaction] chat='{}' compacted {} msgs (~{} tok) -> summary {} chars",
+                            "[compaction] chat='{}' ctx_window={} budget={} compacted {} msgs (~{} tok) -> summary {} chars",
                             chat_id,
+                            effective.connection.context_window,
+                            history_budget_tokens,
                             to_compact.len(),
                             total_tokens,
                             new_summary.len()
@@ -881,9 +941,12 @@ pub async fn send_message(
     // неизменен в пределах чата, поэтому кэш префикса не страдает (в отличие от даты,
     // которая уходит в самый конец).
     if let Some(actor) = &actor {
+        // Логин — не имя. Требование «обращайся по имени» при наличии одного лишь
+        // логина заставляло модель выдумывать имя собеседника («Иван» для admin).
         llm_messages.push(ChatMessage::system(format!(
-            "Собеседник — реальный пользователь системы: {} (роль «{}»{}). \
-             Обращайся к нему по имени. Всё, что ты делаешь инструментами от лица \
+            "Собеседник — реальный пользователь системы, логин {} (роль «{}»{}). \
+             Это ЛОГИН, а не имя: не придумывай имя и не обращайся по имени — его система \
+             не знает. Всё, что ты делаешь инструментами от лица \
              пользователя (например, оформление тикета), выполняется от его имени.",
             actor.username,
             actor.primary_role,
@@ -986,17 +1049,44 @@ pub async fn send_message(
         now.format("%Y")
     )));
 
+    // Рабочий каталог — самым последним, т.к. это самый волатильный блок (меняется
+    // внутри хода). Файл, который модель должна не забыть прочитать, она забудет:
+    // анкета и план работают только потому, что переподставляются каждый ход.
+    // Пустой каталог блока не даёт — не засорять промпт на приветствиях.
+    if let Some(ws) = crate::shared::llm::chat_workspace::ChatWorkspace::for_chat(chat_id) {
+        if let Some(block) = ws.render_for_prompt().await {
+            llm_messages.push(ChatMessage::system(block));
+        }
+    }
+
     // 8.5 Роутер интентов (Фаза 0): классифицируем запрос пользователя для
     // метаданных/аналитики. Поведение пайплайна (tools/промпт) пока НЕ меняем.
     // Запускаем КОНКУРЕНТНО с основным tool-циклом (tokio::join! ниже), чтобы
     // классификация не добавляла серийную задержку к каждому сообщению.
+    //
+    // На локальной модели второй полный проход ради одной метки не окупается: он занимает
+    // ту же карту, что и основной цикл, т.е. перестаёт быть «бесплатным» конкурентным
+    // вызовом. Фактическим селектором навыка и так является `quick_result` выше.
     let router_input = utf8_truncate(&content_with_attachments, 2000);
-    let router_fut = crate::shared::llm::router::classify_intent(
-        provider.as_ref(),
-        router_input,
-        "",
-        &effective.agent_type,
-    );
+    let router_llm_enabled = llm_router_enabled(&effective.connection);
+    let router_rules_fallback = {
+        let mut fallback = quick_result.clone();
+        fallback.source = "rules_local";
+        fallback
+    };
+    let router_fut = async {
+        if router_llm_enabled {
+            crate::shared::llm::router::classify_intent(
+                provider.as_ref(),
+                router_input,
+                "",
+                &effective.agent_type,
+            )
+            .await
+        } else {
+            router_rules_fallback
+        }
+    };
 
     // 9. Tool calling цикл: набор инструментов = core ∪ активные навыки.
     // tool_defs/active_tools/active_skills мутабельны — модель может активировать навыки
@@ -1153,6 +1243,7 @@ pub async fn send_message(
                             skill_session.artifact_publish_allowed(),
                             skill_session.script_execute_allowed(),
                             skill_session.script_develop_allowed(),
+                            skill_session.data_repair_execute_allowed(),
                             actor.as_ref(),
                         )
                         .await;
@@ -1202,12 +1293,18 @@ pub async fn send_message(
                     flow.observe(&tool_call.name, is_ok, parsed.as_ref());
                 }
 
-                // Если tool call создал артефакт — запомнить его ID
-                if let Some(ref v) = parsed {
-                    if let Some(id_str) = v.get("artifact_id").and_then(|v| v.as_str()) {
-                        if let Ok(uid) = Uuid::parse_str(id_str) {
-                            artifact_to_attach = Some(LlmArtifactId::new(uid));
-                            tracing::info!("Tool call produced artifact: {}", id_str);
+                // Артефакт прикрепляем к сообщению только от инструментов, чей артефакт
+                // предназначен пользователю. `execute_query` тоже возвращает artifact_id,
+                // но это служебная запись самого запроса: под аналитическим ответом она
+                // всплывала карточкой «сырой выборки» — шум, да ещё и от произвольного
+                // из нескольких запросов (побеждал последний).
+                if USER_FACING_ARTIFACT_TOOLS.contains(&tool_call.name.as_str()) {
+                    if let Some(ref v) = parsed {
+                        if let Some(id_str) = v.get("artifact_id").and_then(|v| v.as_str()) {
+                            if let Ok(uid) = Uuid::parse_str(id_str) {
+                                artifact_to_attach = Some(LlmArtifactId::new(uid));
+                                tracing::info!("Tool call produced artifact: {}", id_str);
+                            }
                         }
                     }
                 }
@@ -1427,8 +1524,13 @@ pub async fn send_message(
     }
 
     tracing::info!(
-        "[router] chat_id='{}' intent='{}' confidence={:.2} source={}",
+        "[router] chat_id='{}' mode={} intent='{}' confidence={:.2} source={}",
         chat_id,
+        if router_llm_enabled {
+            "llm"
+        } else {
+            "local_rules"
+        },
         intent_result.intent,
         intent_result.confidence,
         intent_result.source
@@ -1447,6 +1549,10 @@ pub async fn send_message(
             MAX_TOOL_ITERATIONS
         )
     })?;
+
+    // Статья, процитированная в ответе, дошла до человека — это отдельный
+    // от «прочитана моделью» факт и главный сигнал полезности статьи.
+    crate::shared::llm::kb_tools::record_citations(&llm_response.content);
 
     // 10. Сохранить ответ ассистента с метаданными
     let mut assistant_msg = LlmChatMessage::new_with_metadata(
@@ -1918,29 +2024,50 @@ mod tests {
         assert_eq!(estimate_tokens(&"я".repeat(300)), 101);
     }
 
+    /// Окно локальной модели (Ollama, num_ctx=32k) → бюджет 24k, живой хвост 12k.
+    const LOCAL_WINDOW: i32 = 32_768;
+
+    #[test]
+    fn history_budget_default_matches_legacy_constants() {
+        // Дефолт колонки context_window обязан воспроизводить прежние захардкоженные
+        // 120_000/60_000 — иначе миграция изменит поведение облачных подключений.
+        let default_window = contracts::domain::a038_llm_connection::aggregate::default_context_window();
+        assert_eq!(history_budget(default_window), (120_000, 60_000));
+        // Кривое значение из БД не должно ронять бюджет в ноль.
+        assert_eq!(history_budget(0), (120_000, 60_000));
+    }
+
+    #[test]
+    fn history_budget_scales_with_local_window() {
+        assert_eq!(history_budget(LOCAL_WINDOW), (24_576, 12_288));
+    }
+
     #[test]
     fn compaction_keeps_recent_tail() {
         // 4 сообщения по ~9000 токенов: total ~36k > бюджета 24k.
         // Живым остаётся хвост ≤ 12k — последнее сообщение, cut = 3.
+        let (budget, keep) = history_budget(LOCAL_WINDOW);
         let history: Vec<_> = (0..4).map(|_| msg(27_000)).collect();
         let total: usize = history.iter().map(message_tokens).sum();
-        assert!(total > HISTORY_TOKEN_BUDGET);
-        assert_eq!(compaction_cut_index(&history, total), 3);
+        assert!(total > budget);
+        assert_eq!(compaction_cut_index(&history, total, keep), 3);
     }
 
     #[test]
     fn compaction_never_cuts_last_message() {
         // Единственное гигантское сообщение (текущий вопрос) не компактится.
+        let (_, keep) = history_budget(LOCAL_WINDOW);
         let history = vec![msg(120_000)];
         let total: usize = history.iter().map(message_tokens).sum();
-        assert_eq!(compaction_cut_index(&history, total), 0);
+        assert_eq!(compaction_cut_index(&history, total, keep), 0);
     }
 
     #[test]
     fn compaction_cuts_all_but_last_when_tail_is_huge() {
-        // Оба сообщения больше KEEP: компактим всё, кроме текущего вопроса.
+        // Оба сообщения больше keep: компактим всё, кроме текущего вопроса.
+        let (_, keep) = history_budget(LOCAL_WINDOW);
         let history = vec![msg(60_000), msg(60_000)];
         let total: usize = history.iter().map(message_tokens).sum();
-        assert_eq!(compaction_cut_index(&history, total), 1);
+        assert_eq!(compaction_cut_index(&history, total, keep), 1);
     }
 }

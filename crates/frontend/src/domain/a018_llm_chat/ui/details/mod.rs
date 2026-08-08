@@ -8,9 +8,13 @@
 
 mod artifact_card;
 mod model;
+mod prefs;
+mod questions_bar;
+mod settings_dialog;
 mod tool_calls_trace;
 mod view;
 mod view_model;
+mod workspace_drawer;
 
 pub use artifact_card::ArtifactCard;
 pub use tool_calls_trace::ToolCallsTrace;

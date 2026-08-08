@@ -578,6 +578,7 @@ fn agent_type_color(agent_type: &AgentType) -> &'static str {
         AgentType::SalesAnalyst => "#2563eb",
         AgentType::Marketer => "#db2777",
         AgentType::Financier => "#0d9488",
+        AgentType::Tester => "#64748b",
     }
 }
 
@@ -592,6 +593,7 @@ fn agent_type_short_label(agent_type: &AgentType) -> &'static str {
         AgentType::SalesAnalyst => "Продажи",
         AgentType::Marketer => "Маркетолог",
         AgentType::Financier => "Финансист",
+        AgentType::Tester => "Тестер",
     }
 }
 

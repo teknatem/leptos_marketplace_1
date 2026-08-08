@@ -11,8 +11,11 @@ use super::kb_admin_tools::execute_kb_admin_tool;
 use super::mail_tools::{execute_mail_tool, MAIL_TOOL_NAMES};
 use super::metadata_registry::METADATA_REGISTRY;
 use super::plugin_tools::{execute_plugin_tool, PLUGIN_TOOL_NAMES};
+use super::quality_tools::{execute_quality_tool, QUALITY_TOOL_NAMES};
+use super::funnel_repair_tools::{execute_funnel_repair_tool, FUNNEL_REPAIR_TOOL_NAMES};
 use super::schedule_tools::{execute_schedule_tool, SCHEDULE_TOOL_NAMES};
 use super::table_tools::{execute_build_table, execute_table_tool, TABLE_TOOL_NAMES};
+use super::workspace_tools::{execute_workspace_tool, WORKSPACE_TOOL_NAMES};
 use super::types::{ToolCall, ToolDefinition};
 use contracts::domain::a017_llm_agent::aggregate::AgentType;
 use once_cell::sync::Lazy;
@@ -123,22 +126,6 @@ pub(crate) fn shared_tool_definitions() -> Vec<ToolDefinition> {
                 "required": ["entity_index"]
             }),
         },
-        ToolDefinition {
-            name: "get_knowledge".into(),
-            description: "Получить полное содержимое справочного материала по id. \
-                          id берётся из результата search_knowledge."
-                .into(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "description": "Идентификатор документа из search_knowledge, например 'wb-promotions'."
-                    }
-                },
-                "required": ["id"]
-            }),
-        },
     ]
 }
 
@@ -183,30 +170,6 @@ pub(crate) fn analyst_tool_definitions() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["from_entity", "to_entity"]
-            }),
-        },
-        ToolDefinition {
-            name: "search_knowledge".into(),
-            description: "Поиск справочных материалов по тегам. Obsidian-часть содержит \
-                          бизнес-знания организации; embedded-документы содержат технический \
-                          контекст приложения. Используй когда нужно понять бизнес-термин, \
-                          метрику или получить контекст о сущности домена. \
-                          Теги совпадают с entity_index (a020, a012, ...) и ключевыми словами: \
-                          'drr', 'cpm', 'roas', 'акции', 'скидки', 'комиссии', 'wildberries', 'ozon'. \
-                          Возвращает список документов (id, title) — затем вызывай get_knowledge(id)."
-                .into(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "tags": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Список тегов для поиска. OR-семантика: совпадение хотя бы по одному. \
-                                        Примеры: ['a020'] для акций WB, ['drr'] для метрики ДРР, \
-                                        ['wildberries', 'комиссии'] для комиссий WB."
-                    }
-                },
-                "required": ["tags"]
             }),
         },
         ToolDefinition {
@@ -291,6 +254,7 @@ pub async fn execute_tool_call(
     artifact_publish_allowed: bool,
     skill_script_execute_allowed: bool,
     skill_script_develop_allowed: bool,
+    data_repair_execute_allowed: bool,
     caller: Option<&super::types::ToolCaller>,
 ) -> String {
     // Авторизация: исполняем только инструменты активного набора (core ∪ активные навыки).
@@ -366,6 +330,24 @@ pub async fn execute_tool_call(
         }
     }
 
+    // Поиск/чтение/создание статей базы знаний. Раньше по бандлу: он должен идти
+    // до kb_admin, чтобы `get_knowledge` не перехватывался curation-ветвью.
+    if super::kb_tools::KB_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result =
+            super::kb_tools::execute_kb_tool(&call.name, &call.arguments, chat_id, agent_id).await;
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
     if matches!(
         call.name.as_str(),
         "list_kb_documents"
@@ -376,6 +358,30 @@ pub async fn execute_tool_call(
             | "write_kb_document"
     ) {
         let result = execute_kb_admin_tool(&call.name, &call.arguments, agent_id).await;
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert(
+                "_tool".to_string(),
+                serde_json::Value::String(call.name.clone()),
+            );
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    if WORKSPACE_TOOL_NAMES.contains(&call.name.as_str()) {
+        // Шаблон анкеты приносит активный навык: у финансиста и маркетолога
+        // значимые параметры задачи разные.
+        let intake_template = super::skills::intake_template_in(skill_snapshot, active_skill_ids);
+        let result = execute_workspace_tool(
+            &call.name,
+            &call.arguments,
+            chat_id,
+            intake_template.as_deref(),
+        )
+        .await;
         let is_ok = tool_result_ok(&result);
         let mut result = result;
         if let serde_json::Value::Object(ref mut map) = result {
@@ -542,6 +548,46 @@ pub async fn execute_tool_call(
             .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
     }
 
+    if super::skill_policy::is_data_repair_mutation(&call.name) && !data_repair_execute_allowed {
+        return serde_json::to_string_pretty(&serde_json::json!({
+            "error": "Специализация агента не имеет права data_repair_execute.",
+            "_tool": call.name,
+            "_ok": false,
+        }))
+        .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    if QUALITY_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result = execute_quality_tool(&call.name, &call.arguments).await;
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert("_tool".to_string(), serde_json::Value::String(call.name.clone()));
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
+    if FUNNEL_REPAIR_TOOL_NAMES.contains(&call.name.as_str()) {
+        let result = execute_funnel_repair_tool(
+            &call.name,
+            &call.arguments,
+            chat_id,
+            agent_id,
+            caller,
+        )
+        .await;
+        let is_ok = tool_result_ok(&result);
+        let mut result = result;
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert("_tool".to_string(), serde_json::Value::String(call.name.clone()));
+            map.insert("_ok".to_string(), serde_json::Value::Bool(is_ok));
+        }
+        return serde_json::to_string_pretty(&result)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Serialization error: {}\"}}", e));
+    }
+
     // Plugin developer tools — dispatch to plugin_tools module
     if PLUGIN_TOOL_NAMES.contains(&call.name.as_str()) {
         let result = execute_plugin_tool(&call.name, &call.arguments, chat_id, agent_id).await;
@@ -635,70 +681,6 @@ pub async fn execute_tool_call(
             let from = parse_string_arg(&call.arguments, "from_entity").unwrap_or_default();
             let to = parse_string_arg(&call.arguments, "to_entity").unwrap_or_default();
             METADATA_REGISTRY.get_join_hint(&from, &to)
-        }
-
-        "search_knowledge" => {
-            let tags_value = serde_json::from_str::<serde_json::Value>(&call.arguments)
-                .ok()
-                .and_then(|v| v.get("tags").cloned());
-
-            let tags: Vec<String> = match tags_value {
-                Some(serde_json::Value::Array(arr)) => arr
-                    .iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect(),
-                _ => vec![],
-            };
-
-            if tags.is_empty() {
-                serde_json::json!({
-                    "error": "Parameter 'tags' is required and must be a non-empty array of strings."
-                })
-            } else {
-                let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
-                let kb = super::knowledge_base::kb_read();
-                let results = kb.search_by_tags(&tag_refs);
-                let items: Vec<serde_json::Value> = results
-                    .iter()
-                    .map(|doc| {
-                        serde_json::json!({
-                            "id":      doc.id,
-                            "title":   doc.title,
-                            "tags":    doc.tags,
-                            "related": doc.related,
-                            "source_path": doc.source_path,
-                        })
-                    })
-                    .collect();
-                serde_json::json!({
-                    "results": items,
-                    "total": items.len(),
-                    "hint": "Используй get_knowledge(id) чтобы получить полное содержимое документа."
-                })
-            }
-        }
-
-        "get_knowledge" => {
-            let id = parse_string_arg(&call.arguments, "id").unwrap_or_default();
-            let kb = super::knowledge_base::kb_read();
-            match kb.get(&id) {
-                Some(doc) => serde_json::json!({
-                    "id":      doc.id,
-                    "title":   doc.title,
-                    "tags":    doc.tags,
-                    "related": doc.related,
-                    "source_path": doc.source_path,
-                    "content": doc.content,
-                }),
-                None => {
-                    let available: Vec<&str> =
-                        kb.all_docs().iter().map(|d| d.id.as_str()).collect();
-                    serde_json::json!({
-                        "error": format!("Document '{}' not found.", id),
-                        "available_ids": available,
-                    })
-                }
-            }
         }
 
         "create_drilldown_report" => {

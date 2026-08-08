@@ -6,8 +6,8 @@
 use super::artifact_card::ArtifactCard;
 use super::model::{
     cancel_job, delete_chat, delete_pending_attachment, fetch_attachment_object_url, fetch_chat,
-    fetch_chat_context, fetch_connection_model_capabilities, fetch_messages, poll_until_done,
-    send_message, set_rating, JobProgress, PollOutcome,
+    fetch_chat_context, fetch_connection_model_capabilities, fetch_messages, fetch_workspace,
+    poll_until_done, send_message, set_rating, JobProgress, PollOutcome,
 };
 use super::view_model::LlmChatDetailsVm;
 
@@ -18,10 +18,32 @@ const DIAGNOSTIC_PROMPT: &str = "Проведи диагностику этог�
 1) что хотел пользователь;\n2) какие шаги и инструменты выполнялись, какие ошибки встречались;\n\
 3) что не получилось и почему (корневая причина);\n4) конкретные следующие шаги для решения.\n\n\
 Ответь кратко и по делу на русском.";
+
+/// Предопределённое сообщение для кнопки «В базу знаний»: модель выжимает из диалога
+/// одну бизнес-статью и заводит её черновиком. `use_skill` обязателен — запись в базу
+/// намеренно не входит в базовый набор инструментов.
+const KB_ARTICLE_PROMPT: &str = "Оформи знание из этого диалога в статью базы знаний.\n\n\
+Порядок:\n\
+1) вызови use_skill(\"kb-authoring\");\n\
+2) проверь через search_knowledge, нет ли уже такой статьи (есть — предложи дополнить её, \
+указав replaces);\n\
+3) возьми теги из list_kb_vocabulary;\n\
+4) вызови kb_propose_article.\n\n\
+Выдели ОДНУ устойчивую находку: вывод, правило или объяснение расхождения. Пиши только \
+бизнес-знание — что означает показатель и что с ним делать. НЕ включай SQL, схемы таблиц, \
+имена полей и пути API: проверка — если фраза перестанет быть верной после рефакторинга схемы, \
+её нельзя писать в базу знаний. Разовые числа за период тоже не пиши, они протухнут.\n\n\
+В конце сошлись на созданную статью строкой kb://article/<id> и скажи, что она ждёт проверки \
+человеком.";
+use super::prefs::ChatUiPrefs;
+use super::questions_bar::ChatQuestionsBar;
+use super::settings_dialog::ChatSettingsDialog;
 use super::tool_calls_trace::ToolCallsTrace;
+use super::workspace_drawer::ChatWorkspaceDrawer;
 use crate::domain::a018_llm_chat::ui::pending_first_message_key;
 use crate::layout::global_context::AppGlobalContext;
 use crate::shared::components::hint_link::HintLink;
+use crate::shared::components::more_actions_menu::{use_more_actions_close, MoreActionsMenu};
 use crate::shared::date_utils::{format_datetime_utc_local, format_utc_local};
 use crate::shared::icons::icon;
 use crate::shared::knowledge_base::links::KbLinkedText;
@@ -36,6 +58,7 @@ use contracts::domain::a018_llm_chat::aggregate::{
     ChatRole, LlmChatAttachmentSummary, LlmChatMessage,
 };
 use contracts::domain::a018_llm_chat::context::ContextPackageSummary;
+use contracts::domain::a018_llm_chat::workspace::ChatWorkspaceView;
 use contracts::domain::common::AggregateId;
 use leptos::prelude::*;
 use thaw::*;
@@ -128,8 +151,11 @@ fn FeedGutter(avatar: &'static str, author: &'static str, time: String) -> impl 
 }
 
 /// Строка сообщения чата (пользователь / ассистент).
+///
+/// `prefs` решает, показывать ли технические поля (мета, токены, вызовы
+/// инструментов, предупреждения о навыках) — по умолчанию они скрыты.
 #[allow(non_snake_case)]
-fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
+fn MessageRow(msg: LlmChatMessage, prefs: RwSignal<ChatUiPrefs>) -> impl IntoView {
     let is_user = matches!(msg.role, ChatRole::User);
     let tokens = msg.tokens_used;
     let model = msg.model_name.clone();
@@ -189,6 +215,9 @@ fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
                         </div>
                     })}
                     {move || {
+                        if !prefs.get().show_skill_warnings {
+                            return None;
+                        }
                         let inefficient: Vec<String> = skill_trace
                             .as_deref()
                             .and_then(|raw| {
@@ -212,6 +241,10 @@ fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
                         })
                     }}
                     {move || {
+                        if !prefs.get().show_meta_line {
+                            return None;
+                        }
+                        let show_tokens = prefs.get().show_tokens;
                         let mut meta_parts = Vec::new();
                         if let Some(i) = &intent {
                             let label = match i.as_str() {
@@ -226,7 +259,7 @@ fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
                             };
                             meta_parts.push(label.to_string());
                         }
-                        if let Some(t) = tokens {
+                        if let (true, Some(t)) = (show_tokens, tokens) {
                             meta_parts.push(format!("🎫 {} tokens", t));
                         }
                         if let Some(m) = &model {
@@ -252,7 +285,7 @@ fn MessageRow(msg: LlmChatMessage) -> impl IntoView {
                     }}
 
                     {move || {
-                        if !is_user {
+                        if !is_user && prefs.get().show_tool_calls {
                             Some(view! { <ToolCallsTrace tool_trace=tool_trace.clone() message_id=message_id.clone() /> })
                         } else {
                             None
@@ -326,6 +359,24 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
     // Панель «Диагностика»: открыта ли и текст опционального комментария пользователя.
     let diag_open = RwSignal::new(false);
     let diag_comment = RwSignal::new(String::new());
+    let kb_open = RwSignal::new(false);
+    let kb_comment = RwSignal::new(String::new());
+    // Рабочий каталог задачи: состояние поднято сюда, потому что им пользуются
+    // сразу двое — drawer «Файлы задачи» и бар уточняющих вопросов над вводом.
+    let workspace = RwSignal::new(ChatWorkspaceView::default());
+    let workspace_drawer_open = RwSignal::new(false);
+    let settings_open = RwSignal::new(false);
+    // Что показывать в ленте — общая для всех чатов настройка из localStorage.
+    let ui_prefs = RwSignal::new(ChatUiPrefs::load());
+    let chat_id_stored = StoredValue::new(chat_id.clone());
+    let reload_workspace = Callback::new(move |_| {
+        let id = chat_id_stored.get_value();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(view) = fetch_workspace(&id).await {
+                workspace.set(view);
+            }
+        });
+    });
     // Переключатель модели в чате: allowed_models — курируемый список моделей подключения,
     // selected_model — текущий выбор (прокидывается на каждое сообщение).
     let allowed_models = RwSignal::new(Vec::<String>::new());
@@ -509,6 +560,10 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     context_pkgs.set(pkgs);
                 }
 
+                // Ход ассистента мог добавить уточняющие вопросы — бар над вводом
+                // должен показать их сразу, без открытия каталога.
+                reload_workspace.run(());
+
                 match poll_result {
                     Ok(PollOutcome::Done) => {
                         for file in vm.uploaded_files.get_untracked() {
@@ -594,6 +649,10 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     context_pkgs.set(pkgs);
                 }
 
+                // Каталог задачи читаем сразу: неотвеченные вопросы модели должны
+                // быть видны над полем ввода при первом же открытии чата.
+                reload_workspace.run(());
+
                 // Авто-отправка первого вопроса для только что созданного чата.
                 if let Some(ctx) = ctx {
                     let key = pending_first_message_key(&chat_id);
@@ -657,6 +716,19 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
         }
         pending_screenshot.set(None);
     });
+    // Ответ на уточняющий вопрос: он уже записан в анкету, остаётся проговорить
+    // его в чате, чтобы модель продолжила ход. Черновик композера возвращаем на
+    // место — `handle_send` читает и чистит `new_message` синхронно.
+    // Оговорка: если отправка упадёт, error-путь `handle_send` вернёт в композер
+    // текст ответа поверх черновика — редкий и безобидный случай.
+    let answer_question = Callback::new(move |msg: String| {
+        let draft = vm.new_message.get_untracked();
+        vm.new_message.set(msg);
+        handle_send.run(());
+        vm.new_message.set(draft);
+        reload_workspace.run(());
+    });
+
     // Подтверждение: редактор отдаёт уже собранный (возможно, с аннотациями) файл.
     // Модалку закрываем сразу, загрузку ведём в фоне через общий attach_file;
     // исходный object-URL ревокаем, для чипа делаем новый — из итогового файла.
@@ -765,45 +837,95 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                                 .collect_view()
                         }}
                     </div>
-                    // Кнопки заголовка идут рядом, после звёзд.
+                    // Технические действия убраны под «Ещё»: в шапке чата важнее
+                    // сам разговор, а не ряд редко нужных кнопок.
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        // Диагностика: открывает модальный диалог с комментарием;
-                        // запуск проверки закрывает диалог и отправляет промпт в чат.
-                        <Button
-                            appearance=ButtonAppearance::Secondary
-                            disabled=vm.is_sending
-                            on_click=move |_| diag_open.set(true)
-                        >
-                            {icon("search")}
-                            " Диагностика"
-                        </Button>
+                        <MoreActionsMenu>
+                            // Диагностика: открывает модальный диалог с комментарием;
+                            // запуск проверки закрывает диалог и отправляет промпт в чат.
+                            <button
+                                class="theme-dropdown__item"
+                                on:click=move |_| {
+                                    use_more_actions_close();
+                                    if vm.is_sending.get_untracked() {
+                                        return;
+                                    }
+                                    diag_open.set(true);
+                                }
+                            >
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    {icon("search")} "Диагностика"
+                                </span>
+                            </button>
+                            // В базу знаний: выжать из диалога статью. Тот же приём,
+                            // что и у диагностики — уточнение, затем промпт в чат.
+                            <button
+                                class="theme-dropdown__item"
+                                on:click=move |_| {
+                                    use_more_actions_close();
+                                    if vm.is_sending.get_untracked() {
+                                        return;
+                                    }
+                                    kb_open.set(true);
+                                }
+                            >
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    {icon("book-open-text")} "В базу знаний"
+                                </span>
+                            </button>
+                            <button
+                                class="theme-dropdown__item"
+                                on:click=move |_| {
+                                    use_more_actions_close();
+                                    workspace_drawer_open.set(true);
+                                }
+                            >
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    {icon("folder")} "Файлы задачи"
+                                </span>
+                            </button>
+                            <button
+                                class="theme-dropdown__item"
+                                on:click=move |_| {
+                                    use_more_actions_close();
+                                    settings_open.set(true);
+                                }
+                            >
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    {icon("settings")} "Настройки чата"
+                                </span>
+                            </button>
+                            <div class="chat-more__separator"></div>
+                            <button
+                                class="theme-dropdown__item"
+                                on:click=move |_| {
+                                    use_more_actions_close();
+                                    let confirmed = web_sys::window()
+                                        .and_then(|win| win.confirm_with_message("Удалить чат?").ok())
+                                        .unwrap_or(false);
+                                    if !confirmed {
+                                        return;
+                                    }
+                                    let id = chat_id_for_delete.clone();
+                                    wasm_bindgen_futures::spawn_local(async move {
+                                        match delete_chat(&id).await {
+                                            Ok(()) => on_close.run(()),
+                                            Err(e) => vm.error.set(Some(format!("Ошибка удаления: {}", e))),
+                                        }
+                                    });
+                                }
+                            >
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    {icon("delete")} "Удалить"
+                                </span>
+                            </button>
+                        </MoreActionsMenu>
                         <Button
                             appearance=ButtonAppearance::Secondary
                             on_click=move |_| on_close.run(())
                         >
                             {icon("x")}
                             " Закрыть"
-                        </Button>
-                        <Button
-                            appearance=ButtonAppearance::Subtle
-                            on_click=move |_| {
-                                let confirmed = web_sys::window()
-                                    .and_then(|win| win.confirm_with_message("Удалить чат?").ok())
-                                    .unwrap_or(false);
-                                if !confirmed {
-                                    return;
-                                }
-                                let id = chat_id_for_delete.clone();
-                                wasm_bindgen_futures::spawn_local(async move {
-                                    match delete_chat(&id).await {
-                                        Ok(()) => on_close.run(()),
-                                        Err(e) => vm.error.set(Some(format!("Ошибка удаления: {}", e))),
-                                    }
-                                });
-                            }
-                        >
-                            {icon("delete")}
-                            " Удалить"
                         </Button>
                     </div>
                 </div>
@@ -862,7 +984,13 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                                 item: FeedItem::Message(m),
                             });
                         }
-                        for p in context_pkgs.get() {
+                        // Прикрепление документов — опциональный слой ленты: keyed diff
+                        // по `c-*` уберёт/вернёт только их, сообщения не пересоздаются.
+                        for p in if ui_prefs.get().show_context_events {
+                            context_pkgs.get()
+                        } else {
+                            Vec::new()
+                        } {
                             let ts = chrono::DateTime::parse_from_rfc3339(&p.created_at)
                                 .map(|d| d.with_timezone(&chrono::Utc))
                                 .unwrap_or_else(|_| chrono::Utc::now());
@@ -879,7 +1007,7 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     let:row
                 >
                     {match row.item {
-                        FeedItem::Message(msg) => MessageRow(msg).into_any(),
+                        FeedItem::Message(msg) => MessageRow(msg, ui_prefs).into_any(),
                         FeedItem::Context(p) => ContextRow(p, nav_ctx).into_any(),
                     }}
                 </For>
@@ -952,6 +1080,14 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                 // Input area — фиксированная ширина по колонке ленты, по центру,
                 // чтобы поле ввода не растягивалось на весь экран.
                 <div style="display: flex; flex-direction: column; gap: 8px; max-width: 980px; width: 100%; margin: 0 auto;">
+                // Уточняющие вопросы модели — над вводом: там, где человек и так
+                // собирается отвечать. Ответ фиксируется в анкете и уходит в чат.
+                <ChatQuestionsBar
+                    chat_id=chat_id_stored
+                    workspace=workspace
+                    is_sending=vm.is_sending
+                    on_answered=answer_question
+                />
                 // File attachments display
                 {move || {
                     let chat_id = chat_id_for_draft_attachments.clone();
@@ -1137,6 +1273,64 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
 
             // Диалог диагностики: предопределённый разбор диалога моделью + опц.
             // комментарий. «Запустить проверку» закрывает диалог и отправляет промпт.
+            <Dialog open=kb_open>
+                <DialogSurface>
+                    <DialogBody>
+                        <DialogTitle>"Оформить знание в статью"</DialogTitle>
+                        <DialogContent>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <span style="font-size: 13px; opacity: 0.7;">
+                                    "Модель выделит из диалога одну устойчивую находку — вывод, правило \
+                                     или объяснение расхождения — и создаст ЧЕРНОВИК статьи с тикетом \
+                                     на проверку. Технические детали (SQL, схемы, поля) в базу знаний \
+                                     не попадают."
+                                </span>
+                                <Textarea
+                                    value=kb_comment
+                                    placeholder="О чём именно статья, на что сделать акцент (необязательно)…"
+                                    attr:style="width: 100%; min-height: 80px;"
+                                    disabled=vm.is_sending
+                                />
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <DictationButton
+                                        target=kb_comment
+                                        disabled=vm.is_sending
+                                        on_error=Callback::new(move |m: String| vm.error.set(Some(m)))
+                                    />
+                                    <span style="font-size: 12px; opacity: 0.6;">"Голосовой ввод"</span>
+                                </div>
+                            </div>
+                        </DialogContent>
+                        <DialogActions>
+                            <Button
+                                appearance=ButtonAppearance::Secondary
+                                on_click=move |_| kb_open.set(false)
+                            >
+                                "Отмена"
+                            </Button>
+                            <Button
+                                appearance=ButtonAppearance::Primary
+                                disabled=vm.is_sending
+                                on_click=move |_| {
+                                    let comment = kb_comment.get();
+                                    let mut msg = String::from(KB_ARTICLE_PROMPT);
+                                    if !comment.trim().is_empty() {
+                                        msg.push_str("\n\nАкцент от пользователя: ");
+                                        msg.push_str(comment.trim());
+                                    }
+                                    vm.new_message.set(msg);
+                                    kb_open.set(false);
+                                    kb_comment.set(String::new());
+                                    handle_send.run(());
+                                }
+                            >
+                                {icon("book-open-text")}
+                                " Сформировать черновик"
+                            </Button>
+                        </DialogActions>
+                    </DialogBody>
+                </DialogSurface>
+            </Dialog>
             <Dialog open=diag_open>
                 <DialogSurface>
                     <DialogBody>
@@ -1194,6 +1388,16 @@ pub fn LlmChatDetails(id: String, on_close: Callback<()>) -> impl IntoView {
                     </DialogBody>
                 </DialogSurface>
             </Dialog>
+            // Рабочий каталог задачи: анкета, план, журнал шагов. Открывается из «Ещё» —
+            // показывает допущения модели до того, как по ним посчитают, и даёт
+            // поправить анкету формой, что быстрее и точнее, чем диалогом.
+            <ChatWorkspaceDrawer
+                chat_id=chat_id_stored
+                open=workspace_drawer_open
+                workspace=workspace
+                reload=reload_workspace
+            />
+            <ChatSettingsDialog open=settings_open prefs=ui_prefs />
             {move || pending_screenshot.get().map(|pending| view! {
                 <ScreenshotEditor
                     source_file=pending.file

@@ -16,6 +16,15 @@ use contracts::domain::a018_llm_chat::aggregate::{
     LlmChat, LlmChatDetail, LlmChatListItem, LlmChatMessage, ToolTraceEntry,
 };
 use contracts::domain::a018_llm_chat::context::{AddContextRequest, ContextPackageSummary};
+use contracts::domain::a018_llm_chat::workspace::{
+    AnswerQuestionRequest, ChatFileContent, ChatWorkspaceView, SaveChatFileRequest,
+};
+
+/// Тело POST .../workspace/active.
+#[derive(Deserialize)]
+pub struct SetActiveActivityRequest {
+    pub name: String,
+}
 
 #[derive(Deserialize)]
 pub struct LlmChatListParams {
@@ -538,5 +547,101 @@ pub async fn delete_pending_attachment(
     a018_llm_chat::service::delete_pending_attachment(&chat_id, &attachment_id)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── Рабочий каталог чата ────────────────────────────────────────────────────
+
+/// GET /api/a018-llm-chat/:id/workspace
+/// Задачи чата и файлы активной задачи.
+pub async fn get_workspace(
+    CurrentUser(claims): CurrentUser,
+    Path(id): Path<String>,
+) -> Result<Json<ChatWorkspaceView>, StatusCode> {
+    a018_llm_chat::service::ensure_chat_access(&id, &claims.sub, claims.is_admin)
+        .await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+    let (activities, files, questions) = crate::shared::llm::chat_workspace::view_for_chat(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("a018 get_workspace({id}) failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(ChatWorkspaceView {
+        activities,
+        files,
+        questions,
+    }))
+}
+
+/// POST /api/a018-llm-chat/:id/workspace/answer
+/// Ответ пользователя на уточняющий вопрос анкеты.
+pub async fn answer_intake_question(
+    CurrentUser(claims): CurrentUser,
+    Path(id): Path<String>,
+    Json(body): Json<AnswerQuestionRequest>,
+) -> Result<StatusCode, StatusCode> {
+    a018_llm_chat::service::ensure_chat_access(&id, &claims.sub, claims.is_admin)
+        .await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+    crate::shared::llm::chat_workspace::answer_question(&id, &body.question_id, &body.answer)
+        .await
+        .map_err(|e| {
+            tracing::warn!("a018 answer_intake_question({id}) failed: {e}");
+            StatusCode::BAD_REQUEST
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/a018-llm-chat/:id/workspace/active
+/// Переключить активную задачу вручную.
+pub async fn set_active_activity(
+    CurrentUser(claims): CurrentUser,
+    Path(id): Path<String>,
+    Json(body): Json<SetActiveActivityRequest>,
+) -> Result<StatusCode, StatusCode> {
+    a018_llm_chat::service::ensure_chat_access(&id, &claims.sub, claims.is_admin)
+        .await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+    crate::shared::llm::chat_workspace::switch_activity(&id, &body.name)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /api/a018-llm-chat/:id/workspace/file/*path
+pub async fn get_workspace_file(
+    CurrentUser(claims): CurrentUser,
+    Path((id, path)): Path<(String, String)>,
+) -> Result<Json<ChatFileContent>, StatusCode> {
+    a018_llm_chat::service::ensure_chat_access(&id, &claims.sub, claims.is_admin)
+        .await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+    let (content, is_live_document) = crate::shared::llm::chat_workspace::read_file(&id, &path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(Json(ChatFileContent {
+        path,
+        content,
+        is_live_document,
+    }))
+}
+
+/// PUT /api/a018-llm-chat/:id/workspace/file/*path
+/// Правка живого документа (анкета, план, заметки). Журнал шагов append-only.
+pub async fn save_workspace_file(
+    CurrentUser(claims): CurrentUser,
+    Path((id, path)): Path<(String, String)>,
+    Json(body): Json<SaveChatFileRequest>,
+) -> Result<StatusCode, StatusCode> {
+    a018_llm_chat::service::ensure_chat_access(&id, &claims.sub, claims.is_admin)
+        .await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+    crate::shared::llm::chat_workspace::write_file(&id, &path, &body.content)
+        .await
+        .map_err(|e| {
+            tracing::warn!("a018 save_workspace_file({id}, {path}) rejected: {e}");
+            StatusCode::BAD_REQUEST
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
