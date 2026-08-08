@@ -14,6 +14,9 @@ use std::collections::HashSet;
 /// Базовый уровень для любого активного пользователя — аналитик и общий агент
 /// (аналитика/данные read-only). Привилегированные типы (KB, плагины, sys-admin)
 /// требуют соответствующей роли.
+///
+/// `Tester` сюда намеренно не входит: это обкаточная специализация на локальной модели,
+/// запускать её письмом незачем — она доступна только из чата.
 pub fn allowed_agent_types_for_user(user: &User) -> HashSet<AgentType> {
     let mut set = HashSet::new();
     set.insert(AgentType::BusinessAnalyst);

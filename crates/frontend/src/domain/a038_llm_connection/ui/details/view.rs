@@ -48,6 +48,7 @@ pub fn LlmConnectionDetails(
                     vm.model_name.set(connection.model_name);
                     vm.temperature.set(connection.temperature.to_string());
                     vm.max_tokens.set(connection.max_tokens.to_string());
+                    vm.context_window.set(connection.context_window.to_string());
                     vm.is_primary.set(connection.is_primary);
 
                     if let Some(models_json) = connection.available_models {
@@ -319,6 +320,21 @@ pub fn LlmConnectionDetails(
                                     {
                                         vm.model_name.set("kimi-k3".to_string());
                                     }
+                                } else if provider == "Ollama" {
+                                    vm.api_endpoint.set("http://localhost:11434/v1".to_string());
+                                    if previous_model.trim().is_empty()
+                                        || previous_model == "gpt-4o"
+                                        || previous_model == "openai/gpt-4o"
+                                        || previous_model == "deepseek-chat"
+                                        || previous_model == "kimi-k3"
+                                    {
+                                        vm.model_name.set("gpt-oss:20b".to_string());
+                                    }
+                                    // Окно локальной модели на порядок меньше облачного:
+                                    // дефолт 160000 здесь означал бы молчаливую обрезку промпта.
+                                    if vm.context_window.get() == "160000" {
+                                        vm.context_window.set("32768".to_string());
+                                    }
                                 }
                             }
                         >
@@ -326,9 +342,10 @@ pub fn LlmConnectionDetails(
                             <option value="OpenRouter">"OpenRouter"</option>
                             <option value="DeepSeek">"DeepSeek"</option>
                             <option value="Kimi">"KIMI (Moonshot)"</option>
+                            <option value="Ollama">"Ollama (локально)"</option>
                         </select>
                         <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
-                            "Реально поддерживаются OpenAI, OpenRouter (OpenAI-совместимый роутинг), DeepSeek и KIMI (Moonshot)."
+                            "Реально поддерживаются OpenAI, OpenRouter (OpenAI-совместимый роутинг), DeepSeek, KIMI (Moonshot) и Ollama (локальная модель на этой машине)."
                         </div>
                     </div>
 
@@ -350,9 +367,16 @@ pub fn LlmConnectionDetails(
                     <div class="form__group">
                         <label class="form__label">
                             "API Ключ"
-                            <span style="color: red;">"*"</span>
+                            <Show when=move || vm.provider_type.get() != "Ollama">
+                                <span style="color: red;">"*"</span>
+                            </Show>
                         </label>
                         <Input value=vm.api_key placeholder="sk-..." />
+                        <Show when=move || vm.provider_type.get() == "Ollama">
+                            <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                                "Локальной Ollama ключ не нужен — оставьте поле пустым."
+                            </div>
+                        </Show>
                     </div>
 
                     <div class="form__group">
@@ -363,6 +387,14 @@ pub fn LlmConnectionDetails(
                     <div class="form__group">
                         <label class="form__label">"Max Tokens"</label>
                         <Input value=vm.max_tokens placeholder="4096" />
+                    </div>
+
+                    <div class="form__group">
+                        <label class="form__label">"Размер контекста (токенов)"</label>
+                        <Input value=vm.context_window placeholder="160000" />
+                        <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
+                            "Окно контекста модели — из него считается бюджет истории чата. Для Ollama должно совпадать с OLLAMA_CONTEXT_LENGTH."
+                        </div>
                     </div>
 
                     <div style="display: flex; align-items: center; gap: 8px;">

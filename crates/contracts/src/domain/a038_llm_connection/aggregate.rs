@@ -66,6 +66,12 @@ pub struct LlmConnection {
     /// Max tokens
     pub max_tokens: i32,
 
+    /// Размер окна контекста модели в токенах. Из него считается бюджет истории чата
+    /// (компакция в a018). Для локальных моделей должен совпадать с фактическим `num_ctx`
+    /// сервера Ollama — приложение это не проверяет.
+    #[serde(default = "default_context_window")]
+    pub context_window: i32,
+
     /// Флаг основного подключения
     pub is_primary: bool,
 
@@ -81,6 +87,13 @@ pub struct LlmConnection {
     pub image_input_models: Option<String>,
 }
 
+/// Дефолт окна контекста. 160 000 подобрано так, чтобы формула бюджета компакции
+/// (`context_window * 3 / 4`) дала исторические 120 000 токенов — существующие облачные
+/// подключения после миграции ведут себя ровно как раньше.
+pub fn default_context_window() -> i32 {
+    160_000
+}
+
 impl LlmConnection {
     #[allow(clippy::too_many_arguments)]
     pub fn new_for_insert(
@@ -92,6 +105,7 @@ impl LlmConnection {
         model_name: String,
         temperature: f64,
         max_tokens: i32,
+        context_window: i32,
         is_primary: bool,
         available_models: Option<String>,
         allowed_models: Option<String>,
@@ -106,6 +120,7 @@ impl LlmConnection {
             model_name,
             temperature,
             max_tokens,
+            context_window,
             is_primary,
             available_models,
             allowed_models,
@@ -124,6 +139,7 @@ impl LlmConnection {
         model_name: String,
         temperature: f64,
         max_tokens: i32,
+        context_window: i32,
         is_primary: bool,
         available_models: Option<String>,
         allowed_models: Option<String>,
@@ -138,6 +154,7 @@ impl LlmConnection {
             model_name,
             temperature,
             max_tokens,
+            context_window,
             is_primary,
             available_models,
             allowed_models,
@@ -163,7 +180,10 @@ impl LlmConnection {
         if self.api_endpoint.trim().is_empty() {
             return Err("API Endpoint обязателен".into());
         }
-        if self.api_key.trim().is_empty() {
+        // У локального провайдера (Ollama) ключа не существует — требовать строку-заглушку
+        // значило бы класть в поле секрета фейковое значение, которое потом всплывёт в
+        // `masked_api_key()` и логах как настоящий ключ.
+        if self.api_key.trim().is_empty() && self.provider_type != LlmProviderType::Ollama {
             return Err("API ключ обязателен".into());
         }
         if self.model_name.trim().is_empty() {
@@ -174,6 +194,12 @@ impl LlmConnection {
         }
         if self.max_tokens < 256 || self.max_tokens > 128000 {
             return Err("Max tokens должен быть в диапазоне 256-128000".into());
+        }
+        if self.context_window < 4096 || self.context_window > 2_000_000 {
+            return Err("Размер контекста должен быть в диапазоне 4096-2000000".into());
+        }
+        if self.max_tokens >= self.context_window {
+            return Err("Max tokens должен быть меньше размера контекста".into());
         }
         Ok(())
     }

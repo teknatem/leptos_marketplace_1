@@ -55,6 +55,10 @@ pub enum AgentType {
     Marketer,
     /// Финансист: главная книга, сверка выручки, взаиморасчёты, комиссии
     Financier,
+    /// Тестировщик: обкатка пайплайна на локальной модели — узкая матрица навыков,
+    /// без публикации артефактов. Специализация отдельная именно затем, чтобы урезание
+    /// доступа не задевало облачных сотрудников.
+    Tester,
 }
 
 impl AgentType {
@@ -67,6 +71,7 @@ impl AgentType {
             "sales_analyst" => AgentType::SalesAnalyst,
             "marketer" => AgentType::Marketer,
             "financier" => AgentType::Financier,
+            "tester" => AgentType::Tester,
             _ => AgentType::BusinessAnalyst,
         }
     }
@@ -81,6 +86,7 @@ impl AgentType {
             AgentType::SalesAnalyst => "sales_analyst",
             AgentType::Marketer => "marketer",
             AgentType::Financier => "financier",
+            AgentType::Tester => "tester",
         }
     }
 
@@ -94,6 +100,7 @@ impl AgentType {
             AgentType::SalesAnalyst => "Аналитик продаж",
             AgentType::Marketer => "Маркетолог",
             AgentType::Financier => "Финансист",
+            AgentType::Tester => "Тестировщик",
         }
     }
 }

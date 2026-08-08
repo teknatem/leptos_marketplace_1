@@ -312,7 +312,10 @@ fn access_profile(agent_type: &AgentType) -> Result<SqlAccessProfile, String> {
         | AgentType::PluginAdmin
         | AgentType::SalesAnalyst
         | AgentType::Marketer
-        | AgentType::Financier => Ok(SqlAccessProfile::Analytics),
+        | AgentType::Financier
+        // Тестировщику read-only SQL нужен, чтобы проверять данные; объём его работы
+        // ограничивается матрицей навыков, а не запретом инструмента.
+        | AgentType::Tester => Ok(SqlAccessProfile::Analytics),
         AgentType::KbAdmin => Ok(SqlAccessProfile::KnowledgeBase),
         AgentType::CoordinatorAdmin => Ok(SqlAccessProfile::General),
         AgentType::SystemAdmin => Err("execute_query is not available to SystemAdmin".to_string()),
@@ -341,6 +344,64 @@ fn with_truncation_warning(mut value: Value) -> Value {
     value["next_step"] = Value::String(
         "Повтори запрос с агрегацией (COUNT/MIN/MAX/SUM/GROUP BY) вместо построчной выборки — \
          либо задай limit явно (максимум 200)."
+            .to_string(),
+    );
+    value
+}
+
+/// Сколько строк должно быть в выборке, чтобы сплошные нули считались сигналом,
+/// а не случайностью маленького результата.
+const ZERO_COLUMN_MIN_ROWS: usize = 3;
+
+/// Колонка, нулевая во ВСЕХ строках, — почти всегда не бизнес-факт, а незаполненная
+/// стадия: не загруженный источник или непересобранная проекция. Модель же читает
+/// ноль как обычное значение и делает по нему выводы («заказов нет»). Проговариваем
+/// это словами — тем же приёмом, что и усечение выборки.
+fn with_empty_column_warning(mut value: Value) -> Value {
+    let Some(rows) = value.get("rows").and_then(Value::as_array) else {
+        return value;
+    };
+    if rows.len() < ZERO_COLUMN_MIN_ROWS {
+        return value;
+    }
+    let Some(columns) = value.get("columns").and_then(Value::as_array) else {
+        return value;
+    };
+
+    let empty: Vec<String> = columns
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|column| {
+            let mut saw_number = false;
+            let all_zero = rows.iter().all(|row| match row.get(*column) {
+                Some(Value::Number(n)) => {
+                    saw_number = true;
+                    n.as_f64().is_some_and(|v| v == 0.0)
+                }
+                Some(Value::Null) | None => true,
+                _ => false,
+            });
+            saw_number && all_zero
+        })
+        .map(str::to_string)
+        .collect();
+
+    if empty.is_empty() {
+        return value;
+    }
+    let row_count = rows.len();
+    value["empty_columns"] = Value::Array(empty.iter().map(|c| Value::String(c.clone())).collect());
+    value["warning"] = Value::String(format!(
+        "СПЛОШНЫЕ НУЛИ в колонках: {}. Во всех {} строках значение нулевое или пустое — \
+         это чаще признак незаполненных данных, чем реального отсутствия событий. \
+         НЕ описывай это как факт («заказов не было»), пока не проверил источник.",
+        empty.join(", "),
+        row_count
+    ));
+    value["next_step"] = Value::String(
+        "Спустись на слой ниже: если пуста проекция — посмотри документы-источники за тот же \
+         период; если пуст и источник — проверь, был ли импорт. В ответе назови, что именно \
+         подтвердил: нет источника / источник есть, но не пересобрано / данные есть, ошибка расчёта."
             .to_string(),
     );
     value
@@ -527,6 +588,7 @@ pub async fn execute_data_tool(
             Ok(request) => query_schema(request).await.and_then(|value| {
                 serde_json::to_value(value)
                     .map(with_truncation_warning)
+                    .map(with_empty_column_warning)
                     .map_err(|error| error.to_string())
             }),
             Err(error) => Err(error),
@@ -560,6 +622,7 @@ pub async fn execute_data_tool(
                             save_query_artifact(&args, chat_id, agent_id, tabular.row_count).await;
                         serde_json::to_value(tabular)
                             .map(with_truncation_warning)
+                            .map(with_empty_column_warning)
                             .map(|mut value| {
                                 if let Some(id) = artifact_id {
                                     value["artifact_id"] = Value::String(id);
@@ -603,6 +666,48 @@ mod tests {
                 .map(Vec::len),
             Some(3)
         );
+    }
+
+    /// Регрессия из разбора чата: агент увидел `orders: 0` за полгода в проекции
+    /// p916, назвал это фактом и не заглянул в источник — где заказы были.
+    #[test]
+    fn all_zero_columns_are_called_out() {
+        let value = with_empty_column_warning(json!({
+            "columns": ["ym", "opens", "orders"],
+            "rows": [
+                { "ym": "2025-08", "opens": 784592, "orders": 0 },
+                { "ym": "2025-09", "opens": 1172898, "orders": 0 },
+                { "ym": "2025-10", "opens": 1442728, "orders": null },
+            ],
+        }));
+        assert_eq!(value["empty_columns"], json!(["orders"]));
+        let warning = value["warning"].as_str().unwrap_or_default();
+        assert!(warning.contains("orders"));
+        assert!(value["next_step"].as_str().is_some());
+    }
+
+    #[test]
+    fn populated_and_tiny_results_stay_untouched() {
+        // Заполненная колонка — не сигнал.
+        let full = json!({
+            "columns": ["orders"],
+            "rows": [{"orders": 1}, {"orders": 0}, {"orders": 5}],
+        });
+        assert_eq!(with_empty_column_warning(full.clone()), full);
+
+        // На двух строках сплошной ноль — совпадение, а не признак.
+        let tiny = json!({
+            "columns": ["orders"],
+            "rows": [{"orders": 0}, {"orders": 0}],
+        });
+        assert_eq!(with_empty_column_warning(tiny.clone()), tiny);
+
+        // Текстовые колонки не проверяем: пустая строка — не ноль.
+        let text = json!({
+            "columns": ["name"],
+            "rows": [{"name": ""}, {"name": ""}, {"name": ""}],
+        });
+        assert_eq!(with_empty_column_warning(text.clone()), text);
     }
 
     /// Усечение должно быть проговорено словами: голый флаг `truncated` модель пропускает

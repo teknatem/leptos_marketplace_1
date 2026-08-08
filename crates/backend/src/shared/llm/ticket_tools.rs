@@ -410,23 +410,27 @@ fn find_page_help(args: &Value) -> Value {
         }
         tags.push(page_key.clone());
     }
-    for word in query.split_whitespace() {
-        tags.push(word.trim_matches(|c: char| !c.is_alphanumeric()).to_string());
-    }
     tags.retain(|t| !t.is_empty());
 
-    let tag_refs: Vec<&str> = tags.iter().map(String::as_str).collect();
+    // Текст вопроса идёт полноценным запросом по содержимому статей, а не
+    // крошится в псевдо-теги: слово из вопроса почти никогда не является тегом.
     let kb = super::knowledge_base::kb_read();
-    let results = kb.search_by_tags(&tag_refs);
+    let tag_refs: Vec<&str> = tags.iter().map(String::as_str).collect();
+    let results = kb.search(&super::kb_search::Query {
+        text: query.clone(),
+        tags: kb.normalize_tags(&tag_refs),
+        limit: super::kb_search::MAX_LIMIT,
+        ..Default::default()
+    });
 
     let items: Vec<Value> = results
         .iter()
-        .take(10)
-        .map(|doc| {
+        .map(|(doc, _)| {
             json!({
                 "id": doc.id,
                 "title": doc.title,
-                "tags": doc.tags,
+                "summary": doc.summary,
+                "tags": doc.canonical_tags,
             })
         })
         .collect();

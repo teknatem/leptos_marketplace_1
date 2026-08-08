@@ -160,6 +160,7 @@ pub fn LlmAgentDetails(
                             <option value="plugin_admin">"Разработчик"</option>
                             <option value="system_admin">"Системный администратор"</option>
                             <option value="kb_admin">"Администратор базы знаний"</option>
+                            <option value="tester">"Тестировщик"</option>
                         </select>
                         <div style="font-size: 12px; color: var(--colorNeutralForeground3);">
                             "Определяет набор навыков и инструментов сотрудника."

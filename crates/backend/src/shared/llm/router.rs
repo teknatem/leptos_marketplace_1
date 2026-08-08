@@ -23,6 +23,8 @@ pub const KNOWN_INTENTS: &[&str] = &[
     "chart_build",                 // построить график/диаграмму по данным
     "table_build",                 // построить таблицу данных (плагин-таблица)
     "plugin_dev",                  // создание/доработка плагина
+    "quality_check",               // просмотр/запуск проверок качества
+    "quality_check_dev",           // создание/изменение MJS-проверки качества
     "sys_admin",                   // системная диагностика
     "kb_curation",                 // работа с базой знаний
     "mailbox",                     // чтение/отправка почты
@@ -67,6 +69,8 @@ fn classifier_system_prompt() -> String {
          - chart_build: построить ГРАФИК/диаграмму/визуализацию по данным (линия, столбцы, доли).\n\
          - table_build: построить ТАБЛИЦУ данных по данным (колонки/строки, фильтры, сортировка, итоги).\n\
          - plugin_dev: создать/доработать/протестировать плагин (JS).\n\
+         - quality_check: посмотреть каталог/результаты или запустить существующую проверку качества данных.\n\
+         - quality_check_dev: создать, изменить или опубликовать исполняемую MJS-проверку качества данных.\n\
          - sys_admin: состояние системы, производительность, фоновые задачи, целостность данных.\n\
          - kb_curation: работа с базой знаний — прочитать/исправить статью, тикет правки.\n\
          - mailbox: почта — прочитать входящие письма, найти письмо, ответить или отправить письмо.\n\
@@ -141,16 +145,15 @@ pub fn intent_to_agent_type(intent: &str) -> AgentType {
     match intent {
         "kb_curation" => AgentType::KbAdmin,
         // Разработчик один: и плагины, и поддержка пользователей (навык `support`).
-        "plugin_dev" | "support" => AgentType::PluginAdmin,
+        "plugin_dev" | "quality_check_dev" | "support" => AgentType::PluginAdmin,
         "sys_admin" => AgentType::SystemAdmin,
         "sales_query" => AgentType::SalesAnalyst,
         "marketing_query" => AgentType::Marketer,
         "marketplace_funnel_analysis" => AgentType::Marketer,
         "finance_query" => AgentType::Financier,
         // data_query | chart_build | table_build | bi_authoring | func_help — аналитик.
-        "data_query" | "chart_build" | "table_build" | "bi_authoring" | "func_help" => {
-            AgentType::BusinessAnalyst
-        }
+        "data_query" | "quality_check" | "chart_build" | "table_build" | "bi_authoring"
+        | "func_help" => AgentType::BusinessAnalyst,
         // meta_smalltalk и всё прочее — общий агент.
         _ => AgentType::CoordinatorAdmin,
     }
@@ -203,6 +206,24 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
     let m = message.to_lowercase();
 
     let any = |needles: &[&str]| needles.iter().any(|n| m.contains(n));
+
+    let quality_words = any(&[
+        "quality check",
+        "quality_check",
+        "quality_checks",
+        "контрол качества",
+        "контроль качества",
+        "проверок качества",
+        "проверки качества",
+        "проверку качества",
+    ]);
+    if quality_words && any(&["созда", "добав", "измен", "доработ", "опубли", "напиш"])
+    {
+        return IntentResult::new("quality_check_dev", 0.65, "rules");
+    }
+    if quality_words {
+        return IntentResult::new("quality_check", 0.65, "rules");
+    }
 
     // Поддержка — раньше остальных правил: «не работает график» это обращение о сбое,
     // а не просьба построить график. Исключение — разработка плагинов (свой интент).
@@ -390,6 +411,7 @@ fn rule_based(message: &str, seed_agent_type: &AgentType) -> IntentResult {
         AgentType::SalesAnalyst => "sales_query",
         AgentType::Marketer => "marketing_query",
         AgentType::Financier => "finance_query",
+        AgentType::Tester => "quality_check",
         _ => "data_query",
     };
     IntentResult::new(seeded, 0.25, "rules")
@@ -444,7 +466,28 @@ mod tests {
     #[test]
     fn generic_buyout_without_marketplace_stays_marketing() {
         // Без маркетплейс-слова «выкуп» остаётся маркетингом (funnel-правило не срабатывает).
-        let result = quick_intent_result("Какой у нас процент выкупа?", &AgentType::BusinessAnalyst);
+        let result =
+            quick_intent_result("Какой у нас процент выкупа?", &AgentType::BusinessAnalyst);
         assert_eq!(result.intent, "marketing_query");
+    }
+
+    #[test]
+    fn quality_view_and_authoring_are_distinct_intents() {
+        assert_eq!(
+            quick_intent_result(
+                "Покажи последние результаты проверок качества",
+                &AgentType::Financier
+            )
+            .intent,
+            "quality_check"
+        );
+        assert_eq!(
+            quick_intent_result(
+                "Добавь новую quality check для остатков",
+                &AgentType::BusinessAnalyst
+            )
+            .intent,
+            "quality_check_dev"
+        );
     }
 }

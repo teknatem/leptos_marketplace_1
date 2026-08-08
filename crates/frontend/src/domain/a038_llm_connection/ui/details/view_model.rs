@@ -34,6 +34,8 @@ pub struct LlmConnectionDetailsVm {
     pub model_name: RwSignal<String>,
     pub temperature: RwSignal<String>,
     pub max_tokens: RwSignal<String>,
+    /// Окно контекста модели в токенах: из него считается бюджет истории чата.
+    pub context_window: RwSignal<String>,
 
     /// Курируемый короткий список разрешённых моделей (id). Именно из него
     /// можно выбирать модель в чате. Подмножество available_models.
@@ -91,6 +93,7 @@ impl LlmConnectionDetailsVm {
             model_name: RwSignal::new("openai/gpt-4o".to_string()),
             temperature: RwSignal::new("0.7".to_string()),
             max_tokens: RwSignal::new("4096".to_string()),
+            context_window: RwSignal::new("160000".to_string()),
             allowed_models: RwSignal::new(Vec::new()),
             image_input_models: RwSignal::new(Vec::new()),
             model_filter: RwSignal::new(String::new()),
@@ -214,6 +217,12 @@ impl LlmConnectionDetailsVm {
         self.max_tokens.get().parse().unwrap_or(4096)
     }
 
+    /// Окно контекста как i32. Дефолт совпадает с дефолтом колонки в БД, чтобы
+    /// пустое/испорченное поле не меняло бюджет компакции облачных подключений.
+    pub fn get_context_window(&self) -> i32 {
+        self.context_window.get().parse().unwrap_or(160_000)
+    }
+
     /// Переключить принадлежность модели к allowed_models.
     /// Если снимаем галочку с модели, которая сейчас основная — сбрасываем основную
     /// (пустой model_name), чтобы `validate_models` поймал это перед записью.
@@ -306,6 +315,7 @@ impl LlmConnectionDetailsVm {
             "model_name": self.model_name.get(),
             "temperature": self.get_temperature(),
             "max_tokens": self.get_max_tokens(),
+            "context_window": self.get_context_window(),
             "is_primary": self.is_primary.get(),
             "allowed_models": allowed_json,
             "image_input_models": image_models_json,

@@ -38,6 +38,7 @@ pub struct SkillSession {
     artifact_publish_allowed: bool,
     script_execute_allowed: bool,
     script_develop_allowed: bool,
+    data_repair_execute_allowed: bool,
     active_skill_ids: Vec<String>,
 }
 
@@ -54,6 +55,9 @@ impl SkillSession {
         let script_develop_allowed =
             skill_policy::capability_allowed(&specialization, skill_policy::SKILL_SCRIPT_DEVELOP)
                 .await?;
+        let data_repair_execute_allowed =
+            skill_policy::capability_allowed(&specialization, skill_policy::DATA_REPAIR_EXECUTE)
+                .await?;
         Ok(Self {
             specialization,
             snapshot,
@@ -61,6 +65,7 @@ impl SkillSession {
             artifact_publish_allowed,
             script_execute_allowed,
             script_develop_allowed,
+            data_repair_execute_allowed,
             active_skill_ids: Vec::new(),
         })
     }
@@ -83,6 +88,10 @@ impl SkillSession {
 
     pub fn script_develop_allowed(&self) -> bool {
         self.script_develop_allowed
+    }
+
+    pub fn data_repair_execute_allowed(&self) -> bool {
+        self.data_repair_execute_allowed
     }
 
     pub fn active_skill_ids(&self) -> &[String] {
@@ -183,6 +192,9 @@ impl SkillSession {
         if !self.artifact_publish_allowed {
             tools.retain(|tool| !skill_policy::is_artifact_mutation(&tool.name));
         }
+        if !self.data_repair_execute_allowed {
+            tools.retain(|tool| !skill_policy::is_data_repair_mutation(&tool.name));
+        }
         if let Some(next) = next_tool {
             tools.retain(|tool| tool.name == next);
         }
@@ -235,6 +247,7 @@ mod tests {
             artifact_publish_allowed: true,
             script_execute_allowed: true,
             script_develop_allowed: false,
+            data_repair_execute_allowed: false,
             active_skill_ids: Vec::new(),
         }
     }

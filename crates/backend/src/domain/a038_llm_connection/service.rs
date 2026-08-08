@@ -15,6 +15,8 @@ pub struct LlmConnectionDto {
     pub model_name: String,
     pub temperature: f64,
     pub max_tokens: i32,
+    #[serde(default = "contracts::domain::a038_llm_connection::aggregate::default_context_window")]
+    pub context_window: i32,
     pub is_primary: bool,
     pub available_models: Option<String>,
     /// Курируемый короткий список разрешённых моделей (JSON-массив model_id).
@@ -42,6 +44,7 @@ pub async fn create(dto: LlmConnectionDto) -> anyhow::Result<Uuid> {
         dto.model_name,
         dto.temperature,
         dto.max_tokens,
+        dto.context_window,
         dto.is_primary,
         dto.available_models,
         dto.allowed_models,
@@ -89,6 +92,7 @@ pub async fn update(dto: LlmConnectionDto) -> anyhow::Result<()> {
     aggregate.model_name = dto.model_name;
     aggregate.temperature = dto.temperature;
     aggregate.max_tokens = dto.max_tokens;
+    aggregate.context_window = dto.context_window;
     aggregate.is_primary = dto.is_primary;
     aggregate.allowed_models = dto.allowed_models;
     aggregate.image_input_models = dto.image_input_models;

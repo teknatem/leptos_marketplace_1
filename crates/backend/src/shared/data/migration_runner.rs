@@ -179,7 +179,7 @@ pub async fn run_migrations() -> anyhow::Result<()> {
     migrator.run(&pool).await?;
 
     ensure_a015_dealer_price_ut_column(&pool).await?;
-    ensure_llm_chat_agent_fk_to_a038(&pool).await?;
+    ensure_llm_agent_fk_dropped(&pool).await?;
 
     tracing::info!("Database migrations applied successfully");
     Ok(())
@@ -254,116 +254,125 @@ async fn ensure_a015_dealer_price_ut_column(pool: &SqlitePool) -> anyhow::Result
     Ok(())
 }
 
-/// Проверяет, ссылается ли FK `<table>.agent_id` на указанную родительскую таблицу.
-async fn agent_fk_references(pool: &SqlitePool, table: &str, parent: &str) -> anyhow::Result<bool> {
-    // PRAGMA не принимает bind-параметры — имя таблицы из кода, не из ввода.
-    let rows = sqlx::query(&format!("PRAGMA foreign_key_list({table})"))
-        .fetch_all(pool)
-        .await?;
-    Ok(rows.iter().any(|row| {
-        let from: String = row.try_get("from").unwrap_or_default();
-        let ref_table: String = row.try_get("table").unwrap_or_default();
-        from == "agent_id" && ref_table == parent
-    }))
+/// DDL таблицы из `sqlite_master` (None, если таблицы нет).
+async fn table_ddl(pool: &SqlitePool, table: &str) -> anyhow::Result<Option<String>> {
+    Ok(
+        sqlx::query_scalar::<_, String>(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?1",
+        )
+        .bind(table)
+        .fetch_optional(pool)
+        .await?,
+    )
 }
 
-/// Идемпотентно перенаправляет внешние ключи `a018_llm_chat.agent_id` и
-/// `a019_llm_artifact.agent_id` с ретайр-таблицы `a017_llm_agent` на `a038_llm_connection`.
+/// Вырезает из DDL таблицы объявление внешнего ключа по колонке `agent_id`
+/// (вместе с предшествующей запятой). None — если такого FK в DDL нет.
+fn strip_agent_fk(ddl: &str) -> Option<String> {
+    let re = regex::Regex::new(
+        r#"(?is),\s*FOREIGN\s+KEY\s*\(\s*"?agent_id"?\s*\)\s*REFERENCES\s*[^,()]*\([^)]*\)(\s+ON\s+(DELETE|UPDATE)\s+(NO\s+ACTION|RESTRICT|SET\s+NULL|SET\s+DEFAULT|CASCADE))*"#,
+    )
+    .ok()?;
+    let stripped = re.replace(ddl, "");
+    match stripped {
+        std::borrow::Cow::Borrowed(_) => None,
+        std::borrow::Cow::Owned(s) => Some(s),
+    }
+}
+
+/// Идемпотентно снимает внешний ключ по колонке `agent_id` у одной таблицы: пересобирает её
+/// по собственному DDL из `sqlite_master` минус FK-объявление, сохраняя колонки, остальные
+/// ограничения и индексы. Возвращает `true`, если пересборка выполнялась.
 ///
-/// Миграция 0165 засеяла a038 из a017 с теми же id, но НЕ перенастроила FK у чата/артефакта.
-/// Из-за этого чат против НОВОГО подключения a038 (id отсутствует в a017) падал с
-/// `FOREIGN KEY constraint failed`. SQLite не умеет менять FK на месте, а простой DROP
-/// родителя с включёнными FK каскадно удалил бы сообщения чата, поэтому пересобираем таблицы
-/// при выключенных FK (вне транзакции — внутри неё `PRAGMA foreign_keys` игнорируется).
-async fn ensure_llm_chat_agent_fk_to_a038(pool: &SqlitePool) -> anyhow::Result<()> {
-    if !has_table(pool, "a038_llm_connection").await? || !has_table(pool, "a018_llm_chat").await? {
-        return Ok(());
-    }
+/// SQLite не умеет менять ограничения на месте, а `DROP TABLE` с включёнными FK каскадно
+/// удалил бы дочерние строки (сообщения/задания чата), поэтому пересборка идёт при
+/// выключенных FK и вне транзакции — внутри неё `PRAGMA foreign_keys` игнорируется.
+async fn drop_agent_fk(pool: &SqlitePool, table: &str) -> anyhow::Result<bool> {
+    let Some(ddl) = table_ddl(pool, table).await? else {
+        return Ok(false);
+    };
+    let Some(stripped) = strip_agent_fk(&ddl) else {
+        return Ok(false);
+    };
 
-    let chat_needs_fix = agent_fk_references(pool, "a018_llm_chat", "a017_llm_agent").await?;
-    let artifact_needs_fix = has_table(pool, "a019_llm_artifact").await?
-        && agent_fk_references(pool, "a019_llm_artifact", "a017_llm_agent").await?;
+    // Всё до первой открывающей скобки — заголовок `CREATE TABLE <имя>`; определения колонок
+    // начинаются после неё, поэтому переименование сводится к замене заголовка.
+    let body_start = stripped
+        .find('(')
+        .ok_or_else(|| anyhow::anyhow!("Unexpected DDL for {table}: no column list"))?;
+    let tmp = format!("{table}__fkfix");
 
-    if !chat_needs_fix && !artifact_needs_fix {
-        return Ok(());
-    }
+    let index_ddls: Vec<String> = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name = ?1 AND sql IS NOT NULL",
+    )
+    .bind(table)
+    .fetch_all(pool)
+    .await?;
 
-    // Собираем один пакетный скрипт: FK off → транзакция → пересборка → commit → FK on.
-    // `PRAGMA foreign_keys=OFF` действует, так как выполняется до BEGIN на этом соединении.
     let mut script = String::from("PRAGMA foreign_keys=OFF;\nBEGIN;\n");
-
-    if chat_needs_fix {
-        script.push_str(
-            "CREATE TABLE a018_llm_chat_new (\
-                id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, description TEXT NOT NULL, \
-                comment TEXT, agent_id TEXT NOT NULL, is_deleted INTEGER NOT NULL DEFAULT 0, \
-                is_posted INTEGER NOT NULL DEFAULT 0, created_at TEXT, updated_at TEXT, \
-                version INTEGER NOT NULL DEFAULT 1, model_name TEXT NOT NULL DEFAULT 'gpt-4o', \
-                rating INTEGER, owner_user_id TEXT, is_shared INTEGER NOT NULL DEFAULT 0, \
-                FOREIGN KEY (agent_id) REFERENCES a038_llm_connection(id));\n\
-             INSERT INTO a018_llm_chat_new (id, code, description, comment, agent_id, is_deleted, \
-                is_posted, created_at, updated_at, version, model_name, rating, owner_user_id, is_shared) \
-                SELECT id, code, description, comment, agent_id, is_deleted, is_posted, \
-                created_at, updated_at, version, model_name, rating, owner_user_id, is_shared FROM a018_llm_chat;\n\
-             DROP TABLE a018_llm_chat;\n\
-             ALTER TABLE a018_llm_chat_new RENAME TO a018_llm_chat;\n\
-             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_code ON a018_llm_chat(code);\n\
-             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_agent_id ON a018_llm_chat(agent_id);\n\
-             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_is_deleted ON a018_llm_chat(is_deleted);\n\
-             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_created_at ON a018_llm_chat(created_at);\n\
-             CREATE INDEX IF NOT EXISTS idx_a018_llm_chat_model_name ON a018_llm_chat(model_name);\n",
-        );
+    script.push_str(&format!(
+        "CREATE TABLE \"{tmp}\" {};\n",
+        &stripped[body_start..]
+    ));
+    script.push_str(&format!("INSERT INTO \"{tmp}\" SELECT * FROM \"{table}\";\n"));
+    script.push_str(&format!("DROP TABLE \"{table}\";\n"));
+    script.push_str(&format!(
+        "ALTER TABLE \"{tmp}\" RENAME TO \"{table}\";\n"
+    ));
+    for index_ddl in index_ddls {
+        script.push_str(&index_ddl);
+        script.push_str(";\n");
     }
-
-    if artifact_needs_fix {
-        script.push_str(
-            "CREATE TABLE a019_llm_artifact_new (\
-                id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, description TEXT NOT NULL, \
-                comment TEXT, chat_id TEXT NOT NULL, agent_id TEXT NOT NULL, \
-                artifact_type TEXT NOT NULL DEFAULT 'sql_query', status TEXT NOT NULL DEFAULT 'active', \
-                sql_query TEXT NOT NULL, query_params TEXT, visualization_config TEXT, \
-                last_executed_at TEXT, execution_count INTEGER NOT NULL DEFAULT 0, \
-                is_deleted INTEGER NOT NULL DEFAULT 0, is_posted INTEGER NOT NULL DEFAULT 0, \
-                created_at TEXT, updated_at TEXT, version INTEGER NOT NULL DEFAULT 1, \
-                FOREIGN KEY (chat_id) REFERENCES a018_llm_chat(id), \
-                FOREIGN KEY (agent_id) REFERENCES a038_llm_connection(id));\n\
-             INSERT INTO a019_llm_artifact_new (id, code, description, comment, chat_id, agent_id, \
-                artifact_type, status, sql_query, query_params, visualization_config, \
-                last_executed_at, execution_count, is_deleted, is_posted, created_at, updated_at, version) \
-                SELECT id, code, description, comment, chat_id, agent_id, artifact_type, status, \
-                sql_query, query_params, visualization_config, last_executed_at, execution_count, \
-                is_deleted, is_posted, created_at, updated_at, version FROM a019_llm_artifact;\n\
-             DROP TABLE a019_llm_artifact;\n\
-             ALTER TABLE a019_llm_artifact_new RENAME TO a019_llm_artifact;\n\
-             CREATE INDEX IF NOT EXISTS idx_a019_artifact_code ON a019_llm_artifact(code);\n\
-             CREATE INDEX IF NOT EXISTS idx_a019_artifact_chat_id ON a019_llm_artifact(chat_id);\n\
-             CREATE INDEX IF NOT EXISTS idx_a019_artifact_agent_id ON a019_llm_artifact(agent_id);\n\
-             CREATE INDEX IF NOT EXISTS idx_a019_artifact_type ON a019_llm_artifact(artifact_type);\n\
-             CREATE INDEX IF NOT EXISTS idx_a019_artifact_status ON a019_llm_artifact(status);\n\
-             CREATE INDEX IF NOT EXISTS idx_a019_artifact_is_deleted ON a019_llm_artifact(is_deleted);\n\
-             CREATE INDEX IF NOT EXISTS idx_a019_artifact_created_at ON a019_llm_artifact(created_at);\n",
-        );
-    }
-
     script.push_str("COMMIT;\nPRAGMA foreign_keys=ON;\n");
 
     let mut conn = pool.acquire().await?;
     match (&mut *conn).execute(script.as_str()).await {
-        Ok(_) => {
-            tracing::info!(
-                "Repointed LLM agent_id FK(s) to a038_llm_connection (chat: {}, artifact: {})",
-                chat_needs_fix,
-                artifact_needs_fix
-            );
-            Ok(())
-        }
+        Ok(_) => Ok(true),
         Err(e) => {
             // Откатываем возможную открытую транзакцию и восстанавливаем enforcement FK.
             let _ = (&mut *conn).execute("ROLLBACK;").await;
             let _ = (&mut *conn).execute("PRAGMA foreign_keys=ON;").await;
-            Err(anyhow::anyhow!(
-                "Failed to repoint LLM agent_id FK to a038_llm_connection: {e}"
-            ))
+            Err(anyhow::anyhow!("Failed to drop agent_id FK on {table}: {e}"))
         }
+    }
+}
+
+/// Идемпотентно снимает внешний ключ `agent_id` у `a018_llm_chat` и `a019_llm_artifact`.
+///
+/// `agent_id` — полиморфная ссылка: сначала AI-сотрудник `a017_llm_agent` (собеседник чата,
+/// именно его id шлёт фронт), иначе legacy-подключение `a038_llm_connection`. Разрешает её
+/// код (`a018_llm_chat::service::resolve_effective_agent`), а FK на одну конкретную таблицу
+/// выразить это не может: сотрудник без a038-близнеца (миграция 0165 создала близнецов только
+/// для существовавших тогда агентов) ронял создание чата с `FOREIGN KEY constraint failed`.
+async fn ensure_llm_agent_fk_dropped(pool: &SqlitePool) -> anyhow::Result<()> {
+    for table in ["a018_llm_chat", "a019_llm_artifact"] {
+        if drop_agent_fk(pool, table).await? {
+            tracing::info!("Dropped agent_id FK on {table} (polymorphic ref a017/a038)");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_agent_fk;
+
+    #[test]
+    fn strips_agent_fk_and_keeps_the_rest() {
+        let ddl = "CREATE TABLE \"a019_llm_artifact\" (id TEXT PRIMARY KEY, \
+                   code TEXT NOT NULL UNIQUE, chat_id TEXT NOT NULL, agent_id TEXT NOT NULL, \
+                   FOREIGN KEY (chat_id) REFERENCES a018_llm_chat(id), \
+                   FOREIGN KEY (agent_id) REFERENCES a038_llm_connection(id))";
+        let stripped = strip_agent_fk(ddl).expect("agent_id FK must be found");
+        assert!(!stripped.contains("a038_llm_connection"));
+        assert!(stripped.contains("FOREIGN KEY (chat_id) REFERENCES a018_llm_chat(id)"));
+        assert!(stripped.trim_end().ends_with(')'));
+        assert!(stripped.contains("agent_id TEXT NOT NULL"));
+    }
+
+    #[test]
+    fn returns_none_without_agent_fk() {
+        let ddl = "CREATE TABLE a018_llm_chat (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL)";
+        assert!(strip_agent_fk(ddl).is_none());
     }
 }

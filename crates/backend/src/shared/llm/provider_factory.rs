@@ -86,6 +86,16 @@ pub fn create_provider<'a>(
             true,  // Moonshot ждёт поле `max_tokens`, а не `max_completion_tokens`
             false, // logprobs выключены — как в OpenRouter/DeepSeek-совместимой конфигурации
         ))),
+        LlmProviderType::Ollama => Ok(Box::new(OpenAiProvider::new_compatible(
+            "Ollama",
+            ollama_endpoint(s.api_endpoint),
+            api_key_or_placeholder(s.api_key),
+            model,
+            s.temperature,
+            s.max_tokens,
+            true,  // OpenAI-слой Ollama читает `max_tokens`, `max_completion_tokens` игнорирует
+            false, // logprobs Ollama не отдаёт — confidence останется None
+        ))),
         other => Err(LlmError::UnsupportedProvider(other.as_str().to_string())),
     }
 }
@@ -126,6 +136,17 @@ pub async fn list_models<'a>(
             // толерантным сырым запросом, что и DeepSeek, на случай отсутствия полей.
             compat_list_models("Kimi", &kimi_endpoint(s.api_endpoint), s.api_key).await
         }
+        LlmProviderType::Ollama => {
+            // Типизированный путь не годится: `OpenAiProvider::list_models` пропускает только
+            // белый список префиксов (gpt-4/gpt-5/o1/deepseek), а локальные модели именуются
+            // произвольно (`gpt-oss:20b`, `qwen3:14b`) и через фильтр не проходят.
+            compat_list_models(
+                "Ollama",
+                &ollama_endpoint(s.api_endpoint),
+                &api_key_or_placeholder(s.api_key),
+            )
+            .await
+        }
         other => Err(LlmError::UnsupportedProvider(other.as_str().to_string())),
     }
 }
@@ -158,7 +179,28 @@ fn kimi_endpoint(api_endpoint: &str) -> String {
     }
 }
 
-/// Список моделей OpenAI-совместимого провайдера (DeepSeek, Kimi/Moonshot):
+const OLLAMA_DEFAULT_ENDPOINT: &str = "http://localhost:11434/v1";
+
+fn ollama_endpoint(api_endpoint: &str) -> String {
+    if api_endpoint.trim().is_empty() {
+        OLLAMA_DEFAULT_ENDPOINT.to_string()
+    } else {
+        api_endpoint.to_string()
+    }
+}
+
+/// У локальной Ollama ключа нет (`validate()` для неё разрешает пустое поле), но пустой
+/// `Authorization: Bearer` способен смутить реверс-прокси перед ней. Подставляем заглушку
+/// только в рантайме — в БД поле остаётся пустым и не выглядит настоящим секретом.
+fn api_key_or_placeholder(api_key: &str) -> String {
+    if api_key.trim().is_empty() {
+        "ollama".to_string()
+    } else {
+        api_key.to_string()
+    }
+}
+
+/// Список моделей OpenAI-совместимого провайдера (DeepSeek, Kimi/Moonshot, Ollama):
 /// сырой GET `{endpoint}/models` с толерантным разбором (в ответе может не быть
 /// `created`, на котором падает типизированный клиент async-openai).
 async fn compat_list_models(

@@ -12,8 +12,15 @@ use std::collections::HashMap;
 pub const ARTIFACT_PUBLISH: &str = "artifact_publish";
 pub const SKILL_SCRIPT_EXECUTE: &str = "skill_script_execute";
 pub const SKILL_SCRIPT_DEVELOP: &str = "skill_script_develop";
+pub const DATA_REPAIR_EXECUTE: &str = "data_repair_execute";
 const MUTATING_ARTIFACT_TOOLS: &[&str] = &["build_chart", "build_table", "plugin_upsert"];
-const CAPABILITIES: &[&str] = &[ARTIFACT_PUBLISH, SKILL_SCRIPT_EXECUTE, SKILL_SCRIPT_DEVELOP];
+const MUTATING_DATA_REPAIR_TOOLS: &[&str] = &["execute_funnel_repair"];
+const CAPABILITIES: &[&str] = &[
+    ARTIFACT_PUBLISH,
+    SKILL_SCRIPT_EXECUTE,
+    SKILL_SCRIPT_DEVELOP,
+    DATA_REPAIR_EXECUTE,
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +98,7 @@ pub fn specializations() -> Vec<AgentType> {
         AgentType::KbAdmin,
         AgentType::PluginAdmin,
         AgentType::CoordinatorAdmin,
+        AgentType::Tester,
     ]
 }
 
@@ -111,6 +119,7 @@ pub fn default_capability(agent_type: &AgentType, capability: &str) -> bool {
                 AgentType::CoordinatorAdmin | AgentType::PluginAdmin
             )
         }
+        DATA_REPAIR_EXECUTE => matches!(agent_type, AgentType::CoordinatorAdmin),
         _ => false,
     }
 }
@@ -177,6 +186,26 @@ pub async fn accesses_for_snapshot(
             configured.insert(id, level);
         }
     }
+    // Навык, которого нет в матрице, проваливается в default_access (Denied) и при
+    // этом не попадает ни в один список list_skills — агент его просто не видит и
+    // не может назвать причину. Новый навык из внешнего каталога попадал в эту дыру
+    // молча: файл подхватывался reload'ом, а строки доступа никто не заводил.
+    let unconfigured: Vec<&str> = snapshot
+        .skills
+        .iter()
+        .filter(|skill| !configured.contains_key(&skill.id))
+        .map(|skill| skill.id.as_str())
+        .collect();
+    if !unconfigured.is_empty() {
+        tracing::warn!(
+            "[skill_policy] у специализации '{}' нет строк матрицы доступа для навыков: {} — \
+             применён уровень по умолчанию ({}). Заполни матрицу, иначе навык невидим для агента.",
+            agent_type.as_str(),
+            unconfigured.join(", "),
+            default_access(agent_type).as_str()
+        );
+    }
+
     Ok(snapshot
         .skills
         .iter()
@@ -208,6 +237,10 @@ pub async fn capability_allowed(agent_type: &AgentType, capability: &str) -> any
 
 pub fn is_artifact_mutation(tool_name: &str) -> bool {
     MUTATING_ARTIFACT_TOOLS.contains(&tool_name)
+}
+
+pub fn is_data_repair_mutation(tool_name: &str) -> bool {
+    MUTATING_DATA_REPAIR_TOOLS.contains(&tool_name)
 }
 
 fn revision_for(
@@ -485,6 +518,20 @@ mod tests {
         assert!(is_artifact_mutation("build_table"));
         assert!(is_artifact_mutation("plugin_upsert"));
         assert!(!is_artifact_mutation("preview_data"));
+    }
+
+    #[test]
+    fn data_repair_is_coordinator_only_by_default() {
+        assert!(default_capability(
+            &AgentType::CoordinatorAdmin,
+            DATA_REPAIR_EXECUTE
+        ));
+        assert!(!default_capability(
+            &AgentType::PluginAdmin,
+            DATA_REPAIR_EXECUTE
+        ));
+        assert!(is_data_repair_mutation("execute_funnel_repair"));
+        assert!(!is_data_repair_mutation("prepare_funnel_repair"));
     }
 
     #[test]

@@ -37,11 +37,16 @@ const EMBEDDED_SKILL_FILES: &[&str] = &[
     include_str!("../../../skills/system-admin.md"),
     include_str!("../../../skills/mailbox.md"),
     include_str!("../../../skills/kb-curation.md"),
+    include_str!("../../../skills/kb-authoring.md"),
     include_str!("../../../skills/marketing-analytics.md"),
     include_str!("../../../skills/sales-analytics.md"),
-    include_str!("../../../skills/finance-analytics.md"),
+    // Пакетный навык: встроенная копия даёт промпт и инструменты, но без ресурсов
+    // (шаблон анкеты приходит из внешнего каталога `[llm] skills_path`).
+    include_str!("../../../skills/finance-analytics/SKILL.md"),
     include_str!("../../../skills/price-optimization.md"),
     include_str!("../../../skills/support.md"),
+    include_str!("../../../skills/quality-monitoring.md"),
+    include_str!("../../../skills/quality-check-authoring.md"),
 ];
 
 // ─── Core: всегда активные инструменты ───────────────────────────────────────
@@ -52,11 +57,24 @@ const CORE_TOOLS: &[&str] = &[
     "get_entity_schema",
     "search_knowledge",
     "get_knowledge",
+    // Пожаловаться на статью должен уметь любой агент, который может её прочитать,
+    // иначе метрика неточностей никогда не наполнится. Запись статей (kb_propose_article)
+    // намеренно НЕ здесь: она требует явного use_skill("kb-authoring").
+    "kb_report_issue",
     "list_skills",
     "use_skill",
     "list_skill_resources",
     "read_skill_resource",
     "run_skill_task",
+    // Рабочий каталог чата: анкета, план, журнал шагов. В core, а не в отдельном
+    // навыке — состояние задачи нужно любому навыку, и терять его на переключении
+    // между ними нельзя.
+    "list_chat_files",
+    "read_chat_file",
+    "write_chat_file",
+    "save_step",
+    "start_activity",
+    "switch_activity",
 ];
 
 // Бандл интроспекции БД (`list_entities`, `get_join_hint`, `execute_query`) переиспользуется
@@ -1196,6 +1214,31 @@ pub fn skill_by_id_in(snapshot: &SkillRegistrySnapshot, id: &str) -> Option<Skil
     snapshot.skills.iter().find(|s| s.id == id).cloned()
 }
 
+/// Имя ресурса, которым навык объявляет свой шаблон анкеты.
+pub const INTAKE_TEMPLATE_RESOURCE: &str = "intake.md";
+
+/// Шаблон анкеты от активных навыков (первый найденный).
+///
+/// У финансиста и маркетолога разные значимые параметры задачи, и держать их
+/// перечень в коде значит фиксировать домен в бинаре. Шаблон — обычный ресурс
+/// пакета навыка: правится текстом и подхватывается через reload.
+pub fn intake_template_in(
+    snapshot: &SkillRegistrySnapshot,
+    active_skill_ids: &HashSet<String>,
+) -> Option<String> {
+    snapshot
+        .skills
+        .iter()
+        .filter(|skill| active_skill_ids.contains(&skill.id))
+        .find_map(|skill| {
+            skill
+                .resources
+                .iter()
+                .find(|resource| resource.path == INTAKE_TEMPLATE_RESOURCE)
+                .map(|resource| resource.content.clone())
+        })
+}
+
 /// Навык по интенту роутера (первое совпадение).
 pub fn skill_for_intent(intent: &str) -> Option<Skill> {
     skill_for_intent_in(&snapshot(), intent)
@@ -1254,6 +1297,7 @@ fn tool_universe() -> Vec<ToolDefinition> {
     v.extend(super::tool_executor::shared_tool_definitions());
     v.extend(super::tool_executor::analyst_tool_definitions());
     v.extend(super::admin_tools::admin_tool_definitions());
+    v.extend(super::kb_tools::kb_tool_definitions());
     v.extend(super::kb_admin_tools::kb_admin_tool_definitions());
     v.extend(super::plugin_tools::plugin_tool_definitions());
     v.extend(super::chart_tools::chart_tool_definitions());
@@ -1261,6 +1305,9 @@ fn tool_universe() -> Vec<ToolDefinition> {
     v.extend(super::mail_tools::mail_tool_definitions());
     v.extend(super::schedule_tools::schedule_tool_definitions());
     v.extend(super::ticket_tools::ticket_tool_definitions());
+    v.extend(super::workspace_tools::workspace_tool_definitions());
+    v.extend(super::quality_tools::quality_tool_definitions());
+    v.extend(super::funnel_repair_tools::funnel_repair_tool_definitions());
     v.extend(meta_tool_definitions());
     v
 }
@@ -1419,6 +1466,9 @@ pub fn tools_catalog() -> Value {
         ("shared", super::tool_executor::shared_tool_definitions()),
         ("analyst", super::tool_executor::analyst_tool_definitions()),
         ("admin", super::admin_tools::admin_tool_definitions()),
+        // Порядок важен: дедуп ниже оставляет ПЕРВОЕ вхождение имени, поэтому
+        // бандл поиска должен идти до kb_admin, чтобы задать свою метку категории.
+        ("kb_search", super::kb_tools::kb_tool_definitions()),
         ("kb", super::kb_admin_tools::kb_admin_tool_definitions()),
         ("plugin", super::plugin_tools::plugin_tool_definitions()),
         ("chart", super::chart_tools::chart_tool_definitions()),
@@ -1429,6 +1479,12 @@ pub fn tools_catalog() -> Value {
             super::schedule_tools::schedule_tool_definitions(),
         ),
         ("ticket", super::ticket_tools::ticket_tool_definitions()),
+        (
+            "workspace",
+            super::workspace_tools::workspace_tool_definitions(),
+        ),
+        ("quality", super::quality_tools::quality_tool_definitions()),
+        ("funnel_repair", super::funnel_repair_tools::funnel_repair_tool_definitions()),
         ("meta", meta_tool_definitions()),
     ];
 
@@ -1474,6 +1530,18 @@ mod tests {
         assert!(!names.contains("execute_query"));
     }
 
+    /// Инструменты каталога лежат в core: состояние задачи нужно любому навыку.
+    /// Имя, отсутствующее в `tool_universe()`, выбрасывается молча — проверяем,
+    /// что все шесть доехали до набора, который видит модель.
+    #[test]
+    fn workspace_tools_are_available_without_any_skill() {
+        let tools = assemble_tools::<&str>(&[]);
+        let names: HashSet<_> = tools.iter().map(|t| t.name.clone()).collect();
+        for expected in super::super::workspace_tools::WORKSPACE_TOOL_NAMES {
+            assert!(names.contains(*expected), "потерян инструмент {expected}");
+        }
+    }
+
     #[test]
     fn plugin_skill_brings_plugin_tools() {
         let tools = assemble_tools(&["plugin-authoring"]);
@@ -1491,6 +1559,49 @@ mod tests {
         let names: HashSet<_> = tools.iter().map(|t| t.name.clone()).collect();
         for expected in super::super::ticket_tools::TICKET_TOOL_NAMES {
             assert!(names.contains(*expected), "потерян инструмент {expected}");
+        }
+    }
+
+    #[test]
+    fn kb_tools_registered_end_to_end() {
+        // Та же тихая цепочка: пять переходов, и каждый рвётся без ошибки сборки.
+        let core = active_tool_names::<&str>(&[]);
+        assert!(core.contains("search_knowledge"));
+        assert!(core.contains("get_knowledge"));
+        assert!(
+            core.contains("kb_report_issue"),
+            "пожаловаться на статью должен уметь любой агент, иначе метрика неточностей пуста"
+        );
+        assert!(
+            !core.contains("kb_propose_article"),
+            "запись статей не должна быть core — она требует явного use_skill"
+        );
+
+        let names: HashSet<_> = assemble_tools(&["kb-authoring"])
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        for expected in super::super::kb_tools::KB_TOOL_NAMES {
+            assert!(names.contains(*expected), "потерян инструмент {expected}");
+        }
+    }
+
+    #[test]
+    fn kb_tools_present_in_tools_catalog() {
+        // Отдельный переход: `tools_catalog()` перечисляет бандлы заново, и забытый
+        // здесь инструмент пропадает из /api/llm-tools, оставаясь рабочим в чате.
+        let catalog = tools_catalog();
+        let listed: HashSet<&str> = catalog["tools"]
+            .as_array()
+            .expect("tools_catalog вернул не массив")
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        for expected in super::super::kb_tools::KB_TOOL_NAMES {
+            assert!(
+                listed.contains(expected),
+                "{expected} отсутствует в tools_catalog()"
+            );
         }
     }
 
@@ -1520,6 +1631,14 @@ mod tests {
         assert_eq!(
             skill_for_intent("plugin_dev").unwrap().id,
             "plugin-authoring"
+        );
+        assert_eq!(
+            skill_for_intent("quality_check").unwrap().id,
+            "quality-monitoring"
+        );
+        assert_eq!(
+            skill_for_intent("quality_check_dev").unwrap().id,
+            "quality-check-authoring"
         );
         assert_eq!(skill_for_intent("data_query").unwrap().id, "data-analytics");
         assert_eq!(skill_for_intent("chart_build").unwrap().id, "chart-builder");
@@ -1633,6 +1752,48 @@ mod tests {
             .resources
             .iter()
             .any(|resource| resource.path == "examples/ozon.json"));
+        assert!(skill
+            .resources
+            .iter()
+            .any(|resource| resource.path == "references/repair-workflow.md"));
+        for tool in [
+            "prepare_funnel_repair",
+            "execute_funnel_repair",
+            "get_funnel_repair_status",
+        ] {
+            assert!(skill.tool_names.iter().any(|name| name == tool));
+        }
+    }
+
+    /// Шаблон анкеты — обычный ресурс пакета: правится текстом и приезжает
+    /// в новую задачу при активации навыка, без пересборки.
+    #[test]
+    fn finance_skill_ships_an_intake_template() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("skills")
+            .join("finance-analytics");
+        let skill = load_package_for_test(&root);
+        assert_eq!(skill.id, "finance-analytics");
+        assert!(skill
+            .resources
+            .iter()
+            .any(|resource| resource.path == INTAKE_TEMPLATE_RESOURCE));
+
+        let snapshot = SkillRegistrySnapshot {
+            generation: 1,
+            catalog_digest: "test".into(),
+            loaded_at: "test".into(),
+            skills: Arc::new(vec![skill]),
+            diagnostics: Vec::new(),
+        };
+        let active: HashSet<String> = HashSet::from(["finance-analytics".to_string()]);
+        let template = intake_template_in(&snapshot, &active).expect("шаблон анкеты");
+        // Ключевые поля домена: без них анкета не отвечает на вопрос «что считаем».
+        assert!(template.contains("period_from"));
+        assert!(template.contains("layer"));
+
+        // Навык не активен — шаблон не подставляется.
+        assert!(intake_template_in(&snapshot, &HashSet::new()).is_none());
     }
 
     #[test]
