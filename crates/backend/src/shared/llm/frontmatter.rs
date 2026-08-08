@@ -43,6 +43,32 @@ pub fn parse_scalar(frontmatter: &str, key: &str) -> Option<String> {
     None
 }
 
+/// Извлечь целое число: `key: 42`. Нечисловое значение → `None` + warn в лог.
+pub fn parse_u32(frontmatter: &str, key: &str) -> Option<u32> {
+    let raw = parse_scalar(frontmatter, key)?;
+    match raw.parse::<u32>() {
+        Ok(value) => Some(value),
+        Err(_) => {
+            tracing::warn!("frontmatter: поле '{}' не число: '{}'", key, raw);
+            None
+        }
+    }
+}
+
+/// Извлечь дату: `key: 2026-02-25`. Терпит datetime-суффикс (`2026-02-25T10:00:00Z`).
+pub fn parse_date(frontmatter: &str, key: &str) -> Option<chrono::NaiveDate> {
+    let raw = parse_scalar(frontmatter, key)?;
+    // Отрезаем время, если оно есть: берём первые 10 символов вида YYYY-MM-DD.
+    let date_part = raw.split(['T', ' ']).next().unwrap_or(&raw);
+    match chrono::NaiveDate::parse_from_str(date_part, "%Y-%m-%d") {
+        Ok(date) => Some(date),
+        Err(_) => {
+            tracing::warn!("frontmatter: поле '{}' не дата YYYY-MM-DD: '{}'", key, raw);
+            None
+        }
+    }
+}
+
 /// Извлечь список значений из inline-формата `key: [val1, val2]`
 /// или multiline-формата:
 /// ```yaml
@@ -97,4 +123,44 @@ pub fn parse_list(frontmatter: &str, key: &str) -> Option<Vec<String>> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FM: &str = "title: Тест\nstars: 4\nttl_days: \"90\"\nverified:\nupdated: 2026-02-25\n\
+                      touched: 2026-02-25T10:00:00Z\nbroken_num: abc\nbroken_date: вчера\n";
+
+    #[test]
+    fn parse_u32_reads_plain_and_quoted() {
+        assert_eq!(parse_u32(FM, "stars"), Some(4));
+        assert_eq!(parse_u32(FM, "ttl_days"), Some(90));
+    }
+
+    #[test]
+    fn parse_u32_rejects_garbage_and_missing() {
+        assert_eq!(parse_u32(FM, "broken_num"), None);
+        assert_eq!(parse_u32(FM, "absent"), None);
+    }
+
+    #[test]
+    fn parse_date_reads_date_and_tolerates_time_suffix() {
+        let expected = chrono::NaiveDate::from_ymd_opt(2026, 2, 25).unwrap();
+        assert_eq!(parse_date(FM, "updated"), Some(expected));
+        assert_eq!(parse_date(FM, "touched"), Some(expected));
+    }
+
+    #[test]
+    fn parse_date_rejects_garbage_and_missing() {
+        assert_eq!(parse_date(FM, "broken_date"), None);
+        assert_eq!(parse_date(FM, "absent"), None);
+    }
+
+    #[test]
+    fn empty_scalar_reads_as_none() {
+        // `verified:` без значения — легальный способ сказать «не верифицировано».
+        assert_eq!(parse_scalar(FM, "verified"), None);
+        assert_eq!(parse_date(FM, "verified"), None);
+    }
 }

@@ -22,6 +22,15 @@ static DV_LABELS: Lazy<HashMap<String, String>> = Lazy::new(|| {
         .collect()
 });
 
+/// Наблюдаемая статистика статьи. `None`, если по статье ещё не было обращений.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct KbArticleMetrics {
+    pub search_hits: i64,
+    pub read_hits: i64,
+    pub cited_hits: i64,
+    pub open_issues: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct KbArticleSummary {
     pub id: String,
@@ -31,18 +40,35 @@ pub struct KbArticleSummary {
     pub source_path: Option<String>,
     pub display_path: String,
     pub is_embedded: bool,
+    // ─── ценность и актуальность ───
+    pub summary: String,
+    pub status: String,
+    pub stars: Option<u8>,
+    pub updated: Option<String>,
+    pub verified: Option<String>,
+    pub ttl_days: Option<u32>,
+    pub token_cost: u32,
+    /// Насколько израсходован срок годности знания, %.
+    pub staleness_pct: Option<u32>,
+    pub unknown_tags: Vec<String>,
+    pub metrics: KbArticleMetrics,
 }
 
 #[derive(Debug, Serialize)]
 pub struct KbArticleDetail {
+    #[serde(flatten)]
+    pub summary_fields: KbArticleSummary,
+    pub content: String,
+    /// Связи, ведущие на реальные статьи — кликабельны в UI.
+    pub related_articles: Vec<KbRelatedArticle>,
+    /// Кто ссылается на эту статью.
+    pub back_links: Vec<KbRelatedArticle>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KbRelatedArticle {
     pub id: String,
     pub title: String,
-    pub tags: Vec<String>,
-    pub related: Vec<String>,
-    pub source_path: Option<String>,
-    pub display_path: String,
-    pub is_embedded: bool,
-    pub content: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -55,6 +81,51 @@ pub struct KbStatsResponse {
     pub total_folders: usize,
     pub knowledge_base_path: String,
     pub top_tags: Vec<KbCountItem>,
+    // ─── здоровье базы ───
+    pub drafts: usize,
+    pub deprecated: usize,
+    /// Статьи, у которых срок годности знания истёк.
+    pub stale_articles: usize,
+    pub total_token_cost: u32,
+    pub vocabulary_terms: usize,
+    pub unknown_tag_count: usize,
+    /// Строки статистики, не сопоставленные ни с одной живой статьёй
+    /// (обычно — след переименования файла).
+    pub orphaned_metrics: usize,
+    pub open_issues: i64,
+    pub loaded_at: String,
+    pub diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KbVocabularyResponse {
+    pub terms: Vec<KbVocabularyTerm>,
+    pub total_terms: usize,
+    /// Теги, использованные в статьях, но отсутствующие в словаре — работа куратору.
+    pub tags_outside_vocabulary: Vec<KbCountItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KbVocabularyTerm {
+    pub tag: String,
+    pub group: String,
+    pub label: String,
+    pub aliases: Vec<String>,
+    pub description: String,
+    pub articles: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KbReloadResponse {
+    pub ok: bool,
+    pub total_articles: usize,
+    pub file_articles: usize,
+    pub embedded_articles: usize,
+    pub drafts: usize,
+    pub vocabulary_terms: usize,
+    pub unknown_tag_count: usize,
+    pub loaded_at: String,
+    pub diagnostics: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -88,22 +159,42 @@ struct MutableTreeNode {
 pub async fn stats() -> Json<KbStatsResponse> {
     let kb_dir = knowledge_base_dir();
     let kb = crate::shared::llm::knowledge_base::kb_read();
+    let metrics = crate::shared::llm::kb_metrics::snapshot();
     let docs = kb.all_docs();
     let mut tags = BTreeMap::<String, usize>::new();
     let mut related = BTreeSet::<String>::new();
     let mut folders = BTreeSet::<String>::new();
+    let mut unknown = BTreeSet::<String>::new();
+    let mut live_keys = BTreeSet::<String>::new();
     let mut file_articles = 0usize;
     let mut embedded_articles = 0usize;
+    let mut drafts = 0usize;
+    let mut deprecated = 0usize;
+    let mut stale_articles = 0usize;
+    let mut total_token_cost = 0u32;
 
     for doc in docs.iter() {
-        let summary = article_summary(doc, &kb_dir);
+        let summary = article_summary(doc, &kb_dir, &metrics);
         if summary.is_embedded {
             embedded_articles += 1;
         } else {
             file_articles += 1;
         }
+        match summary.status.as_str() {
+            "draft" => drafts += 1,
+            "deprecated" => deprecated += 1,
+            _ => {}
+        }
+        if summary.staleness_pct.is_some_and(|pct| pct > 100) {
+            stale_articles += 1;
+        }
+        total_token_cost = total_token_cost.saturating_add(summary.token_cost);
+        live_keys.insert(doc.metrics_key());
         for tag in &summary.tags {
             *tags.entry(tag.clone()).or_insert(0) += 1;
+        }
+        for tag in &summary.unknown_tags {
+            unknown.insert(tag.clone());
         }
         for item in &summary.related {
             related.insert(item.clone());
@@ -122,6 +213,14 @@ pub async fn stats() -> Json<KbStatsResponse> {
     top_tags.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
     top_tags.truncate(20);
 
+    // Осиротевшая строка статистики — след переименования файла у статьи без `uid`.
+    // Показываем её, чтобы потеря счётчиков была видна, а не загадочна.
+    let orphaned_metrics = metrics
+        .keys()
+        .filter(|key| !live_keys.contains(*key))
+        .count();
+    let open_issues = metrics.values().map(|row| row.open_issue_count).sum();
+
     Json(KbStatsResponse {
         total_articles: docs.len(),
         file_articles,
@@ -131,18 +230,102 @@ pub async fn stats() -> Json<KbStatsResponse> {
         total_folders: folders.len(),
         knowledge_base_path: kb_dir.display().to_string(),
         top_tags,
+        drafts,
+        deprecated,
+        stale_articles,
+        total_token_cost,
+        vocabulary_terms: kb.vocabulary().len(),
+        unknown_tag_count: unknown.len(),
+        orphaned_metrics,
+        open_issues,
+        loaded_at: kb.loaded_at().to_rfc3339(),
+        diagnostics: kb.diagnostics().to_vec(),
     })
+}
+
+pub async fn vocabulary() -> Json<KbVocabularyResponse> {
+    let kb = crate::shared::llm::knowledge_base::kb_read();
+    let terms: Vec<KbVocabularyTerm> = kb
+        .vocabulary()
+        .terms()
+        .map(|term| KbVocabularyTerm {
+            articles: kb.tag_count(&term.tag),
+            tag: term.tag.clone(),
+            group: term.group.clone(),
+            label: term.label.clone(),
+            aliases: term.aliases.clone(),
+            description: term.description.clone(),
+        })
+        .collect();
+
+    let mut outside = BTreeMap::<String, usize>::new();
+    for doc in kb.all_docs() {
+        for tag in &doc.unknown_tags {
+            *outside.entry(tag.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut tags_outside_vocabulary: Vec<KbCountItem> = outside
+        .into_iter()
+        .map(|(name, count)| KbCountItem { name, count })
+        .collect();
+    tags_outside_vocabulary.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
+
+    Json(KbVocabularyResponse {
+        total_terms: terms.len(),
+        terms,
+        tags_outside_vocabulary,
+    })
+}
+
+pub async fn issues() -> Json<serde_json::Value> {
+    match crate::shared::llm::kb_metrics::list_open_issues(None, 200).await {
+        Ok(items) => Json(serde_json::json!({ "total": items.len(), "items": items })),
+        Err(error) => Json(serde_json::json!({ "total": 0, "items": [], "error": error.to_string() })),
+    }
+}
+
+/// Перечитать базу знаний с диска.
+///
+/// До этого такого роута не существовало (хотя документация на него ссылалась),
+/// и правки статей в Obsidian требовали рестарта бэкенда.
+pub async fn reload() -> Result<Json<KbReloadResponse>, (StatusCode, String)> {
+    crate::shared::llm::kb_metrics::flush().await;
+    if let Err(error) = crate::shared::llm::knowledge_base::reload_knowledge_base() {
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, error.to_string()));
+    }
+
+    let kb = crate::shared::llm::knowledge_base::kb_read();
+    let docs = kb.all_docs();
+    let embedded_articles = docs.iter().filter(|d| d.is_embedded).count();
+    let drafts = docs
+        .iter()
+        .filter(|d| d.status == crate::shared::llm::knowledge_base::KbStatus::Draft)
+        .count();
+    let unknown: BTreeSet<&String> = docs.iter().flat_map(|d| d.unknown_tags.iter()).collect();
+
+    Ok(Json(KbReloadResponse {
+        ok: true,
+        total_articles: docs.len(),
+        file_articles: docs.len() - embedded_articles,
+        embedded_articles,
+        drafts,
+        vocabulary_terms: kb.vocabulary().len(),
+        unknown_tag_count: unknown.len(),
+        loaded_at: kb.loaded_at().to_rfc3339(),
+        diagnostics: kb.diagnostics().to_vec(),
+    }))
 }
 
 pub async fn tree() -> Json<KbTreeResponse> {
     let kb_dir = knowledge_base_dir();
     let kb = crate::shared::llm::knowledge_base::kb_read();
+    let metrics = crate::shared::llm::kb_metrics::snapshot();
     let mut root = MutableTreeNode::default();
 
     let mut docs = kb.all_docs();
     docs.sort_by(|a, b| a.id.cmp(&b.id));
     for doc in docs {
-        insert_article(&mut root, article_summary(doc, &kb_dir));
+        insert_article(&mut root, article_summary(doc, &kb_dir, &metrics));
     }
 
     Json(KbTreeResponse {
@@ -157,19 +340,36 @@ pub async fn tree() -> Json<KbTreeResponse> {
 pub async fn get_article(Path(id): Path<String>) -> Result<Json<KbArticleDetail>, StatusCode> {
     let kb_dir = knowledge_base_dir();
     let kb = crate::shared::llm::knowledge_base::kb_read();
+    let metrics = crate::shared::llm::kb_metrics::snapshot();
     let Some(doc) = kb.get(&id) else {
         return Err(StatusCode::NOT_FOUND);
     };
-    let summary = article_summary(doc, &kb_dir);
+
+    // Связи, ведущие на реальные статьи, — видимое лицо графа в UI.
+    let related_articles = doc
+        .related
+        .iter()
+        .filter_map(|r| kb.get(r))
+        .map(|d| KbRelatedArticle {
+            id: d.id.clone(),
+            title: d.title.clone(),
+        })
+        .collect();
+    let back_links = kb
+        .back_links(&id)
+        .iter()
+        .filter_map(|r| kb.get(r))
+        .map(|d| KbRelatedArticle {
+            id: d.id.clone(),
+            title: d.title.clone(),
+        })
+        .collect();
+
     Ok(Json(KbArticleDetail {
-        id: summary.id,
-        title: summary.title,
-        tags: summary.tags,
-        related: summary.related,
-        source_path: summary.source_path,
-        display_path: summary.display_path,
-        is_embedded: summary.is_embedded,
+        summary_fields: article_summary(doc, &kb_dir, &metrics),
         content: doc.content.clone(),
+        related_articles,
+        back_links,
     }))
 }
 
@@ -247,25 +447,42 @@ fn insert_article(root: &mut MutableTreeNode, article: KbArticleSummary) {
     );
 }
 
-fn article_summary(doc: &KnowledgeDoc, kb_dir: &FsPath) -> KbArticleSummary {
+fn article_summary(
+    doc: &KnowledgeDoc,
+    kb_dir: &FsPath,
+    metrics: &HashMap<String, crate::shared::llm::kb_metrics::MetricsRow>,
+) -> KbArticleSummary {
     let source_path = doc.source_path.clone();
     let display_path = source_path
         .as_deref()
         .map(|path| display_path(path, kb_dir))
         .unwrap_or_else(|| format!("embedded/{}.md", doc.id));
-    let is_embedded = source_path
-        .as_deref()
-        .map(|path| !is_under_kb_dir(path, kb_dir))
-        .unwrap_or(true);
 
+    let row = metrics.get(&doc.metrics_key());
     KbArticleSummary {
         id: doc.id.clone(),
         title: doc.title.clone(),
-        tags: doc.tags.clone(),
+        tags: doc.canonical_tags.clone(),
         related: doc.related.clone(),
         source_path,
         display_path,
-        is_embedded,
+        // Признак теперь вычисляется при загрузке — повторно резать путь не нужно.
+        is_embedded: doc.is_embedded,
+        summary: doc.summary.clone(),
+        status: doc.status.as_str().to_string(),
+        stars: doc.stars,
+        updated: doc.updated.map(|d| d.to_string()),
+        verified: doc.verified.map(|d| d.to_string()),
+        ttl_days: doc.ttl_days,
+        token_cost: doc.token_cost,
+        staleness_pct: doc.staleness_pct(),
+        unknown_tags: doc.unknown_tags.clone(),
+        metrics: KbArticleMetrics {
+            search_hits: row.map(|r| r.search_hits).unwrap_or(0),
+            read_hits: row.map(|r| r.read_hits).unwrap_or(0),
+            cited_hits: row.map(|r| r.cited_hits).unwrap_or(0),
+            open_issues: row.map(|r| r.open_issue_count).unwrap_or(0),
+        },
     }
 }
 
@@ -287,10 +504,6 @@ fn display_path(source_path: &str, kb_dir: &FsPath) -> String {
     } else {
         normalized
     }
-}
-
-fn is_under_kb_dir(source_path: &str, kb_dir: &FsPath) -> bool {
-    PathBuf::from(source_path).strip_prefix(kb_dir).is_ok()
 }
 
 fn normalize_path(path: String) -> String {

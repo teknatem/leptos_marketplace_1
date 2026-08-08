@@ -3,7 +3,7 @@ id: kb-curation
 title: База знаний
 description: Работа с базой знаний: чтение статей, подготовка правок, тикеты, анализ пробелов.
 intents: [kb_curation]
-tools: [list_kb_documents, get_kb_document, create_kb_edit, update_kb_edit_articles, list_open_kb_edits, write_kb_document, execute_query]
+tools: [list_kb_documents, get_kb_document, create_kb_edit, update_kb_edit_articles, list_open_kb_edits, write_kb_document, execute_query, kb_propose_article, list_kb_vocabulary, search_knowledge, get_knowledge]
 allowed_for: [kb_admin]
 default_for: [kb_admin]
 ---

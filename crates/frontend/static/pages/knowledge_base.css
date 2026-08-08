@@ -1,0 +1,112 @@
+/* Страница «База знаний».
+   Все правила — под корневым классом страницы (см. memory `per-page-css-convention`). */
+
+.kb-workspace .kb-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--colorNeutralForeground3);
+}
+
+.kb-workspace .kb-meta--links {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--colorNeutralStroke2);
+}
+
+.kb-workspace .kb-meta--links a {
+    font-size: 11px;
+}
+
+/* Звёзды важности. Жёлтый читается в обеих темах, поэтому цвет задан прямо. */
+.kb-workspace .kb-meta__stars {
+    color: #d4a017;
+    letter-spacing: 1px;
+}
+
+.kb-workspace .kb-meta__stale {
+    color: var(--colorPaletteRedForeground1);
+}
+
+.kb-workspace .kb-meta__issues {
+    color: var(--colorPaletteRedForeground1);
+    font-weight: 600;
+}
+
+.kb-workspace .kb-meta__usage {
+    color: var(--colorNeutralForeground3);
+    font-variant-numeric: tabular-nums;
+}
+
+.kb-workspace .kb-meta__summary {
+    margin: 4px 0 6px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--colorNeutralForeground2);
+    font-style: italic;
+}
+
+/* ── Словарь тегов ─────────────────────────────────────────────────────────── */
+
+.kb-workspace .kb-vocabulary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-xs);
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.kb-workspace .kb-vocabulary__group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.kb-workspace .kb-vocabulary__group--warning {
+    padding-top: var(--spacing-xs);
+    border-top: 1px solid var(--colorNeutralStroke2);
+}
+
+.kb-workspace .kb-vocabulary__group-title {
+    flex-basis: 100%;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--colorNeutralForeground3);
+}
+
+.kb-workspace .kb-vocabulary__hint {
+    flex-basis: 100%;
+    margin: 0 0 4px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--colorNeutralForeground3);
+}
+
+.kb-workspace .kb-vocabulary__term {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.kb-workspace .kb-vocabulary__count {
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--colorNeutralForeground3);
+}
+
+.kb-workspace .kb-vocabulary__aliases {
+    font-size: 10px;
+    color: var(--colorNeutralForeground3);
+}
+
+.kb-workspace .hidden {
+    display: none !important;
+}

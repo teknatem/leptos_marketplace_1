@@ -2,42 +2,138 @@
 //!
 //! Сканирует бизнес-директорию `knowledge_base_path` из конфига, добавляет embedded
 //! markdown-документы приложения, парсит YAML frontmatter каждого MD-файла и строит
-//! in-memory индекс `tag → [doc_id]`.
+//! in-memory индексы: `тег → [doc_id]`, обратные рёбра `related` и BM25-индекс
+//! (`kb_search`) для поиска по свободному тексту.
 //!
-//! Инструменты LLM:
-//! - `search_knowledge(tags)` — поиск по тегам, возвращает список (id, title)
+//! Инструменты LLM (см. `kb_tools`):
+//! - `search_knowledge(query, tags)` — гибридный поиск, возвращает id + summary
 //! - `get_knowledge(id)` — полный текст документа без frontmatter
 
-use super::frontmatter::{parse_list, parse_scalar, split_frontmatter};
+use super::frontmatter::{parse_date, parse_list, parse_scalar, parse_u32, split_frontmatter};
+use super::kb_search::{Corpus, SearchIndex};
+use super::kb_vocabulary::Vocabulary;
+use chrono::{DateTime, NaiveDate, Utc};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+/// Имя файла словаря тегов внутри каталога базы знаний.
+pub const VOCABULARY_FILE: &str = "_vocabulary.md";
+
+/// Срок годности знания по умолчанию, если в статье не указан `ttl_days`.
+pub const DEFAULT_TTL_DAYS: u32 = 180;
+
 // ─── Структуры ───────────────────────────────────────────────────────────────
 
+/// Жизненный цикл статьи. `active` — дефолт, чтобы статьи без поля `status`
+/// вели себя ровно как до введения статусов.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum KbStatus {
+    /// Черновик: виден, но понижен в выдаче и помечен в UI.
+    Draft,
+    #[default]
+    Active,
+    /// Устарела: в выдачу LLM не попадает без явного запроса.
+    Deprecated,
+}
+
+impl KbStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Active => "active",
+            Self::Deprecated => "deprecated",
+        }
+    }
+
+    pub fn from_str(raw: &str) -> Self {
+        match raw.trim().to_lowercase().as_str() {
+            "draft" | "черновик" => Self::Draft,
+            "deprecated" | "устарела" | "archived" => Self::Deprecated,
+            _ => Self::Active,
+        }
+    }
+}
+
 /// Один документ базы знаний (один MD-файл).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct KnowledgeDoc {
     /// Slug-идентификатор (имя файла без `.md`)
     pub id: String,
     /// Заголовок из frontmatter `title:`
     pub title: String,
-    /// Теги из frontmatter `tags: [...]`
+    /// Теги из frontmatter `tags: [...]` — как написано в файле
     pub tags: Vec<String>,
-    /// Связанные агрегаты из frontmatter `related: [...]`
+    /// Связанные статьи/теги/агрегаты из frontmatter `related: [...]`
     pub related: Vec<String>,
     /// Тело MD без frontmatter-блока
     pub content: String,
     pub source_path: Option<String>,
+
+    // ─── Авторская метадата ───
+    /// Стабильный идентификатор `kb-<8 hex>`, переживающий переименование файла.
+    pub uid: Option<String>,
+    pub status: KbStatus,
+    /// Важность/полезность 1–5. `None` трактуется как 3 (нейтрально).
+    pub stars: Option<u8>,
+    /// Одна строка: что даёт статья. Отдаётся в результатах поиска вместо тела.
+    pub summary: String,
+    /// Альтернативные формулировки для поиска.
+    pub aliases: Vec<String>,
+    pub updated: Option<NaiveDate>,
+    /// Когда человек последний раз подтвердил, что статья соответствует реальности.
+    pub verified: Option<NaiveDate>,
+    /// Ожидаемый срок годности знания в днях.
+    pub ttl_days: Option<u32>,
+    /// Чаты, из которых родилась статья.
+    pub source_chats: Vec<String>,
+    /// `llm` или `human`.
+    pub author: String,
+
+    // ─── Вычисляется при загрузке ───
+    /// Теги, приведённые к словарю.
+    pub canonical_tags: Vec<String>,
+    /// Теги, которых нет в словаре — рабочий список куратора.
+    pub unknown_tags: Vec<String>,
+    /// Оценка стоимости чтения статьи в токенах.
+    pub token_cost: u32,
+    /// Встроенная в бинарник техдокументация (а не бизнес-статья из Obsidian).
+    pub is_embedded: bool,
+    /// Дней с даты `verified` (иначе `updated`, иначе mtime файла).
+    pub age_days: Option<u32>,
 }
 
-/// In-memory база знаний со встроенным тег-индексом.
+impl KnowledgeDoc {
+    /// Ключ строки статистики: `uid`, если есть, иначе id файла.
+    pub fn metrics_key(&self) -> String {
+        self.uid.clone().unwrap_or_else(|| self.id.clone())
+    }
+
+    /// Насколько статья протухла, 0–100 %. `None` — срок неприменим.
+    pub fn staleness_pct(&self) -> Option<u32> {
+        if self.is_embedded {
+            return None;
+        }
+        let age = self.age_days?;
+        let ttl = self.ttl_days.unwrap_or(DEFAULT_TTL_DAYS).max(1);
+        Some(((age as f32 / ttl as f32) * 100.0).min(999.0) as u32)
+    }
+}
+
+/// In-memory база знаний с тег-индексом, графом связей и поисковым индексом.
 pub struct KnowledgeBase {
-    /// tag (lowercase) → список doc_id
+    /// канонический тег → список doc_id
     index: HashMap<String, Vec<String>>,
     /// doc_id → документ
     docs: HashMap<String, KnowledgeDoc>,
+    /// Обратные рёбра `related`: doc_id → кто на него ссылается.
+    back_links: HashMap<String, Vec<String>>,
+    retrieval: SearchIndex,
+    vocabulary: Vocabulary,
+    loaded_at: DateTime<Utc>,
+    /// Проблемы загрузки: коллизии id, теги вне словаря, ошибки разбора.
+    diagnostics: Vec<String>,
 }
 
 // ─── Глобальный синглтон ─────────────────────────────────────────────────────
@@ -196,73 +292,144 @@ const EMBEDDED_LLM_DOCS: &[EmbeddedKnowledgeSource] = &[
 
 // ─── Реализация ──────────────────────────────────────────────────────────────
 
+/// Откуда пришёл документ. Нужно, чтобы embedded-док не затирал бизнес-статью.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    File,
+    Embedded,
+}
+
 impl KnowledgeBase {
-    /// Загрузить все `*.md` файлы из директории `dir`.
+    /// Загрузить словарь и все `*.md` файлы из директории `dir`, затем embedded-доки.
     pub fn load(dir: &Path) -> Self {
         let mut docs: HashMap<String, KnowledgeDoc> = HashMap::new();
-        let mut index: HashMap<String, Vec<String>> = HashMap::new();
+        let mut diagnostics: Vec<String> = Vec::new();
 
-        if !dir.exists() {
+        // 1. Словарь тегов. Отсутствует — база работает, все теги «неизвестные».
+        let vocabulary = load_vocabulary(dir, &mut diagnostics);
+
+        // 2. Бизнес-статьи из Obsidian.
+        let mut loaded = 0usize;
+        if dir.exists() {
+            for path in walk_markdown_files(dir) {
+                let id = build_doc_id(dir, &path);
+                if id.is_empty() {
+                    continue;
+                }
+                match std::fs::read_to_string(&path) {
+                    Ok(raw) => {
+                        let mut doc = parse_doc(id, &raw, &vocabulary);
+                        doc.source_path = Some(path.display().to_string());
+                        doc.is_embedded = false;
+                        doc.age_days = compute_age_days(&doc, Some(&path));
+                        insert_doc(&mut docs, doc, Origin::File, &mut diagnostics);
+                        loaded += 1;
+                    }
+                    Err(e) => {
+                        diagnostics.push(format!("не читается '{}': {}", path.display(), e));
+                        tracing::warn!("KnowledgeBase: cannot read '{}': {}", path.display(), e);
+                    }
+                }
+            }
+        } else {
+            diagnostics.push(format!("каталог базы знаний не существует: {}", dir.display()));
             tracing::warn!(
-                "KnowledgeBase: directory '{}' does not exist; knowledge tools will return empty results",
+                "KnowledgeBase: directory '{}' does not exist; only embedded docs available",
                 dir.display()
             );
-            let mut kb = Self { index, docs };
-            kb.load_embedded_sources();
-            return kb;
         }
 
-        let mut loaded = 0usize;
-        for path in walk_markdown_files(dir) {
-            let id = build_doc_id(dir, &path);
-            if id.is_empty() {
-                continue;
-            }
-
-            match std::fs::read_to_string(&path) {
-                Ok(raw) => {
-                    let mut doc = parse_doc(id, &raw);
-                    doc.source_path = Some(path.display().to_string());
-                    insert_doc(&mut docs, &mut index, doc);
-                    loaded += 1;
-                }
-                Err(e) => {
-                    tracing::warn!("KnowledgeBase: cannot read '{}': {}", path.display(), e);
-                }
-            }
+        // 3. Встроенная техдокументация приложения.
+        for source in EMBEDDED_LLM_DOCS {
+            let mut doc = parse_doc(source.id.to_string(), source.raw, &vocabulary);
+            doc.source_path = Some(source.source_path.to_string());
+            doc.is_embedded = true;
+            insert_doc(&mut docs, doc, Origin::Embedded, &mut diagnostics);
         }
 
-        let mut kb = Self { index, docs };
-        kb.load_embedded_sources();
+        // 4. Производные индексы.
+        let index = build_tag_index(&docs);
+        let back_links = build_back_links(&docs);
+        let retrieval = SearchIndex::build(docs.values());
+
+        let unknown_tags: usize = docs.values().map(|d| d.unknown_tags.len()).sum();
+        if unknown_tags > 0 {
+            diagnostics.push(format!(
+                "тегов вне словаря: {} (см. GET /api/kb/vocabulary)",
+                unknown_tags
+            ));
+        }
 
         tracing::info!(
-            "KnowledgeBase: loaded {} documents from '{}'",
+            "KnowledgeBase: loaded {} business + {} embedded docs from '{}', {} vocabulary terms",
             loaded,
-            dir.display()
+            EMBEDDED_LLM_DOCS.len(),
+            dir.display(),
+            vocabulary.len()
         );
-        kb
+
+        Self {
+            index,
+            docs,
+            back_links,
+            retrieval,
+            vocabulary,
+            loaded_at: Utc::now(),
+            diagnostics,
+        }
     }
 
-    /// Поиск по тегам (OR-семантика: совпадение хотя бы по одному тегу).
-    /// Возвращает документы без дублей, отсортированные по количеству совпавших тегов.
+    /// Поиск по тегам (OR-семантика) — сохранён ради `find_page_help`,
+    /// но исполняется новым движком, поэтому наследует нормализацию по словарю.
     pub fn search_by_tags(&self, tags: &[&str]) -> Vec<&KnowledgeDoc> {
-        let mut scores: HashMap<&str, usize> = HashMap::new();
-
-        for tag in tags {
-            let key = tag.to_lowercase();
-            if let Some(ids) = self.index.get(&key) {
-                for id in ids {
-                    *scores.entry(id.as_str()).or_default() += 1;
-                }
-            }
-        }
-
-        let mut results: Vec<(&str, usize)> = scores.into_iter().collect();
-        results.sort_by(|a, b| b.1.cmp(&a.1));
-
-        results
+        let query = super::kb_search::Query {
+            tags: self.normalize_tags(tags),
+            limit: super::kb_search::MAX_LIMIT,
+            include_deprecated: true,
+            ..Default::default()
+        };
+        self.search(&query)
             .into_iter()
-            .filter_map(|(id, _)| self.docs.get(id))
+            .map(|(doc, _)| doc)
+            .collect()
+    }
+
+    /// Гибридный поиск: свободный текст + теги + граф. Возвращает документы
+    /// вместе с пометкой `via` (не `None`, если статья пришла по графу).
+    pub fn search(&self, query: &super::kb_search::Query) -> Vec<(&KnowledgeDoc, Option<String>)> {
+        self.search_with_total(query).0
+    }
+
+    /// То же, плюс сколько статей совпало всего (до отсечки по `limit`).
+    pub fn search_with_total(
+        &self,
+        query: &super::kb_search::Query,
+    ) -> (Vec<(&KnowledgeDoc, Option<String>)>, usize) {
+        let corpus = Corpus {
+            docs: &self.docs,
+            tag_index: &self.index,
+            back_links: &self.back_links,
+        };
+        let outcome = super::kb_search::search(&self.retrieval, &corpus, query);
+        let hits = outcome
+            .hits
+            .into_iter()
+            .filter_map(|hit| self.docs.get(&hit.id).map(|doc| (doc, hit.via)))
+            .collect();
+        (hits, outcome.total_matched)
+    }
+
+    /// Привести произвольные теги к словарю. Тег вне словаря остаётся как есть:
+    /// он проиндексирован и должен находиться.
+    pub fn normalize_tags(&self, tags: &[&str]) -> Vec<String> {
+        tags.iter()
+            .map(|t| {
+                self.vocabulary
+                    .normalize(t)
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| super::kb_vocabulary::normalize_form(t))
+            })
+            .filter(|t| !t.is_empty())
             .collect()
     }
 
@@ -271,18 +438,154 @@ impl KnowledgeBase {
         self.docs.get(id)
     }
 
-    /// Вернуть все документы (для отладки).
+    /// Вернуть все документы.
     pub fn all_docs(&self) -> Vec<&KnowledgeDoc> {
         self.docs.values().collect()
     }
 
-    fn load_embedded_sources(&mut self) {
-        for source in EMBEDDED_LLM_DOCS {
-            let mut doc = parse_doc(source.id.to_string(), source.raw);
-            doc.source_path = Some(source.source_path.to_string());
-            insert_doc(&mut self.docs, &mut self.index, doc);
+    pub fn vocabulary(&self) -> &Vocabulary {
+        &self.vocabulary
+    }
+
+    pub fn diagnostics(&self) -> &[String] {
+        &self.diagnostics
+    }
+
+    pub fn loaded_at(&self) -> DateTime<Utc> {
+        self.loaded_at
+    }
+
+    /// Кто ссылается на этот документ.
+    pub fn back_links(&self, id: &str) -> &[String] {
+        self.back_links.get(id).map(|v| v.as_slice()).unwrap_or(&[])
+    }
+
+    /// Сколько статей несёт данный канонический тег.
+    pub fn tag_count(&self, tag: &str) -> usize {
+        self.index.get(tag).map(|v| v.len()).unwrap_or(0)
+    }
+
+    /// Подсказать теги по свободному тексту — вход в базу, когда поиск пуст.
+    pub fn suggest_tags(&self, text: &str, limit: usize) -> Vec<String> {
+        let terms = super::kb_search::tokenize(text);
+        let mut out: Vec<String> = self
+            .vocabulary
+            .suggest(&terms, limit)
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+        if out.len() < limit {
+            // Добираем самыми населёнными тегами: хоть какой-то вход в базу.
+            let mut by_count: Vec<(&String, usize)> =
+                self.index.iter().map(|(t, ids)| (t, ids.len())).collect();
+            by_count.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+            for (tag, _) in by_count {
+                if out.len() >= limit {
+                    break;
+                }
+                if !out.contains(tag) {
+                    out.push(tag.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// Ближайшие по написанию id — ответ на промах `get_knowledge`.
+    /// Раньше на промахе выдавался список ВСЕХ id, что съедало контекст.
+    pub fn did_you_mean(&self, wanted: &str, limit: usize) -> Vec<&KnowledgeDoc> {
+        let needle = super::kb_vocabulary::normalize_form(wanted);
+        if needle.is_empty() {
+            return Vec::new();
+        }
+        let mut scored: Vec<(usize, &KnowledgeDoc)> = self
+            .docs
+            .values()
+            .filter_map(|doc| {
+                let id = super::kb_vocabulary::normalize_form(&doc.id);
+                let title = super::kb_vocabulary::normalize_form(&doc.title);
+                let score = shared_prefix_len(&needle, &id)
+                    .max(shared_prefix_len(&needle, &title))
+                    .max(if id.contains(&needle) || needle.contains(&id) {
+                        needle.chars().count()
+                    } else {
+                        0
+                    });
+                (score >= 3).then_some((score, doc))
+            })
+            .collect();
+        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
+        scored.into_iter().take(limit).map(|(_, d)| d).collect()
+    }
+}
+
+fn shared_prefix_len(a: &str, b: &str) -> usize {
+    a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
+}
+
+fn load_vocabulary(dir: &Path, diagnostics: &mut Vec<String>) -> Vocabulary {
+    let path = dir.join(VOCABULARY_FILE);
+    match std::fs::read_to_string(&path) {
+        Ok(raw) => {
+            let vocabulary = Vocabulary::parse(&raw);
+            if vocabulary.is_empty() {
+                diagnostics.push(format!("{} пуст или не разобран", VOCABULARY_FILE));
+            }
+            vocabulary
+        }
+        Err(_) => {
+            diagnostics.push(format!(
+                "{} отсутствует — все теги считаются вне словаря",
+                VOCABULARY_FILE
+            ));
+            Vocabulary::default()
         }
     }
+}
+
+fn build_tag_index(docs: &HashMap<String, KnowledgeDoc>) -> HashMap<String, Vec<String>> {
+    let mut index: HashMap<String, Vec<String>> = HashMap::new();
+    let mut ids: Vec<&String> = docs.keys().collect();
+    ids.sort(); // детерминированный порядок внутри бакета
+    for id in ids {
+        let doc = &docs[id];
+        for tag in &doc.canonical_tags {
+            let bucket = index.entry(tag.clone()).or_default();
+            if !bucket.contains(id) {
+                bucket.push(id.clone());
+            }
+        }
+    }
+    index
+}
+
+/// Обратные рёбра графа: если `A.related = [B]`, то из B достижим A.
+fn build_back_links(docs: &HashMap<String, KnowledgeDoc>) -> HashMap<String, Vec<String>> {
+    let mut back: HashMap<String, Vec<String>> = HashMap::new();
+    let mut ids: Vec<&String> = docs.keys().collect();
+    ids.sort();
+    for id in ids {
+        for target in &docs[id].related {
+            if !docs.contains_key(target) {
+                continue; // ребро в тег или код агрегата — резолвится при поиске
+            }
+            let bucket = back.entry(target.clone()).or_default();
+            if !bucket.contains(id) {
+                bucket.push(id.clone());
+            }
+        }
+    }
+    back
+}
+
+fn compute_age_days(doc: &KnowledgeDoc, path: Option<&Path>) -> Option<u32> {
+    let today = Utc::now().date_naive();
+    let reference = doc.verified.or(doc.updated).or_else(|| {
+        let modified = std::fs::metadata(path?).ok()?.modified().ok()?;
+        let stamp: DateTime<Utc> = modified.into();
+        Some(stamp.date_naive())
+    })?;
+    Some((today - reference).num_days().max(0) as u32)
 }
 
 fn walk_markdown_files(dir: &Path) -> Vec<PathBuf> {
@@ -304,8 +607,19 @@ fn walk_markdown_files(dir: &Path) -> Vec<PathBuf> {
 
         for entry in entries.flatten() {
             let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+
             if path.is_dir() {
+                // Служебные каталоги Obsidian и шаблоны статьями не являются.
+                if matches!(name.as_str(), ".obsidian" | ".trash" | "_templates") {
+                    continue;
+                }
                 stack.push(path);
+                continue;
+            }
+
+            // Файлы на `_` зарезервированы (напр. `_vocabulary.md`) и читаются отдельно.
+            if name.starts_with('_') {
                 continue;
             }
 
@@ -372,48 +686,147 @@ fn sanitize_relative_kb_path(relative_path: &str) -> anyhow::Result<PathBuf> {
 
 // ─── Парсинг frontmatter ─────────────────────────────────────────────────────
 
+/// Оценка числа токенов без внешнего токенизатора.
+///
+/// Кириллица режется моделями заметно мельче латиницы (примерно 2.7 символа на
+/// токен против 4.0), поэтому считаем по классам символов. Значение вычисляется
+/// при загрузке и НЕ пишется в файл: авторская цифра протухала бы от первой же
+/// правки опечатки и порождала цикл «записал → пересчитал → перезаписал».
+pub fn estimate_tokens(text: &str) -> u32 {
+    let (mut cyrillic, mut latin, mut other) = (0f32, 0f32, 0f32);
+    for ch in text.chars() {
+        if matches!(ch, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё') {
+            cyrillic += 1.0;
+        } else if ch.is_ascii_alphanumeric() {
+            latin += 1.0;
+        } else {
+            other += 1.0;
+        }
+    }
+    (cyrillic / 2.7 + latin / 4.0 + other / 3.0).ceil() as u32
+}
+
+/// Первый содержательный абзац тела — запасной `summary` для статей без поля.
+fn derive_summary(content: &str) -> String {
+    let paragraph = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with("---"))
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut summary: String = paragraph.chars().take(200).collect();
+    if paragraph.chars().count() > 200 {
+        summary.push('…');
+    }
+    summary
+}
+
 /// Разобрать MD-файл: извлечь frontmatter и тело.
-fn parse_doc(id: String, raw: &str) -> KnowledgeDoc {
+fn parse_doc(id: String, raw: &str, vocabulary: &Vocabulary) -> KnowledgeDoc {
     let (frontmatter, content) = split_frontmatter(raw);
+    let fm = frontmatter.as_deref();
+    let scalar = |key: &str| fm.and_then(|f| parse_scalar(f, key));
+    let list = |key: &str| fm.and_then(|f| parse_list(f, key)).unwrap_or_default();
 
-    let title = frontmatter
-        .as_deref()
-        .and_then(|fm| parse_scalar(fm, "title"))
-        .unwrap_or_else(|| id.replace('-', " "));
+    let title = scalar("title").unwrap_or_else(|| id.replace('-', " "));
+    let tags = list("tags");
+    let content = content.trim_start().to_string();
 
-    let tags = frontmatter
-        .as_deref()
-        .and_then(|fm| parse_list(fm, "tags"))
-        .unwrap_or_default();
+    // Теги приводим к словарю; то, чего в словаре нет, остаётся как есть и
+    // попадает в рабочий список куратора — отклонять теги нельзя, иначе
+    // редактирование в Obsidian становится враждебным.
+    let mut canonical_tags = Vec::new();
+    let mut unknown_tags = Vec::new();
+    for tag in &tags {
+        match vocabulary.normalize(tag) {
+            Some(canonical) => {
+                let canonical = canonical.to_string();
+                if !canonical_tags.contains(&canonical) {
+                    canonical_tags.push(canonical);
+                }
+            }
+            None => {
+                let raw_form = super::kb_vocabulary::normalize_form(tag);
+                if raw_form.is_empty() {
+                    continue;
+                }
+                if !canonical_tags.contains(&raw_form) {
+                    canonical_tags.push(raw_form.clone());
+                }
+                if !unknown_tags.contains(&raw_form) {
+                    unknown_tags.push(raw_form);
+                }
+            }
+        }
+    }
 
-    let related = frontmatter
-        .as_deref()
-        .and_then(|fm| parse_list(fm, "related"))
-        .unwrap_or_default();
+    let summary = scalar("summary").unwrap_or_else(|| derive_summary(&content));
+    let stars = fm
+        .and_then(|f| parse_u32(f, "stars"))
+        .map(|s| s.clamp(1, 5) as u8);
 
     KnowledgeDoc {
+        token_cost: estimate_tokens(&content),
         id,
         title,
         tags,
-        related,
-        content: content.trim_start().to_string(),
+        related: list("related"),
+        content,
         source_path: None,
+        uid: scalar("uid"),
+        status: scalar("status")
+            .map(|s| KbStatus::from_str(&s))
+            .unwrap_or_default(),
+        stars,
+        summary,
+        aliases: list("aliases"),
+        updated: fm.and_then(|f| parse_date(f, "updated")),
+        verified: fm.and_then(|f| parse_date(f, "verified")),
+        ttl_days: fm.and_then(|f| parse_u32(f, "ttl_days")),
+        source_chats: list("source_chats"),
+        author: scalar("author").unwrap_or_else(|| "human".to_string()),
+        canonical_tags,
+        unknown_tags,
+        is_embedded: false,
+        age_days: None,
     }
 }
 
+/// Вставить документ, разрешив коллизию id.
+///
+/// Embedded-доки грузятся последними и раньше молча затирали одноимённую
+/// бизнес-статью. Теперь embedded поверх файла переезжает на `app__<id>`.
 fn insert_doc(
     docs: &mut HashMap<String, KnowledgeDoc>,
-    index: &mut HashMap<String, Vec<String>>,
-    doc: KnowledgeDoc,
+    mut doc: KnowledgeDoc,
+    origin: Origin,
+    diagnostics: &mut Vec<String>,
 ) {
-    let id = doc.id.clone();
-    for tag in &doc.tags {
-        let bucket = index.entry(tag.to_lowercase()).or_default();
-        if !bucket.iter().any(|existing| existing == &id) {
-            bucket.push(id.clone());
+    if let Some(existing) = docs.get(&doc.id) {
+        match origin {
+            Origin::Embedded if !existing.is_embedded => {
+                let renamed = format!("app__{}", doc.id);
+                diagnostics.push(format!(
+                    "коллизия id '{}': встроенный документ перенесён в '{}', бизнес-статья сохранена",
+                    doc.id, renamed
+                ));
+                tracing::warn!(
+                    "KnowledgeBase: embedded doc '{}' collides with a business article; re-keyed to '{}'",
+                    doc.id,
+                    renamed
+                );
+                doc.id = renamed;
+            }
+            _ => {
+                diagnostics.push(format!(
+                    "коллизия id '{}': документ перезаписан ({:?})",
+                    doc.id, origin
+                ));
+            }
         }
     }
-    docs.insert(id, doc);
+    docs.insert(doc.id.clone(), doc);
 }
 
 // ─── Тесты ───────────────────────────────────────────────────────────────────
@@ -434,9 +847,48 @@ updated: 2026-02-25
 Текст статьи.
 "#;
 
+    const EXTENDED: &str = r#"---
+title: Лаг выкупа
+uid: kb-1a2b3c4d
+status: draft
+tags: [воронка, вб, выкуп]
+related: [funnel-overview]
+summary: Почему текущий месяц по выкупу всегда выглядит хуже, чем есть.
+stars: 4
+ttl_days: 90
+updated: 2026-08-01
+verified:
+source_chats: [chat-1]
+author: llm
+---
+
+# Лаг выкупа
+
+Тело статьи.
+"#;
+
+    fn vocab() -> Vocabulary {
+        Vocabulary::parse("## wildberries\n- aliases: [вб, wb]\n\n## воронка\n- group: funnel\n")
+    }
+
+    /// Собрать базу из готовых документов — минуя файловую систему.
+    fn kb_from(docs: Vec<KnowledgeDoc>) -> KnowledgeBase {
+        let docs: HashMap<String, KnowledgeDoc> =
+            docs.into_iter().map(|d| (d.id.clone(), d)).collect();
+        KnowledgeBase {
+            index: build_tag_index(&docs),
+            back_links: build_back_links(&docs),
+            retrieval: SearchIndex::build(docs.values()),
+            docs,
+            vocabulary: vocab(),
+            loaded_at: Utc::now(),
+            diagnostics: Vec::new(),
+        }
+    }
+
     #[test]
     fn test_parse_frontmatter() {
-        let doc = parse_doc("wb-promotions".to_string(), SAMPLE);
+        let doc = parse_doc("wb-promotions".to_string(), SAMPLE, &Vocabulary::default());
         assert_eq!(doc.title, "Акции Wildberries");
         assert!(doc.tags.contains(&"a020".to_string()));
         assert!(doc.tags.contains(&"скидки".to_string()));
@@ -446,26 +898,147 @@ updated: 2026-02-25
     }
 
     #[test]
-    fn test_search_by_tags() {
-        let mut kb = KnowledgeBase {
-            index: HashMap::new(),
-            docs: HashMap::new(),
-        };
-        let doc = parse_doc("wb-promotions".to_string(), SAMPLE);
-        for tag in &doc.tags {
-            kb.index
-                .entry(tag.to_lowercase())
-                .or_default()
-                .push(doc.id.clone());
-        }
-        kb.docs.insert(doc.id.clone(), doc);
+    fn legacy_article_keeps_working_defaults() {
+        // Статья без новых полей обязана вести себя ровно как до правки.
+        let doc = parse_doc("wb-promotions".to_string(), SAMPLE, &Vocabulary::default());
+        assert_eq!(doc.status, KbStatus::Active);
+        assert_eq!(doc.stars, None);
+        assert_eq!(doc.author, "human");
+        assert!(doc.uid.is_none());
+        // `updated` раньше не парсился вообще — теперь читается.
+        assert_eq!(doc.updated, NaiveDate::from_ymd_opt(2026, 2, 25));
+        // summary выводится из тела, а не остаётся пустым.
+        assert!(!doc.summary.is_empty());
+        assert!(doc.token_cost > 0);
+    }
 
+    #[test]
+    fn parses_extended_frontmatter() {
+        let doc = parse_doc("funnel-buyout-lag".to_string(), EXTENDED, &vocab());
+        assert_eq!(doc.uid.as_deref(), Some("kb-1a2b3c4d"));
+        assert_eq!(doc.status, KbStatus::Draft);
+        assert_eq!(doc.stars, Some(4));
+        assert_eq!(doc.ttl_days, Some(90));
+        assert_eq!(doc.author, "llm");
+        assert_eq!(doc.source_chats, vec!["chat-1"]);
+        assert!(doc.summary.starts_with("Почему текущий месяц"));
+        // Пустое `verified:` — это «не верифицировано», а не ошибка разбора.
+        assert!(doc.verified.is_none());
+        // Алиас `вб` приведён к каноническому тегу.
+        assert!(doc.canonical_tags.contains(&"wildberries".to_string()));
+        // `выкуп` вне словаря — сохранён и помечен.
+        assert!(doc.canonical_tags.contains(&"выкуп".to_string()));
+        assert_eq!(doc.unknown_tags, vec!["выкуп".to_string()]);
+        assert_eq!(doc.metrics_key(), "kb-1a2b3c4d");
+    }
+
+    #[test]
+    fn metrics_key_falls_back_to_doc_id() {
+        let doc = parse_doc("wb-promotions".to_string(), SAMPLE, &Vocabulary::default());
+        assert_eq!(doc.metrics_key(), "wb-promotions");
+    }
+
+    #[test]
+    fn test_search_by_tags() {
+        let kb = kb_from(vec![parse_doc(
+            "wb-promotions".to_string(),
+            SAMPLE,
+            &Vocabulary::default(),
+        )]);
         let results = kb.search_by_tags(&["a020"]);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "wb-promotions");
 
-        let no_results = kb.search_by_tags(&["nonexistent"]);
-        assert!(no_results.is_empty());
+        assert!(kb.search_by_tags(&["nonexistent"]).is_empty());
+    }
+
+    #[test]
+    fn search_by_tags_resolves_aliases_through_vocabulary() {
+        let kb = kb_from(vec![parse_doc(
+            "funnel-buyout-lag".to_string(),
+            EXTENDED,
+            &vocab(),
+        )]);
+        // Статья тегирована `вб`; ищем каноническим `wildberries` и наоборот.
+        assert_eq!(kb.search_by_tags(&["wildberries"]).len(), 1);
+        assert_eq!(kb.search_by_tags(&["WB"]).len(), 1);
+    }
+
+    #[test]
+    fn full_text_search_finds_article_without_matching_tag() {
+        // Главный чинимый баг: статья была невидима без точного тега.
+        let kb = kb_from(vec![parse_doc(
+            "wb-promotions".to_string(),
+            SAMPLE,
+            &Vocabulary::default(),
+        )]);
+        let hits = kb.search(&super::super::kb_search::Query {
+            text: "акции wildberries".into(),
+            ..Default::default()
+        });
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0.id, "wb-promotions");
+    }
+
+    #[test]
+    fn embedded_doc_does_not_clobber_business_article() {
+        let mut docs = HashMap::new();
+        let mut diagnostics = Vec::new();
+
+        let mut business = parse_doc("general-ledger".into(), SAMPLE, &Vocabulary::default());
+        business.is_embedded = false;
+        insert_doc(&mut docs, business, Origin::File, &mut diagnostics);
+
+        let mut embedded = parse_doc("general-ledger".into(), "# Техдок\n", &Vocabulary::default());
+        embedded.is_embedded = true;
+        insert_doc(&mut docs, embedded, Origin::Embedded, &mut diagnostics);
+
+        assert_eq!(docs["general-ledger"].title, "Акции Wildberries");
+        assert!(docs.contains_key("app__general-ledger"));
+        assert!(diagnostics.iter().any(|d| d.contains("коллизия id")));
+    }
+
+    #[test]
+    fn back_links_are_built_from_related() {
+        let mut child = parse_doc("child".into(), "# Ч\n", &Vocabulary::default());
+        child.related = vec!["parent".into()];
+        let parent = parse_doc("parent".into(), "# Р\n", &Vocabulary::default());
+        let kb = kb_from(vec![child, parent]);
+        assert_eq!(kb.back_links("parent"), ["child"]);
+        assert!(kb.back_links("child").is_empty());
+    }
+
+    #[test]
+    fn did_you_mean_replaces_dumping_every_id() {
+        let kb = kb_from(vec![
+            parse_doc("funnel-overview".into(), "# А\n", &Vocabulary::default()),
+            parse_doc("funnel-buyout-lag".into(), "# Б\n", &Vocabulary::default()),
+            parse_doc("wb-commissions".into(), "# В\n", &Vocabulary::default()),
+        ]);
+        let suggestions = kb.did_you_mean("funnel-overvew", 5);
+        assert!(suggestions.iter().any(|d| d.id == "funnel-overview"));
+        assert!(suggestions.len() < 3, "выдаётся не весь каталог");
+        assert!(kb.did_you_mean("zzzzzzzz", 5).is_empty());
+    }
+
+    #[test]
+    fn estimate_tokens_scales_with_alphabet() {
+        assert_eq!(estimate_tokens(""), 0);
+        let ru = estimate_tokens(&"комиссия".repeat(50));
+        let en = estimate_tokens(&"commission".repeat(50));
+        // 400 кириллических символов дороже 500 латинских.
+        assert!(ru > en, "кириллица должна стоить дороже за символ: {ru} vs {en}");
+    }
+
+    #[test]
+    fn staleness_uses_ttl_and_skips_embedded() {
+        let mut doc = parse_doc("x".into(), "# X\n", &Vocabulary::default());
+        doc.age_days = Some(90);
+        doc.ttl_days = Some(180);
+        assert_eq!(doc.staleness_pct(), Some(50));
+
+        doc.is_embedded = true;
+        assert_eq!(doc.staleness_pct(), None);
     }
 
     #[test]
@@ -473,6 +1046,94 @@ updated: 2026-02-25
         let fm = "title: Test\ntags:\n  - a020\n  - wildberries\n";
         let tags = parse_list(fm, "tags").unwrap();
         assert_eq!(tags, vec!["a020", "wildberries"]);
+    }
+
+    /// Каталог знаний из config.toml рабочей копии.
+    ///
+    /// `knowledge_base_dir()` резолвит путь относительно каталога исполняемого
+    /// файла, а тестовый бинарь лежит в `target/debug/deps` — конфиг оттуда не
+    /// виден. Поэтому читаем его от корня workspace.
+    fn live_kb_dir() -> Option<PathBuf> {
+        let config_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()?
+            .parent()?
+            .join("config.toml");
+        let raw = std::fs::read_to_string(config_path).ok()?;
+        let value = raw.lines().find_map(|line| {
+            line.trim()
+                .strip_prefix("knowledge_base_path")?
+                .trim_start()
+                .strip_prefix('=')
+                .map(|v| v.trim().trim_matches('"').to_string())
+        })?;
+        let dir = PathBuf::from(value);
+        dir.join(VOCABULARY_FILE).exists().then_some(dir)
+    }
+
+    /// Проверка на боевом каталоге знаний: он вне репозитория, поэтому тест
+    /// пропускается, если каталог недоступен (CI, чистая машина).
+    #[test]
+    fn live_knowledge_dir_loads_cleanly() {
+        let Some(dir) = live_kb_dir() else {
+            eprintln!("пропуск: каталог знаний недоступен");
+            return;
+        };
+
+        let kb = KnowledgeBase::load(&dir);
+        assert!(kb.vocabulary().len() > 20, "словарь тегов не разобран");
+
+        // Введение словаря не должно оставить существующие статьи с чужими тегами.
+        let unknown: Vec<(&str, &Vec<String>)> = kb
+            .all_docs()
+            .iter()
+            .filter(|d| !d.is_embedded && !d.unknown_tags.is_empty())
+            .map(|d| (d.id.as_str(), &d.unknown_tags))
+            .collect();
+        assert!(
+            unknown.is_empty(),
+            "теги вне словаря у бизнес-статей: {unknown:?}"
+        );
+
+        // Сам файл словаря статьёй не является.
+        assert!(kb.get("_vocabulary").is_none());
+
+        // Пилотный кластер по воронке загрузился и связан в граф.
+        let overview = kb.get("funnel-overview").expect("нет funnel-overview");
+        assert_eq!(overview.status, KbStatus::Active);
+        assert_eq!(overview.stars, Some(5));
+        assert!(overview.token_cost > 0);
+        assert!(!kb.back_links("funnel-overview").is_empty(), "граф не собрался");
+
+        let ozon = kb.get("funnel-ozon-open").expect("нет funnel-ozon-open");
+        assert_eq!(ozon.status, KbStatus::Draft);
+        assert!(ozon.verified.is_none(), "черновик не может быть верифицирован");
+    }
+
+    /// Главный сценарий приёмки: свободный текст находит нужную статью первой.
+    #[test]
+    fn live_search_answers_the_buyout_question() {
+        let Some(dir) = live_kb_dir() else {
+            eprintln!("пропуск: каталог знаний недоступен");
+            return;
+        };
+        let kb = KnowledgeBase::load(&dir);
+
+        let (hits, total) = kb.search_with_total(&super::super::kb_search::Query {
+            text: "почему выкуп в текущем месяце всегда ниже".into(),
+            ..Default::default()
+        });
+        assert!(total > 0, "поиск по свободному тексту ничего не нашёл");
+        assert_eq!(
+            hits[0].0.id, "funnel-buyout-lag",
+            "ожидали статью про лаг выкупа первой, получили: {:?}",
+            hits.iter().map(|(d, _)| &d.id).collect::<Vec<_>>()
+        );
+
+        // Алиас словаря должен работать наравне с каноническим тегом.
+        assert!(
+            !kb.search_by_tags(&["вб"]).is_empty(),
+            "алиас 'вб' не привёл к статьям Wildberries"
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use super::api::{
-    fetch_kb_article, fetch_kb_stats, fetch_kb_tree, KbArticleDetail, KbArticleSummary,
-    KbStatsResponse, KbTreeNode,
+    fetch_kb_article, fetch_kb_stats, fetch_kb_tree, fetch_kb_vocabulary, post_kb_reload,
+    KbArticleDetail, KbArticleSummary, KbStatsResponse, KbTreeNode, KbVocabularyResponse,
 };
 use super::links::KbLinkedText;
 use crate::layout::global_context::AppGlobalContext;
@@ -23,6 +23,9 @@ pub fn KnowledgeBaseWorkspace() -> impl IntoView {
     let (selected, set_selected) = signal::<Option<KbArticleDetail>>(None);
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal::<Option<String>>(None);
+    let (vocabulary, set_vocabulary) = signal::<Option<KbVocabularyResponse>>(None);
+    let (reloading, set_reloading) = signal(false);
+    let (notice, set_notice) = signal::<Option<String>>(None);
     let collapsed_paths = RwSignal::new(BTreeSet::<String>::new());
     let tab = RwSignal::new("obsidian".to_string());
 
@@ -55,14 +58,42 @@ pub fn KnowledgeBaseWorkspace() -> impl IntoView {
                 Ok(payload) => set_tree.set(payload.roots),
                 Err(err) => set_error.set(Some(err)),
             }
+            match fetch_kb_vocabulary().await {
+                Ok(payload) => set_vocabulary.set(Some(payload)),
+                Err(err) => set_error.set(Some(err)),
+            }
             set_loading.set(false);
+        });
+    };
+
+    // Статьи правятся в Obsidian снаружи приложения, поэтому нужна явная
+    // перезагрузка с диска — иначе правка видна только после рестарта бэкенда.
+    let reload_from_disk = move || {
+        spawn_local(async move {
+            set_reloading.set(true);
+            set_error.set(None);
+            set_notice.set(None);
+            match post_kb_reload().await {
+                Ok(payload) => {
+                    set_notice.set(Some(format!(
+                        "База перечитана: {} статей ({} бизнес), словарь — {} терминов, тегов вне словаря — {}.",
+                        payload.total_articles,
+                        payload.file_articles,
+                        payload.vocabulary_terms,
+                        payload.unknown_tag_count,
+                    )));
+                    load();
+                }
+                Err(err) => set_error.set(Some(err)),
+            }
+            set_reloading.set(false);
         });
     };
 
     Effect::new(move |_| load());
 
     view! {
-        <PageFrame page_id="knowledge_base--list" category=PAGE_CAT_LIST>
+        <PageFrame page_id="knowledge_base--list" category=PAGE_CAT_LIST class="kb-workspace">
             <div class="page__header">
                 <div class="page__header-left">
                     <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
@@ -75,10 +106,32 @@ pub fn KnowledgeBaseWorkspace() -> impl IntoView {
                                 {format!("{} бизнес · {} приложение", s.file_articles, s.embedded_articles)}
                             </span>
                         })}
+                        {move || stats.get().filter(|s| s.drafts > 0).map(|s| view! {
+                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Warning>
+                                {format!("черновиков: {}", s.drafts)}
+                            </Badge>
+                        })}
+                        {move || stats.get().filter(|s| s.stale_articles > 0).map(|s| view! {
+                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Danger>
+                                {format!("протухло: {}", s.stale_articles)}
+                            </Badge>
+                        })}
+                        {move || stats.get().filter(|s| s.open_issues > 0).map(|s| view! {
+                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Danger>
+                                {format!("замечаний: {}", s.open_issues)}
+                            </Badge>
+                        })}
                     </div>
                 </div>
                 <div class="page__header-right">
                     <Space>
+                        <Button
+                            appearance=ButtonAppearance::Secondary
+                            on_click=move |_| reload_from_disk()
+                            disabled=Signal::derive(move || reloading.get())
+                        >
+                            {move || if reloading.get() { "Читаю..." } else { "Перечитать базу" }}
+                        </Button>
                         <Button
                             appearance=ButtonAppearance::Primary
                             on_click=move |_| load()
@@ -93,6 +146,7 @@ pub fn KnowledgeBaseWorkspace() -> impl IntoView {
 
             <div class="page__content">
                 {move || error.get().map(|msg| view! { <div class="alert alert--error">{msg}</div> })}
+                {move || notice.get().map(|msg| view! { <div class="alert alert--success">{msg}</div> })}
 
                 <div class="detail-grid">
                     <div class="detail-grid__col">
@@ -106,8 +160,20 @@ pub fn KnowledgeBaseWorkspace() -> impl IntoView {
                                     "Документация приложения"
                                     {move || stats.get().map(|s| format!(" ({})", s.embedded_articles)).unwrap_or_default()}
                                 </Tab>
+                                <Tab value="vocabulary">
+                                    "Словарь"
+                                    {move || stats.get().map(|s| format!(" ({})", s.vocabulary_terms)).unwrap_or_default()}
+                                </Tab>
                             </TabList>
-                            <div style="display: flex; gap: var(--spacing-xs); margin: var(--spacing-xs) 0;">
+
+                            {move || (tab.get() == "vocabulary").then(|| view! {
+                                <KbVocabularyView vocabulary=vocabulary.get() />
+                            })}
+
+                            <div
+                                style="display: flex; gap: var(--spacing-xs); margin: var(--spacing-xs) 0;"
+                                class:hidden=move || tab.get() == "vocabulary"
+                            >
                                 <Button
                                     appearance=ButtonAppearance::Subtle
                                     on_click=move |_| collapsed_paths.set(BTreeSet::new())
@@ -128,7 +194,9 @@ pub fn KnowledgeBaseWorkspace() -> impl IntoView {
                                     "Свернуть"
                                 </Button>
                             </div>
-                            {move || if loading.get() && tree.get().is_empty() {
+                            {move || if tab.get() == "vocabulary" {
+                                view! { <span></span> }.into_any()
+                            } else if loading.get() && tree.get().is_empty() {
                                 view! {
                                     <Flex gap=FlexGap::Small align=FlexAlign::Center>
                                         <Spinner />
@@ -229,7 +297,7 @@ pub fn KnowledgeArticlePage(id: String, #[prop(into)] on_close: Callback<()>) ->
     Effect::new(move |_| load());
 
     view! {
-        <PageFrame page_id="knowledge_base--article" category=PAGE_CAT_DETAIL>
+        <PageFrame page_id="knowledge_base--article" category=PAGE_CAT_DETAIL class="kb-workspace">
             <div class="page__header">
                 <div class="page__header-left">
                     <h1 class="page__title">
@@ -335,6 +403,105 @@ fn KbTreeRow(
     }
 }
 
+/// Словарь тегов: канонические термины по группам + рабочий список куратора.
+#[component]
+fn KbVocabularyView(vocabulary: Option<KbVocabularyResponse>) -> impl IntoView {
+    let Some(vocabulary) = vocabulary else {
+        return view! {
+            <p style="color: var(--colorNeutralForeground3);">"Словарь тегов загружается..."</p>
+        }
+        .into_any();
+    };
+
+    if vocabulary.terms.is_empty() {
+        return view! {
+            <p style="color: var(--colorNeutralForeground3);">
+                "Словарь не заполнен. Создайте файл " <code>"_vocabulary.md"</code>
+                " в каталоге базы знаний — он задаёт канонические теги и их синонимы."
+            </p>
+        }
+        .into_any();
+    }
+
+    // Группируем на клиенте: бэкенд отдаёт плоский список, отсортированный по тегу.
+    let mut groups: std::collections::BTreeMap<String, Vec<_>> = Default::default();
+    for term in vocabulary.terms {
+        groups
+            .entry(if term.group.is_empty() {
+                "прочее".to_string()
+            } else {
+                term.group.clone()
+            })
+            .or_default()
+            .push(term);
+    }
+
+    let outside = vocabulary.tags_outside_vocabulary;
+    view! {
+        <div class="kb-vocabulary">
+            {groups.into_iter().map(|(group, terms)| view! {
+                <div class="kb-vocabulary__group">
+                    <div class="kb-vocabulary__group-title">{group}</div>
+                    {terms.into_iter().map(|term| view! {
+                        <div class="kb-vocabulary__term" title=term.description.clone()>
+                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Informative>
+                                {term.tag.clone()}
+                            </Badge>
+                            <span class="kb-vocabulary__count">{format!("{}", term.articles)}</span>
+                            {(!term.aliases.is_empty()).then(|| view! {
+                                <span class="kb-vocabulary__aliases">
+                                    {format!("= {}", term.aliases.join(", "))}
+                                </span>
+                            })}
+                        </div>
+                    }).collect_view()}
+                </div>
+            }).collect_view()}
+
+            {(!outside.is_empty()).then(|| view! {
+                <div class="kb-vocabulary__group kb-vocabulary__group--warning">
+                    <div class="kb-vocabulary__group-title">
+                        {format!("Теги вне словаря ({})", outside.len())}
+                    </div>
+                    <p class="kb-vocabulary__hint">
+                        "Использованы в статьях, но не описаны в " <code>"_vocabulary.md"</code>
+                        ". Добавьте в словарь или замените в статьях на канонические."
+                    </p>
+                    {outside.into_iter().map(|item| view! {
+                        <div class="kb-vocabulary__term">
+                            <Badge appearance=BadgeAppearance::Tint color=BadgeColor::Warning>
+                                {item.name}
+                            </Badge>
+                            <span class="kb-vocabulary__count">{format!("{}", item.count)}</span>
+                        </div>
+                    }).collect_view()}
+                </div>
+            })}
+        </div>
+    }
+    .into_any()
+}
+
+/// Звёзды важности как статичный текст: источник истины — файл, редактировать
+/// оценку из веба нельзя (правится в Obsidian, потом «Перечитать базу»).
+fn stars_label(stars: Option<u8>) -> String {
+    match stars {
+        Some(n) => {
+            let n = n.clamp(1, 5) as usize;
+            format!("{}{}", "★".repeat(n), "☆".repeat(5 - n))
+        }
+        None => String::new(),
+    }
+}
+
+fn status_badge(status: &str) -> Option<(&'static str, BadgeColor)> {
+    match status {
+        "draft" => Some(("черновик", BadgeColor::Warning)),
+        "deprecated" => Some(("устарела", BadgeColor::Danger)),
+        _ => None,
+    }
+}
+
 #[component]
 fn KnowledgeArticlePanel(
     article: KbArticleDetail,
@@ -343,9 +510,27 @@ fn KnowledgeArticlePanel(
     show_header: bool,
     on_open: Callback<()>,
 ) -> impl IntoView {
+    let tabs_store =
+        leptos::context::use_context::<AppGlobalContext>().expect("AppGlobalContext not found");
     let tags = article.tags.clone();
     let content = article.content.clone();
     let display_path_title = article.display_path.clone();
+    let summary_text = article.summary.clone();
+    let stars = stars_label(article.stars);
+    let status = status_badge(&article.status);
+    let token_cost = article.token_cost;
+    let updated = article.updated.clone();
+    let staleness = article.staleness_pct;
+    let metrics = article.metrics.clone();
+    // Граф: связи и обратные ссылки показываем одним списком — направление
+    // ребра для навигации значения не имеет.
+    let mut graph_links = article.related_articles.clone();
+    for link in &article.back_links {
+        if !graph_links.iter().any(|l| l.id == link.id) {
+            graph_links.push(link.clone());
+        }
+    }
+
     view! {
         <Card>
             // ── Compact article header ─────────────────────────────────────
@@ -366,6 +551,46 @@ fn KnowledgeArticlePanel(
                 } else {
                     view! { <span></span> }.into_any()
                 }}
+
+                // Ценность и актуальность: звёзды · статус · токены · свежесть · замечания
+                <div class="kb-meta">
+                    {(!stars.is_empty()).then(|| view! {
+                        <span class="kb-meta__stars" title="Важность знания">{stars}</span>
+                    })}
+                    {status.map(|(label, color)| view! {
+                        <Badge appearance=BadgeAppearance::Filled color=color>{label}</Badge>
+                    })}
+                    {(token_cost > 0).then(|| view! {
+                        <span title="Оценка стоимости чтения статьи">{format!("~{} токенов", token_cost)}</span>
+                    })}
+                    {updated.map(|date| view! { <span>{format!("обновлено {}", date)}</span> })}
+                    {staleness.filter(|pct| *pct > 70).map(|pct| view! {
+                        <span class="kb-meta__stale" title="Израсходован срок годности знания">
+                            {format!("протухает: {}%", pct)}
+                        </span>
+                    })}
+                    {(metrics.open_issues > 0).then(|| view! {
+                        <span class="kb-meta__issues" title="Открытые замечания к статье">
+                            {format!("{} замечаний", metrics.open_issues)}
+                        </span>
+                    })}
+                    {(metrics.search_hits + metrics.read_hits + metrics.cited_hits > 0).then(|| view! {
+                        <span
+                            class="kb-meta__usage"
+                            title="Поиск нашёл / модель прочитала / попало в ответ пользователю"
+                        >
+                            {format!(
+                                "поиск {} · чтений {} · цитат {}",
+                                metrics.search_hits, metrics.read_hits, metrics.cited_hits,
+                            )}
+                        </span>
+                    })}
+                </div>
+
+                {(!summary_text.is_empty()).then(|| view! {
+                    <div class="kb-meta__summary">{summary_text}</div>
+                })}
+
                 // Single-row: ID · path · type · [tags]
                 <div style="font-size: 11px; color: var(--colorNeutralForeground3); display: flex; align-items: center; flex-wrap: wrap; gap: 3px; line-height: 1.6;">
                     <span>"ID"</span>
@@ -390,6 +615,32 @@ fn KnowledgeArticlePanel(
                         view! { <span></span> }.into_any()
                     }}
                 </div>
+
+                // Граф связей — единственное видимое лицо `related` в интерфейсе.
+                {(!graph_links.is_empty()).then(move || view! {
+                    <div class="kb-meta kb-meta--links">
+                        <span>"Связано:"</span>
+                        {graph_links.into_iter().map(move |link| {
+                            let id = link.id.clone();
+                            let title = link.title.clone();
+                            view! {
+                                <a
+                                    href="#"
+                                    class="table__link"
+                                    on:click=move |ev| {
+                                        ev.prevent_default();
+                                        tabs_store.open_tab(
+                                            &format!("kb_article_{}", id),
+                                            &format!("KB {}", title),
+                                        );
+                                    }
+                                >
+                                    {link.title.clone()}
+                                </a>
+                            }
+                        }).collect_view()}
+                    </div>
+                })}
             </div>
             // ── Content ────────────────────────────────────────────────────
             <KbMarkdown text=content />
@@ -613,5 +864,15 @@ fn article_summary(article: &KbArticleDetail) -> KbArticleSummary {
         source_path: article.source_path.clone(),
         display_path: article.display_path.clone(),
         is_embedded: article.is_embedded,
+        summary: article.summary.clone(),
+        status: article.status.clone(),
+        stars: article.stars,
+        updated: article.updated.clone(),
+        verified: article.verified.clone(),
+        ttl_days: article.ttl_days,
+        token_cost: article.token_cost,
+        staleness_pct: article.staleness_pct,
+        unknown_tags: article.unknown_tags.clone(),
+        metrics: article.metrics.clone(),
     }
 }

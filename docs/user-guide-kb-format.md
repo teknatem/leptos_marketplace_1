@@ -8,8 +8,8 @@
 
 Файлы `*.md` в каталоге знаний (`[llm].knowledge_base_path` из `config.toml`, сейчас
 `F:/data/leptos_marketplace_1/knowledge/`) — **вне репозитория**, чтобы статьи можно было
-править без пересборки. Каталог перечитывается по `POST /api/llm-knowledge/reload`
-и при старте бэкенда.
+править без пересборки. Каталог перечитывается по `POST /api/kb/reload` (кнопка
+«Перечитать базу» в разделе «База знаний») и при старте бэкенда.
 
 Существующие образцы: `ug-getting-started.md`, `ug-tickets.md`, `ug-sales-report.md`.
 
