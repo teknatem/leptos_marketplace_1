@@ -27,6 +27,32 @@ const MEMORY_LIMIT_BYTES: usize = 64 * 1024 * 1024;
 /// Лимит стека JS-рантайма (защита от бесконечной рекурсии).
 const MAX_STACK_SIZE: usize = 1024 * 1024;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ScriptExecutionLimits {
+    pub timeout: Duration,
+    pub memory_limit_bytes: usize,
+    pub max_stack_size: usize,
+}
+
+impl Default for ScriptExecutionLimits {
+    fn default() -> Self {
+        Self {
+            timeout: EXEC_TIMEOUT,
+            memory_limit_bytes: MEMORY_LIMIT_BYTES,
+            max_stack_size: MAX_STACK_SIZE,
+        }
+    }
+}
+
+impl ScriptExecutionLimits {
+    pub fn quality_check() -> Self {
+        Self {
+            timeout: Duration::from_secs(30),
+            ..Self::default()
+        }
+    }
+}
+
 /// Построить ошибку плагина из пойманного JS-исключения, сохранив stack.
 fn js_error(stage: &str, caught: &CaughtError) -> PluginError {
     match caught {
@@ -40,12 +66,12 @@ fn js_error(stage: &str, caught: &CaughtError) -> PluginError {
 }
 
 /// Если исполнение было прервано по таймауту — переразметить этап ошибки в `timeout`.
-fn relabel_timeout(deadline: Instant, mut error: PluginError) -> PluginError {
+fn relabel_timeout(deadline: Instant, timeout: Duration, mut error: PluginError) -> PluginError {
     if Instant::now() >= deadline {
         error.stage = "timeout".to_string();
         error.message = format!(
             "Превышен лимит времени исполнения плагина ({} с)",
-            EXEC_TIMEOUT.as_secs()
+            timeout.as_secs()
         );
         error.stack = None;
     }
@@ -55,12 +81,12 @@ fn relabel_timeout(deadline: Instant, mut error: PluginError) -> PluginError {
 /// Создать JS-рантайм с лимитами времени, памяти и стека.
 ///
 /// Возвращает рантайм и дедлайн (для пост-классификации ошибки как `timeout`).
-async fn limited_runtime() -> anyhow::Result<(AsyncRuntime, Instant)> {
+async fn limited_runtime(limits: ScriptExecutionLimits) -> anyhow::Result<(AsyncRuntime, Instant)> {
     let runtime = AsyncRuntime::new()
         .map_err(|error| anyhow::anyhow!("Failed to create JavaScript runtime: {error}"))?;
-    let deadline = Instant::now() + EXEC_TIMEOUT;
-    runtime.set_memory_limit(MEMORY_LIMIT_BYTES).await;
-    runtime.set_max_stack_size(MAX_STACK_SIZE).await;
+    let deadline = Instant::now() + limits.timeout;
+    runtime.set_memory_limit(limits.memory_limit_bytes).await;
+    runtime.set_max_stack_size(limits.max_stack_size).await;
     runtime
         .set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)))
         .await;
@@ -234,6 +260,14 @@ pub async fn invoke_server_method(
     def: PluginDefinition,
     request: PluginInvokeRequest,
 ) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
+    invoke_server_method_with_limits(def, request, ScriptExecutionLimits::default()).await
+}
+
+pub async fn invoke_server_method_with_limits(
+    def: PluginDefinition,
+    request: PluginInvokeRequest,
+    limits: ScriptExecutionLimits,
+) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
     let script = def
         .bundle
         .server_script
@@ -250,7 +284,7 @@ pub async fn invoke_server_method(
     let logs = Arc::new(Mutex::new(Vec::<String>::new()));
     let logs_for_runtime = logs.clone();
 
-    let (runtime, deadline) = limited_runtime().await?;
+    let (runtime, deadline) = limited_runtime(limits).await?;
     let js_context = AsyncContext::full(&runtime)
         .await
         .map_err(|error| anyhow::anyhow!("Failed to create JavaScript context: {error}"))?;
@@ -332,7 +366,7 @@ pub async fn invoke_server_method(
     let captured = logs.lock().unwrap().clone();
     result
         .map(|value| (value, captured))
-        .map_err(|error| anyhow::Error::new(relabel_timeout(deadline, error)))
+        .map_err(|error| anyhow::Error::new(relabel_timeout(deadline, limits.timeout, error)))
 }
 
 /// Execute an in-memory ES module with the same limits and host surface as a
@@ -343,6 +377,23 @@ pub async fn invoke_ephemeral_server_script(
     method: String,
     args: serde_json::Value,
     capabilities: Vec<String>,
+) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
+    invoke_ephemeral_server_script_with_limits(
+        script,
+        method,
+        args,
+        capabilities,
+        ScriptExecutionLimits::default(),
+    )
+    .await
+}
+
+pub async fn invoke_ephemeral_server_script_with_limits(
+    script: String,
+    method: String,
+    args: serde_json::Value,
+    capabilities: Vec<String>,
+    limits: ScriptExecutionLimits,
 ) -> anyhow::Result<(serde_json::Value, Vec<String>)> {
     use chrono::Utc;
     use contracts::plugins::{
@@ -383,7 +434,7 @@ pub async fn invoke_ephemeral_server_script(
         s3_published_version: None,
         s3_published_at: None,
     };
-    invoke_server_method(
+    invoke_server_method_with_limits(
         definition,
         PluginInvokeRequest {
             method,
@@ -391,6 +442,7 @@ pub async fn invoke_ephemeral_server_script(
             context: PluginRunContext::default(),
             data_mode: PluginDataMode::Live,
         },
+        limits,
     )
     .await
 }
@@ -407,7 +459,8 @@ async fn compile_module_exports(
     stage_prefix: &str,
 ) -> Result<Vec<String>, PluginError> {
     let stage = format!("{stage_prefix}module_eval");
-    let (runtime, deadline) = limited_runtime()
+    let limits = ScriptExecutionLimits::default();
+    let (runtime, deadline) = limited_runtime(limits)
         .await
         .map_err(|error| PluginError::new(stage.clone(), error.to_string()))?;
     let js_context = AsyncContext::full(&runtime)
@@ -460,7 +513,7 @@ async fn compile_module_exports(
         .await;
 
     runtime.idle().await;
-    result.map_err(|error| relabel_timeout(deadline, error))
+    result.map_err(|error| relabel_timeout(deadline, limits.timeout, error))
 }
 
 /// Скомпилировать серверный ES-модуль и перечислить экспортированные функции
