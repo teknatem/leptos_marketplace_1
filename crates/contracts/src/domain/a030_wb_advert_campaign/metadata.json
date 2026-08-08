@@ -1,0 +1,217 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "WbAdvertCampaign",
+  "entity_index": "a030",
+  "collection_name": "wb_advert_campaign",
+  "table_name": "a030_wb_advert_campaign",
+  "ui": {
+    "element_name": "Рекламная кампания WB",
+    "element_name_en": "WB Advert Campaign",
+    "list_name": "Рекламные кампании Wildberries",
+    "list_name_en": "WB Advert Campaigns",
+    "icon": "megaphone"
+  },
+  "ai": {
+    "description": "Справочник рекламных кампаний Wildberries. advert_id — native-идентификатор кампании в WB, по нему рекламные расходы a026 раскладываются в p911 и p913. Тип и статус кампании хранятся кодами WB, сырой ответ API — в info_json.",
+    "questions": [
+      "Какие рекламные кампании WB заведены в кабинете?",
+      "Сколько товаров участвует в кампании?",
+      "Какие кампании активны сейчас?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a005_marketplace",
+      "a026_wb_advert_daily",
+      "p911_wb_advert_by_items",
+      "p913_wb_advert_order_attr"
+    ],
+    "tags": [
+      "wb",
+      "advertising"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "advert_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Advert Id",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Идентификатор кампании в WB; связывает расходы a026 с кампанией."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Организация",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a002_organization"
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Маркетплейс",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a005_marketplace"
+    },
+    {
+      "name": "campaign_type",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Campaign Type",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Код типа кампании WB."
+    },
+    {
+      "name": "status",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Status",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Код статуса кампании WB."
+    },
+    {
+      "name": "change_time",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Change Time",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Момент последнего изменения кампании в WB."
+    },
+    {
+      "name": "info_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Info Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сырой ответ API WB по кампании."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Meta Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Служебные метаданные импорта."
+    },
+    {
+      "name": "nm_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Nm Count",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Количество товаров (nm_id) в кампании."
+    }
+  ]
+}

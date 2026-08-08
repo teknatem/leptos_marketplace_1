@@ -1,0 +1,531 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "MpSalesFunnelTurnover",
+  "entity_index": "p916",
+  "collection_name": "mp_sales_funnel_turnovers",
+  "table_name": "p916_mp_sales_funnel_turnovers",
+  "ui": {
+    "element_name": "Воронка продаж МП (движения)",
+    "element_name_en": "MP Sales Funnel Turnovers",
+    "list_name": "Движения воронки продаж МП",
+    "list_name_en": "MP Sales Funnel Turnovers",
+    "icon": "filter"
+  },
+  "ai": {
+    "description": "Проекция-накопитель воронки продаж маркетплейсов: показы → переходы → корзина → заказ → выкуп, плюс отмены и возвраты. Модель — движения-обороты (как p909/p914): каждый регистратор пишет свои строки, агрегация метрик — SUM на чтении. Две стадии (поле stage): marketing (верх воронки, дневной агрегат nm_id×дата: open/cart/wishlist/funnel_order/funnel_cancel из a036; paid show/open/cart из a026) и fulfillment (уровень заказа: order/cancel/buyout/return из a015 и a012). ОТМЕНЫ ЕСТЬ В ДВУХ ВИДАХ: funnel_cancel_count — дневной счётчик самого маркетплейса (стадия marketing), основной для вопроса «сколько отказов за период»; cancel_count — order-level движения по документам a015 (стадия fulfillment), для когортного анализа и drilldown до srid. Их значения не обязаны совпадать, складывать их нельзя. Две оси дат: cohort_date (когорта = дата заказа) и event_date (дата события/транзакции). show_paid_count — платные показы; show_free_count — органические, но источник пока не подключён, поэтому NULL/N/A. Всего показов доступно только при наличии обеих компонент, иначе N/A. Нельзя делить show_paid_count на общие open/order/buyout: платный трек использует paid_open_count, paid_cart_count и атрибуцию order_key через p913. Конверсии не хранятся, считаются на чтении.",
+    "questions": [
+      "Какая воронка продаж WB за период (показы→переходы→корзина→заказ→выкуп)?",
+      "Сколько заказов, отмен, выкупов и возвратов по товару за период?",
+      "Какая доля отмен и конверсия в выкуп по когорте заказов?",
+      "Сколько платных (рекламных) показов у товара по дням?",
+      "Чем отличается когортная ось (по дате заказа) от потоковой (по дате события)?"
+    ],
+    "related": [
+      "a036_wb_sales_funnel_daily",
+      "a015_wb_orders",
+      "a012_wb_sales",
+      "a026_wb_advert_daily",
+      "a006_connection_mp",
+      "a007_marketplace_product",
+      "a004_nomenclature"
+    ],
+    "tags": [
+      "wb",
+      "bi",
+      "projection",
+      "funnel",
+      "воронка"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Детерминированный uuid v5 строки движения (натуральный ключ: registrator_type|registrator_ref|stage|kind|cohort_date|event_date|connection_mp_ref|товар)."
+    },
+    {
+      "name": "stage",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Stage",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Стадия воронки: marketing (верх — a036/a026) или fulfillment (заказ→завершение — a015/a012).",
+      "enum_values": [
+        "marketing",
+        "fulfillment"
+      ]
+    },
+    {
+      "name": "cohort_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Cohort Date",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ось когорты (винтаж) = дата заказа. Для стадии marketing — день воронки. YYYY-MM-DD."
+    },
+    {
+      "name": "event_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Event Date",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ось потока = дата транзакции события (напр. дата отмены). Для стадии marketing = cohort_date. YYYY-MM-DD."
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Connection",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "UUID кабинета маркетплейса.",
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "marketplace_product_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Marketplace Product",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на a007_marketplace_product (у стадии marketing из a036 может отсутствовать).",
+      "ref_aggregate": "a007_marketplace_product"
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Nomenclature",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на a004_nomenclature.",
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "nm_id",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "nm_id",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "WB-native артикул (мост между стадиями воронки)."
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Registrator Type",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника: a036_wb_sales_funnel_daily, a026_wb_advert_daily, a015_wb_orders, a012_wb_sales."
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Registrator Ref",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на документ-источник (id; у a015/a012 — префикс a015:/a012:)."
+    },
+    {
+      "name": "show_free_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Show Free",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Бесплатные/органические показы. Источник пока не подключён (a040 исключён), поэтому обычно NULL/N/A."
+    },
+    {
+      "name": "show_paid_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Show Paid",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Платные (рекламные) показы из a026 (metrics.views); пишется при проведении a026. NULL = нет данных."
+    },
+    {
+      "name": "paid_open_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Paid Opens",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Платные переходы из a026 metrics.clicks. Использовать только в платном треке; NULL = нет данных."
+    },
+    {
+      "name": "paid_cart_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Paid Carts",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Платные добавления в корзину из a026 metrics.atbs. Использовать только в платном треке; NULL = нет данных."
+    },
+    {
+      "name": "open_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Opens",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Переходы в карточку (стадия marketing, a036)."
+    },
+    {
+      "name": "cart_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Cart",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Добавления в корзину (a036)."
+    },
+    {
+      "name": "wishlist_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Wishlist",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Добавления в избранное (a036)."
+    },
+    {
+      "name": "funnel_order_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Funnel Orders",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Заказы по счётчику воронки a036 (маркетинговый счётчик ≠ фактические заказы стадии fulfillment)."
+    },
+    {
+      "name": "funnel_order_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Funnel Orders Sum",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма заказов по счётчику воронки a036."
+    },
+    {
+      "name": "funnel_cancel_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Funnel Cancels",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "ОСНОВНОЙ показатель отказов за период: отмены по дневному счётчику воронки маркетплейса (a036). Стадия marketing, привязан к дню воронки. Не путать с cancel_count — тот считается по документам заказов a015 (order-level, на дату отмены конкретного заказа) и неполон на FBS-пути. NULL = счётчика в источнике не было (N/A ≠ 0)."
+    },
+    {
+      "name": "funnel_cancel_sum",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Funnel Cancels Sum",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма отмен по счётчику воронки маркетплейса (a036). NULL = N/A."
+    },
+    {
+      "name": "order_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Orders",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Фактические заказы (стадия fulfillment, a015). Отменённый заказ всё равно даёт строку order."
+    },
+    {
+      "name": "order_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Orders Sum",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма фактических заказов (a015)."
+    },
+    {
+      "name": "cancel_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Cancels",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Отмены заказов ORDER-LEVEL (a015): отдельная строка kind=cancel, cohort_date=дата заказа, event_date=дата отмены. Нужна для когортного анализа и drilldown до конкретного srid. Для вопроса «сколько отказов за период» предпочитай funnel_cancel_count (счётчик самого маркетплейса) — он полнее."
+    },
+    {
+      "name": "cancel_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Cancels Sum",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма отмен (a015)."
+    },
+    {
+      "name": "buyout_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Buyouts",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Выкупы (a012). Когорта резолвится по srid к дате заказа a015."
+    },
+    {
+      "name": "buyout_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Buyouts Sum",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма выкупов (a012)."
+    },
+    {
+      "name": "return_count",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Returns",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Возвраты (a012). Хранятся ПОЛОЖИТЕЛЬНОЙ величиной, как и все метрики p916: знак несёт вид движения, а не число. Чистые выкупы = buyout_count - return_count (вычитать явно)."
+    },
+    {
+      "name": "return_sum",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Returns Sum",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма возвратов (a012)."
+    },
+    {
+      "name": "order_key",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Key",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "WB srid для соединения fulfillment-строк с p913_wb_advert_order_attr и расчёта paid orders/buyouts."
+    },
+    {
+      "name": "created_at_msk",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Created At (MSK)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Время создания строки проекции (MSK)."
+    },
+    {
+      "name": "updated_at_msk",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Updated At (MSK)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Время последнего обновления строки проекции (MSK)."
+    }
+  ]
+}

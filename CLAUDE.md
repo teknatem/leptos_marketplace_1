@@ -121,6 +121,32 @@ cargo build --release --bin backend        # → target/release/backend.exe
 
 **Frontend** (`crates/frontend/src/domain/a0XX_*/`): UI по MVVM, страницы details со вкладками — напр. `ui/details/tabs/general.rs`.
 
+### Метаданные: `metadata.json` → генерация
+
+**Единый стандарт без исключений: у каждого агрегата, каждой проекции и Главной книги есть
+`metadata.json`.** `crates/contracts/build.rs` сканирует `src/domain`, `src/projections` и
+`src/general_ledger` одинаково: рядом с DTO кладётся `metadata.json`, из него генерируется
+`metadata_gen.rs` (правится только JSON). Модуль подключается конвенционально:
+`mod metadata_gen; pub use metadata_gen::{ENTITY_METADATA, FIELDS};`.
+
+Все найденные сущности build-скрипт собирает в `src/shared/metadata/registry_gen.rs`
+(`ALL_ENTITIES`) — **регистрировать сущность где-либо руками не нужно и нельзя**.
+Блок `ai` в metadata.json задаёт поведение LLM-каталога:
+- `"tags": ["wb", "sales"]` — тематические теги для фильтра;
+- `"related": [...]` — только зарегистрированные сущности (тест `related_targets_resolve_…`);
+- `"llm_visible": false` — скрыть сущность от LLM. Механизм есть, действующих исключений нет.
+
+Поля описывают **реальные колонки таблицы**. У документов часть структуры лежит внутри
+JSON-колонок — такие логические поля помечаются `"physical": false`, чтобы не попадать в
+`columns_for_sql` (иначе LLM генерирует SQL с несуществующими колонками). Сами JSON-колонки
+описаны как обычные поля — по ним работает `json_extract`.
+
+Потребитель — `backend/src/shared/llm/metadata_registry.rs`. Сущность разрешается по любому из
+своих имён (индекс `a001`, каталог `a001_connection_1c`, таблица `a001_connection_1c_database`,
+коллекция) — одно правило `names_match` на поиск и на JOIN-подсказки. Невалидные `field_type`/
+`source`/`entity_type` в JSON падают при сборке с внятным сообщением, а не компиляционной ошибкой
+внутри сгенерированного файла.
+
 ---
 
 ## Карта бэкенда (`crates/backend/src/`)

@@ -1,74 +1,21 @@
 //! Реестр метаданных всех сущностей для LLM.
 //!
-//! Агрегирует `'static` константы из `metadata_gen.rs` каждого домена
-//! и предоставляет методы для исследования схемы через инструменты LLM.
+//! Список сущностей собирается автоматически: `contracts::shared::metadata::ALL_ENTITIES`
+//! генерируется build-скриптом контрактов из всех `metadata.json` (домены, проекции,
+//! Главная книга). Регистрировать сущность здесь руками не нужно и нельзя — достаточно
+//! завести metadata.json. Скрыть сущность от LLM можно флагом `"llm_visible": false`
+//! в её `ai`-блоке; сейчас исключений нет.
 
-use contracts::shared::metadata::{EntityMetadataInfo, FieldMetadata, FieldSource};
+use contracts::shared::metadata::{EntityRegistration, FieldMetadata, FieldSource, ALL_ENTITIES};
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 
-// ─── Импорт всех метаданных из контрактов ───────────────────────────────────
-
-// Импортируем re-exported константы из каждого домена (metadata_gen.rs приватный)
-use contracts::domain::a001_connection_1c::{ENTITY_METADATA as A001_META, FIELDS as A001_FIELDS};
-use contracts::domain::a002_organization::{ENTITY_METADATA as A002_META, FIELDS as A002_FIELDS};
-use contracts::domain::a004_nomenclature::{ENTITY_METADATA as A004_META, FIELDS as A004_FIELDS};
-use contracts::domain::a005_marketplace::{ENTITY_METADATA as A005_META, FIELDS as A005_FIELDS};
-use contracts::domain::a006_connection_mp::{ENTITY_METADATA as A006_META, FIELDS as A006_FIELDS};
-use contracts::domain::a012_wb_sales::{ENTITY_METADATA as A012_META, FIELDS as A012_FIELDS};
-use contracts::domain::a013_ym_order::{ENTITY_METADATA as A013_META, FIELDS as A013_FIELDS};
-use contracts::domain::a015_wb_orders::{ENTITY_METADATA as A015_META, FIELDS as A015_FIELDS};
-use contracts::domain::a017_llm_agent::{ENTITY_METADATA as A017_META, FIELDS as A017_FIELDS};
-use contracts::domain::a018_llm_chat::{ENTITY_METADATA as A018_META, FIELDS as A018_FIELDS};
-use contracts::domain::a019_llm_artifact::{ENTITY_METADATA as A019_META, FIELDS as A019_FIELDS};
-use contracts::domain::a020_wb_promotion::{ENTITY_METADATA as A020_META, FIELDS as A020_FIELDS};
-use contracts::domain::a024_bi_indicator::{ENTITY_METADATA as A024_META, FIELDS as A024_FIELDS};
-use contracts::domain::a025_bi_dashboard::{ENTITY_METADATA as A025_META, FIELDS as A025_FIELDS};
-use contracts::domain::a026_wb_advert_daily::{
-    ENTITY_METADATA as A026_META, FIELDS as A026_FIELDS,
-};
-use contracts::domain::a027_wb_documents::{ENTITY_METADATA as A027_META, FIELDS as A027_FIELDS};
-use contracts::domain::a032_wb_returns_claims::{
-    ENTITY_METADATA as A032_META, FIELDS as A032_FIELDS,
-};
-use contracts::domain::a034_ym_realization::{ENTITY_METADATA as A034_META, FIELDS as A034_FIELDS};
-use contracts::domain::a035_ym_settlement_recon::{
-    ENTITY_METADATA as A035_META, FIELDS as A035_FIELDS,
-};
-use contracts::domain::a036_wb_sales_funnel_daily::{
-    ENTITY_METADATA as A036_META, FIELDS as A036_FIELDS,
-};
-use contracts::domain::a037_wb_product_snapshot::{
-    ENTITY_METADATA as A037_META, FIELDS as A037_FIELDS,
-};
-use contracts::domain::a040_wb_search_analytics_daily::{
-    ENTITY_METADATA as A040_META, FIELDS as A040_FIELDS,
-};
-use contracts::general_ledger::{ENTITY_METADATA as GL_META, FIELDS as GL_FIELDS};
-use contracts::projections::p909_mp_order_line_turnovers::{
-    ENTITY_METADATA as P909_META, FIELDS as P909_FIELDS,
-};
-use contracts::projections::p910_mp_unlinked_turnovers::{
-    ENTITY_METADATA as P910_META, FIELDS as P910_FIELDS,
-};
-use contracts::projections::p914_mp_finance_turnovers::{
-    ENTITY_METADATA as P914_META, FIELDS as P914_FIELDS,
-};
-use contracts::projections::p916_mp_sales_funnel_turnovers::metadata_gen::{
-    ENTITY_METADATA as P916_META, FIELDS as P916_FIELDS,
-};
-
 // ─── Структуры ──────────────────────────────────────────────────────────────
 
-struct RegistryEntry {
-    meta: &'static EntityMetadataInfo,
-    fields: &'static [FieldMetadata],
-    /// Тематические теги для фильтрации (например: "wb", "ozon", "ym", "ref", "llm")
-    tags: &'static [&'static str],
-}
+type RegistryEntry = EntityRegistration;
 
 pub struct MetadataRegistry {
-    entries: Vec<RegistryEntry>,
+    entries: Vec<&'static RegistryEntry>,
 }
 
 // ─── Глобальный экземпляр ───────────────────────────────────────────────────
@@ -78,149 +25,14 @@ pub static METADATA_REGISTRY: Lazy<MetadataRegistry> = Lazy::new(MetadataRegistr
 // ─── Реализация ─────────────────────────────────────────────────────────────
 
 impl MetadataRegistry {
-    /// Реестр сущностей, видимых LLM (`list_entities` / `get_entity_schema` / `get_join_hint`).
-    /// Источник полей — сгенерированные `metadata_gen` контрактов. При добавлении metadata
-    /// в новый домен впиши его сюда И в `tests::EXPECTED_INDICES` — тест ловит «тихий»
-    /// дрейф покрытия (иначе для raw SQL LLM «слепа» к колонкам новой таблицы).
+    /// Собирает реестр из сгенерированного каталога контрактов.
+    /// Тематические теги и признак видимости живут в metadata.json (блок `ai`).
     fn build() -> Self {
         Self {
-            entries: vec![
-                RegistryEntry {
-                    meta: &A001_META,
-                    fields: A001_FIELDS,
-                    tags: &["ref", "1c"],
-                },
-                RegistryEntry {
-                    meta: &A002_META,
-                    fields: A002_FIELDS,
-                    tags: &["ref"],
-                },
-                RegistryEntry {
-                    meta: &A004_META,
-                    fields: A004_FIELDS,
-                    tags: &["ref", "1c"],
-                },
-                RegistryEntry {
-                    meta: &A005_META,
-                    fields: A005_FIELDS,
-                    tags: &["ref"],
-                },
-                RegistryEntry {
-                    meta: &A006_META,
-                    fields: A006_FIELDS,
-                    tags: &["ref", "wb", "ozon", "ym"],
-                },
-                RegistryEntry {
-                    meta: &A012_META,
-                    fields: A012_FIELDS,
-                    tags: &["wb", "sales"],
-                },
-                RegistryEntry {
-                    meta: &A015_META,
-                    fields: A015_FIELDS,
-                    tags: &["wb", "orders"],
-                },
-                RegistryEntry {
-                    meta: &A020_META,
-                    fields: A020_FIELDS,
-                    tags: &["wb", "promotion"],
-                },
-                RegistryEntry {
-                    meta: &A026_META,
-                    fields: A026_FIELDS,
-                    tags: &["wb", "advertising"],
-                },
-                RegistryEntry {
-                    meta: &A036_META,
-                    fields: A036_FIELDS,
-                    tags: &["wb", "analytics"],
-                },
-                RegistryEntry {
-                    meta: &A037_META,
-                    fields: A037_FIELDS,
-                    tags: &["wb", "analytics", "stocks"],
-                },
-                RegistryEntry {
-                    meta: &A040_META,
-                    fields: A040_FIELDS,
-                    tags: &["wb", "analytics", "search"],
-                },
-                RegistryEntry {
-                    meta: &A027_META,
-                    fields: A027_FIELDS,
-                    tags: &["wb", "accounting"],
-                },
-                RegistryEntry {
-                    meta: &A032_META,
-                    fields: A032_FIELDS,
-                    tags: &["wb", "returns"],
-                },
-                RegistryEntry {
-                    meta: &A013_META,
-                    fields: A013_FIELDS,
-                    tags: &["ym", "sales"],
-                },
-                RegistryEntry {
-                    meta: &A034_META,
-                    fields: A034_FIELDS,
-                    tags: &["ym", "accounting", "sales", "ybuh"],
-                },
-                RegistryEntry {
-                    meta: &A035_META,
-                    fields: A035_FIELDS,
-                    tags: &["ym", "accounting"],
-                },
-                RegistryEntry {
-                    meta: &A017_META,
-                    fields: A017_FIELDS,
-                    tags: &["llm"],
-                },
-                RegistryEntry {
-                    meta: &A018_META,
-                    fields: A018_FIELDS,
-                    tags: &["llm"],
-                },
-                RegistryEntry {
-                    meta: &A019_META,
-                    fields: A019_FIELDS,
-                    tags: &["llm"],
-                },
-                RegistryEntry {
-                    meta: &A024_META,
-                    fields: A024_FIELDS,
-                    tags: &["bi", "dashboard"],
-                },
-                RegistryEntry {
-                    meta: &A025_META,
-                    fields: A025_FIELDS,
-                    tags: &["bi", "dashboard"],
-                },
-                RegistryEntry {
-                    meta: &P909_META,
-                    fields: P909_FIELDS,
-                    tags: &["wb", "ym", "bi", "projection"],
-                },
-                RegistryEntry {
-                    meta: &P910_META,
-                    fields: P910_FIELDS,
-                    tags: &["wb", "ym", "bi", "projection"],
-                },
-                RegistryEntry {
-                    meta: &P914_META,
-                    fields: P914_FIELDS,
-                    tags: &["wb", "ym", "bi", "projection", "fina"],
-                },
-                RegistryEntry {
-                    meta: &P916_META,
-                    fields: P916_FIELDS,
-                    tags: &["wb", "bi", "projection", "funnel", "воронка"],
-                },
-                RegistryEntry {
-                    meta: &GL_META,
-                    fields: GL_FIELDS,
-                    tags: &["gl", "accounting", "journal"],
-                },
-            ],
+            entries: ALL_ENTITIES
+                .iter()
+                .filter(|entity| entity.meta.ai.llm_visible)
+                .collect(),
         }
     }
 
@@ -232,7 +44,7 @@ impl MetadataRegistry {
         let items: Vec<Value> = self
             .entries
             .iter()
-            .filter(|e| category.map_or(true, |cat| e.tags.contains(&cat)))
+            .filter(|e| category.map_or(true, |cat| e.meta.ai.tags.contains(&cat)))
             .map(|e| {
                 let table = e.meta.table_name.unwrap_or(e.meta.collection_name);
                 json!({
@@ -241,7 +53,7 @@ impl MetadataRegistry {
                     "name":        e.meta.ui.element_name,
                     "description": e.meta.ai.description,
                     "questions":   e.meta.ai.questions,
-                    "tags":        e.tags,
+                    "tags":        e.meta.ai.tags,
                 })
             })
             .collect();
@@ -263,14 +75,14 @@ impl MetadataRegistry {
         let entities: Vec<Value> = self
             .entries
             .iter()
-            .filter(|e| category.map_or(true, |cat| e.tags.contains(&cat)))
+            .filter(|e| category.map_or(true, |cat| e.meta.ai.tags.contains(&cat)))
             .map(|e| {
                 let table = e.meta.table_name.unwrap_or(e.meta.collection_name);
                 json!({
                     "index":   e.meta.entity_index,
                     "name":    e.meta.ui.element_name,
                     "table":   table,
-                    "tags":    e.tags,
+                    "tags":    e.meta.ai.tags,
                     "related": e.meta.ai.related,
                 })
             })
@@ -280,7 +92,7 @@ impl MetadataRegistry {
         let mut categories: Vec<&str> = self
             .entries
             .iter()
-            .flat_map(|e| e.tags.iter().copied())
+            .flat_map(|e| e.meta.ai.tags.iter().copied())
             .collect();
         categories.sort_unstable();
         categories.dedup();
@@ -324,7 +136,10 @@ impl MetadataRegistry {
             );
             return json!({
                 "error": format!(
-                    "Entity '{}' not found. Use the short index, not the table name. Available: {}",
+                    "Entity '{}' not found. Works with the short index ('a012') or the table \
+                     name ('a012_wb_sales'). If the table is genuinely absent from the catalog, \
+                     do NOT retry this tool — query it directly with execute_query instead. \
+                     Available: {}",
                     entity_index,
                     hint_list.join(", ")
                 )
@@ -359,15 +174,20 @@ impl MetadataRegistry {
                     field["fk_to"] = ref_entity.into();
                 }
 
+                if !f.physical {
+                    field["not_a_column"] = true.into();
+                }
+
                 field
             })
             .collect();
 
-        // Список колонок для быстрого копирования в SQL (без фильтрации)
+        // Только реальные колонки таблицы: логические поля документов лежат внутри
+        // JSON-колонок, и попадание их в SQL даёт "no such column".
         let columns_for_sql: Vec<&str> = entry
             .fields
             .iter()
-            .filter(|f| !Self::is_internal_field(f))
+            .filter(|f| f.physical && !Self::is_internal_field(f))
             .map(|f| f.name)
             .collect();
 
@@ -415,26 +235,13 @@ impl MetadataRegistry {
             .table_name
             .unwrap_or(to_entry.meta.collection_name);
 
-        // ref_aggregate может хранить как краткий индекс ("a005"),
-        // так и полное имя таблицы ("a005_marketplace") или collection_name.
-        // Сравниваем со всеми формами идентификаторов to_entry.
-        let matches_to = |ref_agg: Option<&str>| -> bool {
-            let Some(ra) = ref_agg else {
-                return false;
-            };
-            ra == to_entry.meta.entity_index
-                || Some(ra) == to_entry.meta.table_name
-                || ra == to_entry.meta.collection_name
-        };
+        // ref_aggregate может хранить любое из имён сущности (индекс, таблица,
+        // коллекция, каталог модуля) — сопоставляем тем же правилом, что и поиск.
+        let matches_to =
+            |ref_agg: Option<&str>| ref_agg.is_some_and(|ra| Self::names_match(to_entry, ra));
 
-        let matches_from = |ref_agg: Option<&str>| -> bool {
-            let Some(ra) = ref_agg else {
-                return false;
-            };
-            ra == from_entry.meta.entity_index
-                || Some(ra) == from_entry.meta.table_name
-                || ra == from_entry.meta.collection_name
-        };
+        let matches_from =
+            |ref_agg: Option<&str>| ref_agg.is_some_and(|ra| Self::names_match(from_entry, ra));
 
         // Ищем FK-поля в from_entry, ссылающиеся на to_entry
         let fk_fields: Vec<_> = from_entry
@@ -495,14 +302,23 @@ impl MetadataRegistry {
 
     // ─── Вспомогательные ──────────────────────────────────────────────────
 
-    /// Найти сущность по entity_index ("a006"), table_name ("a006_connection_mp")
-    /// или collection_name ("connection_mp"). Нечувствительность к формату.
+    /// Найти сущность по любому из её имён: entity_index ("a006"), table_name
+    /// ("a006_connection_mp"), collection_name ("connection_mp") или имени модуля
+    /// ("a001_connection_1c" при таблице "a001_connection_1c_database").
     fn find_by_index(&self, index: &str) -> Option<&RegistryEntry> {
-        self.entries.iter().find(|e| {
-            e.meta.entity_index == index
-                || e.meta.table_name == Some(index)
-                || e.meta.collection_name == index
-        })
+        self.entries.iter().copied().find(|e| Self::names_match(e, index))
+    }
+
+    /// Одно правило сопоставления имён для всего реестра: сущность у нас известна
+    /// под несколькими именами (индекс, таблица, коллекция, каталог модуля), и они
+    /// не всегда совпадают. Префикс до первого `_` — это индекс, он уникален.
+    fn names_match(entry: &RegistryEntry, reference: &str) -> bool {
+        entry.meta.entity_index == reference
+            || entry.meta.table_name == Some(reference)
+            || entry.meta.collection_name == reference
+            || reference
+                .split_once('_')
+                .is_some_and(|(index, _)| index == entry.meta.entity_index)
     }
 
     /// Служебные поля, не нужные LLM
@@ -533,19 +349,22 @@ impl MetadataRegistry {
 mod tests {
     use super::*;
 
-    /// Сущности/проекции, которые ДОЛЖНЫ быть видимы LLM через `get_entity_schema`.
-    /// Это явный «контракт покрытия»: если домен с `metadata_gen` забыли
-    /// зарегистрировать в `build()`, тест краснеет, а не молча оставляет LLM
-    /// слепой к колонкам таблицы при raw SQL.
-    const EXPECTED_INDICES: &[&str] = &[
-        "a001", "a002", "a004", "a005", "a006", "a012", "a013", "a015", "a017", "a018", "a019",
-        "a020", "a024", "a025", "a026", "a027", "a032", "a034", "a035", "a036", "a037", "a040",
-        "p909", "p910", "p914", "p916", "gl",
-    ];
-
+    /// Каждая сущность каталога должна быть доступна LLM и отдавать непустую схему.
+    /// Регистрация автоматическая (`ALL_ENTITIES`), поэтому перечислять индексы руками
+    /// больше не нужно — тест идёт по самому каталогу.
     #[test]
-    fn registry_exposes_every_expected_entity_with_fields() {
-        for index in EXPECTED_INDICES {
+    fn registry_exposes_every_catalog_entity_with_fields() {
+        assert_eq!(
+            METADATA_REGISTRY.entries.len(),
+            ALL_ENTITIES
+                .iter()
+                .filter(|entity| entity.meta.ai.llm_visible)
+                .count(),
+            "registry must mirror the generated catalog exactly"
+        );
+
+        for entity in METADATA_REGISTRY.entries.iter() {
+            let index = entity.meta.entity_index;
             let schema = METADATA_REGISTRY.get_entity_schema(index);
             assert!(
                 schema.get("error").is_none(),
@@ -557,6 +376,42 @@ mod tests {
                 .is_some_and(|fields| !fields.is_empty());
             assert!(has_fields, "entity '{index}' must expose non-empty fields");
         }
+    }
+
+    /// Ссылки `related` ведут LLM по графу сущностей: если цель не зарегистрирована,
+    /// модель упирается в «Entity not found» вместо ответа.
+    #[test]
+    fn related_targets_resolve_to_registered_entities() {
+        let mut dangling: Vec<String> = Vec::new();
+
+        for entity in METADATA_REGISTRY.entries.iter() {
+            for target in entity.meta.ai.related {
+                if METADATA_REGISTRY.find_by_index(target).is_none() {
+                    dangling.push(format!("{} -> {}", entity.meta.entity_index, target));
+                }
+            }
+        }
+
+        assert!(
+            dangling.is_empty(),
+            "related[] must point at registered entities, dangling: {dangling:?}"
+        );
+    }
+
+    /// Реестр обещает LLM таблицу для raw SQL — имя должно быть заполнено.
+    #[test]
+    fn every_entity_declares_a_table() {
+        let missing: Vec<&str> = METADATA_REGISTRY
+            .entries
+            .iter()
+            .filter(|entity| entity.meta.table_name.is_none())
+            .map(|entity| entity.meta.entity_index)
+            .collect();
+
+        assert!(
+            missing.is_empty(),
+            "entities without table_name cannot be queried: {missing:?}"
+        );
     }
 
     #[test]

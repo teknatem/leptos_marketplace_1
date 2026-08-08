@@ -39,7 +39,9 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
     ai: EntityAiMetadata {
         description: "Документ Приобретение товаров и услуг из 1С:Управление торговлей. Содержит номер и дату документа, контрагента-поставщика и строки с товарами (номенклатура, количество, цена, сумма с НДС). Используется для учёта закупочных цен.",
         questions: &["Сколько потратили на закупки?", "Какова закупочная цена товара?", "Какие поставщики поставляли товар?"],
-        related: &["a001_connection_1c", "a003_counterparty", "a004_nomenclature", "u501_import_from_ut"],
+        related: &["a001_connection_1c", "a003_counterparty", "a004_nomenclature"],
+        tags: &["purchase"],
+        llm_visible: true,
     },
     access: Some(&ACCESS_META),
 };
@@ -71,6 +73,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -100,6 +103,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -107,7 +111,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "document_date",
         rust_type: "String",
-        field_type: FieldType::Date,
+        field_type: FieldType::Primitive,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Дата документа",
@@ -129,6 +133,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -136,7 +141,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "counterparty_key",
         rust_type: "String",
-        field_type: FieldType::Reference,
+        field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Контрагент",
@@ -158,6 +163,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: Some("UUID контрагента из 1С — поставщик товаров по данному документу."),
+        physical: true,
         nested_fields: None,
         ref_aggregate: Some("a003_counterparty"),
         enum_values: None,
@@ -187,6 +193,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: Some("JSON-массив строк товаров: [{nomenclature_key, quantity, price, amount_with_vat, vat_amount}]."),
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -194,7 +201,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "connection_id",
         rust_type: "String",
-        field_type: FieldType::Reference,
+        field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Подключение 1С",
@@ -216,6 +223,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: Some("a001_connection_1c"),
         enum_values: None,

@@ -1,0 +1,123 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "NomenclaturePrice",
+  "entity_index": "p906",
+  "collection_name": "nomenclature_prices",
+  "table_name": "p906_nomenclature_prices",
+  "ui": {
+    "element_name": "Цена номенклатуры",
+    "element_name_en": "Nomenclature Price",
+    "list_name": "Цены номенклатуры по периодам",
+    "list_name_en": "Nomenclature Prices",
+    "icon": "tag"
+  },
+  "ai": {
+    "description": "Дилерские цены номенклатуры из 1С УТ по периодам. Одна запись — цена номенклатуры на период; используется для расчёта маржинальности (p908_wb_goods_prices) и сопоставления с ценами маркетплейсов.",
+    "questions": [
+      "Какая дилерская цена номенклатуры на период?",
+      "Как менялась цена товара по месяцам?",
+      "У каких товаров нет цены за период?"
+    ],
+    "related": [
+      "a004_nomenclature",
+      "p908_wb_goods_prices",
+      "p912_nomenclature_costs"
+    ],
+    "tags": [
+      "ref",
+      "1c",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "period",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Период",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Период действия цены (начало периода)."
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Номенклатура",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "price",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Цена",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Дилерская цена из 1С УТ."
+    },
+    {
+      "name": "created_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Создано",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Обновлено",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    }
+  ]
+}

@@ -17,6 +17,7 @@
   },
 
   "ai": {
+    "tags": ["production"],
     "description": "Документ Выпуск продукции из 1С:Управление торговлей. Содержит номер и дату документа, артикул и количество произведённой продукции, сумму себестоимости. Используется для расчёта себестоимости товаров при аналитике прибыли.",
     "questions": [
       "Какова себестоимость произведённой продукции?",
@@ -25,8 +26,7 @@
     ],
     "related": [
       "a001_connection_1c",
-      "a004_nomenclature",
-      "u501_import_from_ut"
+      "a004_nomenclature"
     ]
   },
 
@@ -50,7 +50,7 @@
     {
       "name": "document_date",
       "rust_type": "String",
-      "field_type": "date",
+      "field_type": "primitive",
       "source": "specific",
       "ui": { "label": "Дата документа", "label_en": "Document Date", "visible_in_list": true, "visible_in_form": true, "column_width": 140 },
       "validation": { "required": true }
@@ -92,7 +92,7 @@
     {
       "name": "nomenclature_ref",
       "rust_type": "Option<String>",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Номенклатура 1С", "label_en": "1C Nomenclature", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": false },
@@ -101,7 +101,7 @@
     {
       "name": "connection_id",
       "rust_type": "String",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Подключение 1С", "label_en": "1C Connection", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": true },

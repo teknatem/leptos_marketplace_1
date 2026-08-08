@@ -38,6 +38,8 @@ pub const ENTITY_METADATA: EntityMetadataInfo = EntityMetadataInfo {
         description: "Запись о продаже товара на маркетплейсе: дата начисления, количество, выручка и тип операции (продажа, возврат, комиссия). Основной источник данных для аналитики продаж.",
         questions: &["Какова выручка за период?", "Сколько продано по каждому товару?", "Какие операции есть на маркетплейсе?"],
         related: &["a006_connection_mp", "a007_marketplace_product", "a005_marketplace", "a002_organization"],
+        tags: &["sales"],
+        llm_visible: true,
     },
     access: Some(&ACCESS_META),
 };
@@ -69,6 +71,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -98,6 +101,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -105,7 +109,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "accrual_date",
         rust_type: "chrono::NaiveDate",
-        field_type: FieldType::Date,
+        field_type: FieldType::Primitive,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Дата начисления",
@@ -127,6 +131,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -134,7 +139,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "connection_id",
         rust_type: "String",
-        field_type: FieldType::Reference,
+        field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Подключение МП",
@@ -156,6 +161,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: Some("a006_connection_mp"),
         enum_values: None,
@@ -163,7 +169,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "organization_id",
         rust_type: "String",
-        field_type: FieldType::Reference,
+        field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Организация",
@@ -185,6 +191,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: Some("a002_organization"),
         enum_values: None,
@@ -192,7 +199,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "marketplace_id",
         rust_type: "String",
-        field_type: FieldType::Reference,
+        field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Маркетплейс",
@@ -214,6 +221,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: Some("a005_marketplace"),
         enum_values: None,
@@ -221,7 +229,7 @@ pub const FIELDS: &[FieldMetadata] = &[
     FieldMetadata {
         name: "product_id",
         rust_type: "String",
-        field_type: FieldType::Reference,
+        field_type: FieldType::AggregateRef,
         source: FieldSource::Specific,
         ui: FieldUiMetadata {
             label: "Товар",
@@ -243,6 +251,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: Some("a007_marketplace_product"),
         enum_values: None,
@@ -272,6 +281,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: None,
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -301,6 +311,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: Some("Выручка может быть отрицательной при возвратах."),
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,
@@ -330,6 +341,7 @@ pub const FIELDS: &[FieldMetadata] = &[
             custom_error: None,
         },
         ai_hint: Some("Например: sale, return, commission."),
+        physical: true,
         nested_fields: None,
         ref_aggregate: None,
         enum_values: None,

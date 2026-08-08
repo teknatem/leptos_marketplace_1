@@ -1,0 +1,362 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "MpFinanceTurnover",
+  "entity_index": "p914",
+  "collection_name": "mp_finance_turnovers",
+  "table_name": "p914_mp_finance_turnovers",
+  "ui": {
+    "element_name": "MP Finance Turnovers",
+    "element_name_en": "MP Finance Turnovers",
+    "list_name": "MP Finance Turnovers",
+    "list_name_en": "MP Finance Turnovers",
+    "icon": "database"
+  },
+  "ai": {
+    "description": "Проекция финансовых оборотов слоя fina. Одна запись = одна GL-проводка слоя fina, построенная из финансового отчёта МП (p903/p907). Совпадает с GL по сумме, дате транзакции, turnover_code и основным измерениям; добавляет разрезы customer_kind и fulfillment_type для отчётности.",
+    "questions": [
+      "Какие финансовые обороты слоя fina есть за период?",
+      "Какой turnover_code даёт выручку, комиссию, эквайринг или сторно возврата?",
+      "Какие обороты приходятся на юрлиц (UL) и физлиц (FL)?",
+      "Какие обороты по схеме FBO, FBS или FBW?"
+    ],
+    "related": [
+      "p903_wb_finance_report",
+      "p907_ym_payment_report",
+      "general_ledger"
+    ],
+    "tags": [
+      "wb",
+      "ym",
+      "bi",
+      "projection",
+      "fina"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Стабильный business key строки проекции (= general_ledger_ref)."
+    },
+    {
+      "name": "transaction_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Transaction Date",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Дата транзакции (совпадает с entry_date GL-проводки)."
+    },
+    {
+      "name": "general_ledger_ref",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "General Ledger Ref",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на зеркалируемую GL-проводку слоя fina."
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Registrator Type",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника: p903_wb_finance_report или p907_ym_payment_report."
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Registrator Ref",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на конкретную строку источника."
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Connection",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "UUID кабинета маркетплейса.",
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Nomenclature",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на a004_nomenclature.",
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "marketplace_product_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Marketplace Product",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на a007_marketplace_product.",
+      "ref_aggregate": "a007_marketplace_product"
+    },
+    {
+      "name": "turnover_code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Turnover Code",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Код оборота из классификатора turnover classes."
+    },
+    {
+      "name": "order_key",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Key",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Бизнес-ключ заказа (srid для WB, order_id для YM)."
+    },
+    {
+      "name": "order_ref",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Ref",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "UUID агрегата-заказа (a015_wb_orders / a013_ym_order), если есть."
+    },
+    {
+      "name": "order_registrator_type",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Registrator Type",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Тип документа-заказа: a015_wb_orders / a013_ym_order."
+    },
+    {
+      "name": "event_kind",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Event Kind",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип события: ordered, sold, returned, fee, adjustment, other.",
+      "enum_values": [
+        "ordered",
+        "sold",
+        "returned",
+        "fee",
+        "adjustment",
+        "other"
+      ]
+    },
+    {
+      "name": "customer_kind",
+      "rust_type": "Option<String>",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Customer Kind",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Тип покупателя: URL — юрлицо, FIZ — физлицо.",
+      "enum_values": [
+        "URL",
+        "FIZ"
+      ]
+    },
+    {
+      "name": "fulfillment_type",
+      "rust_type": "Option<String>",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Fulfillment Type",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Схема исполнения: FBO, FBS, FBW.",
+      "enum_values": [
+        "FBO",
+        "FBS",
+        "FBW"
+      ]
+    },
+    {
+      "name": "layer",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Layer",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Слой оборота. Для этой проекции всегда fina.",
+      "enum_values": [
+        "fina"
+      ]
+    },
+    {
+      "name": "amount",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Amount",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма оборота, совпадает с суммой GL-проводки."
+    },
+    {
+      "name": "quantity",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Quantity",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Количество, если применимо к обороту."
+    },
+    {
+      "name": "created_at_msk",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Created At (MSK)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Время создания строки проекции (MSK)."
+    },
+    {
+      "name": "updated_at_msk",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Updated At (MSK)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Время последнего обновления строки проекции (MSK)."
+    }
+  ]
+}

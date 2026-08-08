@@ -1,0 +1,515 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "SalesRegisterLine",
+  "entity_index": "p900",
+  "collection_name": "mp_sales_register",
+  "table_name": "p900_sales_register",
+  "ui": {
+    "element_name": "Регистр продаж МП",
+    "element_name_en": "MP Sales Register",
+    "list_name": "Регистр продаж маркетплейсов",
+    "list_name_en": "MP Sales Register",
+    "icon": "table"
+  },
+  "ai": {
+    "description": "Унифицированный регистр строк продаж всех маркетплейсов. Одна запись — одна строка документа продажи (натуральный ключ marketplace + document_no + line_id), приведённая к общей структуре независимо от источника (WB, Ozon, Yandex Market). Служит базовой схемой ds02 «Конструктора запросов» и источником для витрины p904_sales_data.",
+    "questions": [
+      "Сколько строк продаж по маркетплейсу за период?",
+      "Какие продажи прошли по конкретному кабинету и организации?",
+      "Какова сумма продаж по номенклатуре в разрезе схемы (FBO/FBS)?",
+      "Чем отличается оперативный статус строки от нормализованного?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a004_nomenclature",
+      "a007_marketplace_product",
+      "p904_sales_data"
+    ],
+    "tags": [
+      "wb",
+      "ozon",
+      "ym",
+      "sales",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "marketplace",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Маркетплейс",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Код маркетплейса — часть натурального ключа строки.",
+      "enum_values": [
+        "WB",
+        "OZON",
+        "YM"
+      ]
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Номер документа",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "line_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Line Id",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Идентификатор строки внутри документа источника."
+    },
+    {
+      "name": "scheme",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Scheme",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Схема исполнения заказа у маркетплейса (FBO/FBS/DBS и аналоги)."
+    },
+    {
+      "name": "document_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип документа",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "document_version",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Document Version",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "organization_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Организация",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a002_organization"
+    },
+    {
+      "name": "marketplace_product_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Товар МП",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ref_aggregate": "a007_marketplace_product"
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Номенклатура",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Регистратор",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на документ-источник строки проекции."
+    },
+    {
+      "name": "event_time_source",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Event Time Source",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Отметка времени события в терминах источника."
+    },
+    {
+      "name": "sale_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Sale Date",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Бизнес-дата продажи, по ней строится отчётность."
+    },
+    {
+      "name": "source_updated_at",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Updated At",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "status_source",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Status Source",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Статус строки как его вернул источник."
+    },
+    {
+      "name": "status_norm",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Status Norm",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Статус, приведённый к внутреннему классификатору."
+    },
+    {
+      "name": "seller_sku",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Seller Sku",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "SKU продавца, как передан в маркетплейс."
+    },
+    {
+      "name": "mp_item_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Mp Item Id",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Идентификатор товара в номенклатуре маркетплейса."
+    },
+    {
+      "name": "barcode",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Штрихкод",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "title",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Title",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "qty",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Qty",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "price_list",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Price List",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "discount_total",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Discount Total",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "price_effective",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Price Effective",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Фактическая цена за единицу после скидок."
+    },
+    {
+      "name": "amount_line",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Amount Line",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма строки после скидок."
+    },
+    {
+      "name": "currency_code",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Валюта",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "loaded_at_utc",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Загружено (UTC)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Время загрузки строки из API источника (UTC)."
+    },
+    {
+      "name": "payload_version",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Версия payload",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Версия схемы payload импорта."
+    },
+    {
+      "name": "extra",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Доп. поля (JSON)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сырые дополнительные поля источника в JSON."
+    },
+    {
+      "name": "cost",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Себестоимость",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "dealer_price_ut",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Dealer Price Ut",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Дилерская цена из 1С УТ (p906_nomenclature_prices)."
+    },
+    {
+      "name": "is_fact",
+      "rust_type": "Option<bool>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Is Fact",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Строка подтверждена фактическим финансовым отчётом."
+    }
+  ]
+}

@@ -8,7 +8,7 @@ pub mod accounting;
 pub mod dto;
 pub mod entity;
 pub mod layer;
-pub mod metadata;
+mod metadata_gen;
 pub mod report;
 pub mod resource_detail;
 pub mod supplier_balance;
@@ -24,7 +24,7 @@ pub use entity::{
     GL_ENTITY_CLASSES,
 };
 pub use layer::{get_layer_class, GlLayerClassDef, GlLayerDto, GlLayersResponse, GL_LAYER_CLASSES};
-pub use metadata::{ENTITY_METADATA, FIELDS};
+pub use metadata_gen::{ENTITY_METADATA, FIELDS};
 pub use report::{
     AggregateRepresentation, GlDimensionCatalogItem, GlDimensionDef, GlDimensionUsageRef,
     GlDimensionsCatalogResponse, GlDimensionsResponse, GlDrilldownQuery, GlDrilldownResponse,

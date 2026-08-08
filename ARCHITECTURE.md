@@ -8,9 +8,9 @@
 
 | Index | Entity | Table | Description | Related |
 |-------|--------|-------|-------------|---------|
-| `a001` | Подключение 1С | `a001_connection_1c_database` | Настройки подключения к базе данных 1С:Управление торговлей. Используется для импорта справочников (номенклатура, организации, контрагенты)… | u501_import_from_ut, a002_organization, a003_counterparty, a004_nomenclature |
+| `a001` | Подключение 1С | `a001_connection_1c_database` | Настройки подключения к базе данных 1С:Управление торговлей. Используется для импорта справочников (номенклатура, организации, контрагенты)… | a002_organization, a003_counterparty, a004_nomenclature |
 | `a002` | Организация | `a002_organization` | Юридические лица и ИП, от имени которых ведётся торговля на маркетплейсах. Импортируются из 1С:УТ. Используются для группировки продаж и фин… | a001_connection_1c, a006_connection_mp, a012_wb_sales |
-| `a003` | Контрагент | `a003_counterparty` | Контрагенты (поставщики, покупатели, партнёры), импортируемые из 1С:Управление торговлей. Поддерживает иерархическую структуру (папки). Соде… | a001_connection_1c, u501_import_from_ut, a023_purchase_of_goods |
+| `a003` | Контрагент | `a003_counterparty` | Контрагенты (поставщики, покупатели, партнёры), импортируемые из 1С:Управление торговлей. Поддерживает иерархическую структуру (папки). Соде… | a001_connection_1c, a023_purchase_of_goods |
 | `a004` | Номенклатура | `a004_nomenclature` | Справочник товаров и категорий из 1С:УТ. Синонимы: товар, номенклатура, позиция, SKU, артикул, карточка товара — упоминание любого из них БЕ… | a001_connection_1c, a007_marketplace_product, a012_wb_sales, a013_ym_order |
 | `a005` | Маркетплейс | `a005_marketplace` | Справочник торговых площадок: Wildberries, Ozon, Яндекс.Маркет. Системные записи, создаются при инициализации. Используется как справочник т… | a006_connection_mp |
 | `a006` | Подключение маркетплейса | `a006_connection_mp` | Подключения к торговым площадкам — один магазин на WB, Ozon или Яндекс.Маркет. Содержит API-ключи и идентификаторы магазинов. Используется к… | a002_organization, a005_marketplace, a012_wb_sales, a013_ym_order |
@@ -28,19 +28,19 @@
 | `a018` | Чат LLM | `a018_llm_chat` | Сессии чатов с LLM агентами. Содержит историю диалогов с языковыми моделями, включая сообщения пользователя и ответы ассистента. Каждый чат… | a017_llm_agent, a019_llm_artifact |
 | `a019` | Артефакт LLM | `a019_llm_artifact` | SQL-запросы и другие артефакты, созданные LLM агентами в процессе работы с чатами. Каждый артефакт связан с конкретным чатом и агентом, соде… | a017_llm_agent, a018_llm_chat |
 | `a020` | Акция WB | `a020_wb_promotion` | Календарные акции Wildberries. Каждая запись — одна акция из WB Calendar API с датами проведения и списком товаров (nmId). Данные загружаютс… | a006_connection_mp, a002_organization, a007_marketplace_product |
-| `a021` | Выпуск продукции | `a021_production_output` | Документ Выпуск продукции из 1С:Управление торговлей. Содержит номер и дату документа, артикул и количество произведённой продукции, сумму с… | a001_connection_1c, a004_nomenclature, u501_import_from_ut |
+| `a021` | Выпуск продукции | `a021_production_output` | Документ Выпуск продукции из 1С:Управление торговлей. Содержит номер и дату документа, артикул и количество произведённой продукции, сумму с… | a001_connection_1c, a004_nomenclature |
 | `a022` | Вариант комплектации | `a022_kit_variant` | Вариант комплектации номенклатуры из 1С:Управление торговлей. Описывает состав набора (kit) — какая номенклатура и в каком количестве входит… | a004_nomenclature, a001_connection_1c, a021_production_output |
-| `a023` | Приобретение товаров | `a023_purchase_of_goods` | Документ Приобретение товаров и услуг из 1С:Управление торговлей. Содержит номер и дату документа, контрагента-поставщика и строки с товарам… | a001_connection_1c, a003_counterparty, a004_nomenclature, u501_import_from_ut |
+| `a023` | Приобретение товаров | `a023_purchase_of_goods` | Документ Приобретение товаров и услуг из 1С:Управление торговлей. Содержит номер и дату документа, контрагента-поставщика и строки с товарам… | a001_connection_1c, a003_counterparty, a004_nomenclature |
 | `a024` | BI Индикатор | `a024_bi_indicator` | Индикаторы BI-дашбордов. Каждый индикатор содержит спецификацию источника данных (DataSpec), типизированные параметры (Params), настройки от… | a019_llm_artifact |
 | `a025` | BI Дашборд | `a025_bi_dashboard` | BI-дашборды. Каждый дашборд объединяет набор BI-индикаторов (a024), сгруппированных по категориям в дерево. Содержит глобальные фильтры, оце… | a024_bi_indicator |
 | `a026` | Статистика рекламы WB | `a026_wb_advert_daily` | Ежедневная статистика рекламных кампаний Wildberries. Одна запись — один кабинет WB, одна дата и один advert_id. Содержит показы, клики, зак… | a006_connection_mp, a002_organization, a030_wb_advert_campaign, p911_wb_advert_by_items |
 | `a027` | Документ WB | `a027_wb_documents` | Заголовки отчетных документов Wildberries из API documents/list. Содержит serviceName, категорию, доступные форматы, время создания и призна… | a006_connection_mp, a002_organization, a005_marketplace |
-| `a028` | missing cost registry | | _(no metadata.json)_ | |
-| `a029` | wb supply | | _(no metadata.json)_ | |
-| `a030` | wb advert campaign | | _(no metadata.json)_ | |
-| `a031` | kb edit | | _(no metadata.json)_ | |
+| `a028` | Регистр отсутствующих себестоимостей | `a028_missing_cost_registry` | Документ-регистр номенклатуры, для которой не найдена себестоимость при расчёте продаж. Строки хранятся в lines_json; служит рабочим списком… | a004_nomenclature, p912_nomenclature_costs, p904_sales_data |
+| `a029` | Поставка WB | `a029_wb_supply` | Документ поставки Wildberries: партия заказов, передаваемая на склад WB. Хранит данные API поставки (info_json), состав заказов (supply_orde… | a006_connection_mp, a002_organization, a005_marketplace, a015_wb_orders |
+| `a030` | Рекламная кампания WB | `a030_wb_advert_campaign` | Справочник рекламных кампаний Wildberries. advert_id — native-идентификатор кампании в WB, по нему рекламные расходы a026 раскладываются в p… | a006_connection_mp, a002_organization, a005_marketplace, a026_wb_advert_daily, p911_wb_advert_by_items, p913_wb_advert_order_attr |
+| `a031` | Правка базы знаний | `a031_kb_edit` | Заявка на правку базы знаний, подготовленная LLM-агентом по итогам чата: тип правки, статус обработки, целевые и применённые статьи, ссылки… | a017_llm_agent, a018_llm_chat, a019_llm_artifact |
 | `a032` | Заявка на возврат WB | `a032_wb_returns_claims` | Заявка покупателя на возврат товара WB. Загружается из feedbacks-api.wildberries.ru/api/v1/claims. Содержит ID заявки, nmId, название товара… | a006_connection_mp, a005_marketplace, a012_wb_sales, a015_wb_orders |
-| `a033` | wb day close | | _(no metadata.json)_ | |
+| `a033` | Закрытие дня WB | `a033_wb_day_close` | Документ закрытия дня по кабинету Wildberries: пересчёт строк дня, выявленные проблемы и сверка с Главной книгой. Строки и итоги хранятся в… | a006_connection_mp, a026_wb_advert_daily, p911_wb_advert_by_items, p913_wb_advert_order_attr, general_ledger |
 | `a034` | Реализация YM | `a034_ym_realization` | Официальный «Отчёт о реализации» Yandex Market, импортируемый как суточный документ (один кабинет, одна дата). Содержит выручку по покупател… | a006_connection_mp, a002_organization, p907_ym_payment_report |
 | `a035` | Сверка перечислений YM | `a035_ym_settlement_recon` | Документ-сверка одного банковского ордера YM (bank_order_id из p907_ym_payment_report). Таблица операций ордера сгруппирована по нашим оборо… | p907_ym_payment_report, a006_connection_mp, a002_organization |
 | `a036` | Воронка продаж WB | `a036_wb_sales_funnel_daily` | Ежедневная воронка продаж Wildberries в разрезе номенклатуры. Одна запись — один кабинет WB и одна дата; JSON детализация по товарам (nm_id)… | a006_connection_mp, a002_organization, a007_marketplace_product, a026_wb_advert_daily |
@@ -48,6 +48,7 @@
 | `a038` | Подключение LLM | `a038_llm_connection` | Техническое подключение к провайдеру LLM (OpenAI, OpenRouter, DeepSeek). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tok… | a018_llm_chat, a019_llm_artifact |
 | `a039` | Письмо | `a039_mail_message` | Журнал входящих и исходящих писем почтового конвейера. Одна запись = одно письмо (кратко): направление, отправитель/получатель, тема, статус… | a018_llm_chat, a038_llm_connection, a019_llm_artifact |
 | `a040` | Поисковая аналитика WB | `a040_wb_search_analytics_daily` | Ежедневные снимки поисковой аналитики Wildberries в разрезе номенклатуры (search-report / «Товары по контенту», подписка «Джем»): видимость… | a006_connection_mp, a002_organization, a007_marketplace_product, a036_wb_sales_funnel_daily, a037_wb_product_snapshot |
+| `a041` | Воронка продаж YM | `a041_ym_shows_sales_daily` | Ежедневная воронка продаж Яндекс.Маркета в разрезе товаров. Одна запись — один кабинет YM и одна дата; JSON-детализация по товарам (offer_id… | a006_connection_mp, a002_organization, a007_marketplace_product, a013_ym_order, a016_ym_returns |
 
 ## Projections (p9XX)
 
@@ -127,6 +128,7 @@
 | `task023` | wb sales funnel daily |
 | `task024` | wb search analytics daily |
 | `task025` | bitrix ticket sync |
+| `task026` | ym shows sales daily |
 
 ## Chart of accounts (account_registry)
 
@@ -201,7 +203,7 @@
 | `item_cost_storno` | Себестоимость (сторно возврат) | 9002 | 41 | ✓ |
 | `commission_percent` | Процент комиссии |  |  |  |
 
-## API routes (401)
+## API routes (409)
 
 ### `/a004`
 - `GET` /api/a004/nomenclature
@@ -300,6 +302,10 @@
 - `POST` /api/a018-llm-chat/:id/rating
 - `POST` /api/a018-llm-chat/:id/shared
 - `POST` /api/a018-llm-chat/:id/upload
+- `GET` /api/a018-llm-chat/:id/workspace
+- `POST` /api/a018-llm-chat/:id/workspace/active
+- `POST` /api/a018-llm-chat/:id/workspace/answer
+- `GET PUT` /api/a018-llm-chat/:id/workspace/file/*path
 - `GET` /api/a018-llm-chat/jobs/:job_id
 - `POST` /api/a018-llm-chat/jobs/:job_id/cancel
 - `GET` /api/a018-llm-chat/jobs/:job_id/stream
@@ -581,6 +587,9 @@
 - `GET` /api/general-ledger/turnovers
 - `GET` /api/general-ledger/turnovers/:code
 
+### `/kb`
+- `POST` /api/kb/reload
+
 ### `/llm-knowledge`
 - `GET` /api/llm-knowledge
 - `GET` /api/llm-knowledge/:id
@@ -709,13 +718,16 @@
 - `GET` /api/projections/p900/:registrator_ref
 
 ### `/quality`
-- `GET POST` /api/quality/checks
+- `GET` /api/quality/checks
 - `POST` /api/quality/checks/:id/cleanup
 - `GET` /api/quality/checks/:id/details
 - `GET` /api/quality/checks/:id/groups
 - `POST` /api/quality/checks/:id/repost
 - `GET` /api/quality/checks/:id/rows
+- `POST` /api/quality/checks/:id/run
+- `GET` /api/quality/checks/:id/runs
 - `GET` /api/quality/checks/:id/sources
+- `POST` /api/quality/checks/reload
 
 ### `/refs`
 - `GET` /api/refs/resolve

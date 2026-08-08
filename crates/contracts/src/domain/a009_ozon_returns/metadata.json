@@ -17,6 +17,7 @@
   },
 
   "ai": {
+    "tags": ["ozon", "returns"],
     "description": "Возврат товара с OZON. Содержит информацию о дате возврата, причине, типе (полный/частичный), идентификаторах заказа и отправления, а также ценах и количестве. Используется для аналитики возвратов и сверки финансов.",
     "questions": [
       "Сколько возвратов было на OZON?",
@@ -50,7 +51,7 @@
     {
       "name": "return_date",
       "rust_type": "chrono::NaiveDate",
-      "field_type": "date",
+      "field_type": "primitive",
       "source": "specific",
       "ui": { "label": "Дата возврата", "label_en": "Return Date", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
       "validation": { "required": true }

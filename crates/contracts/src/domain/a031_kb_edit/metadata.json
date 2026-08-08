@@ -1,0 +1,227 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "KbEdit",
+  "entity_index": "a031",
+  "collection_name": "kb_edit",
+  "table_name": "a031_kb_edit",
+  "ui": {
+    "element_name": "Правка базы знаний",
+    "element_name_en": "Knowledge Base Edit",
+    "list_name": "Правки базы знаний",
+    "list_name_en": "Knowledge Base Edits",
+    "icon": "file-pen"
+  },
+  "ai": {
+    "description": "Заявка на правку базы знаний, подготовленная LLM-агентом по итогам чата: тип правки, статус обработки, целевые и применённые статьи, ссылки на чат-источник и на прогоны задач анализа/публикации.",
+    "questions": [
+      "Какие правки базы знаний ожидают применения?",
+      "Из какого чата пришла правка?",
+      "Какие статьи были изменены агентом?"
+    ],
+    "related": [
+      "a017_llm_agent",
+      "a018_llm_chat",
+      "a019_llm_artifact"
+    ],
+    "tags": [
+      "llm",
+      "kb"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "edit_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Edit Type",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Вид правки базы знаний."
+    },
+    {
+      "name": "status",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Status",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Статус обработки заявки."
+    },
+    {
+      "name": "title",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Title",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "agent_summary",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Agent Summary",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Краткое изложение правки, подготовленное агентом."
+    },
+    {
+      "name": "target_articles",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Target Articles",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Статьи, которые предполагалось изменить."
+    },
+    {
+      "name": "applied_articles",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Applied Articles",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Статьи, изменения в которых применены."
+    },
+    {
+      "name": "source_chat_ids",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Chat Ids",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Чаты-источники правки."
+    },
+    {
+      "name": "agent_id",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Agent Id",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ref_aggregate": "a017_llm_agent"
+    },
+    {
+      "name": "chat_id",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Chat Id",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": false
+      },
+      "ref_aggregate": "a018_llm_chat"
+    },
+    {
+      "name": "analyze_task_run_id",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Analyze Task Run Id",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Прогон задачи анализа."
+    },
+    {
+      "name": "post_task_run_id",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Post Task Run Id",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Прогон задачи публикации."
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 pub mod aggregate;
+mod metadata_gen;
 
 pub use aggregate::{
     ArchiveAndRecreateRequest, CompareRequest, CompareResponse, CreateActiveRequest,
@@ -6,3 +7,5 @@ pub use aggregate::{
     WbDayCloseAdvertNoOrderLine, WbDayCloseAdvertOrderAccrualLine, WbDayCloseId, WbDayCloseLine,
     WbDayCloseListDto, WbDayCloseProblem, WbDayCloseTotals,
 };
+
+pub use metadata_gen::{ENTITY_METADATA, FIELDS};

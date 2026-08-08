@@ -17,6 +17,7 @@
   },
 
   "ai": {
+    "tags": ["purchase"],
     "description": "Документ Приобретение товаров и услуг из 1С:Управление торговлей. Содержит номер и дату документа, контрагента-поставщика и строки с товарами (номенклатура, количество, цена, сумма с НДС). Используется для учёта закупочных цен.",
     "questions": [
       "Сколько потратили на закупки?",
@@ -26,8 +27,7 @@
     "related": [
       "a001_connection_1c",
       "a003_counterparty",
-      "a004_nomenclature",
-      "u501_import_from_ut"
+      "a004_nomenclature"
     ]
   },
 
@@ -51,7 +51,7 @@
     {
       "name": "document_date",
       "rust_type": "String",
-      "field_type": "date",
+      "field_type": "primitive",
       "source": "specific",
       "ui": { "label": "Дата документа", "label_en": "Document Date", "visible_in_list": true, "visible_in_form": true, "column_width": 140 },
       "validation": { "required": true }
@@ -59,7 +59,7 @@
     {
       "name": "counterparty_key",
       "rust_type": "String",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Контрагент", "label_en": "Counterparty", "visible_in_list": true, "visible_in_form": true, "column_width": 220 },
       "validation": { "required": true },
@@ -78,7 +78,7 @@
     {
       "name": "connection_id",
       "rust_type": "String",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Подключение 1С", "label_en": "1C Connection", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": true },

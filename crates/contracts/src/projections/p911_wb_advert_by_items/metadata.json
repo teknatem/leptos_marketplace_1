@@ -1,0 +1,221 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "WbAdvertByItem",
+  "entity_index": "p911",
+  "collection_name": "wb_advert_by_items",
+  "table_name": "p911_wb_advert_by_items",
+  "ui": {
+    "element_name": "WB Advert By Items",
+    "element_name_en": "WB Advert By Items",
+    "list_name": "WB Advert By Items",
+    "list_name_en": "WB Advert By Items",
+    "icon": "database"
+  },
+  "ai": {
+    "description": "Номенклатурные обороты рекламных расходов WB. Каждая строка хранит рекламный расход по одной номенклатуре за день и кабинет.",
+    "questions": [
+      "Какие рекламные расходы WB распределены по номенклатурам?",
+      "Какие документы a026 сформировали рекламные расходы по конкретной номенклатуре?",
+      "Из каких строк состоит одна сводная проводка по рекламе WB?"
+    ],
+    "related": [
+      "a026_wb_advert_daily",
+      "general_ledger",
+      "a004_nomenclature",
+      "a007_marketplace_product"
+    ],
+    "tags": [
+      "wb",
+      "bi",
+      "projection",
+      "advertising"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Стабильный business key строки проекции."
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Connection",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "UUID кабинета маркетплейса.",
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "entry_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Entry Date",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Бизнес-дата расхода на рекламу."
+    },
+    {
+      "name": "turnover_code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Turnover Code",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Код оборота из классификатора turnovers."
+    },
+    {
+      "name": "amount",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Amount",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма рекламного расхода по номенклатуре."
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Nomenclature",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на a004_nomenclature.",
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "wb_advert_campaign_code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Campaign",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Код кампании WB (advert_id из a030_wb_advert_campaign)."
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Registrator Type",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника, для a026 = a026_wb_advert_daily."
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Registrator Ref",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на документ-источник a026."
+    },
+    {
+      "name": "general_ledger_ref",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "General Ledger Ref",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Связь со сводной записью general_ledger."
+    },
+    {
+      "name": "marketplace_product_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Marketplace Product",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на a007_marketplace_product (товар маркетплейса по nm_id). При проведении a026 создаётся автоматически, если отсутствует.",
+      "ref_aggregate": "a007_marketplace_product"
+    },
+    {
+      "name": "is_problem",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Problem",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Проблемная строка детализации: сохранена в p911, но требует разбора, например из-за пустого nomenclature_ref."
+    }
+  ]
+}

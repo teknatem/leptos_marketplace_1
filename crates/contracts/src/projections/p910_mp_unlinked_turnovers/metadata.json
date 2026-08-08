@@ -1,0 +1,266 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "MpUnlinkedTurnover",
+  "entity_index": "p910",
+  "collection_name": "mp_unlinked_turnovers",
+  "table_name": "p910_mp_unlinked_turnovers",
+  "ui": {
+    "element_name": "MP Unlinked Turnovers",
+    "element_name_en": "MP Unlinked Turnovers",
+    "list_name": "MP Unlinked Turnovers",
+    "list_name_en": "MP Unlinked Turnovers",
+    "icon": "database"
+  },
+  "ai": {
+    "description": "Универсальная проекция отвязанных оборотов маркетплейсов. Каждая строка хранит один turnover_code в одном layer с единым документом-источником.",
+    "questions": [
+      "Какие отвязанные расходы есть за период?",
+      "Сколько storage, penalty или advertising пришло без связи со строкой заказа?",
+      "Какие fact-строки из p903 ушли в p910, а не в p909?"
+    ],
+    "related": [
+      "p903_wb_finance_report",
+      "p909_mp_order_line_turnovers",
+      "a006_connection_mp"
+    ],
+    "tags": [
+      "wb",
+      "ym",
+      "bi",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Стабильный business key строки отвязанного оборота."
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Connection",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "UUID кабинета маркетплейса.",
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "entry_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Entry Date",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Бизнес-дата отвязанного оборота."
+    },
+    {
+      "name": "layer",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Layer",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Слой оборота: plan, oper или fact.",
+      "enum_values": [
+        "plan",
+        "oper",
+        "fact"
+      ]
+    },
+    {
+      "name": "turnover_code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Turnover Code",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Код оборота из классификатора turnover classes."
+    },
+    {
+      "name": "value_kind",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Value Kind",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип значения: money, quantity, percent, coefficient.",
+      "enum_values": [
+        "money",
+        "quantity",
+        "percent",
+        "coefficient"
+      ]
+    },
+    {
+      "name": "agg_kind",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Aggregation Kind",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Правило агрегации для BI.",
+      "enum_values": [
+        "sum",
+        "avg",
+        "last",
+        "none"
+      ]
+    },
+    {
+      "name": "amount",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Amount",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Значение отвязанного оборота в конкретном layer."
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Registrator Type",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника, например p903_wb_finance_report."
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Registrator Ref",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на конкретный документ-источник."
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Nomenclature",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Опциональная ссылка на a004_nomenclature.",
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "comment",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Comment",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Техническое пояснение или сырой label источника."
+    },
+    {
+      "name": "created_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Created At",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "UTC timestamp создания строки проекции."
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Updated At",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "UTC timestamp последнего обновления строки проекции."
+    }
+  ]
+}

@@ -17,6 +17,7 @@
   },
 
   "ai": {
+    "tags": ["ref", "production"],
     "description": "Вариант комплектации номенклатуры из 1С:Управление торговлей. Описывает состав набора (kit) — какая номенклатура и в каком количестве входит в производимый товар. Используется для расчёта себестоимости комплектов.",
     "questions": [
       "Из каких компонентов состоит комплект?",
@@ -58,7 +59,7 @@
     {
       "name": "owner_ref",
       "rust_type": "Option<String>",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Номенклатура-владелец", "label_en": "Owner Nomenclature", "visible_in_list": true, "visible_in_form": true, "column_width": 200 },
       "validation": { "required": false },
@@ -77,7 +78,7 @@
     {
       "name": "connection_id",
       "rust_type": "String",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Подключение 1С", "label_en": "1C Connection", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": true },

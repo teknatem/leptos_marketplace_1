@@ -1,2 +1,4 @@
 pub mod dto;
-pub mod metadata_gen;
+mod metadata_gen;
+
+pub use metadata_gen::{ENTITY_METADATA, FIELDS};

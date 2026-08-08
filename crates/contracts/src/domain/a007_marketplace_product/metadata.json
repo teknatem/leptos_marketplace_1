@@ -17,6 +17,7 @@
   },
 
   "ai": {
+    "tags": ["ref", "wb", "ozon", "ym"],
     "description": "A007 — канонический регистр сопоставления позиции маркетплейса с номенклатурой 1С. Ключ идентификации всегда рассматривается в пределах connection_mp_ref. Основные элементы системы: marketplace_sku — собственный идентификатор позиции на маркетплейсе; article — артикул продавца или vendor code; barcode — вспомогательный ключ для поиска, в основном для Yandex через p901_nomenclature_barcodes; nomenclature_ref — итоговая связь с a004_nomenclature. Для Wildberries marketplace_sku должен быть равен nm_id; если nm_id отсутствует, SKU не придумывается и a007 не должен заполняться по артикулу. Для Yandex допускается fallback через barcode/article. Массовое сопоставление с 1С выполняет use case u505_match_nomenclature, а marketplace-специфичные импортеры могут дозаполнять связь при наличии надежного ключа.",
     "questions": [
       "Какой ключ в a007 считается основным для конкретного маркетплейса?",
@@ -59,7 +60,7 @@
     {
       "name": "marketplace_ref",
       "rust_type": "String",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Маркетплейс", "label_en": "Marketplace", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
       "validation": { "required": true },
@@ -68,7 +69,7 @@
     {
       "name": "connection_mp_ref",
       "rust_type": "String",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": true },
@@ -121,7 +122,7 @@
     {
       "name": "nomenclature_ref",
       "rust_type": "Option<String>",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": { "label": "Номенклатура 1С", "label_en": "1C Nomenclature", "visible_in_list": false, "visible_in_form": true },
       "validation": { "required": false },

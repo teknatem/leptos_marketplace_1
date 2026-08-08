@@ -1,0 +1,258 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "WbCommissionHistory",
+  "entity_index": "p905",
+  "collection_name": "wb_commission_history",
+  "table_name": "p905_wb_commission_history",
+  "ui": {
+    "element_name": "История комиссий WB",
+    "element_name_en": "WB Commission History",
+    "list_name": "История комиссий WB по предметам",
+    "list_name_en": "WB Commission History",
+    "icon": "percent"
+  },
+  "ai": {
+    "description": "История ставок комиссии Wildberries по предметам (категориям) на дату. Ставки различаются по схемам продажи: kgvp_marketplace (склад WB), kgvp_supplier (склад продавца), kgvp_pickup (самовывоз), kgvp_booking, а также плата за хранение.",
+    "questions": [
+      "Какая комиссия WB по предмету на дату?",
+      "Как менялась ставка комиссии по категории за период?",
+      "Чем ставка для склада WB отличается от склада продавца?"
+    ],
+    "related": [
+      "a004_nomenclature",
+      "a007_marketplace_product",
+      "p903_wb_finance_report"
+    ],
+    "tags": [
+      "wb",
+      "ref",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Дата, на которую действует ставка."
+    },
+    {
+      "name": "subject_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Subject Id",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Идентификатор предмета (категории) WB."
+    },
+    {
+      "name": "subject_name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Subject Name",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "parent_id",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Parent Id",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Идентификатор родительской категории WB."
+    },
+    {
+      "name": "parent_name",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Parent Name",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "kgvp_booking",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Kgvp Booking",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ставка комиссии для схемы booking, %."
+    },
+    {
+      "name": "kgvp_marketplace",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Kgvp Marketplace",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ставка комиссии при продаже со склада WB, %."
+    },
+    {
+      "name": "kgvp_pickup",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Kgvp Pickup",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ставка комиссии при самовывозе, %."
+    },
+    {
+      "name": "kgvp_supplier",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Kgvp Supplier",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ставка комиссии при продаже со склада продавца, %."
+    },
+    {
+      "name": "kgvp_supplier_express",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Kgvp Supplier Express",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ставка комиссии для экспресс-доставки продавца, %."
+    },
+    {
+      "name": "paid_storage_kgvp",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Paid Storage Kgvp",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Коэффициент платного хранения."
+    },
+    {
+      "name": "raw_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Raw Json",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сырой ответ API WB по строке."
+    },
+    {
+      "name": "loaded_at_utc",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Загружено (UTC)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Время загрузки строки из API источника (UTC)."
+    },
+    {
+      "name": "payload_version",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Версия payload",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Версия схемы payload импорта."
+    }
+  ]
+}

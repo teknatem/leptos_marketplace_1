@@ -14,6 +14,7 @@
     "icon": "plug-connected"
   },
   "ai": {
+    "tags": ["llm"],
     "description": "Техническое подключение к провайдеру LLM (OpenAI, OpenRouter, DeepSeek). Содержит API-ключ, эндпоинт, параметры модели (temperature, max_tokens) и курируемый список разрешённых моделей (allowed_models). Персона (роль, промпт) вынесена на «виртуального сотрудника» a017, который ссылается на это подключение. Чат работает через сотрудника и переключает модель в пределах allowed_models.",
     "questions": [
       "Какие LLM подключения настроены?",
@@ -117,7 +118,7 @@
       "validation": {
         "required": true
       },
-      "ai_hint": "Реально поддерживаемые провайдеры: OpenAI (GPT), OpenRouter (кросс-вендорный OpenAI-совместимый роутинг), DeepSeek (нативный OpenAI-совместимый API)"
+      "ai_hint": "Реально поддерживаемые провайдеры: OpenAI (GPT), OpenRouter (кросс-вендорный OpenAI-совместимый роутинг), DeepSeek и Kimi/Moonshot (нативные OpenAI-совместимые API), Ollama (локальная модель на этой машине, ключ не требуется)"
     },
     {
       "name": "api_endpoint",
@@ -139,7 +140,7 @@
         "pattern": "^https?://.+",
         "custom_error": "URL должен начинаться с http:// или https://"
       },
-      "ai_hint": "OpenAI: https://api.openai.com/v1, OpenRouter: https://openrouter.ai/api/v1, DeepSeek: https://api.deepseek.com"
+      "ai_hint": "OpenAI: https://api.openai.com/v1, OpenRouter: https://openrouter.ai/api/v1, DeepSeek: https://api.deepseek.com, Kimi: https://api.moonshot.ai/v1, Ollama: http://localhost:11434/v1"
     },
     {
       "name": "api_key",
@@ -156,10 +157,10 @@
         "widget": "password"
       },
       "validation": {
-        "required": true,
+        "required": false,
         "max_length": 500
       },
-      "ai_hint": "Хранится в зашифрованном виде."
+      "ai_hint": "Хранится в зашифрованном виде. Обязателен для всех провайдеров, кроме локальной Ollama — у неё ключа не существует, поле остаётся пустым."
     },
     {
       "name": "model_name",
@@ -256,6 +257,26 @@
         "max": 128000
       },
       "ai_hint": "GPT-4o поддерживает до 128k токенов"
+    },
+    {
+      "name": "context_window",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Размер контекста",
+        "label_en": "Context window",
+        "placeholder": "160000",
+        "hint": "Окно контекста модели в токенах — из него считается бюджет истории чата",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true,
+        "min": 4096,
+        "max": 2000000
+      },
+      "ai_hint": "Бюджет компакции истории = context_window * 3/4. Для локальной Ollama значение должно совпадать с фактическим num_ctx сервера (OLLAMA_CONTEXT_LENGTH), иначе промпт будет молча обрезаться."
     },
     {
       "name": "is_primary",

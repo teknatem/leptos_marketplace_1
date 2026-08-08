@@ -1,0 +1,199 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "NomenclatureCost",
+  "entity_index": "p912",
+  "collection_name": "nomenclature_costs",
+  "table_name": "p912_nomenclature_costs",
+  "ui": {
+    "element_name": "Себестоимость номенклатуры",
+    "element_name_en": "Nomenclature Cost",
+    "list_name": "Себестоимость номенклатуры по периодам",
+    "list_name_en": "Nomenclature Costs",
+    "icon": "calculator"
+  },
+  "ai": {
+    "description": "Себестоимость номенклатуры по периодам, рассчитанная из документов поступления и выпуска. Одна запись — строка регистратора за период. Используется витриной p904_sales_data для расчёта прибыли; отсутствие записи фиксируется в a028_missing_cost_registry.",
+    "questions": [
+      "Какая себестоимость номенклатуры за период?",
+      "Из какого документа взята себестоимость?",
+      "По каким товарам себестоимость отсутствует?"
+    ],
+    "related": [
+      "a004_nomenclature",
+      "a021_production_output",
+      "a023_purchase_of_goods",
+      "a028_missing_cost_registry",
+      "p904_sales_data"
+    ],
+    "tags": [
+      "ref",
+      "accounting",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "period",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Период",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Период, к которому относится себестоимость."
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Номенклатура",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "cost",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Себестоимость",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Себестоимость единицы."
+    },
+    {
+      "name": "quantity",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Количество",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "amount",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма по строке регистратора."
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип регистратора",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника (индекс агрегата или проекции)."
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Регистратор",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на документ-источник строки проекции."
+    },
+    {
+      "name": "line_no",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Line No",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Номер строки в документе-регистраторе."
+    },
+    {
+      "name": "created_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Создано",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Обновлено",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    }
+  ]
+}

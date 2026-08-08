@@ -1,13 +1,11 @@
 {
   "$schema": "../../../schemas/metadata.schema.json",
   "schema_version": "1.0",
-
   "entity_type": "aggregate",
   "entity_name": "OzonTransactions",
   "entity_index": "a014",
   "collection_name": "ozon_transactions",
   "table_name": "a014_ozon_transactions",
-
   "ui": {
     "element_name": "Транзакция OZON",
     "element_name_en": "OZON Transaction",
@@ -15,8 +13,11 @@
     "list_name_en": "OZON Transactions",
     "icon": "credit-card"
   },
-
   "ai": {
+    "tags": [
+      "ozon",
+      "accounting"
+    ],
     "description": "Финансовая транзакция OZON из раздела финансов. Содержит тип операции, суммы начислений, комиссий и доставки. Является основным источником для сверки финансовых данных с OZON. Связывается с постингами (a010 FBS, a011 FBO).",
     "questions": [
       "Какова итоговая сумма транзакций OZON?",
@@ -30,23 +31,37 @@
       "a011_ozon_fbo_posting"
     ]
   },
-
   "fields": [
     {
       "name": "id",
       "rust_type": "OzonTransactionsId",
       "field_type": "primitive",
       "source": "base",
-      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
-      "validation": { "required": true }
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
     },
     {
       "name": "operation_id",
       "rust_type": "i64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "ID операции", "label_en": "Operation ID", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "ID операции",
+        "label_en": "Operation ID",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 130
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "operation_id из OZON API — уникальный идентификатор операции."
     },
     {
@@ -54,90 +69,261 @@
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Тип операции", "label_en": "Operation Type", "visible_in_list": true, "visible_in_form": true, "column_width": 180 },
-      "validation": { "required": true }
+      "ui": {
+        "label": "Тип операции",
+        "label_en": "Operation Type",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 180
+      },
+      "validation": {
+        "required": true
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "operation_type_name",
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Название операции", "label_en": "Operation Name", "visible_in_list": true, "visible_in_form": true, "column_width": 220 },
-      "validation": { "required": true }
+      "ui": {
+        "label": "Название операции",
+        "label_en": "Operation Name",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 220
+      },
+      "validation": {
+        "required": true
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "operation_date",
       "rust_type": "String",
-      "field_type": "datetime",
+      "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Дата операции", "label_en": "Operation Date", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
-      "validation": { "required": true }
+      "ui": {
+        "label": "Дата операции",
+        "label_en": "Operation Date",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "posting_number",
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Номер отправления", "label_en": "Posting Number", "visible_in_list": true, "visible_in_form": true, "column_width": 180 },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Номер отправления",
+        "label_en": "Posting Number",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 180
+      },
+      "validation": {
+        "required": false
+      }
     },
     {
       "name": "transaction_type",
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Тип транзакции", "label_en": "Transaction Type", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
-      "validation": { "required": true },
-      "ai_hint": "orders, services и т.д."
+      "ui": {
+        "label": "Тип транзакции",
+        "label_en": "Transaction Type",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 130
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "orders, services и т.д. Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа.",
+      "physical": false
     },
     {
       "name": "amount",
       "rust_type": "f64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Итого", "label_en": "Amount", "visible_in_list": true, "visible_in_form": true, "column_width": 110 },
-      "validation": { "required": true }
+      "ui": {
+        "label": "Итого",
+        "label_en": "Amount",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 110
+      },
+      "validation": {
+        "required": true
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "accruals_for_sale",
       "rust_type": "f64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Начисления за продажу", "label_en": "Accruals for Sale", "visible_in_list": true, "visible_in_form": true, "column_width": 160 },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Начисления за продажу",
+        "label_en": "Accruals for Sale",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 160
+      },
+      "validation": {
+        "required": false
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "sale_commission",
       "rust_type": "f64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Комиссия за продажу", "label_en": "Sale Commission", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Комиссия за продажу",
+        "label_en": "Sale Commission",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": false
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "delivery_charge",
       "rust_type": "f64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Стоимость доставки", "label_en": "Delivery Charge", "visible_in_list": false, "visible_in_form": true, "column_width": 150 },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Стоимость доставки",
+        "label_en": "Delivery Charge",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": false
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "connection_id",
       "rust_type": "String",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
-      "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
-      "validation": { "required": true },
-      "ref_aggregate": "a006_connection_mp"
+      "ui": {
+        "label": "Подключение МП",
+        "label_en": "MP Connection",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp",
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
+    },
+    {
+      "name": "header_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Header (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "posting_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Posting (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "items_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Items (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "services_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Services (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Meta (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
     }
   ],
-
   "access": {
     "scope_id": "a014_ozon_transactions",
     "operations": [
-      { "id": "list", "required_mode": "read" },
-      { "id": "get",  "required_mode": "read" }
+      {
+        "id": "list",
+        "required_mode": "read"
+      },
+      {
+        "id": "get",
+        "required_mode": "read"
+      }
     ]
   }
 }

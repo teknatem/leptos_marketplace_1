@@ -1,0 +1,216 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "MpOrderEvent",
+  "entity_index": "p915",
+  "collection_name": "mp_order_events",
+  "table_name": "p915_mp_order_events",
+  "ui": {
+    "element_name": "Событие заказа МП",
+    "element_name_en": "MP Order Event",
+    "list_name": "События заказов маркетплейсов",
+    "list_name_en": "MP Order Events",
+    "icon": "activity"
+  },
+  "ai": {
+    "description": "Таймлайн событий заказов маркетплейсов: одна запись — одно событие по заказу (создание, отмена, выкуп, возврат и т.п.) в конкретном учётном слое. Используется для построения истории заказа и разбора расхождений между слоями.",
+    "questions": [
+      "Какие события были по заказу и в каком порядке?",
+      "Сколько отмен и возвратов произошло за период?",
+      "В каком слое зафиксировано событие заказа?"
+    ],
+    "related": [
+      "a015_wb_orders",
+      "a012_wb_sales",
+      "a013_ym_order",
+      "a006_connection_mp",
+      "p909_mp_order_line_turnovers"
+    ],
+    "tags": [
+      "wb",
+      "ym",
+      "orders",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "order_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Id",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ключ заказа маркетплейса (srid для WB, order_id для YM)."
+    },
+    {
+      "name": "marketplace_product",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Marketplace Product",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Товар маркетплейса, к которому относится событие."
+    },
+    {
+      "name": "event_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Event Date",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Дата события."
+    },
+    {
+      "name": "event_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Event Type",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип события заказа."
+    },
+    {
+      "name": "layer",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Слой",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Учётный слой, в котором зафиксировано событие."
+    },
+    {
+      "name": "amount",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма события, если применимо."
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип регистратора",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника (индекс агрегата или проекции)."
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Регистратор",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на документ-источник строки проекции."
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "created_at_msk",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Создано (МСК)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at_msk",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Обновлено (МСК)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    }
+  ]
+}

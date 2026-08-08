@@ -63,6 +63,12 @@ pub struct EntityAiMetadata {
     pub questions: &'static [&'static str],
     /// Related entities (aggregates, usecases, projections)
     pub related: &'static [&'static str],
+    /// Thematic tags used to filter the LLM entity registry ("wb", "ym", "ref", ...)
+    pub tags: &'static [&'static str],
+    /// Whether the entity is advertised to the LLM through the metadata registry.
+    /// Defaults to `true` in metadata.json; set to `false` for configuration or
+    /// credential-bearing entities that carry no analytical value.
+    pub llm_visible: bool,
 }
 
 // ============================================================================
@@ -80,6 +86,11 @@ pub struct FieldMetadata {
     pub ui: FieldUiMetadata,
     pub validation: ValidationRules,
     pub ai_hint: Option<&'static str>,
+
+    /// Whether the field is a real column of `table_name`. Document aggregates keep
+    /// part of their structure inside JSON columns, so such logical fields must not
+    /// leak into generated SQL. Defaults to `true` in metadata.json.
+    pub physical: bool,
 
     // For nested types (recursive reference via static slice)
     pub nested_fields: Option<&'static [FieldMetadata]>,

@@ -1,13 +1,11 @@
 {
   "$schema": "../../../schemas/metadata.schema.json",
   "schema_version": "1.0",
-
   "entity_type": "aggregate",
   "entity_name": "WbSales",
   "entity_index": "a012",
   "collection_name": "wb_sales",
   "table_name": "a012_wb_sales",
-
   "ui": {
     "element_name": "WB Sales",
     "element_name_en": "WB Sales",
@@ -15,8 +13,11 @@
     "list_name_en": "WB Sales",
     "icon": "shopping-bag"
   },
-
   "ai": {
+    "tags": [
+      "wb",
+      "sales"
+    ],
     "description": "Продажи и возвраты с Wildberries. Каждая запись — одна транзакция из отчёта WB (sale или return). Содержит финансовые показатели: выручку, комиссию WB, прибыль план/факт. Данные загружаются через WB API. Для расчёта выручки фильтруй event_type = 'Продажа', для возвратов — 'Возврат'. Поле sale_date позволяет строить графики продаж по дням и дням недели.",
     "questions": [
       "Какова выручка WB за период?",
@@ -31,7 +32,6 @@
       "a002_organization"
     ]
   },
-
   "fields": [
     {
       "name": "id",
@@ -43,7 +43,9 @@
         "visible_in_list": false,
         "visible_in_form": false
       },
-      "validation": { "required": true }
+      "validation": {
+        "required": true
+      }
     },
     {
       "name": "sale_date",
@@ -58,7 +60,9 @@
         "column_width": 160,
         "widget": "datetime"
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Дата и время продажи/возврата. Хранится в формате ISO 8601 (TEXT). Для группировки по дням: date(sale_date). Для фильтра по месяцу: strftime('%Y-%m', sale_date) = '2024-01'."
     },
     {
@@ -74,7 +78,9 @@
         "visible_in_form": false,
         "column_width": 200
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID подключения магазина WB из a006_connection_mp. Для названия магазина: JOIN a006_connection_mp ON a012_wb_sales.connection_id = a006_connection_mp.id."
     },
     {
@@ -90,7 +96,9 @@
         "visible_in_form": false,
         "column_width": 200
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID организации из a002_organization."
     },
     {
@@ -105,7 +113,9 @@
         "visible_in_form": false,
         "column_width": 160
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Артикул продавца на WB. Соответствует полю article в a004_nomenclature."
     },
     {
@@ -120,7 +130,9 @@
         "visible_in_form": false,
         "column_width": 120
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Числовой ID номенклатуры в системе Wildberries (nmId). Соответствует nm_id в таблице p908_wb_goods_prices."
     },
     {
@@ -135,7 +147,9 @@
         "visible_in_form": false,
         "column_width": 300
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Название товара из WB API (денормализованное поле)."
     },
     {
@@ -150,7 +164,9 @@
         "visible_in_form": false,
         "column_width": 100
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Количество проданных единиц. Обычно 1 для продаж, -1 для возвратов. Для суммы продаж: SUM(qty) WHERE event_type='Продажа'."
     },
     {
@@ -165,7 +181,9 @@
         "visible_in_form": false,
         "column_width": 120
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Полная цена товара до скидок (розничная цена). В рублях."
     },
     {
@@ -180,7 +198,9 @@
         "visible_in_form": false,
         "column_width": 140
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Итоговая сумма к оплате покупателем после всех скидок (finishedPrice из WB API). Основной показатель выручки. Для SUM выручки: SUM(finished_price) WHERE event_type='Продажа'."
     },
     {
@@ -195,7 +215,9 @@
         "visible_in_form": false,
         "column_width": 120
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Тип операции: 'Продажа' или 'Возврат'. Всегда фильтруй по этому полю при расчёте выручки или прибыли."
     },
     {
@@ -210,7 +232,9 @@
         "visible_in_form": false,
         "column_width": 140
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Фактическая прибыль = выручка - себестоимость - комиссия WB - эквайринг. NULL если нет данных о себестоимости. Для анализа рентабельности: SUM(profit_fact) WHERE event_type='Продажа' AND profit_fact IS NOT NULL."
     },
     {
@@ -225,7 +249,9 @@
         "visible_in_form": false,
         "column_width": 150
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Фактический размер комиссии WB в рублях."
     },
     {
@@ -240,7 +266,9 @@
         "visible_in_form": false,
         "column_width": 150
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Закупочная/дилерская цена товара из 1С:УТ (себестоимость). Заполняется при проведении документа."
     },
     {
@@ -256,7 +284,9 @@
         "visible_in_form": false,
         "column_width": 200
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "UUID номенклатуры из a004_nomenclature. Устанавливается при сопоставлении товаров. JOIN: a012_wb_sales.nomenclature_ref = a004_nomenclature.id."
     },
     {
@@ -271,16 +301,93 @@
         "visible_in_form": false,
         "column_width": 160
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Уникальный ID продажи в системе WB (saleID). Используется для дедупликации."
+    },
+    {
+      "name": "header_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Header (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "line_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Line (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "state_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "State (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "warehouse_json",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Warehouse (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Meta (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
     }
   ],
-
   "access": {
     "scope_id": "a012_wb_sales",
     "operations": [
-      { "id": "list", "required_mode": "read" },
-      { "id": "get",  "required_mode": "read" }
+      {
+        "id": "list",
+        "required_mode": "read"
+      },
+      {
+        "id": "get",
+        "required_mode": "read"
+      }
     ]
   }
 }

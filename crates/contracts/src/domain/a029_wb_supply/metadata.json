@@ -1,0 +1,269 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "WbSupply",
+  "entity_index": "a029",
+  "collection_name": "wb_supply",
+  "table_name": "a029_wb_supply",
+  "ui": {
+    "element_name": "Поставка WB",
+    "element_name_en": "WB Supply",
+    "list_name": "Поставки Wildberries",
+    "list_name_en": "WB Supplies",
+    "icon": "truck"
+  },
+  "ai": {
+    "description": "Документ поставки Wildberries: партия заказов, передаваемая на склад WB. Хранит данные API поставки (info_json), состав заказов (supply_orders_json) и признаки закрытия/сканирования.",
+    "questions": [
+      "Какие поставки WB созданы за период?",
+      "Какие заказы вошли в поставку?",
+      "Сколько поставок ещё не закрыто?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a005_marketplace",
+      "a015_wb_orders"
+    ],
+    "tags": [
+      "wb",
+      "orders",
+      "logistics"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "supply_id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Supply Id",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Идентификатор поставки в WB."
+    },
+    {
+      "name": "supply_name",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Supply Name",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "is_done",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Is Done",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Поставка закрыта в WB."
+    },
+    {
+      "name": "is_b2b",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Is B2B",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Поставка по схеме B2B."
+    },
+    {
+      "name": "created_at_wb",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Created At Wb",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "closed_at_wb",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Closed At Wb",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "scan_dt",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Scan Dt",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Момент сканирования поставки на складе."
+    },
+    {
+      "name": "cargo_type",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Cargo Type",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Тип груза по классификатору WB."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Организация",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a002_organization"
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Маркетплейс",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a005_marketplace"
+    },
+    {
+      "name": "info_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Info Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ответ API WB по поставке в JSON."
+    },
+    {
+      "name": "supply_orders_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Supply Orders Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Состав поставки (заказы) в JSON."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Meta Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Служебные метаданные импорта."
+    }
+  ]
+}

@@ -1,13 +1,11 @@
 {
   "$schema": "../../../schemas/metadata.schema.json",
   "schema_version": "1.0",
-
   "entity_type": "aggregate",
   "entity_name": "WbSalesFunnelDaily",
   "entity_index": "a036",
   "collection_name": "wb_sales_funnel_daily",
   "table_name": "a036_wb_sales_funnel_daily",
-
   "ui": {
     "element_name": "Воронка продаж WB",
     "element_name_en": "WB Sales Funnel Daily",
@@ -15,14 +13,18 @@
     "list_name_en": "WB Sales Funnel Daily Stats",
     "icon": "filter"
   },
-
   "ai": {
-    "description": "Ежедневная воронка продаж Wildberries в разрезе номенклатуры. Одна запись — один кабинет WB и одна дата; JSON детализация по товарам (nm_id): переходы в карточку, добавления в корзину, заказы, выкупы, конверсии, отложенные. Источник — WB Analytics API /api/analytics/v3/sales-funnel/products/history. Используется для анализа поведения покупателей и конверсий по товарам.",
+    "tags": [
+      "wb",
+      "analytics"
+    ],
+    "description": "Ежедневная воронка продаж Wildberries в разрезе номенклатуры. Одна запись — один кабинет WB и одна дата; JSON детализация по товарам (nm_id): переходы в карточку, добавления в корзину, заказы, выкупы, ОТМЕНЫ, конверсии, отложенные. Источники — WB Analytics API /api/analytics/v3/sales-funnel/products/history и CSV-отчёт DETAIL_HISTORY_REPORT. Используется для анализа поведения покупателей и конверсий по товарам. Отмены (total_cancel_count/total_cancel_sum и cancel_count/cancel_sum внутри lines_json) — дневной счётчик самого маркетплейса; это ОСНОВНОЙ источник отказов за период. Он не совпадает с числом отменённых заказов из a015_wb_orders (order-level, по документам): у счётчика воронки другая гранулярность (товары, а не заказы) и другая дата привязки. NULL в счётчике отмен = данных не было (N/A), а не ноль.",
     "questions": [
       "Сколько переходов в карточки товаров WB за период?",
       "Какая конверсия из корзины в заказ по товарам WB?",
       "Какие товары чаще всего добавляли в корзину?",
       "Какой процент выкупа по товарам WB?",
+      "Сколько отмен (отказов) по товарам WB за период?",
       "Сколько товаров добавили в отложенные?"
     ],
     "related": [
@@ -32,7 +34,6 @@
       "a026_wb_advert_daily"
     ]
   },
-
   "fields": [
     {
       "name": "id",
@@ -44,7 +45,9 @@
         "visible_in_list": false,
         "visible_in_form": false
       },
-      "validation": { "required": true }
+      "validation": {
+        "required": true
+      }
     },
     {
       "name": "code",
@@ -57,7 +60,9 @@
         "visible_in_form": false,
         "column_width": 160
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Внутренний код документа воронки продаж WB."
     },
     {
@@ -71,7 +76,9 @@
         "visible_in_form": false,
         "column_width": 260
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Человекочитаемое описание документа: дата воронки продаж."
     },
     {
@@ -85,7 +92,9 @@
         "visible_in_form": false,
         "column_width": 160
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Технический номер документа воронки продаж."
     },
     {
@@ -100,7 +109,9 @@
         "widget": "date",
         "column_width": 120
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Дата воронки продаж WB. Для периода используй document_date >= 'YYYY-MM-DD' AND document_date < 'YYYY-MM-DD'."
     },
     {
@@ -115,7 +126,9 @@
         "visible_in_form": false,
         "column_width": 220
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID подключения магазина WB из a006_connection_mp. Для названия кабинета: JOIN a006_connection_mp ON a036_wb_sales_funnel_daily.connection_id = a006_connection_mp.id."
     },
     {
@@ -130,7 +143,9 @@
         "visible_in_form": false,
         "column_width": 220
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID организации из a002_organization."
     },
     {
@@ -145,7 +160,9 @@
         "visible_in_form": false,
         "column_width": 180
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID маркетплейса из a005_marketplace. Для WB обычно marketplace code = 'mp-wb'."
     },
     {
@@ -159,7 +176,9 @@
         "visible_in_form": false,
         "column_width": 90
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Валюта отчёта воронки продаж (обычно RUB)."
     },
     {
@@ -173,7 +192,9 @@
         "visible_in_form": false,
         "column_width": 90
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Количество товарных строк в JSON детализации lines_json."
     },
     {
@@ -187,7 +208,9 @@
         "visible_in_form": false,
         "column_width": 110
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Суммарные переходы в карточки товаров за дату."
     },
     {
@@ -201,7 +224,9 @@
         "visible_in_form": false,
         "column_width": 110
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Суммарные добавления в корзину за дату, шт."
     },
     {
@@ -215,7 +240,9 @@
         "visible_in_form": false,
         "column_width": 100
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Суммарное количество заказанных товаров за дату, шт."
     },
     {
@@ -230,7 +257,9 @@
         "widget": "number",
         "column_width": 130
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Сумма заказов за дату в валюте отчёта."
     },
     {
@@ -244,7 +273,9 @@
         "visible_in_form": false,
         "column_width": 100
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Суммарное количество выкупленных товаров за дату, шт."
     },
     {
@@ -259,8 +290,43 @@
         "widget": "number",
         "column_width": 130
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Сумма выкупов за дату в валюте отчёта."
+    },
+    {
+      "name": "total_cancel_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Отмены",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Суммарное количество отменённых товаров за дату по счётчику воронки WB, шт. NULL = счётчика в источнике не было (документы до подключения отмен); это N/A, а не ноль. Это дневной счётчик маркетплейса — он НЕ равен числу отменённых заказов из a015_wb_orders."
+    },
+    {
+      "name": "total_cancel_sum",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма отмен",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "number",
+        "column_width": 130
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма отмен за дату в валюте отчёта. NULL = N/A (см. total_cancel_count)."
     },
     {
       "name": "lines_json",
@@ -273,8 +339,10 @@
         "visible_in_form": false,
         "widget": "textarea"
       },
-      "validation": { "required": true },
-      "ai_hint": "JSON-массив детализации по товарам (одна запись = один nm_id за дату). Ключи строки: nm_id, title, vendor_code, brand_name, subject, open_count, cart_count, order_count, order_sum, buyout_count, buyout_sum, add_to_wishlist_count (плюс конверсии). Для анализа В РАЗРЕЗЕ НОМЕНКЛАТУРЫ разворачивай массив через json_each и доставай поля через json_extract(j.value,'$.поле'). Пример (топ товаров по добавлениям в корзину за период): SELECT json_extract(j.value,'$.nm_id') AS nm_id, json_extract(j.value,'$.title') AS title, SUM(json_extract(j.value,'$.cart_count')) AS cart FROM a036_wb_sales_funnel_daily d, json_each(d.lines_json) j WHERE d.is_deleted=0 AND d.document_date >= '2025-01-01' AND d.document_date < '2025-02-01' GROUP BY 1,2 ORDER BY cart DESC. Для дневных ИТОГОВ (без разреза по товарам) используй готовые колонки total_open_count/total_cart_count/total_order_count/total_order_sum/total_buyout_count/total_buyout_sum — json_each не нужен."
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-массив детализации по товарам (одна запись = один nm_id за дату). ВАЖНО: метрики вложены в объект metrics, поэтому путь json_extract — '$.metrics.поле', а НЕ '$.поле' (иначе молча вернутся NULL). На верхнем уровне строки: nm_id, title, vendor_code, brand_name, subject_id, subject_name, nomenclature_ref. Внутри metrics: open_count, cart_count, order_count, order_sum, buyout_count, buyout_sum, cancel_count, cancel_sum, add_to_wishlist_count, buyout_percent, add_to_cart_conversion, cart_to_order_conversion. Для анализа В РАЗРЕЗЕ НОМЕНКЛАТУРЫ разворачивай массив через json_each. Пример (топ товаров по добавлениям в корзину за период): SELECT json_extract(j.value,'$.nm_id') AS nm_id, json_extract(j.value,'$.title') AS title, SUM(json_extract(j.value,'$.metrics.cart_count')) AS cart FROM a036_wb_sales_funnel_daily d, json_each(d.lines_json) j WHERE d.is_deleted=0 AND d.document_date >= '2025-01-01' AND d.document_date < '2025-02-01' GROUP BY 1,2 ORDER BY cart DESC. Для дневных ИТОГОВ (без разреза по товарам) используй готовые колонки total_open_count/total_cart_count/total_order_count/total_order_sum/total_buyout_count/total_buyout_sum/total_cancel_count/total_cancel_sum — json_each не нужен. cancel_count у документов, импортированных до подключения отмен, отсутствует (NULL/нет ключа) — это N/A, а не ноль."
     },
     {
       "name": "fetched_at",
@@ -288,18 +356,73 @@
         "widget": "datetime",
         "column_width": 160
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Дата и время получения данных из WB Analytics API."
+    },
+    {
+      "name": "header_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Header (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "totals_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Totals (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Meta (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
     }
   ],
-
   "access": {
     "scope_id": "a036_wb_sales_funnel_daily",
     "operations": [
-      { "id": "list",   "required_mode": "read" },
-      { "id": "get",    "required_mode": "read" },
-      { "id": "upsert", "required_mode": "all" },
-      { "id": "delete", "required_mode": "all" }
+      {
+        "id": "list",
+        "required_mode": "read"
+      },
+      {
+        "id": "get",
+        "required_mode": "read"
+      },
+      {
+        "id": "upsert",
+        "required_mode": "all"
+      },
+      {
+        "id": "delete",
+        "required_mode": "all"
+      }
     ]
   }
 }

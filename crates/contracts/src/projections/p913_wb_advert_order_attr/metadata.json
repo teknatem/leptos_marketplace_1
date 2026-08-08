@@ -1,0 +1,261 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "WbAdvertOrderAttr",
+  "entity_index": "p913",
+  "collection_name": "wb_advert_order_attr",
+  "table_name": "p913_wb_advert_order_attr",
+  "ui": {
+    "element_name": "Атрибуция рекламы WB к заказам",
+    "element_name_en": "WB Advert Order Attribution",
+    "list_name": "Атрибуция рекламных расходов WB",
+    "list_name_en": "WB Advert Order Attribution",
+    "icon": "target"
+  },
+  "ai": {
+    "description": "Привязка рекламных расходов Wildberries к конкретным заказам. Одна запись — расход по кампании, отнесённый на заказ (order_key = srid) за день. Дополняет p911, где тот же расход разложен по номенклатуре без привязки к заказу; используется для платного трека воронки p916 и сверки дня a033.",
+    "questions": [
+      "Какие рекламные расходы WB отнесены на конкретный заказ?",
+      "Сколько рекламы приходится на выкупленные заказы за период?",
+      "Какие строки атрибуции помечены проблемными?"
+    ],
+    "related": [
+      "a026_wb_advert_daily",
+      "a030_wb_advert_campaign",
+      "a015_wb_orders",
+      "a004_nomenclature",
+      "p911_wb_advert_by_items",
+      "p916_mp_sales_funnel_turnovers",
+      "general_ledger"
+    ],
+    "tags": [
+      "wb",
+      "advertising",
+      "bi",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "entry_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "turnover_code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Код оборота",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "amount",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма рекламного расхода, отнесённая на заказ."
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Номенклатура",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "wb_advert_campaign_code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Wb Advert Campaign Code",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Код кампании WB (advert_id из a030_wb_advert_campaign)."
+    },
+    {
+      "name": "order_key",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Ключ заказа",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "WB srid — ключ заказа, к которому отнесён расход."
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип регистратора",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника (индекс агрегата или проекции)."
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Регистратор",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на документ-источник строки проекции."
+    },
+    {
+      "name": "general_ledger_ref",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Проводка GL",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на связанную проводку sys_general_ledger."
+    },
+    {
+      "name": "is_problem",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Проблемная",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Строка требует разбора (например, не найден заказ или номенклатура)."
+    },
+    {
+      "name": "created_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Создано",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Обновлено",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "sale_amount",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Sale Amount",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма продажи по заказу — база для расчёта доли рекламы."
+    }
+  ]
+}

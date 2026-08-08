@@ -1,0 +1,415 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "SalesData",
+  "entity_index": "p904",
+  "collection_name": "sales_data",
+  "table_name": "p904_sales_data",
+  "ui": {
+    "element_name": "Витрина продаж",
+    "element_name_en": "Sales Data",
+    "list_name": "Витрина продаж маркетплейсов",
+    "list_name_en": "Sales Data",
+    "icon": "chart-line"
+  },
+  "ai": {
+    "description": "Витрина продаж маркетплейсов в разрезе дня, кабинета и номенклатуры — основной источник BI-показателей. Суммы разложены по потокам: customer_in/customer_out — поступления и возвраты покупателя, commission_out/acquiring_out/penalty_out/logistics_out — удержания МП, seller_out — итог продавца, cost — себестоимость. Выручка считается как customer_in + customer_out. Поверх витрины работают базовая схема ds03 и DataView dv001 (2 периода, drill-down, sparkline).",
+    "questions": [
+      "Какова выручка за период по кабинетам?",
+      "Сколько заказов и какой средний чек за месяц?",
+      "Какая комиссия, логистика и штрафы удержаны маркетплейсом?",
+      "Какая прибыль по номенклатуре с учётом себестоимости?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a004_nomenclature",
+      "a007_marketplace_product",
+      "p900_sales_register",
+      "p912_nomenclature_costs"
+    ],
+    "tags": [
+      "wb",
+      "ozon",
+      "ym",
+      "sales",
+      "bi",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Регистратор",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Ссылка на документ-источник строки проекции."
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип регистратора",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника (индекс агрегата или проекции)."
+    },
+    {
+      "name": "date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Бизнес-дата продажи (YYYY-MM-DD)."
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Номенклатура",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "marketplace_product_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Товар МП",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a007_marketplace_product"
+    },
+    {
+      "name": "customer_in",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Customer In",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Поступления от покупателя (продажи)."
+    },
+    {
+      "name": "customer_out",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Customer Out",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Возвраты покупателю; отрицательная составляющая выручки."
+    },
+    {
+      "name": "coinvest_in",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Coinvest In",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Софинансирование скидки маркетплейсом."
+    },
+    {
+      "name": "commission_out",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Commission Out",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Комиссия маркетплейса."
+    },
+    {
+      "name": "acquiring_out",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Acquiring Out",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Эквайринг."
+    },
+    {
+      "name": "penalty_out",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Penalty Out",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Штрафы маркетплейса."
+    },
+    {
+      "name": "logistics_out",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Logistics Out",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Логистика."
+    },
+    {
+      "name": "seller_out",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Seller Out",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Итог к получению продавцом; прибыль считается как -seller_out."
+    },
+    {
+      "name": "price_full",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Price Full",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Полная цена до скидок."
+    },
+    {
+      "name": "price_list",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Price List",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Цена по прайсу."
+    },
+    {
+      "name": "price_return",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Price Return",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма возврата по цене."
+    },
+    {
+      "name": "commission_percent",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Commission Percent",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Процент комиссии маркетплейса."
+    },
+    {
+      "name": "coinvest_persent",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Coinvest Persent",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Процент софинансирования (орфография поля — как в БД)."
+    },
+    {
+      "name": "total",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Итого",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Итоговая сумма строки."
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Номер документа",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Номер документа-источника."
+    },
+    {
+      "name": "article",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Артикул",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "posted_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Posted At",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Момент проведения строки в витрину."
+    },
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "cost",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Себестоимость",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Себестоимость из p912_nomenclature_costs; NULL — себестоимость не найдена."
+    }
+  ]
+}

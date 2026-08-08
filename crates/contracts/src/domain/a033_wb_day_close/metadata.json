@@ -1,0 +1,315 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "WbDayClose",
+  "entity_index": "a033",
+  "collection_name": "wb_day_close",
+  "table_name": "a033_wb_day_close",
+  "ui": {
+    "element_name": "Закрытие дня WB",
+    "element_name_en": "WB Day Close",
+    "list_name": "Закрытия дня Wildberries",
+    "list_name_en": "WB Day Closes",
+    "icon": "calendar-check"
+  },
+  "ai": {
+    "description": "Документ закрытия дня по кабинету Wildberries: пересчёт строк дня, выявленные проблемы и сверка с Главной книгой. Строки и итоги хранятся в lines_json/totals_json, проблемы — в problems_json, рекламные снимки — в advert_no_order_json (из p911) и advert_order_accrual_json (из p913). Поля gl_* — суммы GL, snap_* — суммы снимка; их расхождение и есть предмет сверки.",
+    "questions": [
+      "Какие дни WB закрыты и по каким кабинетам?",
+      "Какие проблемы выявлены при закрытии дня?",
+      "Расходится ли реклама в GL со снимком проекций?",
+      "Какой документ заменил предыдущее закрытие дня?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a026_wb_advert_daily",
+      "p911_wb_advert_by_items",
+      "p913_wb_advert_order_attr",
+      "general_ledger"
+    ],
+    "tags": [
+      "wb",
+      "accounting",
+      "quality"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "business_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Business Date",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Закрываемая бизнес-дата."
+    },
+    {
+      "name": "is_archived",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Is Archived",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Документ вытеснен более поздним пересчётом."
+    },
+    {
+      "name": "archived_at",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Archived At",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "archived_reason",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Archived Reason",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "replaces_id",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Replaces Id",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Закрытие дня, которое заменяет этот документ.",
+      "ref_aggregate": "a033_wb_day_close"
+    },
+    {
+      "name": "last_recalculated_at",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Last Recalculated At",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Момент последнего пересчёта документа."
+    },
+    {
+      "name": "snapshot_hash",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Snapshot Hash",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Хеш снимка исходных данных для контроля пересчёта."
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Lines Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Строки дня (агрегат по srid и номенклатуре) в JSON."
+    },
+    {
+      "name": "problems_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Problems Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Выявленные проблемы дня в JSON."
+    },
+    {
+      "name": "totals_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Totals Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Итоги дня в JSON."
+    },
+    {
+      "name": "advert_no_order_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Advert No Order Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Снимок рекламных расходов без заказа (p911)."
+    },
+    {
+      "name": "advert_order_accrual_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Advert Order Accrual Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Снимок рекламных начислений по заказам (p913)."
+    },
+    {
+      "name": "gl_advert_no_order",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Gl Advert No Order",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма GL: реклама без привязки к заказу."
+    },
+    {
+      "name": "gl_advert_order_accrual",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Gl Advert Order Accrual",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма GL: рекламные начисления по заказам."
+    },
+    {
+      "name": "gl_advert_order_expense",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Gl Advert Order Expense",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма GL: рекламный расход по заказам."
+    },
+    {
+      "name": "snap_advert_order_expense",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Snap Advert Order Expense",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма снимка проекций по тому же показателю — сверяется с GL."
+    }
+  ]
+}

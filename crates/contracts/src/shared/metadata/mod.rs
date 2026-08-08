@@ -19,11 +19,13 @@
 //! ```
 
 mod field_type;
+mod registry_gen;
 mod types;
 mod validation;
 
 pub use crate::shared::access::{AccessMode, EntityAccessMeta, ScopeOperation};
 pub use field_type::{FieldSource, FieldType};
+pub use registry_gen::{EntityRegistration, ALL_ENTITIES};
 pub use types::{
     EntityAiMetadata, EntityMetadataInfo, EntityType, EntityUiMetadata, FieldMetadata,
     FieldUiMetadata,

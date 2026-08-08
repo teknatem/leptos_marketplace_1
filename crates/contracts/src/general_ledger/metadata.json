@@ -1,0 +1,340 @@
+{
+  "$schema": "../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "GeneralLedger",
+  "entity_index": "gl",
+  "collection_name": "general_ledger",
+  "table_name": "sys_general_ledger",
+  "ui": {
+    "element_name": "Запись журнала (GL)",
+    "element_name_en": "General Ledger Entry",
+    "list_name": "Главная книга",
+    "list_name_en": "General Ledger",
+    "icon": "database"
+  },
+  "ai": {
+    "description": "Главная книга (sys_general_ledger): центральный учётный регистр. Каждая строка — проводка Дт/Кт с кодом оборота (turnover_code) в конкретном учётном слое. Источники проводок — документы и проекции (registrator_type/registrator_ref), исходное значение прослеживается через resource_table/resource_field/resource_sign. Слои: oper, fact, fina, prod, ybuh, plan.",
+    "questions": [
+      "Какова сумма выручки за период?",
+      "Какие проводки сформированы по конкретному документу?",
+      "Сколько записей в журнале по виду оборота X?",
+      "Какие счета дебетуются/кредитуются при продаже?",
+      "Каков оборот по счёту 44 за месяц?",
+      "Чем обороты слоя fina отличаются от oper за период?"
+    ],
+    "related": [
+      "p903_wb_finance_report",
+      "p907_ym_payment_report",
+      "p909_mp_order_line_turnovers",
+      "p911_wb_advert_by_items",
+      "p913_wb_advert_order_attr",
+      "p914_mp_finance_turnovers",
+      "a012_wb_sales",
+      "a026_wb_advert_daily",
+      "a024_bi_indicator"
+    ],
+    "tags": [
+      "gl",
+      "accounting",
+      "journal"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID записи",
+        "label_en": "Entry ID",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "UUID записи журнала."
+    },
+    {
+      "name": "entry_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата проводки",
+        "label_en": "Entry Date",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "date",
+        "column_width": 120
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Дата проводки в формате YYYY-MM-DD или ISO datetime."
+    },
+    {
+      "name": "layer",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Слой",
+        "label_en": "Layer",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 80,
+        "hint": "oper=оперативный, fact=данные МП, fina=финансовые отчёты, prod=себестоимость, ybuh=официальная реализация"
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Слой учёта: oper (события заказов), fact (данные МП), fina (финансовые отчёты МП), prod (себестоимость и движение товаров), ybuh (официальный отчёт о реализации), plan (плановые обороты).",
+      "enum_values": [
+        "oper",
+        "fact",
+        "fina",
+        "prod",
+        "ybuh",
+        "plan"
+      ]
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Подключение МП",
+        "label_en": "Marketplace Connection",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 180
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на a006_connection_mp.id.",
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "registrator_type",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Тип регистратора",
+        "label_en": "Registrator Type",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 160
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Тип документа-источника: a012_wb_sales, p903_wb_finance_report, a026_wb_advert_daily и др."
+    },
+    {
+      "name": "registrator_ref",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Регистратор (ссылка)",
+        "label_en": "Registrator Ref",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 200
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Чистый id регистратора; тип документа хранится отдельно в registrator_type."
+    },
+    {
+      "name": "order_id",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order ID",
+        "label_en": "Order ID",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 180
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Идентификатор заказа из регистратора: a012.document_no или p903.srid."
+    },
+    {
+      "name": "debit_account",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Счёт Дт",
+        "label_en": "Debit Account",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 80
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Дебетуемый счёт по плану счетов (62, 44, 4401, 4402, 4403, 4404, 9001, 7609, ...)."
+    },
+    {
+      "name": "credit_account",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Счёт Кт",
+        "label_en": "Credit Account",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 80
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Кредитуемый счёт по плану счетов (9001, 7609, 90, 76, ...)."
+    },
+    {
+      "name": "amount",
+      "rust_type": "f64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сумма",
+        "label_en": "Amount",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "widget": "money",
+        "column_width": 120
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Сумма проводки. Знак может быть отрицательным в зависимости от оборота."
+    },
+    {
+      "name": "qty",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Количество",
+        "label_en": "Quantity",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Количество по проводке, если вид оборота его несёт."
+    },
+    {
+      "name": "turnover_code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Вид оборота",
+        "label_en": "Turnover Code",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 160
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Код вида оборота: customer_revenue, mp_commission, mp_logistics, advert_clicks_no_order, mp_penalty, mp_acquiring, ..."
+    },
+    {
+      "name": "resource_table",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Таблица-ресурс",
+        "label_en": "Resource Table",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Проекция-ресурс, из которой построена проводка (p909, p903, p911, p913, p914, ...)."
+    },
+    {
+      "name": "resource_field",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Поле-ресурс",
+        "label_en": "Resource Field",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Поле проекции-ресурса, давшее сумму проводки."
+    },
+    {
+      "name": "resource_sign",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Знак ресурса",
+        "label_en": "Resource Sign",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Знак, с которым значение ресурса вошло в проводку (+1/-1)."
+    },
+    {
+      "name": "created_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "metadata",
+      "ui": {
+        "label": "Создано",
+        "label_en": "Created At",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "widget": "datetime"
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Время создания записи (ISO 8601)."
+    },
+    {
+      "name": "entity",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Сущность",
+        "label_en": "Entity",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Дополнительный разрез сущности проводки (например, ym); NULL для большинства записей."
+    }
+  ]
+}

@@ -14,6 +14,10 @@
     "icon": "activity"
   },
   "ai": {
+    "tags": [
+      "bi",
+      "dashboard"
+    ],
     "description": "Индикаторы BI-дашбордов. Каждый индикатор содержит спецификацию источника данных (DataSpec), типизированные параметры (Params), настройки отображения (ViewSpec) и конфигурацию drill-down (DrillSpec). Создаются и редактируются пользователями при поддержке LLM.",
     "questions": [
       "Какие индикаторы доступны в системе?",
@@ -125,7 +129,11 @@
       "rust_type": "String",
       "field_type": "enum",
       "source": "specific",
-      "enum_values": ["draft", "active", "archived"],
+      "enum_values": [
+        "draft",
+        "active",
+        "archived"
+      ],
       "ui": {
         "label": "Статус",
         "label_en": "Status",
@@ -176,7 +184,7 @@
       }
     },
     {
-      "name": "data_spec",
+      "name": "data_spec_json",
       "rust_type": "DataSpec",
       "field_type": "nested_struct",
       "source": "specific",
@@ -191,7 +199,7 @@
       "ai_hint": "Сериализованная спецификация источника данных: view_id и metric_id"
     },
     {
-      "name": "params",
+      "name": "params_json",
       "rust_type": "Vec<ParamDef>",
       "field_type": "nested_table",
       "source": "specific",
@@ -206,7 +214,7 @@
       "ai_hint": "Список параметров индикатора: дата/период, кабинет, организация и т.д."
     },
     {
-      "name": "view_spec",
+      "name": "view_spec_json",
       "rust_type": "ViewSpec",
       "field_type": "nested_struct",
       "source": "specific",
@@ -221,7 +229,7 @@
       "ai_hint": "Спецификация отображения: custom_html (без JS), custom_css, format, thresholds"
     },
     {
-      "name": "drill_spec",
+      "name": "drill_spec_json",
       "rust_type": "Option<DrillSpec>",
       "field_type": "nested_struct",
       "source": "specific",
@@ -329,14 +337,25 @@
       }
     }
   ],
-
   "access": {
     "scope_id": "a024_bi_indicator",
     "operations": [
-      { "id": "list",   "required_mode": "read" },
-      { "id": "get",    "required_mode": "read" },
-      { "id": "upsert", "required_mode": "all" },
-      { "id": "delete", "required_mode": "all" }
+      {
+        "id": "list",
+        "required_mode": "read"
+      },
+      {
+        "id": "get",
+        "required_mode": "read"
+      },
+      {
+        "id": "upsert",
+        "required_mode": "all"
+      },
+      {
+        "id": "delete",
+        "required_mode": "all"
+      }
     ]
   }
 }

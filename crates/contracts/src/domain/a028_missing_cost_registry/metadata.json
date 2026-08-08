@@ -1,0 +1,113 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "MissingCostRegistry",
+  "entity_index": "a028",
+  "collection_name": "missing_cost_registry",
+  "table_name": "a028_missing_cost_registry",
+  "ui": {
+    "element_name": "Регистр отсутствующих себестоимостей",
+    "element_name_en": "Missing Cost Registry",
+    "list_name": "Регистры отсутствующих себестоимостей",
+    "list_name_en": "Missing Cost Registries",
+    "icon": "alert-triangle"
+  },
+  "ai": {
+    "description": "Документ-регистр номенклатуры, для которой не найдена себестоимость при расчёте продаж. Строки хранятся в lines_json; служит рабочим списком для дозаполнения p912_nomenclature_costs.",
+    "questions": [
+      "По каким товарам не найдена себестоимость?",
+      "Сколько строк без себестоимости за период?"
+    ],
+    "related": [
+      "a004_nomenclature",
+      "p912_nomenclature_costs",
+      "p904_sales_data"
+    ],
+    "tags": [
+      "accounting",
+      "quality"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Наименование",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Номер документа",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "document_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата документа",
+        "visible_in_list": true
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Lines Json",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Строки регистра (номенклатура и период) в JSON."
+    }
+  ]
+}

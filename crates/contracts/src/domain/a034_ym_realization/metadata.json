@@ -1,13 +1,11 @@
 {
   "$schema": "../../../schemas/metadata.schema.json",
   "schema_version": "1.0",
-
   "entity_type": "aggregate",
   "entity_name": "YmRealization",
   "entity_index": "a034",
   "collection_name": "ym_realization",
   "table_name": "a034_ym_realization",
-
   "ui": {
     "element_name": "Реализация YM",
     "element_name_en": "YM Realization",
@@ -15,8 +13,13 @@
     "list_name_en": "YM Realization Report",
     "icon": "receipt"
   },
-
   "ai": {
+    "tags": [
+      "ym",
+      "accounting",
+      "sales",
+      "ybuh"
+    ],
     "description": "Официальный «Отчёт о реализации» Yandex Market, импортируемый как суточный документ (один кабинет, одна дата). Содержит выручку по покупателю в разрезе SKU. Проводится в General Ledger на слое `ybuh` (Яндекс бухгалтерия) оборотом customer_revenue/customer_revenue_storno и служит независимым источником для сверки выручки со слоем `fina` (p907_ym_payment_report).",
     "questions": [
       "Какая официальная выручка YM по отчёту о реализации за период?",
@@ -29,23 +32,35 @@
       "p907_ym_payment_report"
     ]
   },
-
   "fields": [
     {
       "name": "id",
       "rust_type": "YmRealizationId",
       "field_type": "primitive",
       "source": "base",
-      "ui": { "label": "ID", "visible_in_list": false, "visible_in_form": false },
-      "validation": { "required": true }
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
     },
     {
       "name": "code",
       "rust_type": "String",
       "field_type": "primitive",
       "source": "base",
-      "ui": { "label": "Код", "visible_in_list": true, "visible_in_form": false, "column_width": 160 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Код",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Внутренний код документа реализации YM."
     },
     {
@@ -53,8 +68,15 @@
       "rust_type": "String",
       "field_type": "primitive",
       "source": "base",
-      "ui": { "label": "Описание", "visible_in_list": true, "visible_in_form": false, "column_width": 260 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Описание",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 260
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Человекочитаемое описание документа: дата реализации и кабинет."
     },
     {
@@ -62,8 +84,15 @@
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Номер документа", "visible_in_list": false, "visible_in_form": false, "column_width": 160 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Номер документа",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 160
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Технический номер документа реализации."
     },
     {
@@ -71,8 +100,16 @@
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Дата", "visible_in_list": true, "visible_in_form": false, "widget": "date", "column_width": 120 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Дата",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "date",
+        "column_width": 120
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Дата реализации YM. Для периода: document_date >= 'YYYY-MM-DD' AND document_date <= 'YYYY-MM-DD'."
     },
     {
@@ -81,8 +118,15 @@
       "field_type": "aggregate_ref",
       "source": "specific",
       "ref_aggregate": "a006_connection_mp",
-      "ui": { "label": "Подключение (кабинет YM)", "visible_in_list": true, "visible_in_form": false, "column_width": 220 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Подключение (кабинет YM)",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 220
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID подключения кабинета YM из a006_connection_mp."
     },
     {
@@ -91,8 +135,15 @@
       "field_type": "aggregate_ref",
       "source": "specific",
       "ref_aggregate": "a002_organization",
-      "ui": { "label": "Организация", "visible_in_list": false, "visible_in_form": false, "column_width": 220 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Организация",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 220
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID организации из a002_organization."
     },
     {
@@ -101,8 +152,15 @@
       "field_type": "aggregate_ref",
       "source": "specific",
       "ref_aggregate": "a005_marketplace",
-      "ui": { "label": "Маркетплейс", "visible_in_list": false, "visible_in_form": false, "column_width": 180 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Маркетплейс",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "column_width": 180
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID маркетплейса из a005_marketplace (для YM)."
     },
     {
@@ -110,8 +168,15 @@
       "rust_type": "i32",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Строк", "visible_in_list": true, "visible_in_form": false, "column_width": 90 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Строк",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 90
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Количество строк (SKU) в документе реализации."
     },
     {
@@ -119,8 +184,16 @@
       "rust_type": "f64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Продажи", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 130 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Продажи",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "number",
+        "column_width": 130
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Сумма выручки по строкам-продажам."
     },
     {
@@ -128,8 +201,16 @@
       "rust_type": "f64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Возвраты", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 130 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Возвраты",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "number",
+        "column_width": 130
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Сумма выручки по строкам-возвратам (положительная)."
     },
     {
@@ -137,8 +218,16 @@
       "rust_type": "f64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Нетто-выручка", "visible_in_list": true, "visible_in_form": false, "widget": "number", "column_width": 140 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Нетто-выручка",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "widget": "number",
+        "column_width": 140
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Нетто-выручка = продажи − возвраты. Сверяется со слоем fina (p907)."
     },
     {
@@ -146,8 +235,15 @@
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Строки-продажи JSON", "visible_in_list": false, "visible_in_form": false, "widget": "textarea" },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Строки-продажи JSON",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "JSON детализация строк-продаж (delivered) по SKU."
     },
     {
@@ -155,8 +251,15 @@
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Строки-возвраты JSON", "visible_in_list": false, "visible_in_form": false, "widget": "textarea" },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Строки-возвраты JSON",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "widget": "textarea"
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "JSON детализация строк-возвратов (returned) по SKU."
     },
     {
@@ -164,19 +267,80 @@
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Загружено", "visible_in_list": false, "visible_in_form": false, "widget": "datetime", "column_width": 160 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Загружено",
+        "visible_in_list": false,
+        "visible_in_form": false,
+        "widget": "datetime",
+        "column_width": 160
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Дата и время получения отчёта о реализации из YM API."
+    },
+    {
+      "name": "header_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Header (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "totals_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Totals (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Meta (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
     }
   ],
-
   "access": {
     "scope_id": "a034_ym_realization",
     "operations": [
-      { "id": "list",   "required_mode": "read" },
-      { "id": "get",    "required_mode": "read" },
-      { "id": "upsert", "required_mode": "all" },
-      { "id": "delete", "required_mode": "all" }
+      {
+        "id": "list",
+        "required_mode": "read"
+      },
+      {
+        "id": "get",
+        "required_mode": "read"
+      },
+      {
+        "id": "upsert",
+        "required_mode": "all"
+      },
+      {
+        "id": "delete",
+        "required_mode": "all"
+      }
     ]
   }
 }

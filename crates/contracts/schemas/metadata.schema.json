@@ -109,9 +109,22 @@
           "description": "Related entity indices (e.g., ['a002_organization', 'u501_import_from_ut'])",
           "items": {
             "type": "string",
-            "pattern": "^[aup]\\d{3}_[a-z_]+$"
+            "pattern": "^([aup]\\d{3}_[a-z_]+|general_ledger)$"
           },
           "default": []
+        },
+        "tags": {
+          "type": "array",
+          "description": "Thematic tags used to filter the LLM entity registry (e.g., ['wb', 'sales'])",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "llm_visible": {
+          "type": "boolean",
+          "description": "Whether the entity is advertised to the LLM through the metadata registry. Set to false for configuration or credential-bearing entities with no analytical value.",
+          "default": true
         }
       }
     },

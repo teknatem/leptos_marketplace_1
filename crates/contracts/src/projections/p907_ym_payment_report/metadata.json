@@ -1,0 +1,565 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "YmPaymentReportRow",
+  "entity_index": "p907",
+  "collection_name": "ym_payment_report",
+  "table_name": "p907_ym_payment_report",
+  "ui": {
+    "element_name": "Отчёт по платежам YM",
+    "element_name_en": "YM Payment Report",
+    "list_name": "Отчёт по платежам Yandex Market",
+    "list_name_en": "YM Payment Report",
+    "icon": "receipt"
+  },
+  "ai": {
+    "description": "Строки отчёта по платежам Yandex Market: транзакции по заказам, комиссии и услуги, привязанные к банковским ордерам и актам. Выплаты недельные (bank_order_id/bank_sum — итог банковского ордера), акт услуг — месячный. Первоисточник финансового слоя YM: из него строятся GL-проводки слоя fina и проекция p914.",
+    "questions": [
+      "Какова выручка Yandex Market за период по отчёту?",
+      "Какие транзакции вошли в конкретный банковский ордер?",
+      "Сколько удержано комиссий и услуг по заказу?",
+      "Как сверить выплаты YM с эквайрингом и остатком?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a013_ym_order",
+      "a034_ym_realization",
+      "a035_ym_settlement_recon",
+      "a004_nomenclature",
+      "a007_marketplace_product",
+      "p914_mp_finance_turnovers",
+      "general_ledger"
+    ],
+    "tags": [
+      "ym",
+      "accounting",
+      "fina",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "record_key",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Record Key",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Бизнес-ключ дедупликации при импорте (ymid_...); для ссылок используй id."
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "organization_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Организация",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a002_organization"
+    },
+    {
+      "name": "business_id",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Business Id",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "partner_id",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Partner Id",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "shop_name",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Shop Name",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "inn",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Inn",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "model",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Model",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Модель работы магазина (FBY/FBS/DBS)."
+    },
+    {
+      "name": "transaction_id",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Transaction Id",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "transaction_date",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Transaction Date",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "transaction_type",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Transaction Type",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Тип транзакции YM (оплата заказа, комиссия, услуга, корректировка)."
+    },
+    {
+      "name": "transaction_source",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Transaction Source",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "transaction_sum",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Transaction Sum",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сумма транзакции."
+    },
+    {
+      "name": "payment_status",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Payment Status",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Статус платежа по транзакции."
+    },
+    {
+      "name": "order_id",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Id",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Номер заказа в Yandex Market."
+    },
+    {
+      "name": "shop_order_id",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Shop Order Id",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "order_creation_date",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Creation Date",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "order_delivery_date",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Delivery Date",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "order_type",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Order Type",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "shop_sku",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Shop Sku",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "SKU магазина, как передан в YM."
+    },
+    {
+      "name": "offer_or_service_name",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Offer Or Service Name",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Count",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "act_id",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Act Id",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Номер месячного акта на услуги."
+    },
+    {
+      "name": "act_date",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Act Date",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "bank_order_id",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Bank Order Id",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Номер банковского ордера — выплаты YM недельные."
+    },
+    {
+      "name": "bank_order_date",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Bank Order Date",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "bank_sum",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Bank Sum",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Итоговая сумма банковского ордера, а не строки."
+    },
+    {
+      "name": "claim_number",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Claim Number",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "bonus_account_year_month",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Bonus Account Year Month",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "comments",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Comments",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "loaded_at_utc",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Загружено (UTC)",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Время загрузки строки из API источника (UTC)."
+    },
+    {
+      "name": "payload_version",
+      "rust_type": "i64",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Версия payload",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Версия схемы payload импорта."
+    },
+    {
+      "name": "id",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "marketplace_product_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Товар МП",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ref_aggregate": "a007_marketplace_product"
+    },
+    {
+      "name": "marketplace_order_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Marketplace Order Ref",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ref_aggregate": "a013_ym_order"
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Номенклатура",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ref_aggregate": "a004_nomenclature"
+    }
+  ]
+}

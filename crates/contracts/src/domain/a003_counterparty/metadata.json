@@ -17,6 +17,7 @@
   },
 
   "ai": {
+    "tags": ["ref"],
     "description": "Контрагенты (поставщики, покупатели, партнёры), импортируемые из 1С:Управление торговлей. Поддерживает иерархическую структуру (папки). Содержит ИНН и КПП для идентификации юридических лиц.",
     "questions": [
       "Как найти контрагента по ИНН?",
@@ -25,7 +26,6 @@
     ],
     "related": [
       "a001_connection_1c",
-      "u501_import_from_ut",
       "a023_purchase_of_goods"
     ]
   },
@@ -123,7 +123,7 @@
     {
       "name": "parent_id",
       "rust_type": "Option<String>",
-      "field_type": "reference",
+      "field_type": "aggregate_ref",
       "source": "specific",
       "ui": {
         "label": "Родительская группа",

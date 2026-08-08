@@ -1,13 +1,11 @@
 {
   "$schema": "../../../schemas/metadata.schema.json",
   "schema_version": "1.0",
-
   "entity_type": "aggregate",
   "entity_name": "YmOrder",
   "entity_index": "a013",
   "collection_name": "ym_order",
   "table_name": "a013_ym_order",
-
   "ui": {
     "element_name": "Заказ Яндекс.Маркет",
     "element_name_en": "Yandex Market Order",
@@ -15,8 +13,11 @@
     "list_name_en": "Yandex Market Orders",
     "icon": "shopping-cart"
   },
-
   "ai": {
+    "tags": [
+      "ym",
+      "sales"
+    ],
     "description": "Заказы с Яндекс.Маркет (YM). Каждая запись — один заказ, может содержать несколько товарных позиций (строк). Данные загружаются через YM API. Статусы: DELIVERED означает доставленный (выкупленный) заказ. Для аналитики продаж фильтруй по status_norm = 'DELIVERED'.",
     "questions": [
       "Какова выручка Яндекс.Маркет за период?",
@@ -30,7 +31,6 @@
       "a002_organization"
     ]
   },
-
   "fields": [
     {
       "name": "id",
@@ -42,7 +42,9 @@
         "visible_in_list": false,
         "visible_in_form": false
       },
-      "validation": { "required": true }
+      "validation": {
+        "required": true
+      }
     },
     {
       "name": "document_no",
@@ -56,7 +58,9 @@
         "visible_in_form": false,
         "column_width": 160
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Числовой ID заказа в системе Яндекс.Маркет (orderId из YM API)."
     },
     {
@@ -72,7 +76,9 @@
         "visible_in_form": false,
         "column_width": 200
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "UUID подключения YM из a006_connection_mp. JOIN: a013_ym_order.connection_id = a006_connection_mp.id."
     },
     {
@@ -87,7 +93,9 @@
         "visible_in_form": false,
         "column_width": 120
       },
-      "validation": { "required": true },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "Нормализованный статус заказа: 'DELIVERED' — доставлен/выкуплен (считается продажей), 'CANCELLED' — отменён. Для подсчёта продаж: WHERE status_norm = 'DELIVERED'."
     },
     {
@@ -103,7 +111,9 @@
         "column_width": 160,
         "widget": "datetime"
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Дата создания заказа в YM. ISO 8601 TEXT. Для группировки по месяцам: strftime('%Y-%m', creation_date)."
     },
     {
@@ -118,7 +128,9 @@
         "visible_in_form": false,
         "column_width": 140
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Общая сумма заказа из YM API. В рублях. Для выручки: SUM(total_amount) WHERE status_norm='DELIVERED'."
     },
     {
@@ -133,8 +145,11 @@
         "visible_in_form": false,
         "column_width": 140
       },
-      "validation": { "required": false },
-      "ai_hint": "Общая стоимость товаров в заказе без доставки (itemsTotal из YM API)."
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Общая стоимость товаров в заказе без доставки (itemsTotal из YM API). Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа.",
+      "physical": false
     },
     {
       "name": "margin_pro",
@@ -148,7 +163,9 @@
         "visible_in_form": false,
         "column_width": 100
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Маржинальность заказа в процентах. Заполняется при проведении. NULL если нет данных о себестоимости. (total_amount - себестоимость) / total_amount * 100."
     },
     {
@@ -163,7 +180,9 @@
         "visible_in_form": false,
         "column_width": 180
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "Итоговая сумма строк заказа по дилерским (закупочным) ценам из 1С. Заполняется при проведении."
     },
     {
@@ -178,16 +197,79 @@
         "visible_in_form": false,
         "column_width": 150
       },
-      "validation": { "required": false },
+      "validation": {
+        "required": false
+      },
       "ai_hint": "ID кампании (магазина) в Яндекс.Маркет API."
+    },
+    {
+      "name": "header_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Header (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Lines (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "state_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "State (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Meta (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
     }
   ],
-
   "access": {
     "scope_id": "a013_ym_order",
     "operations": [
-      { "id": "list", "required_mode": "read" },
-      { "id": "get",  "required_mode": "read" }
+      {
+        "id": "list",
+        "required_mode": "read"
+      },
+      {
+        "id": "get",
+        "required_mode": "read"
+      }
     ]
   }
 }

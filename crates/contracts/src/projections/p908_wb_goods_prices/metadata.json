@@ -1,0 +1,218 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "WbGoodsPrice",
+  "entity_index": "p908",
+  "collection_name": "wb_goods_prices",
+  "table_name": "p908_wb_goods_prices",
+  "ui": {
+    "element_name": "Цены товаров WB",
+    "element_name_en": "WB Goods Prices",
+    "list_name": "Цены и скидки товаров WB",
+    "list_name_en": "WB Goods Prices",
+    "icon": "tag"
+  },
+  "ai": {
+    "description": "Текущие цены и скидки товаров Wildberries по кабинетам (снимок из API цен). Хранит цену первого размера и полный массив размеров в sizes_json, а также рассчитанную маржинальность относительно дилерской цены из p906_nomenclature_prices.",
+    "questions": [
+      "Какая цена и скидка у товара WB сейчас?",
+      "Какая маржинальность товара относительно дилерской цены?",
+      "У каких товаров цена со скидкой ниже дилерской?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a004_nomenclature",
+      "a007_marketplace_product",
+      "p906_nomenclature_prices"
+    ],
+    "tags": [
+      "wb",
+      "ref",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "nm_id",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "nm_id",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "WB-артикул товара."
+    },
+    {
+      "name": "connection_mp_ref",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет МП",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "vendor_code",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Vendor Code",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Артикул продавца."
+    },
+    {
+      "name": "discount",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Discount",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Скидка продавца, %."
+    },
+    {
+      "name": "editable_size_price",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Editable Size Price",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Признак раздельного редактирования цен по размерам."
+    },
+    {
+      "name": "price",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Цена",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Цена первого размера, руб."
+    },
+    {
+      "name": "discounted_price",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Discounted Price",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Цена первого размера со скидкой, руб."
+    },
+    {
+      "name": "sizes_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Sizes Json",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Полный массив размеров с ценами в JSON."
+    },
+    {
+      "name": "fetched_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Fetched At",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Момент снятия снимка цен."
+    },
+    {
+      "name": "ext_nomenklature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Ext Nomenklature Ref",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Сопоставленная номенклатура a004 (базовая или собственная).",
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "dealer_price_ut",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Dealer Price Ut",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Дилерская цена из p906_nomenclature_prices."
+    },
+    {
+      "name": "margin_pro",
+      "rust_type": "Option<f64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Margin Pro",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Маржинальность: (discounted_price - dealer_price_ut) / dealer_price_ut * 100."
+    }
+  ]
+}

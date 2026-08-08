@@ -1,0 +1,143 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "projection",
+  "entity_name": "NomenclatureBarcode",
+  "entity_index": "p901",
+  "collection_name": "nomenclature_barcodes",
+  "table_name": "p901_nomenclature_barcodes",
+  "ui": {
+    "element_name": "Штрихкод номенклатуры",
+    "element_name_en": "Nomenclature Barcode",
+    "list_name": "Штрихкоды номенклатуры",
+    "list_name_en": "Nomenclature Barcodes",
+    "icon": "barcode"
+  },
+  "ai": {
+    "description": "Штрихкоды номенклатуры, собранные из 1С и кабинетов маркетплейсов. Ключ — пара barcode + source; используется для сопоставления товаров маркетплейсов с номенклатурой a004 при импорте.",
+    "questions": [
+      "Какой номенклатуре соответствует штрихкод?",
+      "Сколько штрихкодов пришло из WB, Ozon или 1С?",
+      "Какие штрихкоды не привязаны к номенклатуре?"
+    ],
+    "related": [
+      "a004_nomenclature",
+      "a007_marketplace_product"
+    ],
+    "tags": [
+      "ref",
+      "projection"
+    ]
+  },
+  "fields": [
+    {
+      "name": "barcode",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Штрихкод",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Значение штрихкода; вместе с source образует ключ записи."
+    },
+    {
+      "name": "source",
+      "rust_type": "String",
+      "field_type": "enum",
+      "source": "specific",
+      "ui": {
+        "label": "Источник",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Система, из которой пришёл штрихкод.",
+      "enum_values": [
+        "1C",
+        "OZON",
+        "WB",
+        "YM"
+      ]
+    },
+    {
+      "name": "nomenclature_ref",
+      "rust_type": "Option<String>",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Номенклатура",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Ссылка на a004_nomenclature; NULL — штрихкод не сопоставлен.",
+      "ref_aggregate": "a004_nomenclature"
+    },
+    {
+      "name": "article",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Артикул",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "created_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Создано",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "updated_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Обновлено",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
+    },
+    {
+      "name": "is_active",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Активен",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Штрихкод актуален в источнике."
+    }
+  ]
+}

@@ -1,49 +1,104 @@
 //! Build script for generating metadata.rs files from metadata.json
 //!
-//! This script scans the domain directory for metadata.json files and generates
-//! corresponding metadata_gen.rs files with static Rust constants.
+//! This script scans the entity directories (`src/domain`, `src/projections`) for
+//! metadata.json files and generates corresponding metadata_gen.rs files with
+//! static Rust constants. It also emits `src/shared/metadata/registry_gen.rs`,
+//! which lists every generated entity, so that consumers never have to register
+//! a new aggregate or projection by hand.
 
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 
+/// Crate-relative directories scanned for `<entity>/metadata.json`.
+/// The second element is the Rust module path the generated registry uses.
+const ENTITY_ROOTS: &[(&str, &str)] = &[
+    ("src/domain", "crate::domain"),
+    ("src/projections", "crate::projections"),
+];
+
+/// Single-entity directories: the metadata.json sits directly inside, without a
+/// per-entity subdirectory. Kept separate so the General Ledger is described by the
+/// same JSON standard as everything else instead of a hand-written module.
+const ENTITY_DIRS: &[(&str, &str)] = &[("src/general_ledger", "crate::general_ledger")];
+
+/// Subdirectories that never carry entity metadata.
+const SKIP_DIRS: &[&str] = &["common", "general_ledger"];
+
+/// One entity picked up by the scan, in the order it will appear in the registry.
+struct RegistryItem {
+    module_path: String,
+    entity_index: String,
+}
+
 fn main() {
-    println!("cargo:rerun-if-changed=src/domain");
+    let mut registry: Vec<RegistryItem> = Vec::new();
 
-    let domain_dir = Path::new("src/domain");
+    for (root, module_root) in ENTITY_ROOTS {
+        println!("cargo:rerun-if-changed={}", root);
 
-    if !domain_dir.exists() {
-        println!("cargo:warning=Domain directory not found, skipping metadata generation");
-        return;
-    }
-
-    for entry in fs::read_dir(domain_dir).expect("Failed to read domain directory") {
-        let path = entry.expect("Failed to read entry").path();
-        if !path.is_dir() {
+        let root_dir = Path::new(root);
+        if !root_dir.exists() {
+            println!(
+                "cargo:warning={} not found, skipping metadata generation",
+                root
+            );
             continue;
         }
 
-        let dir_name = path.file_name().unwrap().to_str().unwrap();
-        if dir_name == "common" {
-            continue;
-        }
+        // Sort by directory name so the generated registry has a stable order.
+        let mut dirs: Vec<_> = fs::read_dir(root_dir)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {}", root, e))
+            .map(|entry| entry.expect("Failed to read entry").path())
+            .filter(|path| path.is_dir())
+            .collect();
+        dirs.sort();
 
-        let metadata_json = path.join("metadata.json");
-        if metadata_json.exists() {
+        for path in dirs {
+            let dir_name = path.file_name().unwrap().to_str().unwrap().to_string();
+            if SKIP_DIRS.contains(&dir_name.as_str()) {
+                continue;
+            }
+
+            let metadata_json = path.join("metadata.json");
+            if !metadata_json.exists() {
+                continue;
+            }
             println!("cargo:rerun-if-changed={}", metadata_json.display());
 
             let output_rs = path.join("metadata_gen.rs");
-            match generate_metadata(&metadata_json, &output_rs) {
-                Ok(true) => {}
-                Ok(false) => {
-                    // Content unchanged — skip silently
-                }
-                Err(e) => {
-                    panic!("Failed to generate metadata for {}: {}", dir_name, e);
-                }
-            }
+            let entity_index = match generate_metadata(&metadata_json, &output_rs) {
+                Ok(index) => index,
+                Err(e) => panic!("Failed to generate metadata for {}: {}", dir_name, e),
+            };
+
+            registry.push(RegistryItem {
+                module_path: format!("{}::{}", module_root, dir_name),
+                entity_index,
+            });
         }
     }
+
+    for (dir, module_path) in ENTITY_DIRS {
+        let path = Path::new(dir);
+        let metadata_json = path.join("metadata.json");
+        if !metadata_json.exists() {
+            panic!("{} is declared as an entity directory but has no metadata.json", dir);
+        }
+        println!("cargo:rerun-if-changed={}", metadata_json.display());
+
+        let entity_index = generate_metadata(&metadata_json, &path.join("metadata_gen.rs"))
+            .unwrap_or_else(|e| panic!("Failed to generate metadata for {}: {}", dir, e));
+
+        registry.push(RegistryItem {
+            module_path: module_path.to_string(),
+            entity_index,
+        });
+    }
+
+    let registry_path = Path::new("src/shared/metadata/registry_gen.rs");
+    write_if_changed(registry_path, &generate_registry_code(&registry))
+        .unwrap_or_else(|e| panic!("Failed to generate entity registry: {}", e));
 }
 
 // ============================================================================
@@ -81,6 +136,12 @@ struct AiMetadataJson {
     questions: Vec<String>,
     #[serde(default)]
     related: Vec<String>,
+    /// Thematic tags for the LLM registry filter ("wb", "ym", "ref", ...).
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Whether the entity is advertised to the LLM. Visible unless opted out.
+    #[serde(default = "default_true")]
+    llm_visible: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,6 +155,9 @@ struct FieldJson {
     #[serde(default)]
     validation: ValidationJson,
     ai_hint: Option<String>,
+    /// False for logical fields that live inside a JSON column, not in the table.
+    #[serde(default = "default_true")]
+    physical: bool,
     #[allow(dead_code)]
     nested_fields: Option<Vec<FieldJson>>,
     ref_aggregate: Option<String>,
@@ -148,27 +212,111 @@ struct AccessOperationJson {
 // Code Generation
 // ============================================================================
 
-/// Returns true if the file was (re)written, false if content was unchanged.
+/// Generates `metadata_gen.rs` next to the source JSON and returns the entity index.
 fn generate_metadata(
     json_path: &Path,
     output_path: &Path,
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error>> {
     let json_content = fs::read_to_string(json_path)?;
     let metadata: MetadataJson = serde_json::from_str(&json_content)?;
+    validate_metadata(&metadata)?;
 
     let code = generate_rust_code(&metadata);
+    write_if_changed(output_path, &code)?;
 
-    // Only write if content has changed (avoids touching file timestamp on no-op builds)
-    if output_path.exists() {
-        let existing = fs::read_to_string(output_path)?;
-        if existing == code {
-            return Ok(false);
+    Ok(metadata.entity_index.clone())
+}
+
+/// Rejects enum values the generator would happily turn into non-existent Rust variants.
+/// Without this an unknown `field_type` only fails much later, as a compile error inside
+/// a generated file — and not at all while the module stays unreferenced.
+fn validate_metadata(meta: &MetadataJson) -> Result<(), Box<dyn std::error::Error>> {
+    const ENTITY_TYPES: &[&str] = &["aggregate", "usecase", "projection"];
+    const FIELD_TYPES: &[&str] = &[
+        "primitive",
+        "enum",
+        "aggregate_ref",
+        "nested_struct",
+        "nested_table",
+    ];
+    const FIELD_SOURCES: &[&str] = &["specific", "base", "metadata"];
+
+    if !ENTITY_TYPES.contains(&meta.entity_type.as_str()) {
+        return Err(format!(
+            "unknown entity_type '{}' (expected one of {:?})",
+            meta.entity_type, ENTITY_TYPES
+        )
+        .into());
+    }
+
+    for field in &meta.fields {
+        if !FIELD_TYPES.contains(&field.field_type.as_str()) {
+            return Err(format!(
+                "field '{}': unknown field_type '{}' (expected one of {:?})",
+                field.name, field.field_type, FIELD_TYPES
+            )
+            .into());
+        }
+        if !field.source.is_empty() && !FIELD_SOURCES.contains(&field.source.as_str()) {
+            return Err(format!(
+                "field '{}': unknown source '{}' (expected one of {:?})",
+                field.name, field.source, FIELD_SOURCES
+            )
+            .into());
         }
     }
 
-    fs::write(output_path, code)?;
+    Ok(())
+}
+
+/// Writes only when the content differs, so no-op builds don't touch timestamps.
+fn write_if_changed(path: &Path, content: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    if path.exists() && fs::read_to_string(path)? == content {
+        return Ok(false);
+    }
+
+    fs::write(path, content)?;
 
     Ok(true)
+}
+
+/// Emits the crate-wide registry of every entity backed by a metadata.json.
+fn generate_registry_code(items: &[RegistryItem]) -> String {
+    let mut code = String::from(
+        "// ============================================================================\n\
+         // AUTO-GENERATED FROM metadata.json FILES - DO NOT EDIT MANUALLY\n\
+         // ============================================================================\n\
+         //\n\
+         // Every aggregate/projection that has a metadata.json lands here automatically,\n\
+         // so consumers (LLM metadata registry, dashboards) never miss a new entity.\n\
+         // Filter with `EntityRegistration::meta.ai.llm_visible` / `.ai.tags`.\n\n\
+         #![allow(dead_code)]\n\n\
+         use super::{EntityMetadataInfo, FieldMetadata};\n\n\
+         /// One entity exposed through [`ALL_ENTITIES`].\n\
+         pub struct EntityRegistration {\n\
+         \x20   pub meta: &'static EntityMetadataInfo,\n\
+         \x20   pub fields: &'static [FieldMetadata],\n\
+         }\n\n",
+    );
+
+    code.push_str(
+        "/// All entities generated from metadata.json, ordered by module path.\n\
+         pub const ALL_ENTITIES: &[EntityRegistration] = &[\n",
+    );
+
+    for item in items {
+        code.push_str(&format!(
+            "    // {}\n    EntityRegistration {{\n\
+             \x20       meta: &{path}::ENTITY_METADATA,\n\
+             \x20       fields: {path}::FIELDS,\n\
+             \x20   }},\n",
+            item.entity_index,
+            path = item.module_path,
+        ));
+    }
+
+    code.push_str("];\n");
+    code
 }
 
 fn generate_rust_code(meta: &MetadataJson) -> String {
@@ -272,6 +420,8 @@ fn generate_entity_metadata(meta: &MetadataJson) -> String {
          \x20       description: \"{}\",\n\
          \x20       questions: &[{}],\n\
          \x20       related: &[{}],\n\
+         \x20       tags: &[{}],\n\
+         \x20       llm_visible: {},\n\
          \x20   }},\n\
          {}}};",
         meta.entity_name,
@@ -290,6 +440,8 @@ fn generate_entity_metadata(meta: &MetadataJson) -> String {
         escape_string(&meta.ai.description),
         string_array(&meta.ai.questions),
         string_array(&meta.ai.related),
+        string_array(&meta.ai.tags),
+        meta.ai.llm_visible,
         access_field,
     )
 }
@@ -335,6 +487,7 @@ fn generate_field_metadata(field: &FieldJson, indent: usize) -> String {
          {i}        custom_error: {},\n\
          {i}    }},\n\
          {i}    ai_hint: {},\n\
+         {i}    physical: {},\n\
          {i}    nested_fields: None,\n\
          {i}    ref_aggregate: {},\n\
          {i}    enum_values: {},\n\
@@ -363,6 +516,7 @@ fn generate_field_metadata(field: &FieldJson, indent: usize) -> String {
         option_str(&field.validation.pattern),
         option_str(&field.validation.custom_error),
         option_str(&field.ai_hint),
+        field.physical,
         option_str(&field.ref_aggregate),
         option_str_array(&field.enum_values),
         i = i

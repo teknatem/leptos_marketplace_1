@@ -14,6 +14,10 @@
     "icon": "layout-dashboard"
   },
   "ai": {
+    "tags": [
+      "bi",
+      "dashboard"
+    ],
     "description": "BI-дашборды. Каждый дашборд объединяет набор BI-индикаторов (a024), сгруппированных по категориям в дерево. Содержит глобальные фильтры, оценку пользователя (1-5 звёзд) и статус. Дашборды могут быть персональными или публичными.",
     "questions": [
       "Какие дашборды доступны в системе?",
@@ -106,7 +110,11 @@
       "rust_type": "String",
       "field_type": "enum",
       "source": "specific",
-      "enum_values": ["draft", "active", "archived"],
+      "enum_values": [
+        "draft",
+        "active",
+        "archived"
+      ],
       "ui": {
         "label": "Статус",
         "label_en": "Status",
@@ -176,7 +184,7 @@
       "ai_hint": "Оценка пользователя: 1-5 звёзд, null = не оценён"
     },
     {
-      "name": "layout",
+      "name": "layout_json",
       "rust_type": "DashboardLayout",
       "field_type": "nested_struct",
       "source": "specific",
@@ -191,7 +199,7 @@
       "ai_hint": "Иерархическое дерево категорий (DashboardGroup) с индикаторами (DashboardItem)"
     },
     {
-      "name": "filters",
+      "name": "global_filters_json",
       "rust_type": "Vec<FilterRef>",
       "field_type": "nested_table",
       "source": "specific",
@@ -299,14 +307,25 @@
       }
     }
   ],
-
   "access": {
     "scope_id": "a025_bi_dashboard",
     "operations": [
-      { "id": "list",   "required_mode": "read" },
-      { "id": "get",    "required_mode": "read" },
-      { "id": "upsert", "required_mode": "all" },
-      { "id": "delete", "required_mode": "all" }
+      {
+        "id": "list",
+        "required_mode": "read"
+      },
+      {
+        "id": "get",
+        "required_mode": "read"
+      },
+      {
+        "id": "upsert",
+        "required_mode": "all"
+      },
+      {
+        "id": "delete",
+        "required_mode": "all"
+      }
     ]
   }
 }

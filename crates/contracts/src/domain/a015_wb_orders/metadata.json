@@ -1,13 +1,11 @@
 {
   "$schema": "../../../schemas/metadata.schema.json",
   "schema_version": "1.0",
-
   "entity_type": "aggregate",
   "entity_name": "WbOrders",
   "entity_index": "a015",
   "collection_name": "wb_orders",
   "table_name": "a015_wb_orders",
-
   "ui": {
     "element_name": "Документ WB Заказы",
     "element_name_en": "WB Orders",
@@ -15,8 +13,11 @@
     "list_name_en": "WB Orders",
     "icon": "shopping-cart"
   },
-
   "ai": {
+    "tags": [
+      "wb",
+      "orders"
+    ],
     "description": "Заказ Wildberries (один заказ = одна строка). Содержит артикул продавца, nmId, штрихкод, категорию, цены со скидками, статус, дату заказа и информацию о складе и географии. Используется для учёта продаж на WB.",
     "questions": [
       "Какова сумма заказов на WB?",
@@ -30,23 +31,37 @@
       "a004_nomenclature"
     ]
   },
-
   "fields": [
     {
       "name": "id",
       "rust_type": "WbOrdersId",
       "field_type": "primitive",
       "source": "base",
-      "ui": { "label": "ID", "label_en": "ID", "visible_in_list": false, "visible_in_form": false },
-      "validation": { "required": true }
+      "ui": {
+        "label": "ID",
+        "label_en": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      }
     },
     {
       "name": "document_no",
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Номер заказа (srid)", "label_en": "Order No (srid)", "visible_in_list": true, "visible_in_form": true, "column_width": 180 },
-      "validation": { "required": true },
+      "ui": {
+        "label": "Номер заказа (srid)",
+        "label_en": "Order No (srid)",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 180
+      },
+      "validation": {
+        "required": true
+      },
       "ai_hint": "srid из WB API — уникальный ID строки заказа."
     },
     {
@@ -54,82 +69,257 @@
       "rust_type": "String",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Артикул продавца", "label_en": "Supplier Article", "visible_in_list": true, "visible_in_form": true, "column_width": 160 },
-      "validation": { "required": true }
+      "ui": {
+        "label": "Артикул продавца",
+        "label_en": "Supplier Article",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 160
+      },
+      "validation": {
+        "required": true
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "nm_id",
       "rust_type": "i64",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "nmId (WB)", "label_en": "nmId (WB)", "visible_in_list": true, "visible_in_form": true, "column_width": 110 },
-      "validation": { "required": true },
-      "ai_hint": "nmId — числовой идентификатор номенклатуры Wildberries."
+      "ui": {
+        "label": "nmId (WB)",
+        "label_en": "nmId (WB)",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 110
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "nmId — числовой идентификатор номенклатуры Wildberries. Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа.",
+      "physical": false
     },
     {
       "name": "order_dt",
       "rust_type": "DateTime<Utc>",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Дата заказа", "label_en": "Order Date", "visible_in_list": true, "visible_in_form": true, "column_width": 150 },
-      "validation": { "required": true }
+      "ui": {
+        "label": "Дата заказа",
+        "label_en": "Order Date",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "is_cancel",
       "rust_type": "bool",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Отменён", "label_en": "Is Cancelled", "visible_in_list": true, "visible_in_form": false, "column_width": 90, "widget": "checkbox" },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Отменён",
+        "label_en": "Is Cancelled",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 90,
+        "widget": "checkbox"
+      },
+      "validation": {
+        "required": false
+      }
     },
     {
       "name": "total_price",
       "rust_type": "Option<f64>",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Цена без скидки", "label_en": "Total Price", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Цена без скидки",
+        "label_en": "Total Price",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 130
+      },
+      "validation": {
+        "required": false
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "finished_price",
       "rust_type": "Option<f64>",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Итоговая цена", "label_en": "Finished Price", "visible_in_list": true, "visible_in_form": true, "column_width": 130 },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Итоговая цена",
+        "label_en": "Finished Price",
+        "visible_in_list": true,
+        "visible_in_form": true,
+        "column_width": 130
+      },
+      "validation": {
+        "required": false
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "warehouse_name",
       "rust_type": "Option<String>",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Склад", "label_en": "Warehouse", "visible_in_list": false, "visible_in_form": true, "column_width": 150 },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Склад",
+        "label_en": "Warehouse",
+        "visible_in_list": false,
+        "visible_in_form": true,
+        "column_width": 150
+      },
+      "validation": {
+        "required": false
+      },
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "connection_id",
       "rust_type": "String",
       "field_type": "aggregate_ref",
       "source": "specific",
-      "ui": { "label": "Подключение МП", "label_en": "MP Connection", "visible_in_list": false, "visible_in_form": true },
-      "validation": { "required": true },
-      "ref_aggregate": "a006_connection_mp"
+      "ui": {
+        "label": "Подключение МП",
+        "label_en": "MP Connection",
+        "visible_in_list": false,
+        "visible_in_form": true
+      },
+      "validation": {
+        "required": true
+      },
+      "ref_aggregate": "a006_connection_mp",
+      "physical": false,
+      "ai_hint": "Не отдельная колонка таблицы: значение хранится внутри JSON-поля документа."
     },
     {
       "name": "is_posted",
       "rust_type": "bool",
       "field_type": "primitive",
       "source": "specific",
-      "ui": { "label": "Проведён", "label_en": "Is Posted", "visible_in_list": true, "visible_in_form": false, "column_width": 90, "widget": "checkbox" },
-      "validation": { "required": false }
+      "ui": {
+        "label": "Проведён",
+        "label_en": "Is Posted",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 90,
+        "widget": "checkbox"
+      },
+      "validation": {
+        "required": false
+      }
+    },
+    {
+      "name": "header_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Header (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "line_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Line (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "state_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "State (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "warehouse_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Warehouse (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "geography_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Geography (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Source Meta (JSON)",
+        "visible_in_list": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "JSON-поле документа: хранит вложенную структуру целиком. Логические поля документа доступны через json_extract по этой колонке."
     }
   ],
-
   "access": {
     "scope_id": "a015_wb_orders",
     "operations": [
-      { "id": "list", "required_mode": "read" },
-      { "id": "get",  "required_mode": "read" }
+      {
+        "id": "list",
+        "required_mode": "read"
+      },
+      {
+        "id": "get",
+        "required_mode": "read"
+      }
     ]
   }
 }
