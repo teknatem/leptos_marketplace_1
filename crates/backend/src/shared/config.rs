@@ -82,6 +82,8 @@ pub struct Config {
     #[serde(default)]
     pub llm: LlmConfig,
     #[serde(default)]
+    pub quality: QualityConfig,
+    #[serde(default)]
     pub external_api: ExternalApiConfig,
     #[serde(default)]
     pub s3: S3Config,
@@ -89,6 +91,26 @@ pub struct Config {
     pub mail: MailConfig,
     #[serde(default)]
     pub bitrix24: Bitrix24Config,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct QualityConfig {
+    /// External quality-check packages. A package with the same id overrides
+    /// the embedded definition after an atomic reload.
+    #[serde(default = "default_quality_checks_path")]
+    pub checks_path: String,
+}
+
+fn default_quality_checks_path() -> String {
+    "quality_checks".to_string()
+}
+
+impl Default for QualityConfig {
+    fn default() -> Self {
+        Self {
+            checks_path: default_quality_checks_path(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -320,10 +342,20 @@ pub struct LlmConfig {
     /// Относительный путь разрешается от директории бинарника.
     #[serde(default = "default_skills_path")]
     pub skills_path: String,
+    /// Путь к корню рабочих каталогов чатов (`<chat_id>/<NNN-активность>/…`).
+    /// Здесь живут анкеты, планы и журнал шагов — состояние, которое должно
+    /// переживать компакцию истории.
+    /// Относительный путь разрешается от директории бинарника.
+    #[serde(default = "default_chat_files_path")]
+    pub chat_files_path: String,
 }
 
 fn default_skills_path() -> String {
     "skills".to_string()
+}
+
+fn default_chat_files_path() -> String {
+    "chat_files".to_string()
 }
 
 impl Default for LlmConfig {
@@ -331,6 +363,7 @@ impl Default for LlmConfig {
         Self {
             knowledge_base_path: "data/knowledge".to_string(),
             skills_path: default_skills_path(),
+            chat_files_path: default_chat_files_path(),
         }
     }
 }
@@ -464,6 +497,17 @@ pub fn get_knowledge_base_path(config: &Config) -> PathBuf {
 /// Resolves relative paths relative to the executable directory (mirrors KB path).
 pub fn get_skills_path(config: &Config) -> PathBuf {
     resolve_relative_to_exe(&config.llm.skills_path)
+}
+
+/// Корень рабочих каталогов чатов (анкеты, планы, журнал шагов).
+/// Resolves relative paths relative to the executable directory (mirrors KB path).
+pub fn get_chat_files_path(config: &Config) -> PathBuf {
+    resolve_relative_to_exe(&config.llm.chat_files_path)
+}
+
+/// External quality-check package root.
+pub fn get_quality_checks_path(config: &Config) -> PathBuf {
+    resolve_relative_to_exe(&config.quality.checks_path)
 }
 
 /// Абсолютный путь — как есть; относительный — от директории бинарника.

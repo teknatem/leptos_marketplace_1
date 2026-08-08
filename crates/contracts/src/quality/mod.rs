@@ -15,6 +15,7 @@
 //! - [`NipCleanupRequest`] / [`NipCleanupResult`] — запрос и итог очистки осиротевших строк проекций
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Описание одной проверки качества данных (метаданные из реестра).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +167,57 @@ pub struct CheckDetails {
     /// Источники для drill-down (проекционные таблицы), если поддерживаются.
     #[serde(default)]
     pub sources: Vec<QualityCheckSource>,
+}
+
+/// Optional parameters for a manual quality-check run.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct QualityCheckRunRequest {
+    #[serde(default)]
+    pub input: Value,
+}
+
+/// Persisted run summary. Full details are available through the existing
+/// check details endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityCheckRunSummary {
+    pub id: String,
+    pub check_id: String,
+    pub definition_digest: String,
+    pub trigger: String,
+    pub status: String,
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub duration_ms: Option<i64>,
+    pub population_total: Option<i64>,
+    pub violations_total: Option<i64>,
+    pub error: Option<String>,
+}
+
+/// Карточка проверки для общего обзора: определение и последний запуск
+/// текущей версии правила. Используется UI и LLM, чтобы они видели одинаковое
+/// состояние каталога без запуска каждой проверки.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityCheckOverview {
+    pub info: QualityCheckInfo,
+    pub kind: String,
+    pub definition_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_run: Option<QualityCheckRunSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityCheckReloadReport {
+    pub ok: bool,
+    pub generation: u64,
+    pub catalog_digest: String,
+    #[serde(default)]
+    pub added: Vec<String>,
+    #[serde(default)]
+    pub changed: Vec<String>,
+    #[serde(default)]
+    pub removed: Vec<String>,
+    #[serde(default)]
+    pub diagnostics: Vec<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

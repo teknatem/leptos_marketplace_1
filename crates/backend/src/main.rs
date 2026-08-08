@@ -131,6 +131,19 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let quality_reload = quality::registry::reload().await;
+    if quality_reload.ok {
+        println!(
+            "✓ Quality checks loaded: generation {}\n",
+            quality_reload.generation
+        );
+    } else {
+        println!(
+            "⚠ Quality checks reload rejected; previous embedded catalog remains active: {:?}\n",
+            quality_reload.diagnostics
+        );
+    }
+
     println!(
         "Step 5: Scheduled task worker is {} (config.toml -> [scheduled_tasks].enabled)",
         if scheduled_task_worker_enabled {
@@ -175,6 +188,10 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(async {
         system::ext_api_log::service::run_prune_loop().await;
     });
+
+    // Флаш статистики базы знаний. По той же причине не задание планировщика:
+    // счётчики обращений к статьям должны копиться независимо от него.
+    shared::llm::kb_metrics::spawn_flusher();
 
     // 5. Configure CORS
     println!("Step 8: Configuring CORS...");

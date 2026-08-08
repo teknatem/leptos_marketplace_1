@@ -58,6 +58,14 @@ knowledge_base_path = "F:/data/leptos_marketplace_1/knowledge"
 # Внешний каталог навыков. Новый формат: <id>/SKILL.md + references/scripts/schemas;
 # корневые *.md поддерживаются для совместимости. Относительный путь — от бинарника.
 skills_path = "skills"
+# Корень рабочих каталогов чатов: <chat_id>/<NNN-активность>/{intake.md,plan.md,notes.md,steps/}.
+# Здесь живут анкеты, планы и журнал шагов. Относительный путь — от бинарника.
+chat_files_path = "chat_files"
+
+[quality]
+# Внешние MJS-проверки: <check-id>/{check.json,check.mjs,schema.json?}.
+# Пакет с тем же id атомарно переопределяет встроенную проверку после reload.
+checks_path = "quality_checks"
 
 [external_api]
 # Статический API-ключ для внешних интеграций (например, 1С).

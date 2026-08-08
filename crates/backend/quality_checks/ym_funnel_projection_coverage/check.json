@@ -1,0 +1,19 @@
+{
+  "id": "ym_funnel_projection_coverage",
+  "code": "QC-009",
+  "name": "Покрытие воронки Яндекс.Маркета в p916",
+  "description": "Проверяет, что заказы a013 (заказы/отмены/выкупы), возвраты a016 и дневная воронка a041 сформировали движения p916, и что лишних движений без документа-источника нет. Текущий неполный месяц показывает отдельно и не включает в итог.",
+  "category": "Воронка YM",
+  "kind": "domain",
+  "entrypoint": "check.mjs",
+  "export": "run",
+  "input_schema": "schema.json",
+  "capabilities": [
+    "db:read:a006_connection_mp",
+    "db:read:a013_ym_order",
+    "db:read:a016_ym_returns",
+    "db:read:a041_ym_shows_sales_daily",
+    "db:read:p916_mp_sales_funnel_turnovers"
+  ],
+  "default_input": {"months": 12}
+}

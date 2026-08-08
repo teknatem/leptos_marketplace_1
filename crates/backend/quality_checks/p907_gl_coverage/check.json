@@ -1,0 +1,12 @@
+{
+  "id": "p907_gl_coverage",
+  "code": "QC-006",
+  "name": "Полнота проведения p907 (YM) → GL",
+  "description": "Проверяет, что каждая ненулевая строка отчёта по платежам Yandex Market сформировала GL-проводку.",
+  "category": "General Ledger",
+  "kind": "regular",
+  "entrypoint": "check.mjs",
+  "export": "run",
+  "capabilities": ["db:read:p907_ym_payment_report", "db:read:sys_general_ledger"],
+  "default_input": {}
+}

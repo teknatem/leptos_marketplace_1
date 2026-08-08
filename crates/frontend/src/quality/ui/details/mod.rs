@@ -201,6 +201,26 @@ pub fn QualityCheckDetails(check_id: String) -> impl IntoView {
     });
 
     let cid_page = check_id.clone();
+    let cid_for_rerun = check_id.clone();
+    let rerun_check = Callback::new(move |_: ()| {
+        let cid = cid_for_rerun.clone();
+        set_loading.set(true);
+        set_error.set(None);
+        spawn_local(async move {
+            let url = format!("{}/api/quality/checks/{}/run", api_base(), cid);
+            match Request::post(&url).send().await {
+                Ok(resp) if resp.status() == 200 => set_reload.update(|value| *value += 1),
+                Ok(resp) => {
+                    set_error.set(Some(format!("HTTP {}", resp.status())));
+                    set_loading.set(false);
+                }
+                Err(error) => {
+                    set_error.set(Some(format!("Ошибка запуска: {error}")));
+                    set_loading.set(false);
+                }
+            }
+        });
+    });
 
     view! {
         <PageFrame page_id="quality_check_details--detail" category="detail">
@@ -258,7 +278,7 @@ pub fn QualityCheckDetails(check_id: String) -> impl IntoView {
                                 appearance=thaw::ButtonAppearance::Primary
                                 size=thaw::ButtonSize::Small
                                 disabled=loading.get()
-                                on_click=move |_| set_reload.update(|t| *t += 1)
+                                on_click=move |_| rerun_check.run(())
                             >
                                 {icon("refresh")} " Перезапустить"
                             </thaw::Button>

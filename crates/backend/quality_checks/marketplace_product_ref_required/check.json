@@ -1,0 +1,20 @@
+{
+  "id": "marketplace_product_ref_required",
+  "code": "QC-003",
+  "name": "Заполненность товара маркетплейса",
+  "description": "Проверяет, что marketplace_product_ref заполнен в активных таблицах маркетплейсов.",
+  "category": "Маркетплейсы",
+  "kind": "regular",
+  "entrypoint": "check.mjs",
+  "export": "run",
+  "capabilities": [
+    "db:read:a012_wb_sales",
+    "db:read:a013_ym_order_items",
+    "db:read:a015_wb_orders",
+    "db:read:p900_sales_register",
+    "db:read:p904_sales_data",
+    "db:read:p909_mp_order_line_turnovers",
+    "db:read:p911_wb_advert_by_items"
+  ],
+  "default_input": {}
+}

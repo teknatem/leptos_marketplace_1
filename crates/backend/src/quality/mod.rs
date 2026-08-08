@@ -1,16 +1,17 @@
 //! # Подсистема контроля качества данных
 //!
-//! Вертикальная подсистема для проверки состояния данных и выявления потенциальных
-//! проблем в агрегатах и проекциях.
+//! Единый реестр read-only инвариантов качества данных для UI, LLM, ручных и
+//! плановых запусков. Каждое правило имеет одну цель и небольшой набор
+//! однотипных метрик над одной бизнес-популяцией.
 //!
 //! ## Архитектура
 //!
 //! ```text
 //! quality/
-//! ├── mod.rs                          ← реестр проверок + диспетчер run_check()
-//! └── checks/
-//!     ├── mod.rs
-//!     └── nomenclature_in_projections.rs   ← первая проверка
+//! ├── registry.rs  ← snapshot реестра Rust + MJS, validate/reload/authoring
+//! ├── history.rs   ← единая история ручных, LLM и плановых запусков
+//! ├── mod.rs       ← исполнение и стабильный внутренний интерфейс
+//! └── checks/      ← сложные Rust-проверки с drill-down/fix-командами
 //! ```
 //!
 //! ## Концепция
@@ -21,7 +22,8 @@
 //! - имеет уникальный строковый `id` и читаемое название;
 //! - запускается вручную через `POST /api/quality/checks/{id}/run`;
 //! - возвращает [`CheckResult`] с набором метрик и итоговым счётчиком проблем;
-//! - в будущем может быть запущена по расписанию или при событии.
+//! - запускается вручную, LLM-инструментом или задачей `quality_check_run`;
+//! - MJS всегда read-only; исправляющие команды остаются в Rust.
 //!
 //! ## Зарегистрированные проверки
 //!
@@ -31,100 +33,203 @@
 //! | `gl_projection_integrity` | Целостность GL ↔ ProjectionLinked-проекции | orphan_gl / orphan_projection / amount_mismatch для p909/p910/p911/p913 |
 //! | `p903_gl_integrity` | Целостность GL ↔ p903 (ExternalLinked) | orphan_gl / amount_mismatch для p903_wb_finance_report |
 //!
-//! ## Добавление новой проверки
-//!
-//! 1. Создать файл `checks/my_check.rs`, объявить `CHECK_ID`, `info()`, `run()`.
-//! 2. Добавить `pub mod my_check;` в `checks/mod.rs`.
-//! 3. В этом модуле добавить `checks::my_check::info()` в [`list_checks`]
-//!    и ветку в [`run_check`].
+//! Новые read-only правила добавляются внешним пакетом `check.json` +
+//! `check.mjs` (+ schema) через skill `quality-check-authoring` и атомарный
+//! reload без пересборки. Rust нужен только для доменных сервисов и мутаций.
 
 pub mod checks;
+pub mod funnel_repair;
+pub mod history;
+pub mod registry;
 
 use contracts::quality::{
     CheckDetails, CheckResult, NipCleanupRequest, NipCleanupResult, NipGroupsResponse,
-    NipProjectionRow, NipRepostRequest, NipRepostResult, QualityCheckInfo, QualityCheckSource,
+    NipProjectionRow, NipRepostRequest, NipRepostResult, QualityCheckInfo, QualityCheckOverview,
+    QualityCheckSource,
 };
+use serde_json::Value;
+
+const MAX_MJS_RESULT_BYTES: usize = 1024 * 1024;
 
 /// Возвращает список всех зарегистрированных проверок.
 pub fn list_checks() -> Vec<QualityCheckInfo> {
-    let mut checks = vec![
-        checks::nomenclature_in_projections::info(),
-        checks::projection_orphan_registrators::info(),
-        checks::marketplace_product_ref_required::info(),
-        checks::gl_projection_integrity::info(),
-        checks::p903_gl_integrity::info(),
-        checks::p907_gl_coverage::info(),
-    ];
+    registry::snapshot()
+        .definitions
+        .iter()
+        .map(|definition| definition.info.clone())
+        .collect()
+}
 
-    for (idx, check) in checks.iter_mut().enumerate() {
-        check.code = format!("QC-{:03}", idx + 1);
+/// Возвращает карточки каталога вместе с последним запуском именно текущей
+/// версии определения. Результаты старого digest не маскируют изменённое правило.
+pub async fn list_check_overviews() -> anyhow::Result<Vec<QualityCheckOverview>> {
+    let snapshot = registry::snapshot();
+    let mut latest = history::latest_runs_by_definition().await?;
+    let mut items = Vec::with_capacity(snapshot.definitions.len());
+    for definition in snapshot.definitions.iter() {
+        items.push(QualityCheckOverview {
+            info: definition.info.clone(),
+            kind: definition.kind.clone(),
+            definition_digest: definition.digest.clone(),
+            latest_run: latest.remove(&(definition.info.id.clone(), definition.digest.clone())),
+        });
     }
-
-    checks
+    Ok(items)
 }
 
 /// Запускает проверку по её ID и возвращает результат.
 ///
 /// Возвращает `Err` с маркером `"NOT_FOUND"` в сообщении, если ID не зарегистрирован.
 pub async fn run_check(id: &str) -> anyhow::Result<CheckResult> {
-    match id {
-        checks::nomenclature_in_projections::CHECK_ID => {
-            checks::nomenclature_in_projections::run().await
+    Ok(
+        run_check_with_input(id, Value::Object(Default::default()), "manual")
+            .await?
+            .result,
+    )
+}
+
+async fn execute_definition(
+    definition: &registry::CheckDefinition,
+    input: Value,
+) -> anyhow::Result<registry::CheckOutput> {
+    use registry::{CheckExecutor, RustCheck};
+    let output = match &definition.executor {
+        CheckExecutor::Rust(kind) => match kind {
+            RustCheck::NomenclatureInProjections => registry::CheckOutput {
+                metrics: checks::nomenclature_in_projections::run().await?.metrics,
+                breakdowns: checks::nomenclature_in_projections::breakdowns().await?,
+                sources: checks::nomenclature_in_projections::list_sources(),
+                ..Default::default()
+            },
+            RustCheck::ProjectionOrphanRegistrators => registry::CheckOutput {
+                metrics: checks::projection_orphan_registrators::run().await?.metrics,
+                breakdowns: checks::projection_orphan_registrators::breakdowns().await?,
+                sources: checks::projection_orphan_registrators::list_sources(),
+                ..Default::default()
+            },
+            RustCheck::GlProjectionIntegrity => {
+                let result = checks::gl_projection_integrity::run().await?;
+                registry::CheckOutput {
+                    metrics: result.metrics,
+                    violations: result.violations,
+                    ..Default::default()
+                }
+            }
+            RustCheck::P903GlIntegrity => {
+                let result = checks::p903_gl_integrity::run().await?;
+                registry::CheckOutput {
+                    metrics: result.metrics,
+                    violations: result.violations,
+                    ..Default::default()
+                }
+            }
+        },
+        CheckExecutor::Javascript(js) => {
+            let (value, logs) = crate::plugins::engine::invoke_ephemeral_server_script_with_limits(
+                js.source.clone(),
+                js.export.clone(),
+                input,
+                js.capabilities.clone(),
+                crate::plugins::engine::ScriptExecutionLimits::quality_check(),
+            )
+            .await?;
+            for line in logs {
+                tracing::info!(check_id=%definition.info.id, "quality.mjs: {line}");
+            }
+            if serde_json::to_vec(&value)?.len() > MAX_MJS_RESULT_BYTES {
+                anyhow::bail!("quality check result exceeds 1 MiB");
+            }
+            serde_json::from_value(value)?
         }
-        checks::projection_orphan_registrators::CHECK_ID => {
-            checks::projection_orphan_registrators::run().await
+    };
+    registry::validate_output(&output)?;
+    Ok(output)
+}
+
+pub async fn run_check_with_input(
+    id: &str,
+    input: Value,
+    trigger: &str,
+) -> anyhow::Result<CheckDetails> {
+    let definition = registry::definition(id)
+        .ok_or_else(|| anyhow::anyhow!("NOT_FOUND: Unknown check id: {id}"))?;
+    let input = registry::merge_input(&definition.default_input, input);
+    registry::validate_input(&definition, &input)?;
+    let (run_id, started_at) = history::start_run(id, &definition.digest, &input, trigger).await?;
+    let outcome = execute_definition(&definition, input).await;
+    match outcome {
+        Ok(output) => {
+            let population_total = output
+                .metrics
+                .iter()
+                .try_fold(0_i64, |total, metric| total.checked_add(metric.population))
+                .ok_or_else(|| anyhow::anyhow!("quality check population total overflow"))?;
+            let violations_total = output
+                .metrics
+                .iter()
+                .try_fold(0_i64, |total, metric| total.checked_add(metric.violations))
+                .ok_or_else(|| anyhow::anyhow!("quality check violations total overflow"))?;
+            let details = CheckDetails {
+                info: definition.info,
+                result: CheckResult {
+                    check_id: id.to_string(),
+                    run_at: chrono::Utc::now(),
+                    population_total,
+                    violations_total,
+                    metrics: output.metrics,
+                    violations: output.violations,
+                },
+                breakdowns: output.breakdowns,
+                sources: output.sources,
+            };
+            history::finish_success(&run_id, started_at, &details).await?;
+            Ok(details)
         }
-        checks::marketplace_product_ref_required::CHECK_ID => {
-            checks::marketplace_product_ref_required::run().await
+        Err(error) => {
+            let _ = history::finish_failure(&run_id, started_at, &error.to_string()).await;
+            Err(error)
         }
-        checks::gl_projection_integrity::CHECK_ID => checks::gl_projection_integrity::run().await,
-        checks::p903_gl_integrity::CHECK_ID => checks::p903_gl_integrity::run().await,
-        checks::p907_gl_coverage::CHECK_ID => checks::p907_gl_coverage::run().await,
-        other => Err(anyhow::anyhow!("NOT_FOUND: Unknown check id: {}", other)),
     }
 }
 
 /// Собирает полный пакет детализации правила для страницы `quality_check_details`:
 /// метаданные + прогон (с популяцией и нарушениями) + разрезы + источники drill-down.
 pub async fn check_details(id: &str) -> anyhow::Result<CheckDetails> {
-    let info = list_checks()
-        .into_iter()
-        .find(|c| c.id == id)
-        .ok_or_else(|| anyhow::anyhow!("NOT_FOUND: Unknown check id: {}", id))?;
-
-    let result = run_check(id).await?;
-
-    let breakdowns = match id {
-        checks::nomenclature_in_projections::CHECK_ID => {
-            checks::nomenclature_in_projections::breakdowns().await?
-        }
-        checks::projection_orphan_registrators::CHECK_ID => {
-            checks::projection_orphan_registrators::breakdowns().await?
-        }
-        _ => Vec::new(),
-    };
-
-    let sources = list_check_sources(id).unwrap_or_default();
-
-    Ok(CheckDetails {
-        info,
-        result,
-        breakdowns,
-        sources,
-    })
+    let definition = registry::definition(id)
+        .ok_or_else(|| anyhow::anyhow!("NOT_FOUND: Unknown check id: {id}"))?;
+    if let Some(mut details) =
+        history::latest_success_details_for_digest(id, &definition.digest).await?
+    {
+        details.info = definition.info;
+        return Ok(details);
+    }
+    run_check_with_input(id, Value::Object(Default::default()), "details").await
 }
 
 /// Возвращает список источников (проекционных таблиц) для указанной проверки.
 pub fn list_check_sources(check_id: &str) -> anyhow::Result<Vec<QualityCheckSource>> {
-    match check_id {
-        checks::nomenclature_in_projections::CHECK_ID => {
+    use registry::{CheckExecutor, RustCheck};
+    let definition = registry::definition(check_id)
+        .ok_or_else(|| anyhow::anyhow!("NOT_FOUND: Unknown check id: {check_id}"))?;
+    match definition.executor {
+        CheckExecutor::Rust(RustCheck::NomenclatureInProjections) => {
             Ok(checks::nomenclature_in_projections::list_sources())
         }
-        checks::projection_orphan_registrators::CHECK_ID => {
+        CheckExecutor::Rust(RustCheck::ProjectionOrphanRegistrators) => {
             Ok(checks::projection_orphan_registrators::list_sources())
         }
-        other => Err(anyhow::anyhow!("NOT_FOUND: Unknown check id: {}", other)),
+        _ => Ok(Vec::new()),
     }
+}
+
+pub async fn list_runs(
+    id: &str,
+    limit: i64,
+) -> anyhow::Result<Vec<contracts::quality::QualityCheckRunSummary>> {
+    if registry::definition(id).is_none() {
+        anyhow::bail!("NOT_FOUND: Unknown check id: {id}");
+    }
+    history::list_runs(id, limit).await
 }
 
 /// Возвращает страницу групп регистраторов для drill-down по проекционной таблице.

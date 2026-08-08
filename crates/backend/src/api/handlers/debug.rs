@@ -104,6 +104,12 @@ pub async fn tool_test(Query(params): Query<ToolTestParams>) -> impl IntoRespons
     )
     .await
     .unwrap_or(false);
+    let data_repair_execute_allowed = crate::shared::llm::skill_policy::capability_allowed(
+        &specialization,
+        crate::shared::llm::skill_policy::DATA_REPAIR_EXECUTE,
+    )
+    .await
+    .unwrap_or(false);
 
     let raw_result = crate::shared::llm::execute_tool_call(
         &call,
@@ -117,6 +123,7 @@ pub async fn tool_test(Query(params): Query<ToolTestParams>) -> impl IntoRespons
         artifact_publish_allowed,
         skill_script_execute_allowed,
         skill_script_develop_allowed,
+        data_repair_execute_allowed,
         // Собеседника у debug-вызова нет: инструменты «от лица пользователя» откажут.
         None,
     )

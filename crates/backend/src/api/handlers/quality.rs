@@ -4,7 +4,8 @@ use axum::{
 };
 use contracts::quality::{
     CheckDetails, CheckResult, NipCleanupRequest, NipCleanupResult, NipGroupsResponse,
-    NipProjectionRow, NipRepostRequest, NipRepostResult, QualityCheckInfo, QualityCheckSource,
+    NipProjectionRow, NipRepostRequest, NipRepostResult, QualityCheckInfo, QualityCheckOverview,
+    QualityCheckReloadReport, QualityCheckRunRequest, QualityCheckRunSummary, QualityCheckSource,
 };
 use serde::Deserialize;
 
@@ -13,18 +14,66 @@ pub async fn list_checks() -> Json<Vec<QualityCheckInfo>> {
     Json(crate::quality::list_checks())
 }
 
+/// GET /api/quality/checks/overview
+pub async fn list_check_overviews(
+) -> Result<Json<Vec<QualityCheckOverview>>, axum::http::StatusCode> {
+    crate::quality::list_check_overviews()
+        .await
+        .map(Json)
+        .map_err(|error| {
+            tracing::error!("quality overview: {error}");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
 /// POST /api/quality/checks/:id/run
 pub async fn run_check(
     Path(id): Path<String>,
+    body: Option<Json<QualityCheckRunRequest>>,
 ) -> Result<Json<CheckResult>, axum::http::StatusCode> {
-    match crate::quality::run_check(&id).await {
-        Ok(result) => Ok(Json(result)),
+    let input = body
+        .map(|Json(body)| body.input)
+        .unwrap_or_else(|| serde_json::json!({}));
+    match crate::quality::run_check_with_input(&id, input, "manual").await {
+        Ok(details) => Ok(Json(details.result)),
         Err(e) if e.to_string().starts_with("NOT_FOUND:") => {
             tracing::warn!("Quality check not found: '{}'", id);
             Err(axum::http::StatusCode::NOT_FOUND)
         }
         Err(e) => {
             tracing::error!("Quality check '{}' failed: {}", id, e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// POST /api/quality/checks/reload
+pub async fn reload_checks() -> Json<QualityCheckReloadReport> {
+    Json(crate::quality::registry::reload().await)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RunsQuery {
+    #[serde(default = "default_runs_limit")]
+    pub limit: i64,
+}
+
+fn default_runs_limit() -> i64 {
+    25
+}
+
+/// GET /api/quality/checks/:id/runs
+pub async fn list_runs(
+    Path(id): Path<String>,
+    Query(query): Query<RunsQuery>,
+) -> Result<Json<Vec<QualityCheckRunSummary>>, axum::http::StatusCode> {
+    match crate::quality::list_runs(&id, query.limit).await {
+        Ok(runs) => Ok(Json(runs)),
+        Err(error) if error.to_string().starts_with("NOT_FOUND:") => {
+            Err(axum::http::StatusCode::NOT_FOUND)
+        }
+        Err(error) => {
+            tracing::error!("quality runs '{}': {}", id, error);
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

@@ -1,0 +1,18 @@
+{
+  "id": "wb_marketing_projection_coverage",
+  "code": "QC-008",
+  "name": "Покрытие marketing-stage WB в p916",
+  "description": "Для дневных источников a026 (платная реклама) и a036 (воронка) проверяет наличие соответствующего marketing-stage движения p916 и отсутствие лишнего движения; текущий месяц не входит в итог.",
+  "category": "Воронка WB",
+  "kind": "domain",
+  "entrypoint": "check.mjs",
+  "export": "run",
+  "input_schema": "schema.json",
+  "capabilities": [
+    "db:read:a006_connection_mp",
+    "db:read:a026_wb_advert_daily",
+    "db:read:a036_wb_sales_funnel_daily",
+    "db:read:p916_mp_sales_funnel_turnovers"
+  ],
+  "default_input": {"months": 12}
+}
