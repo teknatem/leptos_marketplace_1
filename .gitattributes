@@ -1,0 +1,31 @@
+# Единая нормализация переводов строк.
+# В репозитории всегда LF; в рабочем дереве тоже LF (eol=lf перекрывает core.autocrlf).
+# Без этого файла результат зависел от core.autocrlf на конкретной машине — а авторов
+# в истории двое, и рассинхрон настройки даёт дифф на весь файл целиком.
+* text=auto eol=lf
+
+# Скрипты, которые обязаны быть CRLF: PowerShell/cmd под Windows.
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Бинарные — не трогать и не диффить как текст.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.wasm binary
+*.db binary
+*.xlsx binary
+*.zip binary
+
+# Сгенерированные из metadata.json — в дифф-статистике это шум, не ревью.
+*_gen.rs linguist-generated=true

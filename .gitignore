@@ -47,6 +47,9 @@ Thumbs.db
 /.vsa_designer/
 scripts/crates_dump.txt
 
+# Личный черновик роадмапа в корне — не часть репозитория
+/manual_plan.txt
+
 # Node.js / Tailwind tooling
 node_modules/
 pnpm-debug.log*
