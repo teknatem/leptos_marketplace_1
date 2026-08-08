@@ -428,7 +428,8 @@ pub const SCOPE_CATALOG: &[ScopeDescriptor] = &[
         scope_id: "knowledge_base",
         scope_type: ScopeType::System,
         label: "База знаний",
-        description: "Read-only просмотр статей базы знаний, дерева каталогов и статистики",
+        description: "Просмотр статей базы знаний, словаря тегов, статистики и замечаний; \
+                      полный доступ добавляет перечитывание базы с диска",
         icon: "book-open-text",
         category: "ai",
         read_label: "Просмотр базы знаний",

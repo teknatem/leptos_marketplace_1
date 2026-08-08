@@ -589,6 +589,33 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         scope_id: Some("a018_llm_chat"),
         mode: PolicyMode::Auto,
     },
+    // Рабочий каталог чата: задачи, анкеты, планы, журнал шагов.
+    // Соседние записи выше используют исторический префикс /api/llm-chat; здесь —
+    // фактически обслуживаемый путь из routes.rs.
+    RoutePolicy {
+        method: "*",
+        path: "/api/a018-llm-chat/:id/workspace",
+        scope_id: Some("a018_llm_chat"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a018-llm-chat/:id/workspace/active",
+        scope_id: Some("a018_llm_chat"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a018-llm-chat/:id/workspace/file/*path",
+        scope_id: Some("a018_llm_chat"),
+        mode: PolicyMode::Auto,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/a018-llm-chat/:id/workspace/answer",
+        scope_id: Some("a018_llm_chat"),
+        mode: PolicyMode::Auto,
+    },
     RoutePolicy {
         method: "*",
         path: "/api/llm-artifact",
@@ -1482,6 +1509,25 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         scope_id: Some("knowledge_base"),
         mode: PolicyMode::ReadOnly,
     },
+    RoutePolicy {
+        method: "*",
+        path: "/api/kb/vocabulary",
+        scope_id: Some("knowledge_base"),
+        mode: PolicyMode::ReadOnly,
+    },
+    RoutePolicy {
+        method: "*",
+        path: "/api/kb/issues",
+        scope_id: Some("knowledge_base"),
+        mode: PolicyMode::ReadOnly,
+    },
+    // Перечитывание базы с диска — действие, а не чтение.
+    RoutePolicy {
+        method: "*",
+        path: "/api/kb/reload",
+        scope_id: Some("knowledge_base"),
+        mode: PolicyMode::Auto,
+    },
     // Sys-drilldown session store (internal; tied to data_view usage)
     RoutePolicy {
         method: "*",
@@ -1509,6 +1555,18 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         mode: PolicyMode::AuthOnly,
     },
     RoutePolicy {
+        method: "GET",
+        path: "/api/quality/checks/overview",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/quality/checks/reload",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
         method: "POST",
         path: "/api/quality/checks/:id/run",
         scope_id: None,
@@ -1517,6 +1575,12 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
     RoutePolicy {
         method: "GET",
         path: "/api/quality/checks/:id/details",
+        scope_id: None,
+        mode: PolicyMode::AuthOnly,
+    },
+    RoutePolicy {
+        method: "GET",
+        path: "/api/quality/checks/:id/runs",
         scope_id: None,
         mode: PolicyMode::AuthOnly,
     },
@@ -1542,7 +1606,13 @@ pub static ROUTE_REGISTRY: &[RoutePolicy] = &[
         method: "POST",
         path: "/api/quality/checks/:id/repost",
         scope_id: None,
-        mode: PolicyMode::AuthOnly,
+        mode: PolicyMode::AdminOnly,
+    },
+    RoutePolicy {
+        method: "POST",
+        path: "/api/quality/checks/:id/cleanup",
+        scope_id: None,
+        mode: PolicyMode::AdminOnly,
     },
     // ========================================================================
     // Plugins subsystem — надстройка над платформой

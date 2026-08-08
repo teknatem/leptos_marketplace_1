@@ -913,6 +913,23 @@ fn a018_routes() -> Router {
                 .post(handlers::a018_llm_chat::add_chat_context),
         )
         .route(
+            "/api/a018-llm-chat/:id/workspace",
+            get(handlers::a018_llm_chat::get_workspace),
+        )
+        .route(
+            "/api/a018-llm-chat/:id/workspace/active",
+            post(handlers::a018_llm_chat::set_active_activity),
+        )
+        .route(
+            "/api/a018-llm-chat/:id/workspace/answer",
+            post(handlers::a018_llm_chat::answer_intake_question),
+        )
+        .route(
+            "/api/a018-llm-chat/:id/workspace/file/*path",
+            get(handlers::a018_llm_chat::get_workspace_file)
+                .put(handlers::a018_llm_chat::save_workspace_file),
+        )
+        .route(
             "/api/a018-llm-chat-context/:id",
             get(handlers::a018_llm_chat::get_context_package),
         )
@@ -2441,12 +2458,24 @@ fn quality_routes() -> Router {
     Router::new()
         .route("/api/quality/checks", get(handlers::quality::list_checks))
         .route(
+            "/api/quality/checks/overview",
+            get(handlers::quality::list_check_overviews),
+        )
+        .route(
+            "/api/quality/checks/reload",
+            post(handlers::quality::reload_checks),
+        )
+        .route(
             "/api/quality/checks/:id/run",
             post(handlers::quality::run_check),
         )
         .route(
             "/api/quality/checks/:id/details",
             get(handlers::quality::check_details),
+        )
+        .route(
+            "/api/quality/checks/:id/runs",
+            get(handlers::quality::list_runs),
         )
         .route(
             "/api/quality/checks/:id/sources",
@@ -2502,15 +2531,29 @@ fn misc_routes() -> Router {
 }
 
 fn kb_read_routes() -> Router {
-    Router::new()
+    let read_only = Router::new()
         .route("/api/kb/stats", get(handlers::kb_read::stats))
         .route("/api/kb/tree", get(handlers::kb_read::tree))
         .route("/api/kb/articles/:id", get(handlers::kb_read::get_article))
+        .route("/api/kb/vocabulary", get(handlers::kb_read::vocabulary))
+        .route("/api/kb/issues", get(handlers::kb_read::issues))
         .layer(middleware::from_fn(
             |req: Request<Body>, next: Next| async move {
                 check_scope_read("knowledge_base", req, next).await
             },
-        ))
+        ));
+
+    // Перечитывание базы — не чтение: отдельный роутер, т.к. слой выше прибит
+    // к check_scope_read и POST через него не пройдёт.
+    let mutating = Router::new()
+        .route("/api/kb/reload", post(handlers::kb_read::reload))
+        .layer(middleware::from_fn(
+            |req: Request<Body>, next: Next| async move {
+                check_scope("knowledge_base", req, next).await
+            },
+        ));
+
+    read_only.merge(mutating)
 }
 
 #[cfg(test)]
