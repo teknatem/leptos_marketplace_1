@@ -29,6 +29,8 @@ pub mod task022_mail_reply;
 pub mod task023_wb_sales_funnel_daily;
 pub mod task024_wb_search_analytics_daily;
 pub mod task025_bitrix_ticket_sync;
+pub mod task026_ym_shows_sales_daily;
+pub mod quality_check_run;
 
 pub use u501_import_ut::U501ImportUtManager;
 pub use u502_import_ozon::U502ImportOzonManager;
@@ -59,3 +61,5 @@ pub use task022_mail_reply::Task022MailReplyManager;
 pub use task023_wb_sales_funnel_daily::Task023WbSalesFunnelDailyManager;
 pub use task024_wb_search_analytics_daily::Task024WbSearchAnalyticsDailyManager;
 pub use task025_bitrix_ticket_sync::Task025BitrixTicketSyncManager;
+pub use task026_ym_shows_sales_daily::Task026YmShowsSalesDailyManager;
+pub use quality_check_run::QualityCheckRunManager;

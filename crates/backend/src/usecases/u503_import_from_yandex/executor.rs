@@ -1,7 +1,7 @@
 use super::{
-    processors::{order, payment_report, product, realization, returns},
+    processors::{order, payment_report, product, realization, returns, shows_sales},
     progress_tracker::ProgressTracker,
-    yandex_api_client::{OrderDateField, YandexApiClient},
+    yandex_api_client::{parse_shows_sales_report, OrderDateField, YandexApiClient},
 };
 use anyhow::Result;
 use contracts::domain::common::AggregateId;
@@ -61,6 +61,7 @@ impl ImportExecutor {
                 "a016_ym_returns" => "Возвраты Yandex Market",
                 "p907_ym_payment_report" => "Отчёт по платежам YM",
                 "a034_ym_realization" => "Отчёт о реализации YM",
+                "a041_ym_shows_sales_daily" => "Воронка продаж YM (Аналитика продаж)",
                 _ => "Unknown",
             };
             self.progress_tracker.add_aggregate(
@@ -126,6 +127,8 @@ impl ImportExecutor {
                     "a013_ym_order" => "Заказы Yandex Market",
                     "a016_ym_returns" => "Возвраты Yandex Market",
                     "p907_ym_payment_report" => "Отчёт по платежам YM",
+                    "a034_ym_realization" => "Отчёт о реализации YM",
+                    "a041_ym_shows_sales_daily" => "Воронка продаж YM (Аналитика продаж)",
                     _ => "Unknown",
                 };
                 self.progress_tracker.add_aggregate(
@@ -207,6 +210,15 @@ impl ImportExecutor {
                 }
                 "a034_ym_realization" => {
                     self.import_realization(
+                        session_id,
+                        connection,
+                        request.date_from,
+                        request.date_to,
+                    )
+                    .await?;
+                }
+                "a041_ym_shows_sales_daily" => {
+                    self.import_ym_shows_sales(
                         session_id,
                         connection,
                         request.date_from,
@@ -693,6 +705,141 @@ impl ImportExecutor {
             total_updated
         );
 
+        Ok(())
+    }
+
+    /// Импорт отчёта «Аналитика продаж» (shows-sales) → агрегат a041 → стадия
+    /// marketing воронки p916. Трёхфазный: generate → poll → download.
+    ///
+    /// Отчёт запрашивается по каждой кампании отдельно (кампания = кабинет = измерение
+    /// воронки), период заменяется целиком: YM пересчитывает статистику задним числом.
+    async fn import_ym_shows_sales(
+        &self,
+        session_id: &str,
+        connection: &contracts::domain::a006_connection_mp::aggregate::ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<()> {
+        const MAX_POLL_ATTEMPTS: u32 = 60;
+        const POLL_INTERVAL_SECS: u64 = 5;
+
+        let aggregate_index = "a041_ym_shows_sales_daily";
+        let date_from_str = date_from.format("%Y-%m-%d").to_string();
+        let date_to_str = date_to.format("%Y-%m-%d").to_string();
+
+        let campaigns = self
+            .resolve_campaigns(session_id, aggregate_index, connection)
+            .await;
+        if campaigns.is_empty() {
+            anyhow::bail!(
+                "Не задан магазин: у подключения нет supplier_id и GET /campaigns не вернул кампаний"
+            );
+        }
+
+        let mut total_documents = 0i32;
+        for (campaign_id, _placement_type) in &campaigns {
+            let mut conn = connection.clone();
+            conn.supplier_id = Some(campaign_id.clone());
+
+            self.progress_tracker.set_current_item(
+                session_id,
+                aggregate_index,
+                Some(format!("Генерация отчёта (кампания {})", campaign_id)),
+            );
+
+            let report_id = self
+                .api_client
+                .generate_shows_sales_report(&conn, date_from, date_to)
+                .await?;
+
+            let mut download_url: Option<String> = None;
+            for attempt in 1..=MAX_POLL_ATTEMPTS {
+                self.progress_tracker.set_current_item(
+                    session_id,
+                    aggregate_index,
+                    Some(format!(
+                        "Ожидание отчёта (кампания {})... ({}/{})",
+                        campaign_id, attempt, MAX_POLL_ATTEMPTS
+                    )),
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
+
+                match self.api_client.poll_report_status(&conn, &report_id).await {
+                    Ok((status, file_url)) => match status.as_str() {
+                        "DONE" => {
+                            download_url = file_url;
+                            break;
+                        }
+                        "FAILED" => {
+                            anyhow::bail!(
+                                "YM вернул FAILED при генерации отчёта «Аналитика продаж» (кампания {})",
+                                campaign_id
+                            );
+                        }
+                        _ => {}
+                    },
+                    // Сетевая ошибка поллинга не должна ронять импорт — повторяем.
+                    Err(e) => tracing::warn!("Shows-sales poll attempt {} failed: {}", attempt, e),
+                }
+            }
+
+            let Some(url) = download_url else {
+                anyhow::bail!(
+                    "Превышено время ожидания отчёта «Аналитика продаж» ({} попыток по {}с, кампания {})",
+                    MAX_POLL_ATTEMPTS,
+                    POLL_INTERVAL_SECS,
+                    campaign_id
+                );
+            };
+
+            let body = self
+                .api_client
+                .download_report_text(&url, "ym_shows_sales")
+                .await?;
+            let rows = parse_shows_sales_report(&body)?;
+            tracing::info!(
+                "YM shows-sales report parsed: campaign={}, rows={}",
+                campaign_id,
+                rows.len()
+            );
+
+            let documents = shows_sales::build_documents(
+                &conn,
+                Some(campaign_id),
+                &rows,
+                &date_from_str,
+                &date_to_str,
+            )
+            .await?;
+
+            let inserted = crate::domain::a041_ym_shows_sales_daily::service::replace_for_period(
+                &connection.base.id.as_string(),
+                &date_from_str,
+                &date_to_str,
+                &documents,
+            )
+            .await?;
+            total_documents += inserted as i32;
+
+            self.progress_tracker.update_aggregate(
+                session_id,
+                aggregate_index,
+                total_documents,
+                None,
+                total_documents,
+                0,
+            );
+        }
+
+        self.progress_tracker
+            .complete_aggregate(session_id, aggregate_index);
+        tracing::info!(
+            "YM shows-sales import completed: stores={}, documents={}, period={}..{}",
+            campaigns.len(),
+            total_documents,
+            date_from_str,
+            date_to_str
+        );
         Ok(())
     }
 

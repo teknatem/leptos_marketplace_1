@@ -1571,6 +1571,191 @@ impl YandexApiClient {
         Ok(report_id)
     }
 
+    /// Генерация отчёта «Аналитика продаж» (shows-sales) — верх воронки YM.
+    /// Endpoint: POST /v2/reports/shows-sales/generate?format=JSON
+    ///
+    /// `grouping=OFFERS` + разбивка по дням даёт строку на `offerId × день`: показы,
+    /// клики, корзину, заказы, доставки, отмены/невыкупы и возвраты. Это единственный
+    /// источник показов YM — в orders-API их нет.
+    ///
+    /// Запрашивается по `campaignId` (магазин = кабинет), а не по бизнесу: измерение
+    /// воронки — `connection_mp_ref`, и агрегирование по бизнесу его бы схлопнуло.
+    ///
+    /// Глубина истории ограничена тарифом YM: без подписки/Лайт — 90 дней, Медиум — 400.
+    pub async fn generate_shows_sales_report(
+        &self,
+        connection: &ConnectionMP,
+        date_from: chrono::NaiveDate,
+        date_to: chrono::NaiveDate,
+    ) -> Result<String> {
+        let campaign_id: i64 = connection
+            .supplier_id
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "campaignId (Идентификатор магазина / supplier_id) is required for YM shows-sales report"
+                )
+            })?
+            .parse()
+            .map_err(|e| anyhow::anyhow!("campaignId must be an integer: {}", e))?;
+
+        let url =
+            "https://api.partner.market.yandex.ru/v2/reports/shows-sales/generate?format=JSON";
+
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct GenerateShowsSalesRequest {
+            campaign_id: i64,
+            date_from: String,
+            date_to: String,
+            grouping: &'static str,
+        }
+
+        let body = GenerateShowsSalesRequest {
+            campaign_id,
+            date_from: date_from.format("%Y-%m-%d").to_string(),
+            date_to: date_to.format("%Y-%m-%d").to_string(),
+            grouping: "OFFERS",
+        };
+
+        self.log_to_file(&format!(
+            "=== GENERATE SHOWS-SALES REPORT ===\nPOST {}\ncampaignId={}, date_from={}, date_to={}",
+            url, campaign_id, date_from, date_to
+        ));
+
+        // Число одновременно генерируемых отчётов ограничено тарифом (без подписки — 1),
+        // поэтому лимит выбирается штатно и ждать приходится так же, как для реализации.
+        const MAX_ATTEMPTS: u32 = 5;
+        const RATE_LIMIT_WAIT_SECS: u64 = 65;
+        let mut resp_body = String::new();
+        for attempt in 1..=MAX_ATTEMPTS {
+            let request = self
+                .client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .json(&body);
+
+            let response = self
+                .apply_auth(request, connection)?
+                .send()
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to request shows-sales report generation: {}", e)
+                })?;
+
+            let status = response.status();
+            if status.is_success() {
+                resp_body = response.text().await?;
+                break;
+            }
+
+            let err_body = response.text().await.unwrap_or_default();
+            self.log_to_file(&format!(
+                "Generate shows-sales report failed ({}): {}",
+                status, err_body
+            ));
+
+            let is_rate_limited = status.as_u16() == 420
+                || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                || err_body.contains("rate limit");
+
+            if is_rate_limited && attempt < MAX_ATTEMPTS {
+                self.log_to_file(&format!(
+                    "Shows-sales report rate-limited; waiting {}s before retry ({}/{})",
+                    RATE_LIMIT_WAIT_SECS, attempt, MAX_ATTEMPTS
+                ));
+                tokio::time::sleep(tokio::time::Duration::from_secs(RATE_LIMIT_WAIT_SECS)).await;
+                continue;
+            }
+            anyhow::bail!(
+                "generate_shows_sales_report failed with status {}: {}",
+                status,
+                err_body
+            );
+        }
+
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+            .map_err(|e| anyhow::anyhow!("Failed to parse generate response: {}", e))?;
+
+        let report_id = parsed
+            .pointer("/result/reportId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("reportId not found in response: {}", resp_body))?
+            .to_string();
+
+        self.log_to_file(&format!(
+            "Shows-sales report generated, reportId={}",
+            report_id
+        ));
+        Ok(report_id)
+    }
+
+    /// Скачивает готовый отчёт как текст. YM отдаёт JSON-отчёты то напрямую, то
+    /// упакованными в ZIP (зависит от размера), поэтому распаковываем по сигнатуре
+    /// архива, а не по расширению ссылки.
+    pub async fn download_report_text(&self, url: &str, subdir: &str) -> Result<String> {
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to download report file: {}", e))?;
+        let status = response.status();
+        if !status.is_success() {
+            let err_body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "download_report_text failed with status {}: {}",
+                status,
+                err_body
+            );
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read report file body: {}", e))?
+            .to_vec();
+
+        let subdir = subdir.to_string();
+        tokio::task::spawn_blocking(move || -> Result<String> {
+            let dir_path = format!("downloads/{}", subdir);
+            let dir = std::path::Path::new(&dir_path);
+            std::fs::create_dir_all(dir)
+                .map_err(|e| anyhow::anyhow!("Failed to create downloads dir: {}", e))?;
+            let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+
+            // Сигнатура ZIP — "PK\x03\x04".
+            if bytes.starts_with(b"PK\x03\x04") {
+                let _ = std::fs::write(dir.join(format!("report_{}.zip", ts)), &bytes);
+                let cursor = std::io::Cursor::new(&bytes[..]);
+                let mut archive = zip::ZipArchive::new(cursor)
+                    .map_err(|e| anyhow::anyhow!("Failed to open ZIP archive: {}", e))?;
+                for i in 0..archive.len() {
+                    let mut file = archive
+                        .by_index(i)
+                        .map_err(|e| anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e))?;
+                    if !file.is_file() {
+                        continue;
+                    }
+                    use std::io::Read;
+                    let mut raw: Vec<u8> = Vec::new();
+                    file.read_to_end(&mut raw)
+                        .map_err(|e| anyhow::anyhow!("Failed to read ZIP entry: {}", e))?;
+                    let content = decode_report_csv(&raw);
+                    let _ = std::fs::write(dir.join(format!("report_{}.txt", ts)), &content);
+                    return Ok(content);
+                }
+                anyhow::bail!("Report ZIP archive contains no files");
+            }
+
+            let content = decode_report_csv(&bytes);
+            let _ = std::fs::write(dir.join(format!("report_{}.txt", ts)), &content);
+            Ok(content)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking panicked: {}", e))?
+    }
+
     /// Phase 2: Poll report generation status.
     /// Endpoint: GET https://api.partner.market.yandex.ru/v2/reports/info/{reportId}
     /// Returns (status_str, Option<download_url>).
@@ -1841,4 +2026,116 @@ impl YandexApiClient {
 
         Ok(result)
     }
+}
+
+/// Строка отчёта «Аналитика продаж» (shows-sales, `grouping=OFFERS`) —
+/// один товар (`offerId`) за один день.
+///
+/// Все метрики опциональны: YM опускает нули и, в зависимости от тарифа/периода,
+/// может не отдать часть колонок. `None` означает «данных нет» (N/A), а не «ноль» —
+/// подмена нулём делает воронку правдоподобной, но ложной.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YmShowsSalesRow {
+    /// День месяца. Дата собирается из day/month/year — единой колонки даты нет.
+    #[serde(default)]
+    pub day: Option<serde_json::Value>,
+    #[serde(default)]
+    pub month: Option<serde_json::Value>,
+    #[serde(default)]
+    pub year: Option<serde_json::Value>,
+    /// «Ваш SKU» — ключ товара, совпадает с `shop_sku` строк заказа a013.
+    #[serde(default)]
+    pub offer_id: Option<String>,
+    #[serde(default)]
+    pub offer_name: Option<String>,
+    /// Показы моих товаров, шт. Настоящие impressions (в отличие от WB).
+    #[serde(default)]
+    pub shows: Option<i64>,
+    /// Показы товаров всех продавцов по этому MSKU — рынок, не мои показы.
+    #[serde(default)]
+    pub by_msku_shows: Option<i64>,
+    #[serde(default)]
+    pub clicks: Option<i64>,
+    #[serde(default)]
+    pub to_cart: Option<i64>,
+    #[serde(default)]
+    pub order_items: Option<i64>,
+    #[serde(default)]
+    pub order_items_delivered_count: Option<i64>,
+    /// «Отмены и невыкупы за период» — счётчик отказов YM.
+    #[serde(default)]
+    pub order_items_canceled_count: Option<i64>,
+    #[serde(default)]
+    pub order_items_returned_count: Option<i64>,
+}
+
+impl YmShowsSalesRow {
+    /// Дата строки `YYYY-MM-DD` из day/month/year. YM отдаёт их то числами, то строками
+    /// (а месяц — иногда названием), поэтому разбираем оба варианта.
+    pub fn date(&self) -> Option<String> {
+        let day = numeric_part(self.day.as_ref())?;
+        let month = numeric_part(self.month.as_ref())?;
+        let year = numeric_part(self.year.as_ref())?;
+        if !(1..=31).contains(&day) || !(1..=12).contains(&month) || !(2000..=2100).contains(&year)
+        {
+            return None;
+        }
+        Some(format!("{year:04}-{month:02}-{day:02}"))
+    }
+
+    /// Есть ли в строке хоть одна ненулевая метрика (разреженность проекции).
+    pub fn has_activity(&self) -> bool {
+        [
+            self.shows,
+            self.clicks,
+            self.to_cart,
+            self.order_items,
+            self.order_items_delivered_count,
+            self.order_items_canceled_count,
+            self.order_items_returned_count,
+        ]
+        .iter()
+        .any(|v| v.unwrap_or(0) != 0)
+    }
+}
+
+/// Число из JSON-значения, пришедшего числом или строкой.
+fn numeric_part(value: Option<&serde_json::Value>) -> Option<i64> {
+    match value? {
+        serde_json::Value::Number(n) => n.as_i64(),
+        serde_json::Value::String(s) => s.trim().parse::<i64>().ok(),
+        _ => None,
+    }
+}
+
+/// Разбирает тело отчёта shows-sales (JSON). Строки лежат либо в `result.rows`,
+/// либо в `result` массивом, либо массивом в корне — принимаем все три формы,
+/// чтобы импорт не падал из-за обёртки.
+pub fn parse_shows_sales_report(body: &str) -> Result<Vec<YmShowsSalesRow>> {
+    let parsed: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+        let snippet: String = body.chars().take(400).collect();
+        anyhow::anyhow!("Failed to parse YM shows-sales report: {} | body: {}", e, snippet)
+    })?;
+
+    let rows_value = parsed
+        .pointer("/result/rows")
+        .or_else(|| parsed.pointer("/result/offers"))
+        .or_else(|| parsed.pointer("/rows"))
+        .or_else(|| parsed.pointer("/result"))
+        .cloned()
+        .unwrap_or(parsed);
+
+    let array = rows_value.as_array().cloned().ok_or_else(|| {
+        let snippet: String = body.chars().take(400).collect();
+        anyhow::anyhow!("YM shows-sales report has no row array | body: {}", snippet)
+    })?;
+
+    let mut rows = Vec::with_capacity(array.len());
+    for item in array {
+        let row: YmShowsSalesRow = serde_json::from_value(item)
+            .map_err(|e| anyhow::anyhow!("Failed to decode YM shows-sales row: {}", e))?;
+        rows.push(row);
+    }
+    Ok(rows)
 }

@@ -1,0 +1,416 @@
+{
+  "$schema": "../../../schemas/metadata.schema.json",
+  "schema_version": "1.0",
+  "entity_type": "aggregate",
+  "entity_name": "YmShowsSalesDaily",
+  "entity_index": "a041",
+  "collection_name": "ym_shows_sales_daily",
+  "table_name": "a041_ym_shows_sales_daily",
+  "ui": {
+    "element_name": "Воронка продаж YM",
+    "element_name_en": "YM Shows Sales Daily",
+    "list_name": "Воронка продаж YM по дням",
+    "list_name_en": "YM Shows Sales Daily Stats",
+    "icon": "filter"
+  },
+  "ai": {
+    "tags": [
+      "ym",
+      "yandex",
+      "analytics",
+      "funnel",
+      "воронка"
+    ],
+    "description": "Ежедневная воронка продаж Яндекс.Маркета в разрезе товаров. Одна запись — один кабинет YM и одна дата; JSON-детализация по товарам (offer_id = «Ваш SKU»): показы, клики, добавления в корзину, заказанные товары, доставленные, ОТМЕНЫ И НЕВЫКУПЫ, возвраты. Источник — отчёт «Аналитика продаж» Partner API (POST /v2/reports/shows-sales/generate, grouping=OFFERS). ЕДИНСТВЕННЫЙ источник показов и кликов YM: в orders-API (a013_ym_order) их нет. Аналог a036_wb_sales_funnel_daily у Wildberries; питает стадию marketing проекции p916_mp_sales_funnel_turnovers. Счётчики этого отчёта — дневная статистика самого маркетплейса, они НЕ совпадают с фактическими заказами/отменами/выкупами из a013_ym_order (те считаются по документам заказов). Глубина истории ограничена тарифом YM: 90 дней без подписки, 400 на «Медиум». NULL в метрике = данных не было (N/A), а не ноль.",
+    "questions": [
+      "Какая воронка продаж на Яндекс.Маркете за период (показы→клики→корзина→заказ)?",
+      "Сколько показов и кликов у товаров YM по дням?",
+      "Сколько отмен и невыкупов на Яндекс.Маркете за период?",
+      "Какая конверсия из показа в корзину и из корзины в заказ на YM?",
+      "Сколько возвратов по товарам YM за период?"
+    ],
+    "related": [
+      "a006_connection_mp",
+      "a002_organization",
+      "a007_marketplace_product",
+      "a013_ym_order",
+      "a016_ym_returns"
+    ]
+  },
+  "fields": [
+    {
+      "name": "id",
+      "rust_type": "YmShowsSalesDailyId",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "ID",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Детерминированный UUID по (кабинет, дата): повторный импорт периода перезаписывает документ, а не плодит новые."
+    },
+    {
+      "name": "code",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Код",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Код документа (совпадает с document_no)."
+    },
+    {
+      "name": "description",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Описание",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Человекочитаемое описание документа."
+    },
+    {
+      "name": "document_no",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Номер",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 150
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Номер документа вида YM-SF-YYYY-MM-DD."
+    },
+    {
+      "name": "document_date",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Дата",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 110
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Дата воронки YYYY-MM-DD. Один документ = один кабинет за один день."
+    },
+    {
+      "name": "connection_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Кабинет",
+        "visible_in_list": true,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": true
+      },
+      "ai_hint": "Кабинет маркетплейса (a006_connection_mp).",
+      "ref_aggregate": "a006_connection_mp"
+    },
+    {
+      "name": "organization_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Организация",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Организация (a002_organization).",
+      "ref_aggregate": "a002_organization"
+    },
+    {
+      "name": "marketplace_id",
+      "rust_type": "String",
+      "field_type": "aggregate_ref",
+      "source": "specific",
+      "ui": {
+        "label": "Маркетплейс",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Маркетплейс (a005_marketplace).",
+      "ref_aggregate": "a005_marketplace"
+    },
+    {
+      "name": "campaign_id",
+      "rust_type": "Option<String>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Кампания",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Идентификатор кампании (магазина) YM, по которой запрошен отчёт."
+    },
+    {
+      "name": "lines_count",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Товаров",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 90
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Количество товарных строк в lines_json."
+    },
+    {
+      "name": "total_shows",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Показы",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Показы моих товаров за дату, шт. Настоящие impressions (в отличие от WB, где органических показов нет). NULL = данных не было (N/A), а не ноль."
+    },
+    {
+      "name": "total_clicks",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Клики",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 90
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Клики по товарам за дату — переходы в карточку. NULL = N/A."
+    },
+    {
+      "name": "total_to_cart",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "В корзину",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Добавления в корзину за дату, шт. NULL = N/A."
+    },
+    {
+      "name": "total_order_items",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Заказы",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 90
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Заказанные товары за дату по счётчику маркетплейса, шт. Это НЕ число заказов из a013_ym_order — другая гранулярность и другая привязка к дате. NULL = N/A."
+    },
+    {
+      "name": "total_delivered_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Доставлено",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 110
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Доставлено за период, шт. NULL = N/A."
+    },
+    {
+      "name": "total_canceled_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Отмены",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Отмены и невыкупы за период, шт. — основной счётчик отказов YM за дату. NULL = данных не было (N/A), а не ноль."
+    },
+    {
+      "name": "total_returned_count",
+      "rust_type": "Option<i64>",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Возвраты",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 100
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Возвращённые товары за период, шт. NULL = N/A."
+    },
+    {
+      "name": "lines_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Строки JSON",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "JSON-массив детализации по товарам (одна запись = один offer_id за дату). ВАЖНО: метрики вложены в объект metrics, путь json_extract — '$.metrics.поле', а НЕ '$.поле'. На верхнем уровне строки: offer_id, offer_name, marketplace_product_ref, nomenclature_ref. Внутри metrics: shows, by_msku_shows, clicks, to_cart, order_items, delivered_count, canceled_count, returned_count. Пример (топ товаров по показам): SELECT json_extract(j.value,'$.offer_id') AS sku, SUM(json_extract(j.value,'$.metrics.shows')) AS shows FROM a041_ym_shows_sales_daily d, json_each(d.lines_json) j WHERE d.is_deleted=0 AND d.document_date >= '2026-07-01' GROUP BY 1 ORDER BY shows DESC. Для дневных ИТОГОВ используй колонки total_* — json_each не нужен."
+    },
+    {
+      "name": "totals_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Итоги JSON",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "JSON итогов документа (сумма метрик по строкам)."
+    },
+    {
+      "name": "header_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Шапка JSON",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "JSON шапки документа."
+    },
+    {
+      "name": "source_meta_json",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Источник JSON",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "JSON метаданных источника (source, fetched_at)."
+    },
+    {
+      "name": "fetched_at",
+      "rust_type": "String",
+      "field_type": "primitive",
+      "source": "specific",
+      "ui": {
+        "label": "Загружено",
+        "visible_in_list": true,
+        "visible_in_form": false,
+        "column_width": 170
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Время загрузки отчёта из YM."
+    },
+    {
+      "name": "is_deleted",
+      "rust_type": "bool",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Удалён",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Признак мягкого удаления. Всегда фильтруй is_deleted = 0."
+    },
+    {
+      "name": "version",
+      "rust_type": "i32",
+      "field_type": "primitive",
+      "source": "base",
+      "ui": {
+        "label": "Версия",
+        "visible_in_list": false,
+        "visible_in_form": false
+      },
+      "validation": {
+        "required": false
+      },
+      "ai_hint": "Версия записи."
+    }
+  ]
+}

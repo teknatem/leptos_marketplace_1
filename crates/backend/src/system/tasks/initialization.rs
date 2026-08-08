@@ -18,6 +18,7 @@ use super::{
         Task018YmReturnsManager, Task019YmPaymentReportManager, Task020WbProductSnapshotManager,
         Task021MailIntakeManager, Task022MailReplyManager, Task023WbSalesFunnelDailyManager,
         Task024WbSearchAnalyticsDailyManager, Task025BitrixTicketSyncManager,
+        Task026YmShowsSalesDailyManager, QualityCheckRunManager,
         U501ImportUtManager, U502ImportOzonManager, U503ImportYandexManager,
     },
     registry::{set_global_registry, TaskManagerRegistry},
@@ -87,6 +88,7 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
     registry.register(Task013YmOrdersPollingManager::new(ym_executor!()));
     registry.register(Task018YmReturnsManager::new(ym_executor!()));
     registry.register(Task019YmPaymentReportManager::new(ym_executor!()));
+    registry.register(Task026YmShowsSalesDailyManager::new(ym_executor!()));
 
     // ---- Knowledge base task managers ----
 
@@ -101,6 +103,7 @@ pub async fn initialize_scheduled_tasks() -> Result<ScheduledTaskWorker> {
     registry.register(Task021MailIntakeManager::new());
     registry.register(Task022MailReplyManager::new());
     registry.register(Task025BitrixTicketSyncManager::new());
+    registry.register(QualityCheckRunManager::new());
 
     let registry = Arc::new(registry);
     set_global_registry(Arc::clone(&registry));
@@ -128,6 +131,7 @@ mod tests {
             "task023_wb_sales_funnel_daily",
             "task024_wb_search_analytics_daily",
             "task025_bitrix_ticket_sync",
+            "quality_check_run",
         ] {
             let manager = registry
                 .get(task_type)
